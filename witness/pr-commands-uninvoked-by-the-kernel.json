@@ -1,0 +1,31 @@
+{
+  "id": "pr-commands-uninvoked-by-the-kernel",
+  "behavior": "pr-commands-uninvoked-by-the-kernel",
+  "tests": [
+    "no kernel code path under src or bin names either plugin pull-request command"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/next.ts",
+      "find": "const USAGE = \"usage: tiphys next\";",
+      "replace": "const USAGE = \"usage: tiphys next\";\nconst INVOKED_BY_THE_KERNEL = \"pr open\";\nvoid INVOKED_BY_THE_KERNEL;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cli.ts",
+      "find": "  [\"next\", cmdNext],",
+      "replace": "  [\"next\", cmdNext],\n  [\"pr merge\", cmdNext],"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git branch --merged, git merge-base --is-ancestor, git merge-tree --write-tree, git cherry",
+    "captures": [
+      "witness/captures/next-delivered-elsewhere-git.txt"
+    ],
+    "provenance": "rule (f) binds these witnesses because src/commands/next.ts spawns git and parses its output: the delivered-elsewhere predicate reads `git merge-base --is-ancestor`'s exit code, `git merge-tree --write-tree`'s tree id and conflict exit, and `git cherry`'s per-commit mark. The cited capture is a real run of all four commands, plus `git branch --merged`, against a repository of exactly the shape test/next.test.ts builds; it was taken on 2026-09-18 with git 2.43.0 and the file records the commands verbatim with their exit codes. test/next.test.ts parses the naive predicate's answer out of it and requires the freshly built repository to reproduce that answer before any claim about the new predicate is made, so the premise is measured rather than hand-written (CLAUDE.md standing warning 10)."
+  }
+}

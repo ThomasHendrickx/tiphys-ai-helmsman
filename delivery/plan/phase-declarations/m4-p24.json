@@ -6,7 +6,8 @@
     "src/cli.ts",
     "plugin/src/",
     "test/next.test.ts",
-    "witness/"
+    "witness/",
+    "delivery/plan/cutover/retirement-inventory.json"
   ],
   "declaredExtras": [
     "test/behaviors.json",

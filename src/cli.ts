@@ -5,6 +5,7 @@ import { cmdGates } from "./commands/gates.ts";
 import { cmdInit } from "./commands/init.ts";
 import { cmdLock } from "./commands/lock.ts";
 import { cmdMode } from "./commands/mode.ts";
+import { cmdNext } from "./commands/next.ts";
 import { cmdPlan } from "./commands/plan.ts";
 import { cmdPool } from "./commands/pool.ts";
 import { cmdResume } from "./commands/resume.ts";
@@ -34,6 +35,7 @@ const commands = new Map<string, CommandHandler>([
   ["gates", cmdGates],
   ["lock", cmdLock],
   ["mode", cmdMode],
+  ["next", cmdNext],
   ["plan", cmdPlan],
   ["pool", cmdPool],
   ["resume", cmdResume],

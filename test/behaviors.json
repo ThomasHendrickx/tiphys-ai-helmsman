@@ -1156,5 +1156,16 @@
   "merge-preconditions-composed-check-absence-is-error": "deregistering the composed dual-review check makes its condition error rather than green, so a condition with no check behind it is never a pass",
   "merge-preconditions-no-verdict-at-head-is-not-applicable": "a head no committed verdict names is not-applicable with an evaluated unmet precondition rather than green",
   "merge-preconditions-error-dominates-red": "error dominates red in the gate word, so a run that could not look at one condition never reports a verdict about the merge",
-  "merge-preconditions-composed-check-violations-are-red": "a pair of verdicts in which one refuses the merge reddens condition 2 while condition 1 stays green"
+  "merge-preconditions-composed-check-violations-are-red": "a pair of verdicts in which one refuses the merge reddens condition 2 while condition 1 stays green",
+  "next-exit-three-while-work-remains": "next exits 3 while an in-flight item exists and 0 only when every category is empty",
+  "next-one-next-action-line": "next prints exactly one next action line in every state",
+  "next-no-absolute-path-literal": "the next command source contains no absolute path literal",
+  "next-delivered-elsewhere-squash": "delivered-elsewhere reports a squash-merged branch delivered where git branch --merged reports it open",
+  "next-delivered-elsewhere-foreign-pull-request": "delivered-elsewhere reports a branch whose commits landed in another pull request delivered where git branch --merged reports it open",
+  "next-open-branch-stays-open": "delivered-elsewhere reports a genuinely undelivered branch open and tiphys next names it",
+  "next-cannot-see-block-survives-unreachable-network": "next prints the whole cannot-see block and the same exit code when the network is unreachable",
+  "next-unreadable-category-is-not-empty": "next counts a category it could not read as work remaining rather than as empty",
+  "pr-refuses-without-credential": "pr open and pr merge each exit nonzero with exactly one line when the credential is absent",
+  "pr-credential-never-reaches-the-kernel-process": "the pull-request credential never reaches a kernel adapter child, probed from inside the child",
+  "pr-commands-uninvoked-by-the-kernel": "no kernel code path under src or bin names either plugin pull-request command"
 }

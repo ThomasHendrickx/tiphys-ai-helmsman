@@ -1,0 +1,54 @@
+# Real git output from the delivered-elsewhere lab (M4-P24).
+# Repository shape: main carries a SQUASH of feat-a, a real merge of feat-c
+# (which cherry-picked feat-b's only commit with -x), and a later edit to the
+# file feat-b introduced. feat-open is genuinely undelivered.
+
+$ git --version
+git version 2.43.0
+
+$ git branch --merged main
+  feat-c
+* main
+(exit 0)
+
+$ git merge-base --is-ancestor feat-a main; echo $?
+1
+
+$ git merge-tree --write-tree main feat-a
+5b0a52ac57f590308595a5a70a857b0bb341586a
+(exit 0)
+
+$ git cherry main feat-a
++ ae2cde54503db007437663882f9a0b6995103667
++ 36b067e6090bbc3116b51aa68dde752d1a71cff0
+(exit 0)
+
+$ git merge-base --is-ancestor feat-b main; echo $?
+1
+
+$ git merge-tree --write-tree main feat-b
+0e0b5dc10822913d3c8ab5c33f442e306920f74f
+100644 e5c5c5583f49a34e86ce622b59363df99e09d4c6 2	shared.txt
+100644 2d00bd505971a8bc7318d98e003aee708a367c85 3	shared.txt
+
+Auto-merging shared.txt
+CONFLICT (add/add): Merge conflict in shared.txt
+(exit 1)
+
+$ git cherry main feat-b
+- 874d45e2737fcb2f8d8e7411f68ce2ab02d7b544
+(exit 0)
+
+$ git merge-base --is-ancestor feat-open main; echo $?
+1
+
+$ git merge-tree --write-tree main feat-open
+4005a725b0b9267fe3c3fb8e83b3efb93623ba48
+(exit 0)
+
+$ git cherry main feat-open
++ ed51e73058b81ae5ac79132b4863b6c7d2c635ec
+(exit 0)
+
+$ git rev-parse main^{tree}
+5b0a52ac57f590308595a5a70a857b0bb341586a

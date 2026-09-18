@@ -1,0 +1,31 @@
+{
+  "id": "next-no-absolute-path-literal",
+  "behavior": "next-no-absolute-path-literal",
+  "tests": [
+    "the next command source contains no absolute path literal"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/next.ts",
+      "find": "const USAGE = \"usage: tiphys next\";",
+      "replace": "const USAGE = \"usage: tiphys next\";\nconst LEGACY_FLEET_HOME = \"/home/example/fleet\";\nvoid LEGACY_FLEET_HOME;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/next.ts",
+      "find": "export const EXIT_WORK_REMAINS = 3;",
+      "replace": "export const EXIT_WORK_REMAINS = 3;\nconst LEGACY_SCRATCH = \"/tmp/example/scratch\";\nvoid LEGACY_SCRATCH;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git branch --merged, git merge-base --is-ancestor, git merge-tree --write-tree, git cherry",
+    "captures": [
+      "witness/captures/next-delivered-elsewhere-git.txt"
+    ],
+    "provenance": "rule (f) binds these witnesses because src/commands/next.ts spawns git and parses its output: the delivered-elsewhere predicate reads `git merge-base --is-ancestor`'s exit code, `git merge-tree --write-tree`'s tree id and conflict exit, and `git cherry`'s per-commit mark. The cited capture is a real run of all four commands, plus `git branch --merged`, against a repository of exactly the shape test/next.test.ts builds; it was taken on 2026-09-18 with git 2.43.0 and the file records the commands verbatim with their exit codes. test/next.test.ts parses the naive predicate's answer out of it and requires the freshly built repository to reproduce that answer before any claim about the new predicate is made, so the premise is measured rather than hand-written (CLAUDE.md standing warning 10)."
+  }
+}

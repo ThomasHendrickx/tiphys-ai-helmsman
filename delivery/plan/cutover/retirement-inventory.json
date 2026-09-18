@@ -2271,15 +2271,21 @@
       "kind": "heading",
       "text": "## The orchestrator does not decide when it is finished (binding)",
       "group": "stop-condition",
-      "status": "GAP",
-      "disposition": "KEEP",
-      "gap": "there is NO kernel stop condition. M4-P24 builds tiphys next; until it lands this rule has no destination at all",
-      "dr0029-side": "process",
-      "note": "The intake and M4-D-10 say the same thing. This is the largest single gap in the inventory.",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "note": "M4-P24 closed this. The rule's kernel destination is `tiphys next` (src/commands/next.ts), whose exit code is three-valued so that work-remains is distinguishable from the command failing, which is the property the rule is about: a nonzero exit is a fact nobody can report their way around.",
       "verified-by": {
-        "command": "grep -c 'stop condition' AGENTS.md roles/implementer.md src/cli.ts",
+        "command": "grep -c 'stop condition' src/commands/next.ts",
+        "exit": 0,
+        "output": "4"
+      },
+      "destination": "src/commands/next.ts",
+      "probe": "stop condition",
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'stop condition' src/commands/status.ts",
         "exit": 1,
-        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+        "output": "0"
       }
     },
     {
@@ -2332,6 +2338,12 @@
         "command": "grep -c 'stop condition' AGENTS.md roles/implementer.md src/cli.ts",
         "exit": 1,
         "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/commands/next.ts"
+        ],
+        "read": "src/commands/next.ts carries the phrase because it is the FIRST of the two layers this rule names: the computed stop condition that exits nonzero while work remains. The SECOND layer, the durable server-side Routine whose first act is to re-create the in-memory kick, is a property of the hosting harness and has no kernel destination; the kernel ships no scheduler and DR-0036 gives it no authority to hold one. So the rule as a whole is still a gap and the hit does not refute it."
       }
     },
     {
@@ -2341,15 +2353,21 @@
       "kind": "bullet",
       "text": "- `.claude/orchestrator-next.mjs` computes the stop condition from git and",
       "group": "stop-condition",
-      "status": "GAP",
-      "disposition": "KEEP",
-      "gap": "there is NO kernel stop condition. M4-P24 builds tiphys next; until it lands this rule has no destination at all",
-      "dr0029-side": "process",
-      "note": "The intake and M4-D-10 say the same thing. This is the largest single gap in the inventory.",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "note": "M4-P24 closed this. `tiphys next` computes the stop condition from a fleet home's files and git rather than from conversation memory, prints exactly one next action, and exits 3 while anything is in flight. The harness script this bullet names is what the command replaces.",
       "verified-by": {
-        "command": "grep -c 'stop condition' AGENTS.md roles/implementer.md src/cli.ts",
+        "command": "grep -c 'stop condition' src/commands/next.ts",
+        "exit": 0,
+        "output": "4"
+      },
+      "destination": "src/commands/next.ts",
+      "probe": "stop condition",
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'stop condition' src/commands/mode.ts",
         "exit": 1,
-        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+        "output": "0"
       }
     },
     {
@@ -2368,6 +2386,12 @@
         "command": "grep -c 'stop condition' AGENTS.md roles/implementer.md src/cli.ts",
         "exit": 1,
         "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/commands/next.ts"
+        ],
+        "read": "src/commands/next.ts carries the phrase because it is the stop condition the Routine would CALL, not the Routine. Nothing in the kernel creates, resurrects or schedules a trigger, and M4-P24 added no scheduler; the hit is the callee and the rule is about the caller, so the absence stands."
       }
     },
     {
@@ -2386,6 +2410,12 @@
         "command": "grep -c 'stop condition' AGENTS.md roles/implementer.md src/cli.ts",
         "exit": 1,
         "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/commands/next.ts"
+        ],
+        "read": "src/commands/next.ts carries the phrase because it computes the stop condition, not because it enumerates the four false reasons to stop. Those are addressed to a human or agent orchestrator's judgment and no kernel artifact states them; `tiphys next` answers 'is anything in flight', which is a different question from 'is this a reason to stop'. The absence stands."
       }
     },
     {
@@ -6293,6 +6323,12 @@
         "command": "grep -c 'delivered-elsewhere' AGENTS.md src/cli.ts src/fleet.ts",
         "exit": 1,
         "output": "AGENTS.md:0 / src/cli.ts:0 / src/fleet.ts:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/commands/next.ts"
+        ],
+        "read": "src/commands/next.ts carries the token because it ships the REPLACEMENT this row's own gap field predicted, deliveredElsewhere, not the naive merged-ness predicate this row refuses to port. The naive predicate is absent from the kernel: no kernel source filters branches on git's merged-ness, and src/commands/next.ts reaches the same question through landedness plus a patch-id arm precisely because git branch --merged reports a squash-merged branch open forever. The hit confirms the deletion rather than refuting it."
       }
     },
     {
@@ -6310,6 +6346,12 @@
         "command": "grep -c 'delivered-elsewhere' AGENTS.md src/cli.ts src/fleet.ts",
         "exit": 1,
         "output": "AGENTS.md:0 / src/cli.ts:0 / src/fleet.ts:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/commands/next.ts"
+        ],
+        "read": "src/commands/next.ts carries the token because it ships the REPLACEMENT this row's own gap field predicted, deliveredElsewhere, not the ahead-count reading this row refuses to port. Nothing in the kernel derives in-flight-ness from a commit count ahead of a base. The hit confirms the deletion rather than refuting it."
       }
     },
     {
@@ -6327,6 +6369,12 @@
         "command": "grep -c 'delivered-elsewhere' AGENTS.md src/cli.ts src/fleet.ts",
         "exit": 1,
         "output": "AGENTS.md:0 / src/cli.ts:0 / src/fleet.ts:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/commands/next.ts"
+        ],
+        "read": "src/commands/next.ts carries the token because it ships the REPLACEMENT this row's own gap field predicted, deliveredElsewhere, not the not-started reading this row refuses to port. The kernel command deliberately does NOT derive a not-started category at all: a fleet home holds no artifact that names work before anyone starts it, so `tiphys next` reports that limit in its cannot-see list instead of inventing a denominator (T-036). The hit confirms the deletion rather than refuting it."
       }
     },
     {
@@ -6360,32 +6408,21 @@
       "kind": "binding",
       "text": "const lines = [];",
       "group": "next-cannot-see",
-      "status": "GAP",
-      "disposition": "KEEP",
-      "gap": "printing what a command cannot see, so an absence of network does not read as an absence of work, has no kernel statement; M4-P24 criterion 4 makes it a test",
-      "dr0029-side": "process",
+      "status": "PORTED",
+      "disposition": "PORT",
       "verified-by": {
-        "command": "grep -c 'CANNOT SEE' AGENTS.md src/cli.ts",
-        "exit": 1,
-        "output": "AGENTS.md:0 / src/cli.ts:0"
+        "command": "grep -c 'CANNOT SEE' src/commands/next.ts",
+        "exit": 0,
+        "output": "1"
       },
-      "widened": {
-        "hit-paths": [
-          "checklists/plan-review.yaml",
-          "schemas/assurance-modes.schema.json",
-          "schemas/finding.schema.json",
-          "schemas/report.schema.json",
-          "schemas/role-brief.schema.json",
-          "schemas/tuition.schema.json",
-          "schemas/verdict.schema.json",
-          "src/checks.ts",
-          "src/gates/coverage.ts",
-          "src/gates/credentials.ts",
-          "src/gates/run.ts",
-          "src/gates/suite.ts",
-          "tuition/T-016.yaml"
-        ],
-        "read": "Every hit is the ordinary English phrase 'cannot see' about something else: a reviewer who cannot see a pair (checklists/plan-review.yaml:24), a guard that cannot see what the operator saw (tuition/T-016.yaml:26), a schema that cannot see a fact about its own document. None of them is the rule this row is about, which is that a COMMAND prints the list of things IT cannot see so an absence of network does not read as an absence of work. The absence stands."
+      "destination": "src/commands/next.ts",
+      "probe": "CANNOT SEE",
+      "note": "M4-P24 closed this. `tiphys next` prints what it cannot see as a NAMED LIST, unconditionally and without probing anything, so the block does not shorten when the network goes away. M4-P24 criterion 4's witness reddens against both a shortened block and a changed exit code.",
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'CANNOT SEE' src/commands/teardown.ts",
+        "exit": 1,
+        "output": "0"
       }
     },
     {
