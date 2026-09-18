@@ -1,0 +1,68 @@
+Real output of the GENERATED turn-end hook when it is rendered with the five
+credential-store pointer names: the exact external-program contract the
+CR-B-001 pointer comparison consumes.
+
+src/hooks.ts renderTurnEndHook() bakes the names in as a literal array and the
+hook reads their values from ITS OWN process.env. The adapter runs it as a
+child (the built-in one with spawnSync), and src/spawn.ts turnEndEvidence then
+parses the record and hands the `env` object to compareHandover. So the
+kernel's pointer verdict is a classification of ANOTHER PROGRAM'S OUTPUT, and
+the assertions about it must be anchored on this capture rather than on a
+hand-written string (CLAUDE.md warning 10, the red-witness rule).
+
+Captured 2026-09-18, node v26.6.0, in a scratch directory whose hook was
+rendered by renderTurnEndHook(turnEndFile, CREDENTIAL_STORE_REDIRECTIONS.map(
+r => r.name)) and then invoked directly, with `env -i` so the environment is
+exactly what is listed and nothing is inherited:
+
+  env -i PATH=<path> HOME=<scrub>/home XDG_CONFIG_HOME=<scrub>/xdg-config \
+    GH_CONFIG_DIR=<scrub>/gh-config GIT_CONFIG_GLOBAL=<scrub>/gitconfig-global \
+    GIT_CONFIG_SYSTEM=<scrub>/gitconfig-system node <lab>/hook.mjs 0
+
+The endedAt instant varies per run, so the STABLE contract is what is recorded
+here and what the named test asserts: the record is JSON, it carries endedAt as
+a string and exitCode as the integer argument, and it carries an `env` OBJECT
+whose keys are exactly the five names the hook was rendered with. A name that
+is UNSET in the child is recorded as JSON null, never omitted and never "", so
+"the pointer was dropped" and "the pointer was redirected somewhere" are
+different readings rather than the same absence.
+
+ARM 1, every pointer redirected, exit code 0:
+
+{
+  "endedAt": "2026-09-18T08:50:09.970Z",
+  "exitCode": 0,
+  "env": {
+    "HOME": "/tmp/tmp.q6jUwrPnw1/scrub-env/home",
+    "XDG_CONFIG_HOME": "/tmp/tmp.q6jUwrPnw1/scrub-env/xdg-config",
+    "GH_CONFIG_DIR": "/tmp/tmp.q6jUwrPnw1/scrub-env/gh-config",
+    "GIT_CONFIG_GLOBAL": "/tmp/tmp.q6jUwrPnw1/scrub-env/gitconfig-global",
+    "GIT_CONFIG_SYSTEM": "/tmp/tmp.q6jUwrPnw1/scrub-env/gitconfig-system"
+  }
+}
+
+ARM 2, HOME reverted to a real home and three pointers unset, exit code 3.
+This is the shape the M2R-004 defense exists to stop, as the hook sees it:
+
+{
+  "endedAt": "2026-09-18T08:50:10.007Z",
+  "exitCode": 3,
+  "env": {
+    "HOME": "/root",
+    "XDG_CONFIG_HOME": null,
+    "GH_CONFIG_DIR": null,
+    "GIT_CONFIG_GLOBAL": "/tmp/tmp.q6jUwrPnw1/scrub-env/gitconfig-global",
+    "GIT_CONFIG_SYSTEM": null
+  }
+}
+
+ARM 3, the pre-existing usage contract is unchanged by the pointer record: a
+non-integer argument still exits 64, writes nothing and prints one line.
+
+  $ node <lab>/hook.mjs notanumber
+  tiphys turn-end hook: expected one integer exit-code argument
+  HOOK_EXIT=64
+
+The scratch directory /tmp/tmp.q6jUwrPnw1 was made by mktemp for this capture
+and no longer exists; the paths are quoted verbatim because they are what the
+program printed.
