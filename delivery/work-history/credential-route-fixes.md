@@ -283,12 +283,22 @@ comment states", which is not.
 | src/checks.ts:2131 | selects rows for a check | not a defect, because absence is caught elsewhere. A registry gate with `verified-by: "<x>-checklist"` and no `probe` is skipped from the direction-1 walk, but `probe` is SCHEMA-REQUIRED exactly in that case (schemas/gate-registry.schema.json:104 states it, with `required: ["probe"]` in the conditional at schemas/gate-registry.schema.json:117), and src/commands/validate.ts prints schema diagnostics and returns nonzero BEFORE `runChecks` is reached. |
 | src/checks.ts:5210 | yes | not a defect for the same reason. `writtenAt` and `turnEnd` are both in `required` at schemas/model-resolution.schema.json:13, so a document missing either is refused by the schema before this check is asked. |
 | src/gates/release.ts:690, src/watcher.ts:522, src/watcher.ts:1018, src/pool.ts:155, src/commands/doctor.ts:271 | no | loop bounds and deadlines. An absent bound means unbounded, which is the documented meaning. |
-| src/cutover.ts:140, src/gates/gate-classes.ts:315, src/exclusion.ts:291, src/exclusion.ts:823, src/commands/doctor.ts:796, plugin/src/hooks/project-write-block.ts:497, plugin/src/hooks/project-write-block.ts:586, plugin/src/model-resolution.ts:346 | yes | **the correct spelling, and they are the controls.** Each is a POSITIVE validity predicate, `typeof x === "string" && x !== ""`, whose false arm covers absent, blank and non-string together. plugin/src/hooks/project-write-block.ts:497 is the strongest form: `!paths.every((entry) => typeof entry === "string" && entry !== "")` refuses a list containing an absent entry. |
+| src/cutover.ts:140, src/gates/gate-classes.ts:315, src/exclusion.ts:291, src/exclusion.ts:823, src/commands/doctor.ts:796, plugin/src/hooks/project-write-block.ts:629, plugin/src/hooks/project-write-block.ts:718, plugin/src/model-resolution.ts:346 | yes | **the correct spelling, and they are the controls.** Each is a POSITIVE validity predicate, `typeof x === "string" && x !== ""`, whose false arm covers absent, blank and non-string together. plugin/src/hooks/project-write-block.ts:629 is the strongest form: `!paths.every((entry) => typeof entry === "string" && entry !== "")` refuses a list containing an absent entry. |
 | everything else in 1a | no | type guards (`typeof value === "object" && value !== null`), signal checks, `process.argv[1]` entry-point guards, and identity comparisons. None decides whether something is refused. |
 | `src/exec/env.ts:299`, `src/spawn.ts:327`, `src/spawn.ts:1022`, `src/spawn.ts:1077`, `src/exec/env.ts:314` | 1b | the defect's own neighbourhood: `options.extraAllowlist ?? []`. An absent list genuinely means no extensions, so the default is correct here; the defect was never the list, it was the field inside an entry. |
 | src/gates/merge-preconditions.ts:617, :646 | 1b, candidate | **NAMED AND NOT CLOSED.** A GitHub ruleset whose `parameters` are absent contributes no required contexts and no allowed merge methods, so a merge-precondition check over them could be satisfied vacuously by an absence. Judging it needs the whole gate's semantics and a real ruleset payload, which is a different surface from the credential route. Recorded here so it is not lost rather than folded into this round. |
 | src/gates/release.ts:1063 | 1b | not a defect on the same reading as `extraAllowlist`: an absent `credentials` list in a release declaration means none were declared. |
 | the remaining 1b lines | 1b | accumulator and formatting defaults (`byId.get(id) ?? []`, `ajv.errors ?? []`, `repeated.get(argument) ?? []`). None feeds a validity test. |
+
+**The three `plugin/` line numbers in the row above are the MERGED tree's, not
+cbc34f1's, and the difference is why they are called out.** `main` at 9d047a2
+changed `plugin/src/hooks/project-write-block.ts` by +134 lines, so the numbers
+the derivation printed (`:497` and `:586`) now land on `"worktrees",` and a
+comment opener. That is the silent failure CLAUDE.md names: an out-of-range
+citation reddens loudly, an in-range one resolves against the wrong line and
+says nothing. Every citation in this document was re-resolved against the merged
+head after the merge, and these three are the only ones that had moved.
+
 
 ### The derivation re-run against the merged tree, and what it adds
 
@@ -670,7 +680,23 @@ fix, and each class is reddened by at least TWO structurally different members.
 
 **The dangerous state is a real tree, not a mutation.** It is a copy of this
 branch's clone with `git checkout origin/main -- src/` applied, so `src/` is
-exactly `main` at cbc34f1 and `test/` is this branch's. Where a member is
+exactly `main`'s and `test/` is this branch's.
+
+**THE LAB WAS BUILT AT cbc34f1 AND `main` MOVED TO 9d047a2 WHILE THIS ROUND WAS
+OPEN, WHICH DOES NOT INVALIDATE IT, AND THE REASON IS A COMMAND RATHER THAN A
+JUDGMENT.** `main`'s new commit touches no file under `src/`:
+
+```
+$ git diff --name-only cbc34f1..origin/main -- src/
+$ git diff --stat cbc34f1..origin/main -- scripts/
+ scripts/check-id-collisions.mjs | 11 +++++++++++
+ 1 file changed, 11 insertions(+)
+```
+
+The first command prints NOTHING, which is what says `src/` is byte-identical
+on the two bases, so the dangerous state the lab holds is the dangerous state at
+the current base as well. The second is shown because a silent first command is
+worth one corroborating line: `main` did change things, just not here. Where a member is
 witnessed by a probe rather than by a test, the probe drives the REAL
 `spawnTask` against a REAL scratch fleet created by `tiphys init`, with a real
 git upstream, a real clone and a real payload, and every assertion below is on
