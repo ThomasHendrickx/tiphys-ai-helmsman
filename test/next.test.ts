@@ -47,6 +47,12 @@ const capturePath = join(
   "captures",
   "next-delivered-elsewhere-git.txt",
 );
+const refusalCapturePath = join(
+  repoRoot,
+  "witness",
+  "captures",
+  "pr-refuses-without-credential.txt",
+);
 
 type Delivery =
   | { kind: "delivered"; how: "ancestor" | "squash" | "patch-equivalent" }
@@ -579,11 +585,41 @@ function withoutCredentials<T>(body: () => T): T {
   }
 }
 
+/**
+ * The recorded refusal, parsed out of
+ * `witness/captures/pr-refuses-without-credential.txt`. Each block records one
+ * child's argv, its stderr and stdout verbatim as JSON string literals, and its
+ * exit code, so a live run can be compared against a real earlier run rather
+ * than against a string typed to match the implementation.
+ */
+function recordedRefusal(subcommand: string): {
+  stderr: string;
+  stdout: string;
+  exit: number;
+} {
+  const capture = readFileSync(refusalCapturePath, "utf8");
+  const lines = capture.split("\n");
+  const header = `$ node plugin/src/pr-main.ts ${subcommand} --repo owner/name --number 1`;
+  const start = lines.indexOf(header);
+  assert.notEqual(start, -1, `the capture ${refusalCapturePath} has no block for ${subcommand}`);
+  const field = (offset: number, name: string): string => {
+    const line = lines[start + offset] ?? "";
+    assert.ok(line.startsWith(`${name}: `), `capture block for ${subcommand} has no ${name} line`);
+    return line.slice(name.length + 2);
+  };
+  return {
+    stderr: JSON.parse(field(1, "stderr")) as string,
+    stdout: JSON.parse(field(2, "stdout")) as string,
+    exit: Number.parseInt(field(3, "exit"), 10),
+  };
+}
+
 test(
   "pr open and pr merge each exit nonzero with exactly one line when the credential is absent",
   () => {
     withoutCredentials(() => {
       for (const subcommand of ["open", "merge"]) {
+        const recorded = recordedRefusal(subcommand);
         const result = spawnSync(
           process.execPath,
           [prMainPath, subcommand, "--repo", "owner/name", "--number", "1"],
@@ -595,6 +631,14 @@ test(
         assert.equal(lines.length, 1, `pr ${subcommand} wrote ${String(lines.length)} lines: ${result.stderr}`);
         assert.equal(result.stdout, "", `pr ${subcommand} wrote to stdout while refusing`);
         assert.match(lines[0] ?? "", /no pull-request credential is present/);
+
+        // AND THE LIVE RUN REPRODUCES THE RECORDED ONE, byte for byte on both
+        // streams and on the exit code. That is what makes the three
+        // assertions above measurements of this program rather than of a
+        // sentence someone wrote next to it.
+        assert.equal(result.stderr, recorded.stderr, `pr ${subcommand} stderr diverged from the recorded run`);
+        assert.equal(result.stdout, recorded.stdout, `pr ${subcommand} stdout diverged from the recorded run`);
+        assert.equal(result.status, recorded.exit, `pr ${subcommand} exit diverged from the recorded run`);
       }
     });
 
