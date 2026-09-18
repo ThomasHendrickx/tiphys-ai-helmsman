@@ -1046,13 +1046,10 @@ export async function runGate(flags: Flags): Promise<number> {
   rows.push({
     id: "condition-5",
     clause: "DR-0012:26 the scope audit passes",
-    status: "red",
+    status: scope.ok ? "green" : "red",
     head,
     sentence: scope.sentence,
   });
-  if (scope.ok) {
-    (rows[rows.length - 1] as ConditionRow).status = "green";
-  }
 
   const arbitrationDirectory = absolute(
     flags.arbitrations ?? join(contextDirectory, "delivery", "review"),
