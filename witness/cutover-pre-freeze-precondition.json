@@ -1,0 +1,25 @@
+{
+  "id": "cutover-pre-freeze-precondition",
+  "behavior": "cutover-pre-freeze-absent-refuses-every-kernel-switch",
+  "tests": [
+    "no switch may report kernel while the pre-freeze ruleset is absent",
+    "no switch may report kernel while the pre-freeze ruleset is older than the newest switch write"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  if (frozen.length === 0) {\n    return { kind: \"not-required\" };\n  }",
+      "replace": "  if (frozen.length >= 0) {\n    return { kind: \"not-required\" };\n  }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  if (capturedMs < newest) {",
+      "replace": "  if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

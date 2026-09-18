@@ -5,6 +5,7 @@
     "src/cutover.ts",
     "src/commands/cutover.ts",
     "src/cli.ts",
+    "src/commands/validate.ts",
     "schemas/cutover-state.schema.json",
     "test/cutover.test.ts",
     "delivery/plan/cutover/",
@@ -15,10 +16,35 @@
     "delivery/plan/phase-declarations/m4-p25.json",
     "delivery/work-history/m4-p25.md"
   ],
-  "citations": ["DR-0027", "DR-0031", "DR-0040", "DR-0046", "T-009", "T-025", "T-032", "C-1", "C-2", "C-3"],
+  "citations": [
+    "DR-0027",
+    "DR-0031",
+    "DR-0040",
+    "DR-0046",
+    "T-009",
+    "T-025",
+    "T-032",
+    "C-1",
+    "C-2",
+    "C-3"
+  ],
   "gateClasses": {
-    "correctness": { "gates": ["suite", "typecheck", "red-witness"] },
-    "scope": { "gates": ["scope"] },
-    "review": { "gates": ["check-dual-review"] }
+    "correctness": {
+      "gates": [
+        "suite",
+        "typecheck",
+        "red-witness"
+      ]
+    },
+    "scope": {
+      "gates": [
+        "scope"
+      ]
+    },
+    "review": {
+      "gates": [
+        "check-dual-review"
+      ]
+    }
   }
 }

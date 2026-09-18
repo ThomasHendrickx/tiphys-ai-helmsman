@@ -1,0 +1,24 @@
+{
+  "id": "cutover-state-schema-refuses-the-write",
+  "behavior": "cutover-write-missing-restore-to-writes-nothing",
+  "tests": [
+    "a switch write missing restoreTo is refused and the destination is byte-identical"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "schemas/cutover-state.schema.json",
+      "find": "      \"required\": [\"state\", \"flippedAt\", \"flippedBy\", \"reason\", \"restoreTo\"],",
+      "replace": "      \"required\": [\"state\", \"flippedAt\", \"flippedBy\", \"reason\"],"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  const diagnostics = cutoverSchemaDiagnostics(state);\n  if (diagnostics.length > 0) {",
+      "replace": "  const diagnostics: string[] = [];\n  if (diagnostics.length > 0) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

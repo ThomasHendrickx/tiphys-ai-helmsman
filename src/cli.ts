@@ -1,5 +1,6 @@
 import { cmdBrief } from "./commands/brief.ts";
 import { cmdChecklist } from "./commands/checklist.ts";
+import { cmdCutover } from "./commands/cutover.ts";
 import { cmdDoctor } from "./commands/doctor.ts";
 import { cmdGates } from "./commands/gates.ts";
 import { cmdInit } from "./commands/init.ts";
@@ -30,6 +31,10 @@ const commands = new Map<string, CommandHandler>([
   ["version", printVersion],
   ["brief", cmdBrief],
   ["checklist", cmdChecklist],
+  /* M4-P25. The rollback handlers M4-P26 shipped were reachable only by
+     import until this row existed, so the rollback document printed command
+     lines that did not run. */
+  ["cutover", cmdCutover],
   ["init", cmdInit],
   ["doctor", cmdDoctor],
   ["gates", cmdGates],

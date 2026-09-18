@@ -1,0 +1,25 @@
+{
+  "id": "cutover-retirement-non-vacuous",
+  "behavior": "cutover-port-verdict-refuses-the-vacuous-green",
+  "tests": [
+    "a PORT row whose destination exists but whose negative witness exits 0 is unported",
+    "a negative witness that errors instead of searching is unported even though it exits nonzero"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  if (row.expectedWitnessExit !== undefined && run.status !== row.expectedWitnessExit) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  const recorded = (witness as Record<string, unknown>)[\"exit\"];\n  if (typeof recorded === \"number\" && Number.isInteger(recorded)) {\n    row.expectedWitnessExit = recorded;\n  }",
+      "replace": "  const recorded = (witness as Record<string, unknown>)[\"exit\"];\n  if (typeof recorded === \"number\" && Number.isInteger(recorded) && false) {\n    row.expectedWitnessExit = recorded;\n  }"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

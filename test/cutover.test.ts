@@ -1,5 +1,6 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   closeSync,
   existsSync,
@@ -26,6 +27,11 @@ const commandModule = (await import(
   new URL("../src/commands/cutover.ts", import.meta.url).href
 )) as typeof import("../src/commands/cutover.ts");
 const fleetModule = (await import(new URL("../src/fleet.ts", import.meta.url).href)) as typeof import("../src/fleet.ts");
+/* M4-P25. The shipped validation engine, reached the same way: a literal
+   relative import of a src module from test/ fails the build with TS2878. */
+const validateModule = (await import(
+  new URL("../src/validate.ts", import.meta.url).href
+)) as typeof import("../src/validate.ts");
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
 const rehearsal = fileURLToPath(
@@ -1720,5 +1726,921 @@ test("every rehearsal arm prints its own self-check before any OBSERVED line", (
         `${label}: the self-check must be printed before the first OBSERVED line`,
       );
     }
+  }
+});
+
+/* ====================================================================== */
+/* M4-P25: `tiphys cutover status`, drain, the schema, the precondition   */
+/* and the retirement criteria                                            */
+/* ====================================================================== */
+
+const cliEntry = fileURLToPath(new URL("../bin/tiphys.ts", import.meta.url));
+const schemaPath = join(repoRoot, "schemas", "cutover-state.schema.json");
+const shippedInventory = join(repoRoot, "delivery", "plan", "cutover", "retirement-inventory.json");
+
+/**
+ * Drive the REAL command line rather than the exported handler.
+ *
+ * The handler was reachable by import before this phase and the verb was not
+ * registered, so a test that only imports proves nothing about whether
+ * `tiphys cutover status` runs at all. Spawning `bin/tiphys.ts` is what makes
+ * the registration part of the assertion instead of part of the prose.
+ */
+function runCli(args: string[], cwd: string = repoRoot) {
+  return spawnSync(process.execPath, [cliEntry, ...args], { cwd, encoding: "utf8" });
+}
+
+/**
+ * A sha256 over a whole tree: every path, its entry type, and the bytes of
+ * every regular file.
+ *
+ * CRITERION 7 IS ASSERTED WITH THIS BEFORE AND AFTER EVERY INVOCATION, not
+ * once at the end. A single end-of-suite comparison cannot tell which
+ * invocation moved something, and a command that wrote and then restored a
+ * file would pass it.
+ *
+ * `.git` IS INCLUDED. The command shells out to `git for-each-ref`, and a
+ * digest that excluded the directory git writes into would be blind to
+ * precisely the side effect this fixture exists to detect. Measured: stable
+ * across repeated invocations, so the inclusion costs no flake.
+ */
+function treeDigest(root: string): string {
+  const hash = createHash("sha256");
+  const walk = (directory: string, prefix: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true }).sort((a, b) =>
+      a.name.localeCompare(b.name),
+    )) {
+      const absolute = join(directory, entry.name);
+      const relative = `${prefix}${entry.name}`;
+      if (entry.isDirectory()) {
+        hash.update(`D ${relative}\n`);
+        walk(absolute, `${relative}/`);
+        continue;
+      }
+      if (entry.isSymbolicLink()) {
+        hash.update(`L ${relative}\n`);
+        continue;
+      }
+      hash.update(`F ${relative} `);
+      hash.update(readFileSync(absolute));
+      hash.update("\n");
+    }
+  };
+  walk(root, "");
+  return hash.digest("hex");
+}
+
+interface TaskFixture {
+  id: string;
+  status: string;
+  turnEnd: boolean;
+}
+
+interface StatusFixtureOptions {
+  state?: unknown;
+  /** How many pushed, unmerged branches the fleet's remote carries. */
+  branches?: number;
+  /** Live worktree directory names. */
+  worktrees?: string[];
+  tasks?: TaskFixture[];
+  /** The pre-freeze capture: fresh, stale by a year, or absent. */
+  ruleset?: "fresh" | "stale" | "absent";
+}
+
+interface StatusFixture {
+  root: string;
+  fleetRoot: string;
+  repo: string;
+}
+
+const FIXTURE_FLIPPED_AT = "2026-09-15T09:00:00.000Z";
+
+function statusFixture(options: StatusFixtureOptions = {}): StatusFixture {
+  const scratch = scratchFleet({ state: options.state, withRemote: true });
+  for (let index = 0; index < (options.branches ?? 0); index += 1) {
+    const branch = `feature-${String(index)}`;
+    git(scratch.fleetRoot, ["checkout", "-q", "-b", branch]);
+    writeFileSync(join(scratch.fleetRoot, `${branch}.md`), `# ${branch}\n`);
+    git(scratch.fleetRoot, ["add", "-A"]);
+    git(scratch.fleetRoot, ["commit", "-q", "-m", branch]);
+    git(scratch.fleetRoot, ["push", "-q", "origin", branch]);
+    git(scratch.fleetRoot, ["checkout", "-q", "main"]);
+  }
+  for (const name of options.worktrees ?? []) {
+    mkdirSync(join(scratch.fleetRoot, "worktrees", name), { recursive: true });
+  }
+  for (const task of options.tasks ?? []) {
+    const directory = join(scratch.fleetRoot, "tasks", task.id);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, "meta.json"), `${JSON.stringify({ status: task.status })}\n`);
+    if (task.turnEnd) {
+      writeFileSync(join(directory, "turn-end"), "done\n");
+    }
+  }
+  const repo = join(scratch.root, "repo");
+  mkdirSync(join(repo, "delivery", "plan", "cutover"), { recursive: true });
+  const ruleset = options.ruleset ?? "fresh";
+  if (ruleset !== "absent") {
+    /* FRESH is after the fixture's flips; STALE is a year before them. The two
+       arms differ only in this instant, so nothing else can account for the
+       difference in verdict. */
+    const capturedAt = ruleset === "fresh" ? "2026-09-16T09:00:00.000Z" : "2025-09-15T09:00:00.000Z";
+    writeFileSync(
+      join(repo, "delivery", "plan", "cutover", "pre-freeze-ruleset.json"),
+      `${JSON.stringify({ kind: "pre-freeze-ruleset", "captured-at": capturedAt, captures: [] }, null, 2)}\n`,
+    );
+  }
+  return { root: scratch.root, fleetRoot: scratch.fleetRoot, repo };
+}
+
+/** Run the status command and assert criterion 7 around it in one place. */
+function statusRun(fixture: StatusFixture, extra: string[] = []) {
+  const before = treeDigest(fixture.fleetRoot);
+  const result = runCli(
+    ["cutover", "status", "--fleet", fixture.fleetRoot, "--repo", fixture.repo, ...extra],
+    fixture.root,
+  );
+  assert.equal(
+    treeDigest(fixture.fleetRoot),
+    before,
+    `criterion 7: the fleet tree changed across ${["status", ...extra].join(" ")}`,
+  );
+  return result;
+}
+
+function linesOf(text: string): string[] {
+  return text.split("\n").filter((line) => line.length > 0);
+}
+
+/* -------------------------------------------------------------------- */
+/* Criterion 1: the output shape                                         */
+/* -------------------------------------------------------------------- */
+
+/**
+ * The shape is pinned by the CRITERION, not chosen here: exactly five
+ * `SWITCH <name> current|kernel` lines with the five names of plan section
+ * 4.3, plus one `DRAIN clean|<n> in flight` line.
+ *
+ * ASSERTED AS AN EQUALITY, NOT AS A SUBSET. `at least five` would stay green
+ * if a sixth appeared, and the five names are a closed list precisely because
+ * every rollback trigger enumerates them.
+ */
+test("cutover status prints exactly five SWITCH lines with the closed name list and one DRAIN line", () => {
+  const fixture = statusFixture();
+  try {
+    const run = statusRun(fixture);
+    const lines = linesOf(run.stdout);
+    const switches = lines.filter((line) => line.startsWith("SWITCH "));
+    assert.deepEqual(
+      switches,
+      cutover.CUTOVER_SWITCHES.map((name) => `SWITCH ${name} kernel`),
+      run.stdout + run.stderr,
+    );
+    const drain = lines.filter((line) => line.startsWith("DRAIN "));
+    assert.deepEqual(drain, ["DRAIN clean"], run.stdout);
+    for (const line of switches) {
+      assert.match(line, /^SWITCH [a-z-]+ (current|kernel)$/, line);
+    }
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * Exit 0 needs BOTH halves, and this reddens against the half that is easy to
+ * drop. One switch reading `current` with a clean drain must NOT be 0.
+ */
+test("cutover status exits nonzero while any switch still reads current", () => {
+  const partial = frozenState() as { switches: Record<string, Record<string, unknown>> };
+  partial.switches["closeout"]["state"] = "current";
+  const fixture = statusFixture({ state: partial });
+  try {
+    const run = statusRun(fixture);
+    assert.equal(run.status, 3, run.stdout + run.stderr);
+    assert.ok(
+      linesOf(run.stdout).includes("SWITCH closeout current"),
+      run.stdout,
+    );
+    assert.ok(linesOf(run.stdout).includes("DRAIN clean"), run.stdout);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * A fleet with no `cutover.json` at all is the ORIGINAL state, not an error
+ * and not an undecidable one: nothing creates the file at init, so its absence
+ * means no switch has ever been written.
+ */
+test("cutover status on a fleet with no cutover.json reports five current switches and exits nonzero", () => {
+  const fixture = statusFixture();
+  try {
+    rmSync(join(fixture.fleetRoot, "cutover.json"));
+    const run = statusRun(fixture);
+    assert.equal(run.status, 3, run.stdout + run.stderr);
+    assert.deepEqual(
+      linesOf(run.stdout).filter((line) => line.startsWith("SWITCH ")),
+      cutover.CUTOVER_SWITCHES.map((name) => `SWITCH ${name} current`),
+      run.stdout,
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/* -------------------------------------------------------------------- */
+/* Criteria 2 and 3: drain is over IN-FLIGHT WORK, and it is a CLASS     */
+/* -------------------------------------------------------------------- */
+
+/**
+ * MEMBER A OF THE DANGEROUS STATE, and it is the one that is easy to get
+ * backwards. Many pushed unmerged branches, ZERO in-flight items: this must
+ * exit 0 and print the branch count on an INFORMATIONAL line.
+ *
+ * A drain predicate that counted branches would fail exactly here, and that
+ * failure is the whole point of the criterion: remote ref deletion is refused
+ * in this container and `git push --dry-run` does not probe push
+ * authorization at all, so a drain over branches waits forever on an owner
+ * action with no local pre-check (M4-D-15).
+ */
+test("a fleet with many pushed unmerged branches and no in-flight work drains clean and exits 0", () => {
+  const fixture = statusFixture({ branches: 7 });
+  try {
+    const run = statusRun(fixture);
+    assert.equal(run.status, 0, run.stdout + run.stderr);
+    const lines = linesOf(run.stdout);
+    assert.ok(lines.includes("DRAIN clean"), run.stdout);
+    const branchLines = lines.filter((line) => line.startsWith("BRANCHES "));
+    assert.deepEqual(
+      branchLines,
+      [
+        "BRANCHES 7 pushed and unmerged, informational: drain does not count branches (M4-D-15)",
+      ],
+      run.stdout,
+    );
+    assert.equal(
+      lines.filter((line) => line.startsWith("IN-FLIGHT ")).length,
+      0,
+      run.stdout,
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * MEMBER B: one LIVE WORKTREE, zero open tasks. Structurally different from
+ * member C below, which is a FILE STATE under `tasks/` and not a directory
+ * under `worktrees/`, so the predicate is over a class rather than over one
+ * directory.
+ */
+test("a fleet with one live worktree and no open tasks does not drain and exits nonzero", () => {
+  const fixture = statusFixture({ branches: 3, worktrees: ["m4-p99-live"] });
+  try {
+    const run = statusRun(fixture);
+    assert.equal(run.status, 3, run.stdout + run.stderr);
+    const lines = linesOf(run.stdout);
+    assert.ok(lines.includes("DRAIN 1 in flight"), run.stdout);
+    assert.equal(
+      lines.filter((line) => line.startsWith("IN-FLIGHT worktree m4-p99-live ")).length,
+      1,
+      run.stdout,
+    );
+    /* The branch count is still printed, and still does not vote. */
+    assert.ok(
+      lines.some((line) => line.startsWith("BRANCHES 3 ")),
+      run.stdout,
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * MEMBER C: one OPEN TASK, meta.json present and turn-end absent, zero
+ * worktrees. Same verdict as member B, reached through a different kind of
+ * evidence.
+ */
+test("a fleet with one open task and no worktrees does not drain and exits nonzero", () => {
+  const fixture = statusFixture({
+    tasks: [{ id: "t-open", status: "open", turnEnd: false }],
+  });
+  try {
+    const run = statusRun(fixture);
+    assert.equal(run.status, 3, run.stdout + run.stderr);
+    const lines = linesOf(run.stdout);
+    assert.ok(lines.includes("DRAIN 1 in flight"), run.stdout);
+    assert.ok(
+      lines.some((line) => line.startsWith("IN-FLIGHT task t-open open with no turn-end")),
+      run.stdout,
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * THE CONTROL ARM for members B and C. The same task with a turn-end file
+ * drains clean, so the two tests above redden against the presence of
+ * in-flight work rather than against the presence of a `tasks/` entry.
+ */
+test("a closed task with a turn-end file does not count against drain", () => {
+  const fixture = statusFixture({
+    tasks: [{ id: "t-done", status: "closed", turnEnd: true }],
+  });
+  try {
+    const run = statusRun(fixture);
+    assert.equal(run.status, 0, run.stdout + run.stderr);
+    assert.ok(linesOf(run.stdout).includes("DRAIN clean"), run.stdout);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The cannot-see block is printed WHATEVER the answer is, including the short
+ * one. A command that prints less when it has less to say is
+ * indistinguishable from one reporting a quiet system.
+ */
+test("cutover status prints the cannot-see block on both the clean and the in-flight arm", () => {
+  for (const options of [{}, { worktrees: ["live"] }] as StatusFixtureOptions[]) {
+    const fixture = statusFixture(options);
+    try {
+      const run = statusRun(fixture);
+      assert.deepEqual(
+        linesOf(run.stdout).filter((line) => line.startsWith("CANNOT-SEE ")),
+        cutover.CANNOT_SEE.map((entry) => `CANNOT-SEE ${entry}`),
+        run.stdout,
+      );
+    } finally {
+      rmSync(fixture.root, { recursive: true, force: true });
+    }
+  }
+});
+
+/* -------------------------------------------------------------------- */
+/* Criterion 4: the shipped schema is what refuses the write             */
+/* -------------------------------------------------------------------- */
+
+/**
+ * The four fields are REQUIRED BY THE SHIPPED DOCUMENT, read off disk rather
+ * than restated here.
+ *
+ * The plan spells them `flipped-at`, `flipped-by`, `reason` and `restore-to`;
+ * the document M4-P26 already writes spells them in camelCase, and the schema
+ * pins WHAT THE DOCUMENT USES. This test states both spellings so a later
+ * reader meets the discrepancy here rather than discovering it.
+ */
+test("the shipped cutover-state schema requires the four switch-write fields", () => {
+  const schema = JSON.parse(readFileSync(schemaPath, "utf8")) as Record<string, unknown>;
+  const defs = schema["$defs"] as Record<string, Record<string, unknown>>;
+  assert.deepEqual(
+    [...(defs["switchRecord"]["required"] as string[])].sort(),
+    ["flippedAt", "flippedBy", "reason", "restoreTo", "state"],
+    "the plan's flipped-at, flipped-by, reason and restore-to, in the spelling the document uses",
+  );
+  const switches = (schema["properties"] as Record<string, Record<string, unknown>>)["switches"];
+  assert.deepEqual(
+    [...(switches["required"] as string[])],
+    [...cutover.CUTOVER_SWITCHES],
+    "the five switch names are the closed list",
+  );
+  assert.equal(switches["additionalProperties"], false, "a sixth switch name is refused");
+});
+
+/**
+ * A WRITE MISSING `restoreTo` IS REFUSED AND NOTHING IS WRITTEN, and the
+ * refusal comes from the SCHEMA.
+ *
+ * The second half is what the criterion is really about. A check written into
+ * the command binds that command and nothing else, and the writer rollback
+ * depends on is a LATER one: `targetFor` reads the recorded value rather than
+ * reconstructing an intent, so a record written without one is a switch that
+ * can never be rolled back. The witness spec for this behaviour reddens it by
+ * deleting `restoreTo` from the schema's own `required` array, which is the
+ * mutation that distinguishes the two.
+ */
+test("a switch write missing restoreTo is refused and the destination is byte-identical", () => {
+  const directory = mkdtempSync(join(tmpdir(), "tiphys-cutover-schema-"));
+  try {
+    const destination = join(directory, "cutover.json");
+    const good = frozenState() as Record<string, unknown>;
+    cutover.publishCutoverState(destination, good);
+    const before = readFileSync(destination);
+
+    const bad = frozenState() as { switches: Record<string, Record<string, unknown>> };
+    delete bad.switches["closeout"]["restoreTo"];
+    assert.throws(
+      () => {
+        cutover.publishCutoverState(destination, bad as unknown as Record<string, unknown>);
+      },
+      /NOTHING was written[\s\S]*restoreTo/,
+      "the refusal must name the field and say that nothing was written",
+    );
+    assert.ok(
+      readFileSync(destination).equals(before),
+      "criterion 4: the destination must be byte-identical after a refused write",
+    );
+    /* And no temporary file was left behind, so a refusal leaves the directory
+       as it was and not merely the destination. */
+    assert.deepEqual(readdirSync(directory).sort(), ["cutover.json"]);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The refusal is the SCHEMA's, demonstrated by defanging the schema rather
+ * than by reading the code. With `restoreTo` removed from `required`, the same
+ * document validates; with it present, it does not.
+ */
+test("the cutover-state schema is what rejects a record missing restoreTo", () => {
+  const schema = JSON.parse(readFileSync(schemaPath, "utf8")) as Record<string, unknown>;
+  const bad = frozenState() as { switches: Record<string, Record<string, unknown>> };
+  delete bad.switches["closeout"]["restoreTo"];
+  assert.deepEqual(
+    validateModule.validateToLines(schema, bad),
+    ["INVALID #/switches/closeout/restoreTo required property restoreTo is missing"],
+  );
+  const defanged = JSON.parse(readFileSync(schemaPath, "utf8")) as Record<string, unknown>;
+  const defs = defanged["$defs"] as Record<string, Record<string, unknown>>;
+  defs["switchRecord"]["required"] = (defs["switchRecord"]["required"] as string[]).filter(
+    (name) => name !== "restoreTo",
+  );
+  assert.deepEqual(
+    validateModule.validateToLines(defanged, bad),
+    [],
+    "with the requirement removed the document is accepted, so the requirement is what refused it",
+  );
+});
+
+/**
+ * The document stays EXTENSIBLE, which is not a detail: M4-P26 registered a
+ * rollback that carries keys it does not own, at the document level and inside
+ * a switch record, and a schema that closed either level would make the
+ * shipped writer refuse its own preserved keys.
+ */
+test("the cutover-state schema accepts carried keys at the document and record levels", () => {
+  const schema = JSON.parse(readFileSync(schemaPath, "utf8")) as Record<string, unknown>;
+  const document = frozenState() as {
+    switches: Record<string, Record<string, unknown>>;
+  } & Record<string, unknown>;
+  document["schemaVersion"] = 3;
+  document["switches"]["planning-and-scope"]["ticket"] = "A-9";
+  assert.deepEqual(validateModule.validateToLines(schema, document), []);
+  const sixth = frozenState() as { switches: Record<string, unknown> };
+  sixth.switches["a-sixth-switch"] = { state: "kernel" };
+  assert.deepEqual(
+    validateModule.validateToLines(schema, sixth),
+    ["INVALID #/switches/a-sixth-switch property a-sixth-switch is not permitted here"],
+    "the switch NAME list is the half that is closed",
+  );
+});
+
+/* -------------------------------------------------------------------- */
+/* Criterion 5: the pre-freeze precondition, two arms                    */
+/* -------------------------------------------------------------------- */
+
+/**
+ * ARM ONE, ABSENT. Delete the capture and every switch reading `kernel`
+ * reports a refusal naming itself.
+ */
+test("no switch may report kernel while the pre-freeze ruleset is absent", () => {
+  const fixture = statusFixture({ ruleset: "absent" });
+  try {
+    const run = statusRun(fixture);
+    assert.equal(run.status, 1, run.stdout + run.stderr);
+    const refusals = linesOf(run.stdout).filter((line) => line.startsWith("REFUSED "));
+    assert.deepEqual(
+      refusals.map((line) => line.split(" ")[1]),
+      [...cutover.CUTOVER_SWITCHES],
+      "one refusal per switch that reports kernel",
+    );
+    for (const line of refusals) {
+      assert.match(line, /reports kernel but delivery\/plan\/cutover\/pre-freeze-ruleset\.json is absent/, line);
+    }
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * ARM TWO, STALE, and it is structurally different: the file is PRESENT and
+ * readable, and the fault is a comparison rather than an absence. An
+ * existence check passes this arm, which is why both are witnessed.
+ */
+test("no switch may report kernel while the pre-freeze ruleset is older than the newest switch write", () => {
+  const fixture = statusFixture({ ruleset: "stale" });
+  try {
+    const run = statusRun(fixture);
+    assert.equal(run.status, 1, run.stdout + run.stderr);
+    const refusals = linesOf(run.stdout).filter((line) => line.startsWith("REFUSED "));
+    assert.equal(refusals.length, cutover.CUTOVER_SWITCHES.length, run.stdout);
+    for (const line of refusals) {
+      assert.match(line, /is older than the most recent switch write/, line);
+    }
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * THE CONTROL ARM. A capture newer than the newest switch write satisfies the
+ * precondition, so the two refusals above redden against the comparison and
+ * not against the guard being unconditional.
+ */
+test("a pre-freeze capture newer than every switch write satisfies the precondition", () => {
+  const fixture = statusFixture({ ruleset: "fresh" });
+  try {
+    const run = statusRun(fixture);
+    assert.equal(run.status, 0, run.stdout + run.stderr);
+    assert.equal(
+      linesOf(run.stdout).filter((line) => line.startsWith("REFUSED ")).length,
+      0,
+      run.stdout,
+    );
+    assert.ok(
+      linesOf(run.stdout).some((line) => line.startsWith("PRE-FREEZE captured 2026-09-16T09:00:00.000Z ")),
+      run.stdout,
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * With no switch reading `kernel` there is no freeze to have captured, so the
+ * precondition is NOT-REQUIRED rather than satisfied or refused. The three
+ * states are distinguishable in the output, which is what stops a reader
+ * treating an unfrozen fleet as a verified one.
+ */
+test("the pre-freeze precondition is not-required while every switch reads current", () => {
+  const unflipped = frozenState() as { switches: Record<string, Record<string, unknown>> };
+  for (const name of cutover.CUTOVER_SWITCHES) {
+    unflipped.switches[name]["state"] = "current";
+  }
+  const fixture = statusFixture({ state: unflipped, ruleset: "absent" });
+  try {
+    const run = statusRun(fixture);
+    assert.equal(run.status, 3, run.stdout + run.stderr);
+    assert.equal(
+      linesOf(run.stdout).filter((line) => line.startsWith("REFUSED ")).length,
+      0,
+      run.stdout,
+    );
+    assert.ok(
+      linesOf(run.stdout).some((line) => line.startsWith("PRE-FREEZE not-required ")),
+      run.stdout,
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * FAIL CLOSED ON AN UNREADABLE CAPTURE. A document with no `captured-at`
+ * cannot be compared with anything, and treating it as satisfied would make a
+ * malformed capture indistinguishable from a good one.
+ */
+test("a pre-freeze capture with no captured-at refuses rather than passing", () => {
+  const fixture = statusFixture({ ruleset: "fresh" });
+  try {
+    writeFileSync(
+      join(fixture.repo, "delivery", "plan", "cutover", "pre-freeze-ruleset.json"),
+      `${JSON.stringify({ kind: "pre-freeze-ruleset", captures: [] }, null, 2)}\n`,
+    );
+    const run = statusRun(fixture);
+    assert.equal(run.status, 1, run.stdout + run.stderr);
+    assert.ok(
+      linesOf(run.stdout).some((line) => line.includes("records no captured-at")),
+      run.stdout,
+    );
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * THE SHIPPED CAPTURE IS REAL, and this asserts the properties that make it
+ * usable rather than its contents: it parses, it carries a `captured-at` the
+ * guard can read, it records at least one response that SUCCEEDED, and it
+ * names what it could NOT capture. The last is the honest half: three
+ * endpoints were refused and the file says so.
+ */
+test("the shipped pre-freeze capture parses, dates itself, and names what it could not capture", () => {
+  const path = join(repoRoot, cutover.PRE_FREEZE_RULESET_PATH);
+  const document = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  assert.ok(
+    !Number.isNaN(Date.parse(document["captured-at"] as string)),
+    "captured-at must parse as an instant, because the guard compares it",
+  );
+  const captures = document["captures"] as { endpoint: string; status: number }[];
+  assert.ok(captures.length > 0, "a capture with no successful response captures nothing");
+  for (const capture of captures) {
+    assert.equal(capture.status, 200, capture.endpoint);
+  }
+  const notCaptured = document["not-captured"] as { endpoint: string; status: number }[];
+  assert.ok(
+    notCaptured.length > 0,
+    "an empty not-captured list would claim complete coverage of an API this container cannot fully read",
+  );
+  for (const refused of notCaptured) {
+    assert.notEqual(refused.status, 200, refused.endpoint);
+  }
+});
+
+/* -------------------------------------------------------------------- */
+/* Criterion 6: the retirement verdict, and the vacuous one it refuses   */
+/* -------------------------------------------------------------------- */
+
+interface InventoryRowFixture {
+  id: string;
+  disposition: string;
+  destination?: string;
+  command?: string;
+  exit?: number;
+}
+
+function inventoryFixture(rows: InventoryRowFixture[]): { root: string; path: string } {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-retire-"));
+  writeFileSync(join(root, "present.md"), "the rule, ported\n");
+  const document = {
+    rows: rows.map((row) => {
+      const out: Record<string, unknown> = { id: row.id, disposition: row.disposition };
+      if (row.destination !== undefined) out["destination"] = row.destination;
+      if (row.command !== undefined) {
+        out["negative-witness"] = { kind: "sibling", command: row.command, exit: row.exit ?? 1 };
+      }
+      return out;
+    }),
+  };
+  const path = join(root, "inventory.json");
+  writeFileSync(path, `${JSON.stringify(document, null, 2)}\n`);
+  return { root, path };
+}
+
+function retirementRun(fixture: { root: string; path: string }) {
+  const before = treeDigest(fixture.root);
+  const run = runCli(
+    ["cutover", "status", "--retirement", "--repo", fixture.root, "--inventory", fixture.path],
+    fixture.root,
+  );
+  assert.equal(treeDigest(fixture.root), before, "criterion 7: --retirement changed the tree");
+  return run;
+}
+
+/**
+ * THE VACUOUS VERDICT, WHICH IS WHAT THIS CRITERION EXISTS AGAINST. The named
+ * kernel artifact EXISTS, so a verdict derived from existence alone reports
+ * `ported`. Its negative witness exits 0, which means the probe discriminates
+ * nothing under the new artifact, so the real verdict is `unported`.
+ */
+test("a PORT row whose destination exists but whose negative witness exits 0 is unported", () => {
+  const fixture = inventoryFixture([
+    { id: "vacuous", disposition: "PORT", destination: "present.md", command: "test -f present.md", exit: 1 },
+  ]);
+  try {
+    const run = retirementRun(fixture);
+    assert.equal(run.status, 3, run.stdout + run.stderr);
+    assert.match(run.stdout, /^PORT vacuous unported .*WEAKER/m, run.stdout);
+    assert.match(run.stdout, /^RETIREMENT 1 of 1 PORT row\(s\) unported$/m, run.stdout);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * THE CONTROL. The same row with a witness that is genuinely RED under the new
+ * artifact is `ported` and exits 0, so the test above reddens against the
+ * witness's verdict and not against the row being present.
+ */
+test("a PORT row whose destination exists and whose negative witness is red is ported", () => {
+  const fixture = inventoryFixture([
+    { id: "real", disposition: "PORT", destination: "present.md", command: "grep -c absent-token present.md", exit: 1 },
+  ]);
+  try {
+    const run = retirementRun(fixture);
+    assert.equal(run.status, 0, run.stdout + run.stderr);
+    assert.match(run.stdout, /^PORT real ported /m, run.stdout);
+    assert.match(run.stdout, /^RETIREMENT complete 1 PORT row\(s\)$/m, run.stdout);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * MEMBER B of the same class, structurally different: the witness is red and
+ * the ARTIFACT is missing. Both halves are required, so failing either is
+ * `unported`, and the two members fail different halves.
+ */
+test("a PORT row whose destination does not exist is unported however red its witness", () => {
+  const fixture = inventoryFixture([
+    { id: "no-artifact", disposition: "PORT", destination: "gone.md", command: "grep -c absent-token present.md", exit: 1 },
+  ]);
+  try {
+    const run = retirementRun(fixture);
+    assert.equal(run.status, 3, run.stdout + run.stderr);
+    assert.match(run.stdout, /^PORT no-artifact unported destination gone\.md does not exist as a file$/m, run.stdout);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * THE VACUOUS RED, one level below the vacuous green. A `grep` against a file
+ * that is not there exits 2 because it could not search, not because it
+ * searched and found nothing. Accepting any nonzero status reports the row as
+ * ported on the strength of an error message, so the row's own recorded exit
+ * is required to match.
+ */
+test("a negative witness that errors instead of searching is unported even though it exits nonzero", () => {
+  const fixture = inventoryFixture([
+    { id: "errored", disposition: "PORT", destination: "present.md", command: "grep -c token absent-file.md", exit: 1 },
+  ]);
+  try {
+    const run = retirementRun(fixture);
+    assert.equal(run.status, 3, run.stdout + run.stderr);
+    assert.match(run.stdout, /^PORT errored unported negative witness exits 2 .*recorded 1/m, run.stdout);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The rows are DATA FROM A FILE and the command must not run whatever they
+ * say. A command whose executable position is not on the allowlist is refused
+ * and NOT SPAWNED, which is asserted by the side effect the command would have
+ * had if it had run.
+ */
+test("a retirement row whose command is not on the allowlist is refused without being run", () => {
+  const fixture = inventoryFixture([
+    { id: "unscreened", disposition: "PORT", destination: "present.md", command: "rm -rf present.md", exit: 1 },
+  ]);
+  try {
+    const run = retirementRun(fixture);
+    assert.equal(run.status, 3, run.stdout + run.stderr);
+    assert.match(run.stdout, /^PORT unscreened unported .*not on the allowlist/m, run.stdout);
+    assert.ok(existsSync(join(fixture.root, "present.md")), "the refused command must not have run");
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * KEEP and DELETE rows are not retirements that can be incomplete, so they
+ * are not printed; a row whose disposition is OUTSIDE the closed vocabulary is
+ * not silently treated as one of them.
+ */
+test("retirement prints one line per PORT row and refuses a row with an unreadable disposition", () => {
+  const fixture = inventoryFixture([
+    { id: "kept", disposition: "KEEP" },
+    { id: "dropped", disposition: "DELETE" },
+    { id: "typo", disposition: "PROT" },
+    { id: "real", disposition: "PORT", destination: "present.md", command: "grep -c absent-token present.md", exit: 1 },
+  ]);
+  try {
+    const run = retirementRun(fixture);
+    const rows = linesOf(run.stdout).filter((line) => line.startsWith("PORT "));
+    assert.deepEqual(
+      rows.map((line) => line.split(" ")[1]),
+      ["typo", "real"],
+      run.stdout,
+    );
+    assert.match(run.stdout, /^PORT typo unported disposition "PROT" is not one of/m, run.stdout);
+    assert.equal(run.status, 3, run.stdout + run.stderr);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * An inventory with no PORT rows is not a complete retirement. `unported === 0`
+ * over an empty list is the vacuous green one level up from the row verdict.
+ */
+test("an inventory with no PORT rows refuses rather than reporting a complete retirement", () => {
+  const fixture = inventoryFixture([{ id: "kept", disposition: "KEEP" }]);
+  try {
+    const run = retirementRun(fixture);
+    assert.equal(run.status, 1, run.stdout + run.stderr);
+    assert.match(run.stderr, /holds no PORT rows/, run.stderr);
+  } finally {
+    rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+/**
+ * THE ADAPTER IS LOAD-BEARING AND THIS IS WHY IT EXISTS. `RetirementRow`
+ * declares `negativeWitness` as an argv array; the shipped inventory writes
+ * `negative-witness` as an object carrying a shell string. Handing the shipped
+ * row STRAIGHT to `evaluatePortRow` returns `unported` for a row that is in
+ * fact ported, which is a finding about a key spelling wearing the costume of
+ * a finding about the kernel.
+ */
+test("a shipped inventory row is unported without the adapter and ported with it", () => {
+  const raw = (
+    JSON.parse(readFileSync(shippedInventory, "utf8")) as { rows: Record<string, unknown>[] }
+  ).rows.find((row) => row["disposition"] === "PORT");
+  assert.ok(raw !== undefined, "the shipped inventory must carry at least one PORT row");
+  const direct = cutover.evaluatePortRow(raw as never, repoRoot);
+  assert.equal(direct.verdict, "unported", JSON.stringify(direct));
+  assert.match(direct.reason, /carries no negative-witness command/);
+  const adapted = cutover.retirementRowFromDocument(raw);
+  assert.equal(adapted.kind, "row", JSON.stringify(adapted));
+  const viaAdapter = cutover.evaluatePortRow(
+    (adapted as { kind: "row"; row: never }).row,
+    repoRoot,
+  );
+  assert.equal(viaAdapter.verdict, "ported", JSON.stringify(viaAdapter));
+});
+
+/**
+ * THE ALLOWLIST MUST NOT DRIFT from the one the inventory's own checker
+ * applies to the same rows. The kernel cannot import that script (it is this
+ * project's own predicate and is KEPT rather than shipped, DR-0029), so the
+ * two lists are compared here instead of being assumed equal.
+ */
+test("the retirement command allowlist is no wider than the inventory checker's", () => {
+  const checker = readFileSync(
+    join(repoRoot, "scripts", "check-retirement-inventory.mjs"),
+    "utf8",
+  );
+  const block = /export const ALLOWED_FIRST_TOKENS = new Set\(\[([\s\S]*?)\]\)/.exec(checker);
+  assert.ok(block !== null, "the checker's allowlist could not be located");
+  const theirs = new Set(
+    [...block[1].matchAll(/"([^"]+)"/g)].map((match) => match[1] as string),
+  );
+  const ours = [...cutover.RETIREMENT_COMMAND_TOKENS];
+  assert.deepEqual(
+    ours.filter((token) => !theirs.has(token)),
+    [],
+    "a token the kernel allows and the checker does not is a screen that drifted open",
+  );
+  assert.ok(ours.length > 0, "an empty allowlist screens nothing");
+});
+
+/**
+ * THE REAL INVENTORY, not a fixture. Criterion 6 is about the M4-P23 rows, and
+ * a command exercised only against fixtures is a command nobody has pointed at
+ * the document it exists for.
+ */
+test("the shipped retirement inventory evaluates every PORT row and reports a verdict for each", () => {
+  const rows = (
+    JSON.parse(readFileSync(shippedInventory, "utf8")) as { rows: Record<string, unknown>[] }
+  ).rows.filter((row) => row["disposition"] === "PORT");
+  const read = cutover.evaluateRetirementInventory(shippedInventory, repoRoot);
+  assert.equal(read.kind, "read", JSON.stringify(read));
+  const report = (read as { kind: "read"; report: { results: unknown[]; unported: number } }).report;
+  /* DERIVED FROM THE DOCUMENT, NEVER PINNED. The inventory is append-only and a
+     literal count here would be a claim about every later phase. */
+  assert.equal(report.results.length, rows.length, "one verdict per PORT row");
+  assert.ok(rows.length > 0, "the shipped inventory must carry PORT rows");
+});
+
+/* -------------------------------------------------------------------- */
+/* Registration, usage and criterion 8                                   */
+/* -------------------------------------------------------------------- */
+
+test("the cutover verb is registered in the CLI and its usage names status", () => {
+  const usage = runCli(["cutover"]);
+  assert.equal(usage.status, 64, usage.stdout + usage.stderr);
+  assert.match(usage.stderr, /tiphys cutover status --fleet/, usage.stderr);
+  const top = runCli(["nonsense-verb"]);
+  assert.match(top.stderr, /cutover/, "the top-level usage line must list the verb");
+});
+
+test("cutover status without --fleet is a usage error and not a refusal", () => {
+  const run = runCli(["cutover", "status"]);
+  assert.equal(run.status, 64, run.stdout + run.stderr);
+  assert.match(run.stderr, /--fleet is required/, run.stderr);
+});
+
+/**
+ * THE TYPE ROW, NOT ONLY THE SCHEMA FILE. M3R-001 says a phase that ships a
+ * schema registers its `--type` row in the same step, so that a type whose
+ * schema ships but which `--type` cannot name is not a state this command can
+ * be in. This asserts the row by USING it, and asserts both arms so that a row
+ * pointing at the wrong document is red rather than merely unexercised.
+ */
+test("tiphys validate --type cutover-state accepts a good state and names a missing restoreTo", () => {
+  const directory = mkdtempSync(join(tmpdir(), "tiphys-cutover-validate-"));
+  try {
+    const good = join(directory, "good.json");
+    writeFileSync(good, `${JSON.stringify(frozenState(), null, 2)}\n`);
+    const accepted = runCli(["validate", "--type", "cutover-state", good]);
+    assert.equal(accepted.status, 0, accepted.stdout + accepted.stderr);
+
+    const document = frozenState() as { switches: Record<string, Record<string, unknown>> };
+    delete document.switches["closeout"]["restoreTo"];
+    const bad = join(directory, "bad.json");
+    writeFileSync(bad, `${JSON.stringify(document, null, 2)}\n`);
+    const refused = runCli(["validate", "--type", "cutover-state", bad]);
+    assert.equal(refused.status, 1, refused.stdout + refused.stderr);
+    assert.match(
+      refused.stdout + refused.stderr,
+      /INVALID #\/switches\/closeout\/restoreTo required property restoreTo is missing/,
+      refused.stdout + refused.stderr,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
   }
 });

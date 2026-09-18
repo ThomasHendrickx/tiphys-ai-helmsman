@@ -1,0 +1,25 @@
+{
+  "id": "cutover-retirement-adapter",
+  "behavior": "cutover-retirement-adapter-is-load-bearing",
+  "tests": [
+    "a shipped inventory row is unported without the adapter and ported with it",
+    "the shipped retirement inventory evaluates every PORT row and reports a verdict for each"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  row.negativeWitness = [\"sh\", \"-c\", command as string];",
+      "replace": "  row.negativeWitness = [command as string];"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  const destinations = row.destination.split(/\\s*,\\s*/).filter((part) => part.length > 0);",
+      "replace": "  const destinations = [row.destination];"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

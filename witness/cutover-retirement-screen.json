@@ -1,0 +1,24 @@
+{
+  "id": "cutover-retirement-screen",
+  "behavior": "cutover-retirement-screens-the-row-command",
+  "tests": [
+    "a retirement row whose command is not on the allowlist is refused without being run"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "    if (!RETIREMENT_COMMAND_TOKENS.has(first)) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  const problems = screenRetirementCommand(command);\n  if (problems.length > 0) {",
+      "replace": "  const problems: string[] = [];\n  if (problems.length > 0) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

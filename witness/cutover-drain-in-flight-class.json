@@ -1,0 +1,25 @@
+{
+  "id": "cutover-drain-in-flight-class",
+  "behavior": "cutover-drain-counts-a-live-worktree",
+  "tests": [
+    "a fleet with one live worktree and no open tasks does not drain and exits nonzero",
+    "a fleet with one open task and no worktrees does not drain and exits nonzero"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "    if (probe.kind === \"directory\") {\n      items.push({ kind: \"worktree\", id, detail: path });",
+      "replace": "    if (false) {\n      items.push({ kind: \"worktree\", id, detail: path });"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "    const turnEnd = classifyEntry(turnEndPath(fleet, id));",
+      "replace": "    const turnEnd = { kind: \"regular\" } as ReturnType<typeof classifyEntry>;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
