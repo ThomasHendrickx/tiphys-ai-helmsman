@@ -565,15 +565,27 @@ test(
 /* Criterion 5: the plugin's pull-request capability                    */
 /* ------------------------------------------------------------------ */
 
-/** Every credential name, removed from this process for the call and restored. */
-function withoutCredentials<T>(body: () => T): T {
+/**
+ * Every credential name, removed from this process for the call and restored.
+ *
+ * `async` AND `await body()`, WHICH IS THE WHOLE POINT AND WAS MEASURED RATHER
+ * THAN ANTICIPATED. The synchronous form, `try { return body(); } finally
+ * { restore(); }`, restores at the instant the body returns its PROMISE, which
+ * is its first suspension point and not its end. The credential-boundary test
+ * below then ran half its arms with the ambient environment back in place, and
+ * passed anyway, because `claudeCodeAdapter.launch` happens to spawn
+ * synchronously before it ever suspends. A guard that holds by the callee's
+ * internal scheduling rather than by its own construction is green and
+ * worthless, and this one was.
+ */
+async function withoutCredentials(body: () => Promise<void> | void): Promise<void> {
   const saved = new Map<string, string | undefined>();
   for (const name of prModule.PR_CREDENTIAL_NAMES) {
     saved.set(name, process.env[name]);
     delete process.env[name];
   }
   try {
-    return body();
+    await body();
   } finally {
     for (const [name, value] of saved) {
       if (value === undefined) {
@@ -616,8 +628,8 @@ function recordedRefusal(subcommand: string): {
 
 test(
   "pr open and pr merge each exit nonzero with exactly one line when the credential is absent",
-  () => {
-    withoutCredentials(() => {
+  async () => {
+    await withoutCredentials(() => {
       for (const subcommand of ["open", "merge"]) {
         const recorded = recordedRefusal(subcommand);
         const result = spawnSync(
@@ -678,17 +690,18 @@ test(
       assert.equal(resolved.ok, true);
       const prEnv = prModule.prChildEnv(supplied, resolved as { name: string; value: string });
       assert.equal(prEnv["GH_TOKEN"], canary, "the plugin's own child lost the credential");
-      for (const name of prModule.PR_CREDENTIAL_NAMES) {
-        assert.equal(
-          process.env[name],
-          undefined,
-          `${name} was published into the kernel process by the plugin`,
-        );
-      }
 
-      // AND THE ASSERTION THAT SETTLES IT IS MADE FROM INSIDE THE CHILD, by
-      // the kernel's own probe vocabulary, rather than from this process's
-      // reading of an object the kernel returned (M4-P8's criterion 5).
+      // THE ASSERTION THAT SETTLES IT IS MADE FROM INSIDE THE CHILD, and it is
+      // FIRST on purpose. An in-process read of `process.env` here would redden
+      // against the same mutants, and it would redden BEFORE the child ever
+      // ran, leaving the child-written file decorative. M4-P8 measured the
+      // general form: a witness that reads the object the kernel returned is
+      // reading the wrong side of the handover. The two arms are the two sides
+      // a credential can cross on: `inherited` is a launch with no env option
+      // at all, which is Node's full-inheritance form and the one a published
+      // credential would ride; `scrubbed` is the environment the kernel's own
+      // buildChildEnv returns. The in-process assertion follows, as a second
+      // and weaker statement of the same property.
       for (const arm of ["inherited", "scrubbed"] as const) {
         const report = join(dir, `witness-${arm}.json`);
         let childEnv: Record<string, string> | undefined;
@@ -729,6 +742,14 @@ test(
           Object.values(seen.env).includes(canary),
           false,
           `the canary value reached the ${arm} adapter child under another name`,
+        );
+      }
+
+      for (const name of prModule.PR_CREDENTIAL_NAMES) {
+        assert.equal(
+          process.env[name],
+          undefined,
+          `${name} was published into the kernel process by the plugin`,
         );
       }
     });
