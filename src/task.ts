@@ -1,14 +1,15 @@
-import {
-  existsSync,
-  lstatSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import type { Stats } from "node:fs";
+import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Fleet } from "./fleet.ts";
+/* IMPORTED UNDER THE OLD NAMES rather than re-exported straight through,
+   because this module CALLS them as well as publishing them. A bare
+   `export ... from` publishes without binding, so the internal call sites below
+   would not resolve and the only signal would be a build error. */
+import {
+  classifyPathEntry as classifyEntry,
+  readRegularPathIfPresent as readRegularFileIfPresent,
+  refuseOpenPathForWrite as refuseOpenForWrite,
+} from "./fleet.ts";
 import { leaseStatus } from "./lock.ts";
 
 /**
@@ -78,127 +79,33 @@ import { leaseStatus } from "./lock.ts";
  * the window is now the only way to reach the block rather than the
  * default path to it.
  */
-export type EntryClass =
-  /** Nothing at the path. */
-  | { kind: "absent" }
-  /** A link is there and resolves to nothing: it exists, and it is empty of evidence. */
-  | { kind: "dangling" }
-  /** Safe to open. */
-  | { kind: "regular" }
-  /** Present, and opening it is not safe: never opened, always named. */
-  | { kind: "irregular"; reason: string }
-  /** Neither lstat nor stat could answer the question. */
-  | { kind: "unexaminable"; reason: string };
-
-function describeType(stats: Stats): string {
-  if (stats.isDirectory()) {
-    return "a directory";
-  }
-  if (stats.isFIFO()) {
-    return "a named pipe";
-  }
-  if (stats.isSocket()) {
-    return "a socket";
-  }
-  if (stats.isCharacterDevice()) {
-    return "a character device";
-  }
-  if (stats.isBlockDevice()) {
-    return "a block device";
-  }
-  return "an entry of an unrecognized type";
-}
-
 /**
- * THE ONE ANSWER TO "may this path be opened". Every reader and every
- * writer of a path this kernel does not itself guarantee to be a regular
- * file goes through this, so there is one implementation of the question
- * and not one per call site.
+ * ONE IMPLEMENTATION, RE-EXPORTED, AND THAT IS THE DR-0047 SWEEP ROUND 2
+ * CONSOLIDATION.
+ *
+ * The paragraphs above explain WHY the probe exists and they still hold. What
+ * changed is where it lives. Until this round there were TWO byte-equivalent
+ * copies of it: `classifyEntry`/`readRegularFileIfPresent`/`refuseOpenForWrite`
+ * here, and `classifyPathEntry`/`readRegularPathIfPresent`/
+ * `refuseOpenPathForWrite` in src/fleet.ts, with identical types, identical
+ * bodies and identical sentences. Round 1 created the second deliberately and
+ * both implementers flagged it: src/lock.ts and src/exclusion.ts sit BELOW this
+ * module in the import graph, so importing from here would have made a cycle.
+ *
+ * THE DIRECTION THAT REMOVES THE COPY WITHOUT MAKING A CYCLE IS DOWNWARD, AND
+ * IT IS THE ONE THE COMMENT ABOVE ALREADY ASKED FOR. src/fleet.ts imports NO
+ * local module at all, so it is the leaf; this module already imports
+ * `Fleet` from it. The chain is task -> fleet, and lock -> fleet, and nothing
+ * points back. The alternative, making lock and exclusion call into here, is
+ * the cycle task -> lock -> task and is what round 1 correctly refused.
+ *
+ * THE NAMES HERE ARE KEPT AS ALIASES rather than the 88 call sites in 31 files
+ * being rewritten. The names are the whole reason the rewrite would be
+ * expensive and none of the reason the duplication was a defect: what mattered
+ * was two bodies that could drift, and there is now one body.
  */
-export function classifyEntry(path: string): EntryClass {
-  try {
-    lstatSync(path);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { kind: "absent" };
-    }
-    return {
-      kind: "unexaminable",
-      reason: `${path} could not be examined: ${String(error)}`,
-    };
-  }
-  let stats: Stats;
-  try {
-    stats = statSync(path);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { kind: "dangling" };
-    }
-    return {
-      kind: "unexaminable",
-      reason: `${path} could not be examined: ${String(error)}`,
-    };
-  }
-  if (stats.isFile()) {
-    return { kind: "regular" };
-  }
-  return {
-    kind: "irregular",
-    reason: `${path} is ${describeType(stats)}, not a regular file, so it was not opened`,
-  };
-}
-
-/**
- * Refuse an open-for-WRITE of a path that is not a regular file. The
- * hazard is symmetric: open(2) for writing on a FIFO with no reader blocks
- * exactly as reading one with no writer does, so a staged write and an
- * append are as dangerous as a read. Returns the reason, or undefined when
- * the path may be opened (absent included: creating it is the point).
- */
-export function refuseOpenForWrite(path: string): string | undefined {
-  const entry = classifyEntry(path);
-  if (entry.kind === "irregular" || entry.kind === "unexaminable") {
-    return entry.reason;
-  }
-  return undefined;
-}
-
-/** What a guarded read of a possibly-absent path produced. */
-export type RegularRead =
-  | { kind: "read"; body: string }
-  | { kind: "absent" }
-  /** Present and not readable, with a reason naming the path. */
-  | { kind: "refused"; reason: string };
-
-/**
- * THE ONE READ of a file that might not be there and might not be a file.
- * src/task.ts, src/liveness.ts, src/watcher.ts and src/commands/doctor.ts
- * all read fleet state through this, so "probe before open" is a property
- * of the read and cannot be forgotten by a new caller.
- */
-export function readRegularFileIfPresent(path: string): RegularRead {
-  const entry = classifyEntry(path);
-  if (entry.kind === "absent" || entry.kind === "dangling") {
-    return { kind: "absent" };
-  }
-  if (entry.kind === "irregular" || entry.kind === "unexaminable") {
-    return { kind: "refused", reason: entry.reason };
-  }
-  let body: string;
-  try {
-    body = readFileSync(path, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      // Removed between the probe and the read.
-      return { kind: "absent" };
-    }
-    return {
-      kind: "refused",
-      reason: `${path} could not be read: ${String(error)}`,
-    };
-  }
-  return { kind: "read", body };
-}
+export type { PathEntryClass as EntryClass, RegularPathRead as RegularRead } from "./fleet.ts";
+export { classifyEntry, readRegularFileIfPresent, refuseOpenForWrite };
 
 export type TaskShape = "ship" | "scout";
 export type TaskStatus = "open" | "closed";

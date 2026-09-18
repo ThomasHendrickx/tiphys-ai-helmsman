@@ -5,13 +5,16 @@ import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { pathsIdentifySameObject } from "../path-identity.ts";
 import {
+  describeAdmittedVerdicts,
+  describeOffHeadVerdicts,
   loadCommittedVerdicts,
   missingRegimeDocument,
   readReviewFamilies,
   registeredChecks,
+  relateDeclaredHead,
   resolveCorpusSource,
 } from "../checks.ts";
-import type { DerivedCheck } from "../checks.ts";
+import type { AdmittedVerdict, DerivedCheck, OffHeadVerdict } from "../checks.ts";
 import { readRegularFileIfPresent, refuseOpenForWrite, runStep, singleLine } from "../task.ts";
 import {
   EXIT_GATE_ERROR,
@@ -954,9 +957,35 @@ export async function runGate(flags: Flags): Promise<number> {
     );
   }
 
-  const forHead: VerdictForHead[] = corpus.verdicts
-    .filter((entry) => String(entry.record["head"] ?? "").toLowerCase() === head)
-    .map((entry) => ({ path: entry.path, record: entry.record }));
+  /* THE SECOND CALL SITE OF THE EQUALITY MECHANISM, FOUND BY DERIVATION AND
+     NOT BY A REVIEW (DR-0047 sweep round 2).
+     `scripts/check-dual-review.mjs` selected its corpus by comparing the
+     DECLARED head to the RUN head with `===`, and no real flow satisfies that:
+     reviewers read commit X, committing their verdicts produces X+1, and CI
+     audits X+1. This line was the same comparison, spelled once more, so this
+     gate's precondition ("a merge is being proposed at this head, evidenced by
+     a committed verdict naming it") could never be met either and every run
+     reported not-applicable.
+
+     The relation is now ancestry constrained to a paperwork-only gap, which is
+     the same rule and the same function both gates read it from, so the two
+     cannot drift into two answers about one question. An EQUAL head still
+     passes and touches git not at all (`relateDeclaredHead` answers that case
+     before any spawn), which matters here because `--head` comes from the CI
+     event and need not be an object in this checkout. */
+  const admitted: AdmittedVerdict[] = [];
+  const excluded: OffHeadVerdict[] = [];
+  const forHead: VerdictForHead[] = [];
+  for (const entry of corpus.verdicts) {
+    const declared = String(entry.record["head"] ?? "").toLowerCase();
+    const relation = relateDeclaredHead(contextDirectory, declared, head);
+    if (relation.kind === "same" || relation.kind === "evidence-only-ancestor") {
+      admitted.push({ path: entry.path, declared, relation });
+      forHead.push({ path: entry.path, record: entry.record });
+      continue;
+    }
+    excluded.push({ path: entry.path, declared, relation });
+  }
 
   if (forHead.length === 0) {
     /* SC-011: the ONE not-applicable arm, and it carries an EVALUATED
@@ -971,6 +1000,12 @@ export async function runGate(flags: Flags): Promise<number> {
       evidence: [
         `${String(corpus.verdicts.length)} committed verdict document(s) were read and examined`,
         `head under evaluation: ${head}`,
+        /* EVERY EXCLUDED DOCUMENT IS NAMED WITH THE ROUTE THAT EXCLUDED IT.
+           "There is no verdict here" and "there are two approving verdicts and
+           each reviewed something else" are different facts, and printing the
+           first for both is the fail-open direction `describeOffHeadVerdicts`
+           exists to close one gate along. */
+        ...describeOffHeadVerdicts(excluded, head).map((line) => `EXCLUDED ${line}`),
       ],
     };
     return emit(
@@ -988,6 +1023,26 @@ export async function runGate(flags: Flags): Promise<number> {
   }
 
   const rows: ConditionRow[] = [];
+
+  /* THE ADMISSION ROUTE IS A ROW, NOT A FOOTNOTE. Every other condition here
+     gets a row because a reader has to be able to see what was asserted; the
+     corpus SELECTION decides what all six conditions are about, so a run whose
+     verdicts were admitted by ANCESTRY rather than by naming this commit must
+     say so in the same place. Its status is green because selection succeeded:
+     a selection that found nothing does not reach this line at all, it reaches
+     the not-applicable arm above with every excluded document named. */
+  rows.push({
+    id: "verdict-selection",
+    clause: "DR-0047 the verdicts selected are evidence about THIS head",
+    status: "green",
+    head,
+    sentence:
+      `${String(admitted.length)} verdict(s) admitted and ${String(excluded.length)} excluded; ` +
+      describeAdmittedVerdicts(admitted, head).join(" | ") +
+      (excluded.length === 0
+        ? ""
+        : ` | EXCLUDED: ${describeOffHeadVerdicts(excluded, head).join(" | ")}`),
+  });
 
   const condition1 = runRegisteredCheck(DECORRELATION_CHECK_ID, forHead, contextDirectory);
   rows.push({

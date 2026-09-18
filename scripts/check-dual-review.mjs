@@ -79,6 +79,7 @@ const {
   resolveAuditedHead,
   partitionByAuditedHead,
   describeOffHeadVerdicts,
+  describeAdmittedVerdicts,
   REVIEW_FAMILIES_FIELD,
   CHARTER_DOCUMENT,
 } = checksModule;
@@ -241,7 +242,13 @@ export function committedVerdictPaths(directory, requestedHead) {
   const partition =
     anchor.kind === "anchored"
       ? partitionByAuditedHead(directory, loaded.verdicts, anchor.head)
-      : { onHead: [...loaded.verdicts], offHead: [], unkeyed: [], unkeyedVerdicts: [] };
+      : {
+          onHead: [...loaded.verdicts],
+          admitted: [],
+          offHead: [],
+          unkeyed: [],
+          unkeyedVerdicts: [],
+        };
   /* KEPT: the verdicts about this commit, AND the ones that do not say what
      they reviewed. Only a verdict that names a DIFFERENT commit is excluded.
      Dropping an unkeyed verdict would convert the derived check's red into a
@@ -254,6 +261,14 @@ export function committedVerdictPaths(directory, requestedHead) {
     offHead: partition.offHead,
     offHeadLines:
       anchor.kind === "anchored" ? describeOffHeadVerdicts(partition.offHead, anchor.head) : [],
+    /* THE ADMISSIONS, PRINTED FOR THE SAME REASON THE EXCLUSIONS ARE. A green
+       reached because the verdicts name the audited commit and a green reached
+       because they name an ancestor whose whole gap is paperwork are different
+       facts, and the second is the one a reader has to be able to audit: it is
+       the relaxation, and an unprinted relaxation is indistinguishable from the
+       equality anchor that could never pass. */
+    admittedLines:
+      anchor.kind === "anchored" ? describeAdmittedVerdicts(partition.admitted, anchor.head) : [],
     paths: kept.map((entry) => ({ path: entry.path, instance: entry.record })),
     /* M4-P10 FIX ROUND 2's CHANNEL, NOW READ OFF THE SHIPPED LOADER INSTEAD OF
        OFF THIS FILE'S OWN LOOP. The loop is gone (see above), so the candidates
@@ -475,6 +490,7 @@ export function evaluate(directory, requestedHead) {
        sweep. */
     anchor: found.anchor,
     offHeadLines: found.offHeadLines ?? [],
+    admittedLines: found.admittedLines ?? [],
     /* THE EXCEPTION IS REPORTED ONLY WHEN IT WAS ACTUALLY RELIED ON, and
        "relied on" is derived rather than asserted. Both falsifiers live inside
        the derived check and each produces a violation, so a single-family
@@ -569,6 +585,28 @@ function emit(options, fields) {
  * `unanchored` sentence is the important one: it is the only arm where the old
  * behaviour survives, and it must never be mistaken for an anchored green.
  */
+/**
+ * Name the route by which the corpus was admitted, in the gate's own detail.
+ *
+ * WHY THE GREEN SENTENCE CARRIES THIS AND NOT ONLY THE STDOUT LINES. The record
+ * written to `--result` is what a reviewer reads after the fact, and a green
+ * reached through the ANCESTRY allowance is the one that has to be auditable:
+ * it is the relaxation. A detail that said only "2 verdict(s) for the commit
+ * under audit X" over verdicts that all name X-1 would be true and would hide
+ * the only thing worth checking, which is the SC-011 shape this file applies to
+ * the corpus source and to the exclusions already.
+ */
+function describeAdmissions(lines) {
+  const ancestors = lines.filter((line) => line.includes("an ancestor of the commit under audit"));
+  if (ancestors.length === 0) {
+    return "";
+  }
+  return (
+    `; ${String(ancestors.length)} of ${String(lines.length)} verdict(s) were admitted by ANCESTRY rather than by ` +
+    `naming this commit, their gap to it being paperwork only: ${ancestors.join("; ")}`
+  );
+}
+
 function describeAnchor(anchor) {
   if (anchor === undefined) {
     return "";
@@ -681,6 +719,9 @@ function main(argv) {
   process.stdout.write(
     `${GATE_ID}: ${String(run.units)} verdict document(s)${describeAnchor(run.anchor)}\n`,
   );
+  for (const line of run.admittedLines ?? []) {
+    process.stdout.write(`${GATE_ID}: ADMITTED ${line}\n`);
+  }
   for (const line of run.offHeadLines ?? []) {
     process.stdout.write(`${GATE_ID}: EXCLUDED ${line}\n`);
   }
@@ -775,11 +816,12 @@ function main(argv) {
     startedAt,
     detail:
       run.status === "green"
-        ? `${String(run.units)} verdict(s)${describeAnchor(run.anchor)} examined by ${String(run.checksRun)} registered check(s) named ${CHECK_ID} and ${String(run.pairChecksRun)} named ${PAIR_CHECK_ID}; no decorrelation violation and the pair approves`
+        ? `${String(run.units)} verdict(s)${describeAnchor(run.anchor)} examined by ${String(run.checksRun)} registered check(s) named ${CHECK_ID} and ${String(run.pairChecksRun)} named ${PAIR_CHECK_ID}; no decorrelation violation and the pair approves${describeAdmissions(run.admittedLines ?? [])}`
         : run.lines.filter((line) => line.startsWith("INVALID")).join("; "),
     evidenceLines: [
       `directory: ${options.directory}`,
       `anchor:${describeAnchor(run.anchor)}`,
+      ...(run.admittedLines ?? []).map((line) => `ADMITTED ${line}`),
       ...(run.offHeadLines ?? []),
       `registered checks named ${CHECK_ID}: ${String(run.checksRun)}`,
       `registered checks named ${PAIR_CHECK_ID}: ${String(run.pairChecksRun)}`,

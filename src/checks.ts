@@ -4097,17 +4097,219 @@ export function resolveAuditedHead(
   return { kind: "unanchored", reason: source.reason };
 }
 
+/* ------------------------------------------------------------------ */
+/* ANCESTRY, BECAUSE A VERDICT CANNOT NAME THE COMMIT THAT CARRIES IT   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE MECHANISM THIS SECTION CLOSES, and it is the anchor above written one
+ * relation too narrow: AN ANCHOR EXPRESSED AS EQUALITY WHERE THE RELATION THAT
+ * CAN ACTUALLY HOLD IS ANCESTRY PLUS A CONSTRAINT ON WHAT CHANGED IN BETWEEN.
+ *
+ * `partitionByAuditedHead` compared the declared head to the audited one with
+ * `===`, and no real flow can satisfy that. A reviewer reads commit X and
+ * writes a verdict naming X; COMMITTING that verdict produces X+1; CI audits
+ * X+1, or a merge commit above it. The declared head is therefore ALWAYS a
+ * strict ancestor of the audited one, so under equality every real run reported
+ * not-applicable. Measured on the branch that introduced the anchor, at
+ * 5867a918cda809f7c5d4bc366fc7940458c140c0: the verdicts declared that commit,
+ * the gate audited its DIRECT CHILD 0ddd06a73d49c1910449d01303bc9c2579f5f492,
+ * and the record read not-applicable, exit 21, "is a review of other work and
+ * is not evidence about this head".
+ *
+ * That is the same cannot-do-its-job shape one status along from the defect the
+ * anchor fixed: "green forever once fed" became "never green", and a gate that
+ * cannot go green is as uninformative as one that cannot go red (T-008's own
+ * rule, applied to the other pole).
+ *
+ * WHAT MAKES THE RELAXATION SAFE, AND IT IS THE WHOLE DESIGN. Ancestry ALONE
+ * would restore the original defect wearing a different hat: an approving pair
+ * lands, and every later descendant carries it, including descendants full of
+ * unreviewed source. So ancestry is admitted only when the TREES agree
+ * everywhere except the project's own paperwork root. A verdict is evidence
+ * about the SHIPPED CONTENT it read, and if that content is byte-identical in
+ * the audited commit then the audited commit is the thing the reviewer
+ * approved, whatever paperwork was committed on top of it.
+ *
+ * IT IS A CLAIM ABOUT THE TWO TREES, NOT ABOUT EACH INTERVENING COMMIT, and
+ * the difference is stated rather than left to be discovered. `git diff
+ * --name-only <declared>..<audited>` compares the endpoints, so a commit that
+ * adds `src/x.ts` and a later one that removes it leave no entry and are
+ * admitted, where a per-commit enumeration would refuse them. That case is
+ * admitted DELIBERATELY: the audited tree's shipped content is then exactly
+ * what the reviewers read, which is the property the gate is protecting. A
+ * per-commit walk would refuse an ordinary revert-before-merge and buy nothing,
+ * because there is no shipped byte in the audited tree that no verdict covers.
+ *
+ * `--no-renames` IS LOAD-BEARING. With rename detection on (git's default for
+ * `git diff` since 2.9) a rename from `src/a.ts` to `delivery/b.md` prints the
+ * DESTINATION ONLY, so the deletion of a source file would be invisible and the
+ * gap would read as paperwork. Disabling it prints both sides.
+ */
+
+/** How a verdict's declared head stands to the commit under audit. */
+export type HeadRelation =
+  /** The verdict names the audited commit itself. */
+  | { kind: "same" }
+  /** A strict ancestor whose gap to the audited commit is paperwork only. */
+  | { kind: "evidence-only-ancestor"; changed: string[] }
+  /** A strict ancestor, but shipped content changed in between. */
+  | { kind: "shipped-change"; shipped: string[] }
+  /** A real commit here that the audited commit is an ancestor OF. */
+  | { kind: "descendant" }
+  /** A real commit here on neither side of the audited one. */
+  | { kind: "unrelated" }
+  /** Forty hex digits naming no commit in this repository. */
+  | { kind: "unresolvable"; reason: string }
+  /** git could not answer, so the relation is not known. Never admitted. */
+  | { kind: "undetermined"; reason: string };
+
+/**
+ * Ask git whether `candidate` is an ancestor of `descendant`.
+ *
+ * `merge-base --is-ancestor` ANSWERS WITH AN EXIT CODE, and 1 is an ANSWER
+ * while anything else is a FAILURE. `gitIn` folds every nonzero status into
+ * `ok: false`, which would make "no" indistinguishable from "git could not
+ * run", and that collapse is the fail-open direction here: an unanswerable
+ * question read as "not an ancestor" is merely noisy, but read as "ancestor"
+ * it would admit anything. Three outcomes, never two.
+ */
+function isAncestorIn(
+  contextDirectory: string,
+  candidate: string,
+  descendant: string,
+): { kind: "yes" } | { kind: "no" } | { kind: "undetermined"; reason: string } {
+  const run = spawnSync(
+    "git",
+    ["merge-base", "--is-ancestor", "--end-of-options", candidate, descendant],
+    { cwd: contextDirectory, encoding: "utf8" },
+  );
+  if (run.error !== undefined) {
+    return {
+      kind: "undetermined",
+      reason: `git merge-base --is-ancestor ${candidate} ${descendant} could not be run: ${String(run.error)}`,
+    };
+  }
+  if (run.status === 0) {
+    return { kind: "yes" };
+  }
+  if (run.status === 1) {
+    return { kind: "no" };
+  }
+  return {
+    kind: "undetermined",
+    reason:
+      `git merge-base --is-ancestor ${candidate} ${descendant} exited ${String(run.status)}: ` +
+      `${(run.stderr ?? "").replace(/\s+/g, " ").trim()}`,
+  };
+}
+
+/**
+ * The paperwork prefix a changed path must carry to count as evidence, spelled
+ * for THIS context directory rather than for the repository root.
+ *
+ * `git diff --name-only` prints paths relative to the REPOSITORY ROOT, and the
+ * context directory need not be that root. Reading `delivery/` out of a nested
+ * context would then classify the repository root's `delivery/` as this
+ * project's paperwork and a nested `sub/delivery/` as shipped content, which is
+ * backwards. `rev-parse --show-prefix` gives the offset, so the comparison is
+ * made in the repository's own spelling. The diff is deliberately NOT narrowed
+ * to the context directory: a change outside it is still unreviewed content in
+ * the audited commit, and narrowing would hide it.
+ */
+function evidencePrefixIn(
+  contextDirectory: string,
+): { ok: true; prefix: string } | { ok: false; reason: string } {
+  const shown = gitIn(["rev-parse", "--show-prefix"], contextDirectory);
+  if (!shown.ok) {
+    return { ok: false, reason: shown.reason };
+  }
+  return { ok: true, prefix: `${shown.stdout.trim()}${PAPERWORK_ROOT}/` };
+}
+
+/**
+ * Place one declared head against the commit under audit.
+ *
+ * EQUAL PASSES, unchanged, and it is checked first so a context git cannot be
+ * questioned about still answers the one relation that needs no git at all.
+ *
+ * A DESCENDANT IS REFUSED, and it has its own sentence rather than being folded
+ * into "not an ancestor". A verdict naming a commit BELOW the audited one is a
+ * review of work the audited commit does not contain, which is the fail-open
+ * direction stated backwards: the reviewers saw more than is being merged, and
+ * nothing here establishes that what they approved about the extra work says
+ * anything about the tree without it.
+ */
+export function relateDeclaredHead(
+  contextDirectory: string,
+  declared: string,
+  auditedHead: string,
+): HeadRelation {
+  if (declared === auditedHead) {
+    return { kind: "same" };
+  }
+  const resolved = resolveCommitIn(contextDirectory, declared);
+  if (!resolved.ok) {
+    return { kind: "unresolvable", reason: resolved.reason };
+  }
+  const ancestor = isAncestorIn(contextDirectory, declared, auditedHead);
+  if (ancestor.kind === "undetermined") {
+    return { kind: "undetermined", reason: ancestor.reason };
+  }
+  if (ancestor.kind === "no") {
+    const other = isAncestorIn(contextDirectory, auditedHead, declared);
+    if (other.kind === "undetermined") {
+      return { kind: "undetermined", reason: other.reason };
+    }
+    return other.kind === "yes" ? { kind: "descendant" } : { kind: "unrelated" };
+  }
+  const prefix = evidencePrefixIn(contextDirectory);
+  if (!prefix.ok) {
+    return { kind: "undetermined", reason: prefix.reason };
+  }
+  const diff = gitIn(
+    ["diff", "--no-renames", "--name-only", `${declared}..${auditedHead}`, "--"],
+    contextDirectory,
+  );
+  if (!diff.ok) {
+    return { kind: "undetermined", reason: diff.reason };
+  }
+  const changed = diff.stdout.split("\n").map((line) => line.trim()).filter((line) => line !== "");
+  const shipped = changed.filter((path) => !path.startsWith(prefix.prefix));
+  return shipped.length === 0
+    ? { kind: "evidence-only-ancestor", changed }
+    : { kind: "shipped-change", shipped };
+}
+
+/** A verdict admitted to the audited corpus, and the relation that admitted it. */
+export interface AdmittedVerdict {
+  path: string;
+  declared: string;
+  relation: HeadRelation;
+}
+
 /** One verdict that is not about the audited commit, and why it is not. */
 export interface OffHeadVerdict {
   path: string;
   declared: string;
-  /** Does the declared head name a commit in THIS repository at all? */
-  resolves: boolean;
+  /** Which route refused it. Printed, never summarised to a boolean. */
+  relation: HeadRelation;
 }
 
 /** The corpus split by the commit under audit. */
 export interface HeadPartition {
   onHead: LoadedVerdict[];
+  /**
+   * The same verdicts, with the relation that admitted each one.
+   *
+   * CARRIED SEPARATELY RATHER THAN ATTACHED TO `onHead`, because `onHead` is
+   * the set the checks are RUN OVER and its element type is what every other
+   * caller of the loader consumes. This is the DISCLOSURE half: a green reached
+   * through ancestry and a green reached through equality are different facts,
+   * and a gate that printed one sentence for both would be the unfalsifiable
+   * record `describeVerdictCorpusSource` exists to stop, one relation along.
+   */
+  admitted: AdmittedVerdict[];
   offHead: OffHeadVerdict[];
   /**
    * Verdicts whose own `head` could not be established at all, as DOCUMENTS
@@ -4126,17 +4328,28 @@ export interface HeadPartition {
  * Split a loaded corpus into the verdicts that are about the audited commit
  * and the ones that are not.
  *
- * TWO REFUSAL ROUTES, AND THEY ARE STRUCTURALLY DIFFERENT RATHER THAN TWO
- * INSTANCES OF ONE SHAPE, which is what makes the pair a witness for the class
- * instead of one shape twice:
+ * FIVE REFUSAL ROUTES, AND THEY ARE STRUCTURALLY DIFFERENT RATHER THAN ONE
+ * SHAPE FIVE TIMES, which is what makes them members of a class instead of
+ * instances of a finding:
  *
  *   RESOLUTION   the declared head is not a commit in this repository. The
  *                document is evidence about an object nobody can produce.
- *   COMPARISON   the declared head IS a commit here and is not the one under
- *                audit. The document is real evidence about other work.
+ *   SHIPPED GAP  the declared head IS an ancestor, and shipped content changed
+ *                between it and the audited commit. Unreviewed work is riding
+ *                in on a review of something else.
+ *   DESCENDANT   the declared head is BELOW the audited commit. The reviewers
+ *                read a tree the audited commit does not contain.
+ *   UNRELATED    a real commit on neither side. A review of another line.
+ *   UNDETERMINED git could not place it. Never admitted, because a relation
+ *                nobody established must not read as the one that passes.
  *
- * Both leave the verdict out of the audited group, and BOTH ARE PRINTED with
- * which route they took, because a document silently dropped from a merge
+ * ADMISSION IS TWO ROUTES AND THEY ARE ALSO PRINTED: the declared head IS the
+ * audited commit, or it is an ancestor whose whole gap is paperwork. See
+ * `relateDeclaredHead` for why the second is safe and for what it deliberately
+ * does not refuse.
+ *
+ * Every refusal leaves the verdict out of the audited group and IS PRINTED with
+ * the route it took, because a document silently dropped from a merge
  * corpus is the fail-open direction this file has already been bitten by at
  * `loadCommittedVerdicts`, at the `phase` canonicalisation and at
  * `headGroupFor`. A reader is owed the fact that the corpus holds two
@@ -4148,6 +4361,7 @@ export function partitionByAuditedHead(
   auditedHead: string,
 ): HeadPartition {
   const onHead: LoadedVerdict[] = [];
+  const admitted: AdmittedVerdict[] = [];
   const offHead: OffHeadVerdict[] = [];
   const unkeyed: Diagnostic[] = [];
   const unkeyedVerdicts: LoadedVerdict[] = [];
@@ -4158,18 +4372,19 @@ export function partitionByAuditedHead(
       unkeyedVerdicts.push(candidate);
       continue;
     }
-    if (key.value === auditedHead) {
+    const relation = relateDeclaredHead(contextDirectory, key.value, auditedHead);
+    if (relation.kind === "same" || relation.kind === "evidence-only-ancestor") {
       onHead.push(candidate);
+      admitted.push({ path: candidate.path, declared: key.value, relation });
       continue;
     }
-    offHead.push({
-      path: candidate.path,
-      declared: key.value,
-      resolves: resolveCommitIn(contextDirectory, key.value).ok,
-    });
+    offHead.push({ path: candidate.path, declared: key.value, relation });
   }
-  return { onHead, offHead, unkeyed, unkeyedVerdicts };
+  return { onHead, admitted, offHead, unkeyed, unkeyedVerdicts };
 }
+
+/** How many shipped paths to name before the sentence stops being readable. */
+const NAMED_SHIPPED_PATHS = 5;
 
 /** One operator-facing line per verdict the audit excluded, naming its route. */
 export function describeOffHeadVerdicts(
@@ -4178,10 +4393,48 @@ export function describeOffHeadVerdicts(
 ): string[] {
   return [...offHead]
     .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
+    .map((entry) => {
+      const head = `${entry.path} declares head ${entry.declared}, which`;
+      const tail = `it is not evidence about the commit under audit ${auditedHead}`;
+      if (entry.relation.kind === "unresolvable") {
+        return `${head} does not resolve to a commit in this repository at all, so it is evidence about an object nobody can produce and ${tail}`;
+      }
+      if (entry.relation.kind === "shipped-change") {
+        const shipped = entry.relation.shipped;
+        const named = shipped.slice(0, NAMED_SHIPPED_PATHS).join(", ");
+        const more =
+          shipped.length > NAMED_SHIPPED_PATHS
+            ? ` and ${String(shipped.length - NAMED_SHIPPED_PATHS)} more`
+            : "";
+        return (
+          `${head} is an ancestor of the commit under audit ${auditedHead}, but ${String(shipped.length)} path(s) ` +
+          `outside ${PAPERWORK_ROOT}/ differ between them (${named}${more}), so shipped work no verdict reviewed ` +
+          `is riding in on a review of something else and ${tail}`
+        );
+      }
+      if (entry.relation.kind === "descendant") {
+        return `${head} is a DESCENDANT of the commit under audit ${auditedHead}, so the reviewers read a tree this commit does not contain and ${tail}`;
+      }
+      if (entry.relation.kind === "undetermined") {
+        return `${head} could not be placed relative to the commit under audit ${auditedHead}, so whether it reviews this work is unknown and ${tail}: ${entry.relation.reason}`;
+      }
+      return `${head} is a commit in this repository and is neither the commit under audit ${auditedHead} nor an ancestor of it, so it is a review of other work and ${tail}`;
+    });
+}
+
+/** One operator-facing line per verdict the audit ADMITTED, naming its route. */
+export function describeAdmittedVerdicts(
+  admitted: readonly AdmittedVerdict[],
+  auditedHead: string,
+): string[] {
+  return [...admitted]
+    .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
     .map((entry) =>
-      entry.resolves
-        ? `${entry.path} declares head ${entry.declared}, which is a commit in this repository and is not the commit under audit ${auditedHead}, so it is a review of other work and is not evidence about this head`
-        : `${entry.path} declares head ${entry.declared}, which does not resolve to a commit in this repository at all, so it is evidence about an object nobody can produce and it is not evidence about the commit under audit ${auditedHead}`,
+      entry.relation.kind === "evidence-only-ancestor"
+        ? `${entry.path} declares head ${entry.declared}, an ancestor of the commit under audit ${auditedHead} whose ` +
+          `${String(entry.relation.changed.length)} differing path(s) are all under ${PAPERWORK_ROOT}/, so the shipped ` +
+          `content it reviewed is the shipped content of this commit`
+        : `${entry.path} declares head ${entry.declared}, which IS the commit under audit`,
     );
 }
 

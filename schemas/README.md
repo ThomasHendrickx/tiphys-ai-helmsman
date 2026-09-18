@@ -46,6 +46,7 @@ test (`test/schemas.test.ts`).
 | `const` | |
 | `items` | |
 | `minItems` | |
+| `uniqueItems` | boolean only; used by five shipped schemas here and MISSING FROM THIS TABLE from the day M3-P1 wrote both halves until the DR-0047 sweep, because nothing asserted the two agreed |
 | `minLength` | |
 | `pattern` | |
 | `$ref` | local references only; a remote reference fails compilation |

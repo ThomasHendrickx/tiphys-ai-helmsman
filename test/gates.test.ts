@@ -3534,6 +3534,17 @@ function runCliUnprivileged(args: string[], worldWritable: string[]) {
       chmodSync(path, 0o777);
     }
     grantTraversalWhenUnderTmp(repoRoot);
+    /* AND THE INTERPRETER, which this helper did not grant and which is why
+       the precondition test flaked here and only here
+       (delivery/tuition/T-029-the-precondition-test-flakes-only-here.md:1).
+       The child is spawned with `process.execPath`, so when the run's own node
+       lives under a mode-700 scratch prefix the unprivileged child cannot
+       traverse to its own interpreter and dies with `spawnSync ... EACCES`
+       before reaching any assertion. That is a property of the INTERPRETER'S
+       PATH and not of the branch, which is exactly what made it read as a
+       branch failure. Granting the repository and not the interpreter was the
+       whole gap. */
+    grantTraversalWhenUnderTmp(process.execPath);
   }
   return spawnSync(process.execPath, [sourceEntry, ...args], {
     encoding: "utf8",
