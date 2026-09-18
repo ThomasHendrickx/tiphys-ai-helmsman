@@ -612,3 +612,52 @@ which is append-only by filename and settled by the wave-10 pre-pass.
 **The generator check.** M4-P24 adds no gate row, so no drift chain moves.
 It DOES add a command to `src/cli.ts`, and the only other claimant left is
 M4-P25, which is why they are sequenced rather than paired.
+
+## Wave 14: M4-P25 alone, and why it is the last one
+
+Written before dispatch, as rule 5 requires. Declared 2026-09-18.
+
+**One unit, one agent, one workflow.** M4-P25 is the last unstarted phase in
+the milestone, so there is nothing to pair it with and the disjointness
+question does not arise. The line is recorded anyway, because an empty
+pre-pass section is indistinguishable from a forgotten one.
+
+| unit | files it may touch |
+|---|---|
+| M4-P25 | `src/cutover.ts`, `src/commands/cutover.ts`, `src/cli.ts`, `schemas/cutover-state.schema.json`, `test/cutover.test.ts`, `delivery/plan/cutover/`, `witness/` |
+
+**It cannot start before M4-P24 lands, for two independent reasons, and either
+alone would be enough.** The plan states the dependency directly at
+delivery/plan/kernel-plan-m4.md:3638, where the chain reads M4-P24 then
+M4-P25: criterion 3 of M4-P25 is a drain predicate over in-flight work, and
+the in-flight predicate itself is M4-P24's deliverable. Separately, both
+phases register a new command in `src/cli.ts` unconditionally, and DR-0046
+keeps that dispatch table serialised through M4. So the sequencing is
+dependency AND conflict, not one dressed as the other.
+
+**The declaration grants two trees rather than enumerating them, and both are
+deliberate.** `witness/` is append-only by filename and was settled by the
+wave-10 pre-pass. `delivery/plan/cutover/` is the wider of the two and is the
+one a reviewer should look at: the plan's files-to-touch line at
+delivery/plan/kernel-plan-m4.md:3272 names only `delivery/plan/cutover/freeze-point.md`,
+while criterion 5 at delivery/plan/kernel-plan-m4.md:3308 asserts a precondition
+over `delivery/plan/cutover/pre-freeze-ruleset.json`, a file that does not exist
+on `main` today and that the phase must therefore create. Granting the tree is
+the honest form; the scope gate PRINTS the prefix as the wider grant it is, and
+src/gates/scope.ts:110 records that an entry added on the head is allowed and
+named for sign-off while a removal is still refused.
+
+**The capture in criterion 5 has an access question that the implementer must
+MEASURE rather than assume.** The file is meant to carry the branch-protection
+ruleset and the credential grants as they were before the first flip. Whether
+this container can read the live ruleset is not established here. If it can,
+the phase ships the real capture. If it cannot, the phase ships the assertion
+and its fixture witnesses, and the production capture becomes an owner action
+with an id from the STATE.md register. What the phase must NOT do is write a
+plausible-looking file with no measurement behind it, which is the fabrication
+the red-witness rule exists to prevent.
+
+**The generator check.** M4-P25 adds no gate row, so no drift chain moves. It
+adds `schemas/cutover-state.schema.json`, which `manifest-self-check` will pick
+up as one more schema document validated; that gate counts by enumeration and
+pins no total, so no test needs editing for it.
