@@ -345,3 +345,62 @@ never
 cannot be
 catches
 catches
+
+===== THE CLAIM GREP, FINAL, both binding forms, against the committed work history
+$ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/exclusion-sync.md
+285:| finding 1 | a `git clone` of a synced fleet | a fleet home whose own `state/` was lost | the identity arrived by travelling, versus never moved at all |
+289:| findings 6, 9 | the tasks DIRECTORY cannot be listed | one task's `meta.json` does not read | the whole reconstruction is dropped, versus one row |
+521:(`a fleet home whose own state/ was lost`, `the tasks DIRECTORY cannot be
+
+$ tr '\n' ' ' < delivery/work-history/exclusion-sync.md | grep -oEi '...' | sort | uniq -c
+      2 cannot be
+      1 never
+
+===== CITATION CHECK: every path:line outside backticks, against a declared root and the file's length
+citations 43 bad 0  (checker in the round's scratch, re-runnable from the work history's own text)
+
+===== FINAL SUITE
+$ npm test   (node v26.6.0, dist/ built)
+# skipped uniqueItems.json: uniqueItems=false with an array of items and additionalItems=false: the schema did not compile under the suite configuration
+i tests 1362
+i pass 1362
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 349567.399548
+===== FINAL GATE BUNDLE
+gates: run 59d9942c0bd553db93291e20
+gates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)
+gates: registry gate-registry.yaml mode full
+gates: declared 19 applicable 11 verdict 11 green 10 red 1 not-applicable 8 error 0 vacuous 0
+gates: manifest-self-check: green: validated 8 schema document(s) against the closed keyword set (/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/citation-config.schema.json, /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/coverage-config.schema.json, /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/gate-manifest.schema.json, /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/gate-result.schema.json, /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/phase-declaration.schema.json, /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/release-record.schema.json, /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/verifier-config.schema.json, /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/witness-spec.schema.json), and gates.manifest.json against gate-manifest.schema.json
+gates: coverage: green: 115 inventory id(s) checked; per-kind: decision 6, milestone 98, phase 11; per-milestone: M1 11, M2 16, M3 74, M4 5, M5 3, decision 6
+gates: credential-scrub: green: no pull-request-capable credential resolvable from any of the 7 probed sources
+gates: credential-token: not-applicable: precondition implementer-token-present-owner-action-a-3 evaluated and unmet: node -e process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0) exited 1
+gates: suite: green: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 1362 test(s) from 66 file(s) (pass 1362, fail 0, skipped 0, todo 0, did-not-run 0); discovered 66 file(s) walking test for .test.ts; 1238 behavior(s) resolve; merge base ad2428b76ef6
+gates: citations: not-applicable: precondition citations-diff-touches-documents evaluated and unmet: no changed path under delivery/plan/, delivery/verification/, delivery/decisions/, delivery/tuition/, delivery/requirements/, delivery/STATE.md
+gates: scope: not-applicable: precondition scope-branch-is-a-phase-branch evaluated and unmet: branch claude/sweep-fix-exclusion-sync does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
+gates: deploy: not-applicable: precondition deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist
+gates: migrations: not-applicable: precondition migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist
+gates: clause-map: green: 74 rows checked, 0 pending a phase not yet in force
+gates: red-witness: red: 45 witness(es) evaluated (3 own, 42 stored re-evaluated in 670807ms); witness brief-input-entry-types-established: red: rule (e): the named tests invoke pool destroy, src/pool.ts from the manifest destructiveCommands list, so the derived class is destructive and the declared class classification is weaker
+gates: agent-rules-drift: green: CLAUDE.md's gate block matches gate-registry.yaml row for row (3 preflight step(s), 21 gate(s))
+gates: brief-drift: green: roles/implementer.md's full gate block matches gate-registry.yaml row for row (21 row(s) compared)
+gates: check-agents-references: green: 22 references resolved to a path that the package publishes, 22 of them also to an anchor inside it, under root /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone
+gates: check-dual-review: not-applicable: precondition dual-review-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1
+gates: license: green: 12 production package(s) inventoried, all with license metadata on the declared allowlist; LICENSE present in the pack listing
+gates: typecheck: green: tsc -b tsconfig.src.json tsconfig.test.json plugin/tsconfig.json --force --listFiles exited 0 and reported 448 distinct file(s); the unit count is those printed paths, not a constant
+gates: gate-classes: not-applicable: precondition gate-classes-branch-is-a-phase-branch evaluated and unmet: branch claude/sweep-fix-exclusion-sync does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
+gates: merge-preconditions: not-applicable: precondition merge-preconditions-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1
+gates: 1 gate(s) reported red: red-witness
+EXIT=1
+
+===== RED-WITNESS RE-RUN AFTER THE CLASS CORRECTION
+gates: run e6a5b831c99f09160fe30992
+gates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)
+gates: registry gate-registry.yaml mode full
+gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0
+gates: red-witness: green: 45 witness(es) evaluated (3 own, 42 stored re-evaluated in 713261ms); every witness red against every declared dangerous state and green at head
+gates: every applicable gate is green
+EXIT=0

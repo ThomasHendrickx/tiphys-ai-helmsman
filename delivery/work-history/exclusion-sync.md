@@ -419,7 +419,7 @@ round's own edits, and they are recorded here because the fix for each is the
 kind a later reader will otherwise re-derive.
 
 1. **`source changed with no witness spec covering it: src/brief.ts`.** A new
-   spec, witness/brief-input-entry-types-established.json:1, carries two
+   spec, `witness/brief-input-entry-types-established.json`, carries two
    structurally different members over that file: the CALLER-supplied read and
    the FLEET-CONTENT read, each defanged back to a bare open through
    `process.getBuiltinModule("node:fs")`, which restores the real block rather
@@ -463,8 +463,8 @@ built, `--mode full --base origin/main`.
 **`--phase` is required by three gates and the first run did not supply it**,
 so `scope`, `gate-classes` and `merge-preconditions` all reported
 `requires --phase, which was not supplied`. That is a property of the
-invocation, not of the branch: `.github/workflows/gates.yml:233` derives the
-value with a `sed` that leaves a non-phase branch name unchanged. Re-run with
+invocation, not of the branch: `.github/workflows/gates.yml` derives that
+value, at its `--phase` line, with a `sed` that leaves a non-phase branch name unchanged. Re-run with
 `--phase claude/sweep-fix-exclusion-sync`, `scope` reports
 `not-applicable: precondition scope-branch-is-a-phase-branch evaluated and
 unmet: branch claude/sweep-fix-exclusion-sync does not match`, which is the
@@ -476,6 +476,41 @@ correct answer for a branch that is deliberately not a phase branch.
 round changes none of those. The citations in this document were therefore
 verified by hand instead, every one of them resolved against the tree at this
 head, and the check is recorded in the derivation file.
+
+**A sixth red-witness problem appeared after the five above were fixed, and it
+is worth a line because nothing in the spec file suggests it.** The gate
+DERIVES a witness's class from the commands its named tests invoke, not from
+the module under mutation: this round's test file drives `tiphys pool destroy`,
+which the manifest lists as destructive, so a witness naming any test in that
+file must declare `destructive` and a declared `classification` is refused as
+weaker. Declaring the stronger class is the fix.
+
+The bundle at the head this document is committed with, `--mode full`,
+`--base origin/main`, `--phase claude/sweep-fix-exclusion-sync`:
+
+```
+gates: declared 19 applicable 11 verdict 11 green 10 red 1 not-applicable 8 error 0 vacuous 0
+gates: suite: green: reported 1362 test(s) from 66 file(s) (pass 1362, fail 0, skipped 0, todo 0, did-not-run 0); 1238 behavior(s) resolve
+gates: scope: not-applicable: precondition scope-branch-is-a-phase-branch evaluated and unmet
+gates: gate-classes: not-applicable: precondition gate-classes-branch-is-a-phase-branch evaluated and unmet
+gates: red-witness: red: rule (e): the declared class classification is weaker
+```
+
+and the `red-witness` re-run after the class was corrected, at the head this
+document is committed with:
+
+```
+gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0
+gates: red-witness: green: 45 witness(es) evaluated (3 own, 42 stored re-evaluated in 713261ms); every witness red against every declared dangerous state and green at head
+gates: every applicable gate is green
+```
+
+**Say which half is observed and which is deduced.** The `red-witness` green in
+the second block is DIRECTLY observed at this head. The other ten greens are
+directly observed from the first block, which ran at the PREVIOUS commit of
+this branch; the only change between them is the one word in the witness spec's
+`class` field, which no other gate reads. That last sentence is the deduction,
+and it is stated as one.
 
 ## The claim grep
 
