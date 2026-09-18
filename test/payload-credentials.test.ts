@@ -139,6 +139,14 @@ const spawnModule = (await import(
 const fleetModule = (await import(
   new URL("../src/fleet.ts", import.meta.url).href
 )) as { loadFleet: (cwd: string) => unknown };
+const hooksModule = (await import(
+  new URL("../src/hooks.ts", import.meta.url).href
+)) as {
+  renderTurnEndHook: (turnEndFile: string, observeNames?: readonly string[]) => string;
+};
+
+/** The capture the pointer comparison's contract is read out of. */
+const POINTER_CAPTURE = "turn-end-hook-pointer-record.txt";
 
 const GIT_IDENTITY = {
   GIT_AUTHOR_NAME: "Payload Credentials Test",
@@ -1042,6 +1050,53 @@ test(
     );
     const realGitConfig = join(scratch.tmp, "real-gitconfig");
     writeFileSync(realGitConfig, "[credential]\n\thelper = store\n");
+
+    // THE KERNEL'S POINTER VERDICT IS A CLASSIFICATION OF ANOTHER PROGRAM'S
+    // OUTPUT: the generated turn-end hook writes the record and
+    // `turnEndEvidence` parses it. So the contract is READ OUT OF A REAL
+    // CAPTURE and then RUN LIVE here, rather than restated as a hand-written
+    // string chosen to match the implementation.
+    const captured = readFileSync(
+      fileURLToPath(
+        new URL(`../witness/captures/${POINTER_CAPTURE}`, import.meta.url),
+      ),
+      "utf8",
+    );
+    assert.match(captured, /"env": \{/, POINTER_CAPTURE);
+    assert.match(captured, /"HOME": "\/root"/, POINTER_CAPTURE);
+    assert.match(captured, /"XDG_CONFIG_HOME": null/, POINTER_CAPTURE);
+    const pointerNames = envModule.CREDENTIAL_STORE_REDIRECTIONS.map(
+      (redirection) => redirection.name,
+    );
+    const hookTurnEnd = join(scratch.tmp, "hook-lab-turn-end");
+    const hookPath = join(scratch.tmp, "hook-lab-hook.mjs");
+    writeFileSync(hookPath, hooksModule.renderTurnEndHook(hookTurnEnd, pointerNames), {
+      mode: 0o755,
+    });
+    const ranHook = spawnSync(process.execPath, [hookPath, "3"], {
+      encoding: "utf8",
+      env: { PATH: process.env["PATH"] ?? "", HOME: "/root" },
+    });
+    assert.equal(ranHook.status, 0, ranHook.stderr);
+    const liveRecord = JSON.parse(readFileSync(hookTurnEnd, "utf8")) as {
+      exitCode: number;
+      env: Record<string, string | null>;
+    };
+    // The captured contract, re-run: the argument is the exit code, every
+    // rendered name is a key, and an UNSET pointer is null rather than absent,
+    // so "dropped" and "redirected elsewhere" stay different readings.
+    assert.equal(liveRecord.exitCode, 3, "captured contract: exitCode is the argument");
+    assert.deepEqual(
+      Object.keys(liveRecord.env).sort(),
+      [...pointerNames].sort(),
+      "captured contract: the env keys are exactly the rendered names",
+    );
+    assert.equal(liveRecord.env["HOME"], "/root", "captured contract: HOME is observed");
+    assert.equal(
+      liveRecord.env["XDG_CONFIG_HOME"],
+      null,
+      "captured contract: an unset pointer is null",
+    );
 
     /**
      * An HONEST adapter that mutates the pointers and reports the name set it
