@@ -33,10 +33,12 @@ NPM_TEST_EXIT=0
 ```
 
 Transliteration note, per the repository's declared resolution: the Node test
-reporter's summary glyph U+2139 is rendered `i` above, 8 occurrences, counted
-with `grep -o`. No U+2716 appears because no test failed, and no per-test line
-is pasted anywhere in this document, so no U+2714 needed rendering either.
-Nothing else in any captured output in this document was altered.
+reporter's summary glyph U+2139 is rendered `i` above, 16 occurrences across the
+two summary blocks in this section, counted with `grep -o`. No U+2716 appears in
+either block because no test failed, and no per-test line is pasted in this
+section, so no U+2714 needed rendering here. Section 4 carries its own note for
+the one block that does paste per-test lines. Nothing else in any captured
+output in this document was altered.
 
 **THE BASELINE WAS MEASURED, NOT QUOTED.** The same interpreter, the same
 invocation and `npm run build` first, in a detached worktree at d653022:
@@ -49,6 +51,7 @@ i fail 0
 i cancelled 0
 i skipped 0
 i todo 0
+i duration_ms 351278.448468
 NPM_TEST_EXIT=0
 ```
 
@@ -191,9 +194,16 @@ The reviewer's first check.
    src/gates/merge-preconditions.ts:546 matches an arbitration document's token
    as a PREFIX of the head, which is a different relation on purpose and is
    unchanged.
-2. **No non-`src` consumer of the two placed functions was enumerated beyond
-   `scripts/` and `bin/`.** The `plugin/` tree and `.github/workflows/` were not
-   searched for a copy of the selection rule.
+2. **The `plugin/` tree and `.github/workflows/` were searched only for the
+   selection rule, and only by pattern.** The search returned nothing:
+
+   ```
+   grep -rn 'head.*===\|toLowerCase() ===\|partitionByAuditedHead\|record\["head"\]' plugin/ .github/
+   (no output)
+   ```
+
+   An empty result from a pattern search is not the same fact as an absence, and
+   this one is reported as what it is.
 3. **The WORKTREE arm of `check-dual-review` is still not head-anchored.** It is
    restated with a reason in section 5 rather than closed, and the cost of
    closing it was measured rather than guessed.
@@ -224,6 +234,37 @@ The reviewer's first check.
 10. **M4's fix is witnessed only on this container.** The red arm needs a
     repository outside the OS temp root and an interpreter under a mode-700
     prefix; a runner with a system node reaches neither arm.
+11. **THIS REPOSITORY'S OWN `check-dual-review` RESULT IS UNCHANGED, and that
+    was measured rather than assumed**, because a corpus rule that started
+    admitting documents could have changed a gate this repository runs on
+    itself. The precondition arm, same command, same head-supplying flag, at
+    both heads:
+
+    ```
+    base d653022 : check-dual-review: 0 verdict document(s) (corpus: delivery/review
+                   read from commit d6530221... ) ... exit 1
+    head 7f05c05 : check-dual-review: 0 verdict document(s) (corpus: delivery/review
+                   read from commit 7f05c059... ) ... exit 1
+    ```
+
+    Zero on both, so the gate is not-applicable here before and after.
+12. **THE TWO CORPORA HAVE DIFFERENT ROOTS, which the measurement above
+    surfaced and this round does not change.** The PAIR corpus is
+    `delivery/review/**` (the `scope` field prints it) while the FALSIFIER
+    corpus is `delivery/**`. `git grep -c '^kind: verdict' -- 'delivery/**'`
+    reports 13 documents in this repository, all of them under
+    `delivery/evidence/`, and the pair loader sees none of them. Round 1's
+    CR-VS-002 fix was about DEPTH and made both loaders recursive; the ROOT
+    asymmetry is a different fact, it is enumerated here, and closing it is not
+    this round's finding.
+13. **The relation is computed PER VERDICT and spawns git**, up to three
+    processes each (`rev-parse`, `merge-base --is-ancestor`, `diff`), and an
+    equal head spawns none. Nothing here measures that cost against a corpus
+    much larger than the 13 documents above.
+14. **The stored-witness staleness check in section 4b is a TEXT check.** It
+    proves every mutation still applies; it proves nothing about whether a
+    mutation still produces the dangerous state it was written for. Only the one
+    member this round rewrote was reasoned about on that second question.
 
 ## 4. The red witnesses
 
@@ -318,8 +359,9 @@ contain. It is refused on its own sentence at
 test/dual-review-head-anchor.test.ts:431, and the ancestry check that places it
 is run in both directions inside the test rather than assumed.
 
-**AN EQUAL HEAD STILL PASSES.** That is decided at src/checks.ts:4248, before any
-git call, and it is the arm test/dual-review-head-anchor.test.ts:221 asserts. Deciding it first also matters for the second call site: `--head` there
+**AN EQUAL HEAD STILL PASSES.** That is decided at src/checks.ts:4248, before
+any git call, and it is the arm test/dual-review-head-anchor.test.ts:221
+asserts. Deciding it first also matters for the second call site: `--head` there
 comes from the CI event and need not be an object in the checkout.
 
 ### M1's second call site: merge-preconditions
@@ -408,6 +450,33 @@ Transliteration note for that block only: the reporter's U+2716 is rendered `X`,
 1 occurrence, and U+2714 is rendered `OK`, 1 occurrence. Nothing else in it was
 changed.
 
+## 4b. A STORED WITNESS WENT STALE, and it was found by derivation rather than by the gate
+
+Changing a line that a stored `witness/*.json` mutation names by its exact text
+makes that mutation unappliable. The gate would have reported it, and the cheaper
+order is to look first, so every stored mutation was checked against the tree
+before the gate ran:
+
+```
+node --input-type=module -e '<walk witness/*.json, assert every mutation find
+string still occurs in its file>'
+STALE FIND merge-preconditions-no-verdict-at-head-is-not-applicable.json member 1
+  src/gates/merge-preconditions.ts "    .filter((entry) => String(entry.record[\"head\"] ?? \"\")..."
+checked 704 stale 1
+```
+
+704 mutations checked, exactly ONE stale, and it is this round's own: member 1 of
+that witness mutated the equality filter into `.filter(() => true)`, which was
+"select every verdict whatever head it names". The same dangerous state in the
+new code is admitting every verdict whatever relation it has, so the member now
+mutates the admission condition into `if (true || relation.kind === "same") {`.
+The dangerous state is preserved and the text is not; that distinction is the
+reason the member was rewritten rather than deleted.
+
+The checker is reproduced above rather than described because a reviewer needs to
+be able to re-run it: it is the only thing standing between a text-addressed
+mutation and a witness that silently stops witnessing.
+
 ## 5. The worktree arm: RESTATED WITH A REASON, not closed
 
 Round 1's residue 2 says the worktree arm of `check-dual-review` is not
@@ -450,8 +519,11 @@ src/task.ts against `classifyPathEntry`/`readRegularPathIfPresent`/
 bodies, identical sentences.
 
 Round 1's reason for the copy was right and is not the reason it had to stay.
-src/lock.ts and src/exclusion.ts sit BELOW src/task.ts, so importing UPWARD from
-them would make the cycle task -> lock -> task. The direction that removes the
+The import edges are printed in section 7's last block rather than asserted here:
+src/task.ts imports `Fleet` from src/fleet.ts and `leaseStatus` from src/lock.ts,
+src/lock.ts imports `readRegularPathIfPresent` from src/fleet.ts, and src/fleet.ts
+imports no local module at all. So importing UPWARD from lock or exclusion into
+task would make the cycle task -> lock -> task. The direction that removes the
 copy is DOWNWARD: src/fleet.ts imports no local module at all, and src/task.ts
 already imported `Fleet` from it. The chain is task -> fleet and lock -> fleet,
 and nothing points back.
@@ -467,8 +539,9 @@ than re-exported straight through.
 
 The `witness/*.json` mutants that mention `classifyEntry` were checked before
 this was done: all five mutate CALL SITES in src/commands/doctor.ts,
-src/checks.ts and src/spawn.ts, never the definition, so none of them went
-stale. The suite in section 0 is the evidence that none did.
+src/checks.ts and src/spawn.ts, never the definition. Section 4b's walk of all
+704 stored mutations is the mechanical form of that check and it reports one
+stale member, which is the merge-preconditions one and not any of these five.
 
 ## 7. The derivation command and its full output
 
