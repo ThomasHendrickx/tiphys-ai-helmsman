@@ -37,6 +37,7 @@ import { join } from "node:path";
 import {
   REVIEW_CONTRACTS,
   REVIEW_CONTRACT_ROLE,
+  ROLE_BRIEF_FILES,
   ROLE_IDS,
   clauseRoundTripDiagnostics,
   expandIncludes,
@@ -44,6 +45,7 @@ import {
   missingRequiredSections,
   renderPhase,
   resolveMandatedReading,
+  roleBriefFile,
   selectReviewContract,
   splitFrontmatter,
 } from "../roles.ts";
@@ -110,8 +112,26 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
       reason: `unknown role ${options.roleId}; the roles are ${ROLE_IDS.join(", ")}`,
     };
   }
-  const rolesDirectory = join(options.root, "roles");
-  const rolePath = join(rolesDirectory, `${options.roleId}.md`);
+  /* THE BRIEF'S LOCATION IS DECLARED, NOT COMPUTED FROM THE ID. Five of the
+     six roles ship as `roles/<id>.md` and the orchestrator's ships as
+     `AGENTS.md` at the package root, so `join(root, "roles", id + ".md")`
+     was a path that does not exist for one advertised role. A role the
+     vocabulary declares and the package does not place is refused BY NAME
+     here, before anything is read, rather than surfacing as a missing file
+     the operator reads as a broken install (src/roles.ts:54). Includes are
+     still resolved against `roles/`, which is where `$include:` targets such
+     as `_shared-dispatch-contract.md` live for every role. */
+  const relative = roleBriefFile(options.roleId);
+  if (relative === undefined) {
+    return {
+      ok: false,
+      reason:
+        `role ${options.roleId} is declared in the role vocabulary and this ` +
+        `package does not say where its brief ships; the placed roles are ` +
+        `${Object.keys(ROLE_BRIEF_FILES).join(", ")}`,
+    };
+  }
+  const rolePath = join(options.root, relative);
   const roleRead = readOperatorPath(rolePath);
   if (!roleRead.ok) {
     return { ok: false, reason: `role brief ${rolePath}: ${roleRead.reason}` };
@@ -139,7 +159,13 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
     return { ok: false, reason: resolution.reason };
   }
 
-  const expanded = expandIncludes(split.body, rolesDirectory, rolePath);
+  /* INCLUDES RESOLVE AGAINST THE BRIEF'S OWN DIRECTORY, not against `roles/`.
+     Every brief under `roles/` writes `$include: _shared-dispatch-contract.md`
+     and AGENTS.md, which is the orchestrator's brief at the package root,
+     writes `$include: roles/_shared-dispatch-contract.md`. Both are correct
+     relative to the document they are in, and a fixed `roles/` base turned the
+     second into `roles/roles/_shared-dispatch-contract.md`. */
+  const expanded = expandIncludes(split.body, dirnameOf(rolePath), rolePath);
   if (!expanded.ok) {
     return { ok: false, reason: expanded.reason };
   }

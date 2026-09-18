@@ -60,6 +60,50 @@ export const ROLE_IDS: readonly string[] = [
   "clean-room-reviewer",
 ];
 
+/**
+ * WHERE EACH ROLE'S BRIEF ACTUALLY SHIPS, relative to the kernel root.
+ *
+ * The vocabulary above has six members and `roles/` holds FIVE briefs. The
+ * sixth, the orchestrator's, ships as `AGENTS.md` at the package root, with
+ * `role: orchestrator` frontmatter, which roles/README.md states and
+ * package.json's `files` list carries. Until this constant existed, the
+ * composer resolved every id to `roles/<id>.md`, so
+ * `tiphys brief compose --role orchestrator` answered, against the PUBLISHED
+ * TARBALL, "role brief .../roles/orchestrator.md: ... does not exist" for a
+ * brief that is in the same tarball at a path the resolver never looked in.
+ * A consumer reads that as a broken install.
+ *
+ * This is a composition defect no per-phase review could have caught: M3-P5
+ * built the six-member resolver over `roles/<id>.md`, M3-P6 added files to
+ * that directory, and M3-P9 put the sixth brief somewhere else. Each is
+ * correct alone.
+ *
+ * DECLARED RATHER THAN DERIVED ON PURPOSE. A resolver that fell back to
+ * "look for <id>.md anywhere" would answer for a file that happened to be
+ * there, and the property wanted is the opposite: the package states where
+ * each declared role's brief IS, and test/sweep-exclusion-sync.test.ts turns
+ * a role added without one into a red test rather than a failure at use.
+ */
+export const ROLE_BRIEF_FILES: Readonly<Record<string, string>> = {
+  orchestrator: "AGENTS.md",
+  investigator: "roles/investigator.md",
+  "plan-writer": "roles/plan-writer.md",
+  "adversarial-plan-reviewer": "roles/adversarial-plan-reviewer.md",
+  implementer: "roles/implementer.md",
+  "clean-room-reviewer": "roles/clean-room-reviewer.md",
+};
+
+/**
+ * The brief path for a role, relative to the kernel root, or undefined when
+ * the vocabulary declares a role the package does not ship. The second case
+ * is a REFUSAL the caller names, never a path that is then found missing.
+ */
+export function roleBriefFile(roleId: string): string | undefined {
+  return Object.prototype.hasOwnProperty.call(ROLE_BRIEF_FILES, roleId)
+    ? ROLE_BRIEF_FILES[roleId]
+    : undefined;
+}
+
 /** The fence a role brief's YAML frontmatter block is delimited by. */
 export const FRONTMATTER_FENCE = "---";
 

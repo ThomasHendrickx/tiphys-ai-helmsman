@@ -2,7 +2,6 @@ import { spawnSync } from "node:child_process";
 import {
   existsSync,
   readdirSync,
-  readFileSync,
   statSync,
   unlinkSync,
   writeFileSync,
@@ -11,6 +10,7 @@ import { join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { metaPath, readTaskMeta } from "./task.ts";
 import type { Fleet } from "./fleet.ts";
+import { classifyPathEntry, readRegularPathIfPresent } from "./fleet.ts";
 import { pathsNameSameObject } from "./path-identity.ts";
 
 /**
@@ -242,9 +242,30 @@ export function worktreePath(fleet: Fleet, taskId: string): string {
   return join(fleet.worktreesDir, taskId);
 }
 
+/**
+ * THE RECORD'S ENTRY TYPE IS ESTABLISHED BEFORE IT IS OPENED. A bare read
+ * here hung `tiphys pool destroy` forever with zero output against a named
+ * pipe at `worktrees/<id>.pool.json`; measured before the fix, `pool list`
+ * (which reads only the NAME) returned in the same second while
+ * `pool destroy --task t-0001` was killed at ten seconds. The two commands
+ * differ by whether this function runs, which is what makes the mechanism
+ * the open and not the command.
+ *
+ * A non-regular record is a REFUSAL rather than `undefined`: `undefined`
+ * already means "there is no record", and a caller that cannot tell that
+ * apart from "the record could not be opened" would rebuild a worktree over
+ * a record it never read.
+ */
 export function readPoolRecord(fleet: Fleet, taskId: string): PoolRecord | undefined {
+  const read = readRegularPathIfPresent(recordPath(fleet, taskId));
+  if (read.kind === "absent") {
+    return undefined;
+  }
+  if (read.kind === "refused") {
+    throw new Error(read.reason);
+  }
   try {
-    return JSON.parse(readFileSync(recordPath(fleet, taskId), "utf8")) as PoolRecord;
+    return JSON.parse(read.body) as PoolRecord;
   } catch {
     return undefined;
   }
@@ -706,7 +727,12 @@ export interface PoolListEntry {
   taskId: string;
   headSha: string;
   origin: PoolEntryOrigin;
-  /** Set only for `unreconstructable`: the PoolRecord fields git could not answer for. */
+  /**
+   * Set only for `unreconstructable`: what this listing could not establish.
+   * Usually the PoolRecord fields git could not answer for; `meta` means the
+   * task record itself was present and did not read, which is a different
+   * state from a task that is closed and from one that is not there.
+   */
   unresolved?: string[];
 }
 
@@ -753,19 +779,38 @@ export function poolList(fleet: Fleet): PoolListEntry[] {
     entries.push({ taskId, headSha: headShaOf(fleet, taskId), origin: "record" });
   }
 
-  let taskIds: string[];
-  try {
-    taskIds = readdirSync(fleet.tasksDir).sort();
-  } catch {
-    // No tasks/ at all: nothing to reconstruct from, and the layout check
-    // in doctor is what reports a missing fleet directory.
-    taskIds = [];
-  }
+  /* AN UNLISTABLE tasks/ IS NOT AN ABSENCE OF TASKS (T-036's mechanism, and
+     src/commands/next.ts:40 states the standard: a category empty BY
+     CONSTRUCTION reported as empty BY OBSERVATION). This `catch` swallowed
+     it into `[]`, so `tiphys pool list` printed nothing and exited 0 and
+     doctor's CHECK worktrees printed the positive claim "no pool worktrees"
+     about a directory it had not read. It now reaches the caller through the
+     SAME channel the `readdirSync(fleet.worktreesDir)` above it already
+     uses, which src/commands/next.ts:334 already catches and reports into
+     its `unknown` list. */
+  const taskIds = readdirSync(fleet.tasksDir).sort();
   for (const taskId of taskIds) {
     if (seen.has(taskId) || !TASK_ID_PATTERN.test(taskId)) {
       continue;
     }
+    /* A task record that is PRESENT and did not READ is not a closed task.
+       `readTaskMeta` answers `undefined` for absent, unreadable and
+       unparseable alike, and dropping all three hid exactly the interrupted
+       spawn this listing exists to surface: with tasks/t-0001/meta.json
+       truncated mid-write, `pool list` printed NOTHING while doctor's CHECK
+       tasks reported the same task as open. The entry type is established
+       here rather than inferred from `readTaskMeta`'s one-word answer. */
+    const metaEntry = classifyPathEntry(metaPath(fleet, taskId));
     const meta = readTaskMeta(fleet, taskId);
+    if (meta === undefined && metaEntry.kind !== "absent" && metaEntry.kind !== "dangling") {
+      entries.push({
+        taskId,
+        headSha: headShaOf(fleet, taskId),
+        origin: "unreconstructable",
+        unresolved: ["meta"],
+      });
+      continue;
+    }
     if (meta === undefined || meta.status !== "open") {
       continue;
     }

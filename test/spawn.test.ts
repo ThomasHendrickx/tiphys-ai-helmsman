@@ -2205,7 +2205,7 @@ function fleetTakenOverByAnotherEnvironment(
   const base = Date.now();
   const acquired = runCli(["lock", "acquire", "--duration", "3600"], {
     cwd: homeA,
-    env: { ...baseEnv(), TIPHYS_LOCK_TEST_NOW_MS: String(base - 10 * MINUTE_MS) },
+    env: { ...baseEnv(), TIPHYS_LOCK_TEST_NOW_MS: String(base - 10 * MINUTE_MS), TIPHYS_ALLOW_TEST_CLOCK: "1" },
   });
   assert.equal(acquired.status, 0, `${acquired.stdout}${acquired.stderr}`);
   const holderA = (acquired.stdout.split("\n")[0] as string).split(" ")[1] as string;
@@ -2215,14 +2215,14 @@ function fleetTakenOverByAnotherEnvironment(
   // B observes the register once, which is what arms its own stale clock.
   const observed = runCli(["lock", "acquire"], {
     cwd: homeB,
-    env: { ...baseEnv(), TIPHYS_LOCK_TEST_NOW_MS: String(base) },
+    env: { ...baseEnv(), TIPHYS_LOCK_TEST_NOW_MS: String(base), TIPHYS_ALLOW_TEST_CLOCK: "1" },
   });
   assert.equal(observed.status, 1, observed.stdout);
 
   // The counter has not moved, so on B's OWN clock the window elapses.
   const takeover = runCli(["lock", "acquire", "--take-over"], {
     cwd: homeB,
-    env: { ...baseEnv(), TIPHYS_LOCK_TEST_NOW_MS: String(base + 6000) },
+    env: { ...baseEnv(), TIPHYS_LOCK_TEST_NOW_MS: String(base + 6000), TIPHYS_ALLOW_TEST_CLOCK: "1" },
   });
   assert.equal(takeover.status, 0, `${takeover.stdout}${takeover.stderr}`);
   const envB = envIdOf(homeB);
