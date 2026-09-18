@@ -9,15 +9,15 @@
   "dangerousStates": [
     {
       "kind": "mutation",
-      "file": "src/cutover.ts",
-      "find": "    if (probe.kind === \"directory\") {\n      items.push({ kind: \"worktree\", id, detail: path });",
-      "replace": "    if (false) {\n      items.push({ kind: \"worktree\", id, detail: path });"
+      "file": "src/commands/cutover.ts",
+      "find": "  lines.push(items.length === 0 ? \"DRAIN clean\" : `DRAIN ${String(items.length)} in flight`);",
+      "replace": "  lines.push(\"DRAIN clean\");"
     },
     {
       "kind": "mutation",
-      "file": "src/cutover.ts",
-      "find": "    const turnEnd = classifyEntry(turnEndPath(fleet, id));",
-      "replace": "    const turnEnd = { kind: \"regular\" } as ReturnType<typeof classifyEntry>;"
+      "file": "src/commands/cutover.ts",
+      "find": "  return allKernel && items.length === 0 ? 0 : EX_WORK_REMAINS;",
+      "replace": "  return allKernel ? 0 : EX_WORK_REMAINS;"
     }
   ],
   "deterministic": true,

@@ -2644,3 +2644,89 @@ test("tiphys validate --type cutover-state accepts a good state and names a miss
     rmSync(directory, { recursive: true, force: true });
   }
 });
+
+/**
+ * THE CAPTURE IS REPRODUCED LIVE, so that nothing asserted about another
+ * program's output is a string somebody wrote to match the implementation.
+ *
+ * `tiphys cutover status` spawns and PARSES two programs: the version-control
+ * program, whose stdout is the informational branch count, and `sh` running a
+ * retirement row's negative witness, whose EXIT STATUS is half of the ported
+ * verdict. Red-witness rule (f) binds every witness over the file that does
+ * that, and this is the test those witnesses cite.
+ */
+test("the captured status contracts this phase parses are reproduced live", () => {
+  const capturePath = join(repoRoot, "witness", "captures", "cutover-status-contracts.txt");
+  const recorded = [...readFileSync(capturePath, "utf8").matchAll(/^exit=(\d+)$/gm)].map(
+    (match) => Number(match[1]),
+  );
+  assert.equal(recorded.length, 6, "the capture must record six contracts");
+
+  const root = mkdtempSync(join(tmpdir(), "tiphys-status-contract-"));
+  try {
+    const repo = join(root, "repo");
+    const bare = join(root, "remote.git");
+    mkdirSync(repo, { recursive: true });
+    git(root, ["init", "-q", "--bare", bare]);
+    git(repo, ["init", "-q", "-b", "main"]);
+    writeFileSync(join(repo, "a.md"), "a\n");
+    git(repo, ["add", "-A"]);
+    git(repo, ["commit", "-q", "-m", "one"]);
+    git(repo, ["remote", "add", "origin", bare]);
+    git(repo, ["push", "-q", "origin", "HEAD:refs/heads/main"]);
+
+    const live: number[] = [];
+
+    /* Contract 1: no unmerged branch. Empty list, and the command SUCCEEDED. */
+    const none = cutover.unmergedBranchCount(repo);
+    assert.equal(none.kind, "counted", JSON.stringify(none));
+    assert.deepEqual((none as { kind: "counted"; branches: string[] }).branches, []);
+    live.push(0);
+
+    /* Contract 2: two pushed unmerged branches. */
+    for (const branch of ["f1", "f2"]) {
+      git(repo, ["checkout", "-q", "-b", branch]);
+      writeFileSync(join(repo, `${branch}.md`), `${branch}\n`);
+      git(repo, ["add", "-A"]);
+      git(repo, ["commit", "-q", "-m", branch]);
+      git(repo, ["push", "-q", "origin", branch]);
+      git(repo, ["checkout", "-q", "main"]);
+    }
+    const two = cutover.unmergedBranchCount(repo);
+    assert.equal(two.kind, "counted", JSON.stringify(two));
+    assert.deepEqual(
+      (two as { kind: "counted"; branches: string[] }).branches,
+      ["origin/f1", "origin/f2"],
+      "the branch names come from the program's stdout, not from this test",
+    );
+    live.push(0);
+
+    /* Contract 3: an upstream that does not resolve is a THIRD answer, not a
+       zero. The capture records 128, and a zero here would be the answer a
+       caller cannot tell from the true one. */
+    const bogus = cutover.unmergedBranchCount(repo, "origin/nope");
+    assert.equal(bogus.kind, "unexaminable", JSON.stringify(bogus));
+    assert.match(
+      (bogus as { kind: "unexaminable"; reason: string }).reason,
+      /exited 128/,
+      "the recorded exit must appear in the reason",
+    );
+    live.push(128);
+
+    /* Contracts 4 to 6: grep distinguishes found, not-found and could-not-
+       search, and only the middle one is a red witness. */
+    writeFileSync(join(repo, "present.md"), "token\n");
+    for (const command of [
+      "grep -c token present.md",
+      "grep -c absent-token present.md",
+      "grep -c token missing.md",
+    ]) {
+      const run = spawnSync("sh", ["-c", command], { cwd: repo, encoding: "utf8" });
+      live.push(run.status as number);
+    }
+    assert.deepEqual(live, recorded, "the live exits must equal the captured ones");
+    assert.deepEqual(live.slice(3), [0, 1, 2], "found, not found, could not search");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

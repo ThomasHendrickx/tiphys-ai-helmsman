@@ -20,5 +20,12 @@
     }
   ],
   "deterministic": true,
-  "repeats": 2
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git for-each-ref --no-merged / sh -c <a retirement row negative witness>",
+    "captures": [
+      "witness/captures/cutover-status-contracts.txt"
+    ],
+    "provenance": "src/cutover.ts spawns two external programs and PARSES what they report: `git for-each-ref --no-merged <upstream> refs/remotes/origin`, whose stdout is the informational branch count and whose nonzero exit is the third, unexaminable answer; and `sh -c <command>` running a retirement row negative witness, whose EXIT STATUS is half of the ported verdict. Red-witness rule (f) therefore binds every witness over that file. The cited capture is a real run, taken 2026-09-18 against git 2.43.0 and GNU grep 3.11, and the named test `the captured status contracts this phase parses are reproduced live` re-runs each contract in a scratch repository and requires the live exit status to equal the recorded one, so nothing here is a hand-written string chosen to match the implementation. Two recorded facts earn their place: an empty stdout with exit 0 is what makes no-unmerged-branch decidable, so an upstream that does not resolve has to exit 128 rather than report zero; and grep distinguishes 1 (searched, found nothing) from 2 (could not search), which is why a negative witness must match the exit its row recorded rather than merely being nonzero."
+  }
 }

@@ -1203,5 +1203,6 @@
   "cutover-retirement-evaluates-the-shipped-inventory": "the shipped retirement inventory evaluates every PORT row and reports a verdict for each",
   "cutover-verb-is-registered-in-the-cli": "the cutover verb is registered in the CLI and its usage names status",
   "cutover-status-usage-error-without-fleet": "cutover status without --fleet is a usage error and not a refusal",
-  "cutover-state-type-row-registered": "tiphys validate --type cutover-state accepts a good state and names a missing restoreTo"
+  "cutover-state-type-row-registered": "tiphys validate --type cutover-state accepts a good state and names a missing restoreTo",
+  "cutover-status-contract-reproduced-live": "the captured status contracts this phase parses are reproduced live"
 }
