@@ -1,0 +1,34 @@
+{
+  "id": "merge-preconditions-no-verdict-at-head-is-not-applicable",
+  "behavior": "merge-preconditions-no-verdict-at-head-is-not-applicable",
+  "tests": [
+    "a head no committed verdict names is not-applicable with an evaluated unmet precondition rather than green",
+    "the merge-preconditions gate reports one row per DR-0012 condition plus the branch-protection encoding, each carrying the head sha"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "        status: \"not-applicable\",\n        units: 0,",
+      "replace": "        status: \"green\",\n        units: 1,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    .filter((entry) => String(entry.record[\"head\"] ?? \"\").toLowerCase() === head)",
+      "replace": "    .filter(() => true)"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "GitHub REST API (api.github.com)",
+    "captures": [
+      "witness/captures/m4-p12-github-check-runs.json",
+      "witness/captures/m4-p12-github-rulesets-list.json",
+      "witness/captures/m4-p12-github-ruleset-detail.json"
+    ],
+    "provenance": "Captured 2026-09-17 from the live GitHub REST API with curl and $GH_TOKEN, against ThomasHendrickx/tiphys-ai-helmsman: GET /repos/{slug}/commits/713731ff771afa2555b7850b53648923f36cde0c/check-runs (HTTP 200), GET /repos/{slug}/rulesets?includes_parents=true (HTTP 200), and GET /repos/{slug}/rulesets/20446760 (HTTP 200). The reachability probe and its deliberately-invalid-token control are recorded in delivery/work-history/m4-p12.md."
+  }
+}

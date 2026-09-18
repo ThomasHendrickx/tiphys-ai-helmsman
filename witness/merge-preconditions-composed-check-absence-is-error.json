@@ -1,0 +1,34 @@
+{
+  "id": "merge-preconditions-composed-check-absence-is-error",
+  "behavior": "merge-preconditions-composed-check-absence-is-error",
+  "tests": [
+    "deregistering the composed dual-review check makes its condition error rather than green, so a condition with no check behind it is never a pass",
+    "a pair of verdicts in which one refuses the merge reddens condition 2 while condition 1 stays green"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  if (selected.length === 0) {\n    return {\n      status: \"error\",",
+      "replace": "  if (selected.length === 0) {\n    return {\n      status: \"green\","
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  if (messages.size > 0) {\n    return { status: \"red\", sentence: [...messages].sort().join(\" | \") };",
+      "replace": "  if (false) {\n    return { status: \"red\", sentence: [...messages].sort().join(\" | \") };"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "GitHub REST API (api.github.com)",
+    "captures": [
+      "witness/captures/m4-p12-github-check-runs.json",
+      "witness/captures/m4-p12-github-rulesets-list.json",
+      "witness/captures/m4-p12-github-ruleset-detail.json"
+    ],
+    "provenance": "Captured 2026-09-17 from the live GitHub REST API with curl and $GH_TOKEN, against ThomasHendrickx/tiphys-ai-helmsman: GET /repos/{slug}/commits/713731ff771afa2555b7850b53648923f36cde0c/check-runs (HTTP 200), GET /repos/{slug}/rulesets?includes_parents=true (HTTP 200), and GET /repos/{slug}/rulesets/20446760 (HTTP 200). The reachability probe and its deliberately-invalid-token control are recorded in delivery/work-history/m4-p12.md."
+  }
+}

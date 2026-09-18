@@ -1,0 +1,33 @@
+{
+  "id": "merge-preconditions-arbitration-existence-is-not-the-test",
+  "behavior": "merge-preconditions-arbitration-existence-is-not-the-test",
+  "tests": [
+    "condition 6 is red for an arbitration document that names only one verdict and red for one naming a different head, and a presence-only check passes both"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  const missing = verdictPaths.filter((verdictPath) => !body.includes(basename(verdictPath)));",
+      "replace": "  const missing: string[] = [];"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  const matching = tokens.filter((token) => head.toLowerCase().startsWith(token));",
+      "replace": "  const matching = tokens;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "GitHub REST API (api.github.com)",
+    "captures": [
+      "witness/captures/m4-p12-github-check-runs.json",
+      "witness/captures/m4-p12-github-rulesets-list.json",
+      "witness/captures/m4-p12-github-ruleset-detail.json"
+    ],
+    "provenance": "Captured 2026-09-17 from the live GitHub REST API with curl and $GH_TOKEN, against ThomasHendrickx/tiphys-ai-helmsman: GET /repos/{slug}/commits/713731ff771afa2555b7850b53648923f36cde0c/check-runs (HTTP 200), GET /repos/{slug}/rulesets?includes_parents=true (HTTP 200), and GET /repos/{slug}/rulesets/20446760 (HTTP 200). The reachability probe and its deliberately-invalid-token control are recorded in delivery/work-history/m4-p12.md."
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "id": "merge-preconditions-error-dominates-red",
+  "behavior": "merge-preconditions-error-dominates-red",
+  "tests": [
+    "error dominates red in the gate word, so a run that could not look at one condition never reports a verdict about the merge"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  if (rows.some((row) => row.status === \"error\")) {\n    return \"error\";\n  }\n  if (rows.some((row) => row.status === \"red\")) {\n    return \"red\";\n  }",
+      "replace": "  if (rows.some((row) => row.status === \"red\")) {\n    return \"red\";\n  }\n  if (rows.some((row) => row.status === \"error\")) {\n    return \"error\";\n  }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "export function gateStatusForRows(rows: readonly ConditionRow[]): GateStatus {",
+      "replace": "export function gateStatusForRows(rows: readonly ConditionRow[]): GateStatus {\n  if (rows.length > 0) {\n    return rows.some((row) => row.status === \"green\") ? \"green\" : \"red\";\n  }"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "GitHub REST API (api.github.com)",
+    "captures": [
+      "witness/captures/m4-p12-github-check-runs.json",
+      "witness/captures/m4-p12-github-rulesets-list.json",
+      "witness/captures/m4-p12-github-ruleset-detail.json"
+    ],
+    "provenance": "Captured 2026-09-17 from the live GitHub REST API with curl and $GH_TOKEN, against ThomasHendrickx/tiphys-ai-helmsman: GET /repos/{slug}/commits/713731ff771afa2555b7850b53648923f36cde0c/check-runs (HTTP 200), GET /repos/{slug}/rulesets?includes_parents=true (HTTP 200), and GET /repos/{slug}/rulesets/20446760 (HTTP 200). The reachability probe and its deliberately-invalid-token control are recorded in delivery/work-history/m4-p12.md."
+  }
+}

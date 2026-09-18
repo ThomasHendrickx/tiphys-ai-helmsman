@@ -1,0 +1,34 @@
+{
+  "id": "merge-preconditions-ruleset-encoding-compared",
+  "behavior": "merge-preconditions-ruleset-encoding-compared",
+  "tests": [
+    "the branch-protection row is red against a disabled ruleset and red against one whose required status checks do not name gates, and a mutant that compares neither is green on both",
+    "R-065a is reported as data on the green arm and never turns the branch-protection row red"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  const active = rulesets.filter((ruleset) => ruleset.enforcement === \"active\");",
+      "replace": "  const active = [...rulesets];"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  const withGates = active.filter((ruleset) =>",
+      "replace": "  const withGates = active.length > 0 ? active : active.filter((ruleset) =>"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "GitHub REST API (api.github.com)",
+    "captures": [
+      "witness/captures/m4-p12-github-check-runs.json",
+      "witness/captures/m4-p12-github-rulesets-list.json",
+      "witness/captures/m4-p12-github-ruleset-detail.json"
+    ],
+    "provenance": "Captured 2026-09-17 from the live GitHub REST API with curl and $GH_TOKEN, against ThomasHendrickx/tiphys-ai-helmsman: GET /repos/{slug}/commits/713731ff771afa2555b7850b53648923f36cde0c/check-runs (HTTP 200), GET /repos/{slug}/rulesets?includes_parents=true (HTTP 200), and GET /repos/{slug}/rulesets/20446760 (HTTP 200). The reachability probe and its deliberately-invalid-token control are recorded in delivery/work-history/m4-p12.md."
+  }
+}

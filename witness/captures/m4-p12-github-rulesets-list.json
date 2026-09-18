@@ -1,0 +1,21 @@
+[
+  {
+    "id": 20446760,
+    "name": "main-protection",
+    "target": "branch",
+    "source_type": "Repository",
+    "source": "ThomasHendrickx/tiphys-ai-helmsman",
+    "enforcement": "active",
+    "node_id": "RRS_lACqUmVwb3NpdG9yec5OzvEuzgE3_ig",
+    "_links": {
+      "self": {
+        "href": "https://api.github.com/repos/ThomasHendrickx/tiphys-ai-helmsman/rulesets/20446760"
+      },
+      "html": {
+        "href": "https://github.com/ThomasHendrickx/tiphys-ai-helmsman/rules/20446760"
+      }
+    },
+    "created_at": "2026-08-05T11:47:45.337+02:00",
+    "updated_at": "2026-08-05T11:47:45.368+02:00"
+  }
+]
