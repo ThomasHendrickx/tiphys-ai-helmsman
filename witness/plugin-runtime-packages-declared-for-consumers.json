@@ -1,0 +1,24 @@
+{
+  "id": "plugin-runtime-packages-declared-for-consumers",
+  "behavior": "plugin-runtime-packages-declared-for-consumers",
+  "tests": [
+    "every package the shipped plugin resolves is declared in a consumer-installed stanza"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/package.json",
+      "find": "  \"peerDependencies\": {\n    \"@tiphys/kernel\": \"^0.1.0\"\n  },\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/tool-call-observer.ts",
+      "find": "export const TOOL_CALL_LOG_DIR = [\"state\", \"tool-calls\"] as const;\n",
+      "replace": "export const TOOL_CALL_LOG_DIR = [\"state\", \"tool-calls\"] as const;\nimport \"some-undeclared-helper\";\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

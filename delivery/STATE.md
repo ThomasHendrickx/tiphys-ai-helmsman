@@ -2493,3 +2493,40 @@ delivery/tuition/T-039-two-tuition-ids-each-carried-two-different-entries.md:1.
 Two concurrent agents under DR-0044. With two serial phases left, both waves 13
 and 14 are single-unit workflows. The wave pre-pass records that as a deliberate
 choice rather than an idle slot.
+
+## Sixteen merged phases never had the review their diff required (2026-09-18)
+
+Raised the same day it was found, before M4 closes, because it is a decision
+only the owner can take.
+
+**The finding.** Of the twenty-eight merged M4 phases, sixteen have no review
+document on `main` and had no review agent dispatched: M4-P3, P4, P5, P6, P7,
+P8, P9, P12, P14, P17, P18, P21, P22, P28, P29 and P30. Every one of them
+changed files inside the shipped npm package, which is the row of DR-0027's
+table that requires the full contract. The evidence, the derivation and what is
+NOT established are in
+delivery/tuition/T-041-sixteen-phases-carrying-shipped-code-merged-with-no-clean-room-review.md:1.
+
+**This is not a claim about the code.** All sixteen passed the full gate bundle
+on both CI arms with a green post-merge run. What is missing is the review
+contract.
+
+**Why nothing caught it.** `check-dual-review` is the gate for exactly this and
+it reported not-applicable on every head, because nothing ever committed a
+verdict document (T-040). `merge-preconditions` takes that same precondition and
+inherited the silence. The scope gate audits paths and has no opinion on
+reviews. The stop condition counts merged phases, and a merged phase with no
+review is merged.
+
+**Why it happened.** The triage discipline existed and worked: delivery/STATE.md:65
+records the first twelve phases being classified per branch on 2026-09-16, three
+getting full dual review and five getting one recorded round. The wave phases
+were dispatched after that and the classification step was never run for them. A
+step that runs because someone remembers it does not survive the next batch,
+which is T-005, T-017 and T-039 one more time.
+
+**What is owed and what is not.** Nothing is reverted; the code is green on
+`main` and re-landing sixteen phases would be larger and riskier than reviewing
+them where they stand. Whether to spend thirty-two reviewer agents on a
+retrospective pass before cutover entry, to review a subset, or to accept the
+gap, is with the owner.

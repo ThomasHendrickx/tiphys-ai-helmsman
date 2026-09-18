@@ -89,7 +89,8 @@ const turnEnd = (await import(
 const observer = (await import(
   new URL("../plugin/src/hooks/tool-call-observer.ts", import.meta.url).href
 )) as {
-  TOOL_CALL_LOG_BASENAME: string;
+  TOOL_CALL_LOG_DIR: readonly string[];
+  toolCallLogBasename(taskId: string): string;
   makeToolCallRecord(raw: string, at: string): {
     receivedAt: string;
     payloadSha256: string;
@@ -518,7 +519,12 @@ test("the observer lets a tool call through and records it, and removing it chan
   const worktree = join(fleet, "worktrees", taskId);
   mkdirSync(taskDir, { recursive: true });
   mkdirSync(worktree, { recursive: true });
-  const logPath = join(taskDir, observer.TOOL_CALL_LOG_BASENAME);
+  /* THE PATH COMES FROM THE SHIPPED RESOLVER, never from a literal here. It
+     moved out of `tasks/` in the CR-A-003 fix and a second copy of the
+     decision in this file would have gone stale silently. */
+  const resolvedLog = observer.resolveToolCallLog(worktree);
+  assert.equal(resolvedLog.ok, true, resolvedLog.ok ? "" : resolvedLog.reason);
+  const logPath = (resolvedLog as { ok: true; path: string }).path;
 
   // THE PAYLOAD IS THE REAL CAPTURE WITH EXACTLY TWO PATHS RELOCATED, and the
   // relocation is declared rather than quiet: M4-P1's own scratch directory is
@@ -799,4 +805,276 @@ test("a status emit that fails leaves the turn outcome unchanged and the turn-en
     false,
     "the status emit succeeded, so this arm asserts nothing",
   );
+});
+
+/* -------------------------------------------------------------------- */
+/* CR-A-003: the tool-call log is EVIDENCE and must not be PUBLISHED      */
+/* -------------------------------------------------------------------- */
+
+/**
+ * THE PROPERTY, NOT THE PATH. This test never names `state/tool-calls`: it
+ * asks the SHIPPED resolver where the log goes, then asks a REAL `tiphys sync`
+ * against a REAL bare remote whether a secret the observer captured verbatim
+ * came out the other side. Any future relocation of the log into a durable
+ * tree reddens it, which is what makes it a guard over the mechanism (a
+ * destination whose git exposure is decided by a denylist) rather than over
+ * the one file CR-A-003 named.
+ *
+ * TWO STRUCTURALLY DIFFERENT MEMBERS, because one witness is not a class. A
+ * `Bash` payload carries the secret in `tool_input.command`, a shell string the
+ * observer never parses; a `Write` payload carries it in `tool_input.content`,
+ * a file body that the project-write block adjudicates by PATH and never by
+ * content. They arrive on different fields of different tool shapes, so a
+ * per-field redactor written for either one would miss the other, and that is
+ * exactly the fix this round rejected.
+ *
+ * THE SECRETS ARE SYNTHETIC AND SHAPED LIKE REAL ONES on purpose: a token that
+ * did not look like a token could be filtered by accident and the test would
+ * still pass.
+ */
+test("a secret the observer captured verbatim does not reach the fleet remote, in a Bash command or in a Write body", (t) => {
+  const tmp = makeTempDir(t);
+  const fleet = join(tmp, "fleet");
+  const remote = join(tmp, "remote.git");
+  const init = runCli(["init", fleet]);
+  assert.equal(init.status, 0, `${init.stdout}${init.stderr}`);
+
+  const bare = spawnSync("git", ["init", "--bare", "-q", remote], { encoding: "utf8" });
+  assert.equal(bare.status, 0, bare.stderr);
+  const added = spawnSync("git", ["-C", fleet, "remote", "add", "origin", remote], {
+    encoding: "utf8",
+  });
+  assert.equal(added.status, 0, added.stderr);
+
+  const taskId = "t-secret";
+  const taskDir = join(fleet, "tasks", taskId);
+  const worktree = join(fleet, "worktrees", taskId);
+  mkdirSync(taskDir, { recursive: true });
+  mkdirSync(worktree, { recursive: true });
+
+  const bashSecret = "ghp_WITNESSBASH0123456789abcdefghij";
+  const writeSecret = "AWS_SECRET_ACCESS_KEY=WITNESSWRITE0123456789abcdefgh";
+  const members = [
+    {
+      name: "Bash tool_input.command",
+      payload: {
+        session_id: "w",
+        cwd: worktree,
+        hook_event_name: "PreToolUse",
+        tool_name: "Bash",
+        tool_input: {
+          command: `curl -H 'Authorization: Bearer ${bashSecret}' https://example.invalid`,
+          description: "publish",
+        },
+      },
+      secret: bashSecret,
+    },
+    {
+      name: "Write tool_input.content",
+      payload: {
+        session_id: "w",
+        cwd: worktree,
+        hook_event_name: "PreToolUse",
+        tool_name: "Write",
+        tool_input: { file_path: join(worktree, ".env"), content: `${writeSecret}\n` },
+      },
+      secret: writeSecret,
+    },
+  ];
+
+  let logPath = "";
+  for (const member of members) {
+    const child = spawnSync(process.execPath, [observerEntry], {
+      input: JSON.stringify(member.payload),
+      encoding: "utf8",
+    });
+    assert.equal(child.status, 0, `${member.name}: observer exited ${String(child.status)}`);
+    const resolved = observer.resolveToolCallLog(worktree);
+    assert.equal(resolved.ok, true, resolved.ok ? "" : resolved.reason);
+    logPath = (resolved as { ok: true; path: string }).path;
+  }
+
+  /* THE CAPTURE IS STILL VERBATIM. If this ever fails the observer has been
+     turned into a summariser, which is the fix this round rejected, and the
+     rest of the test would then pass for the wrong reason. */
+  const log = readFileSync(logPath, "utf8");
+  for (const member of members) {
+    assert.equal(log.includes(member.secret), true, `${member.name} was not captured verbatim`);
+  }
+
+  const sync = spawnSync(process.execPath, [cliEntry, "sync"], {
+    cwd: fleet,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GIT_AUTHOR_NAME: "tiphys-test",
+      GIT_AUTHOR_EMAIL: "tiphys-test@example.invalid",
+      GIT_COMMITTER_NAME: "tiphys-test",
+      GIT_COMMITTER_EMAIL: "tiphys-test@example.invalid",
+    },
+  });
+  assert.equal(sync.status, 0, `${sync.stdout}${sync.stderr}`);
+  assert.equal(sync.stdout.includes("PUSHED origin"), true, sync.stdout);
+
+  /* EVERY OBJECT IN THE REMOTE, not every path in one tree. `cat-file
+     --batch-all-objects` walks the whole object database, so a blob that is
+     committed but unreachable, or reachable from a ref this test did not
+     predict, is still searched; a `git grep` over one ref would have been a
+     search whose scope was a guess. Read as latin1 so the needle match is over
+     BYTES and a non-UTF-8 blob cannot throw the search away. */
+  const dump = spawnSync("git", ["-C", remote, "cat-file", "--batch-all-objects", "--batch"], {
+    encoding: "latin1",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  assert.equal(dump.status, 0, dump.stderr);
+  const objects = dump.stdout;
+
+  /* THE POSITIVE CONTROL, first, because a search that finds nothing because
+     it searched nothing is indistinguishable from a clean result. The fleet
+     `.gitignore` really is in the remote and its first rule really is there. */
+  assert.equal(
+    objects.includes("worktrees/"),
+    true,
+    "the object dump does not contain the fleet .gitignore, so this search proves nothing",
+  );
+
+  for (const member of members) {
+    assert.equal(
+      objects.includes(member.secret),
+      false,
+      `${member.name}: the secret is in the remote object database`,
+    );
+  }
+
+  /* AND THE OPERATOR WHO FORCES IT PAST THE IGNORE RULE IS STOPPED BY NAME,
+     which is the second half and needs no new code: the log is now under a
+     prefix the fleet `.gitignore` covers, so `tiphys sync`'s existing
+     staged-ephemeral refusal (src/commands/sync.ts:278) names it. */
+  const forced = spawnSync("git", ["-C", fleet, "add", "-f", "--", logPath], {
+    encoding: "utf8",
+  });
+  assert.equal(forced.status, 0, forced.stderr);
+  const refused = spawnSync(process.execPath, [cliEntry, "sync"], {
+    cwd: fleet,
+    encoding: "utf8",
+  });
+  assert.equal(refused.status, 1, `${refused.stdout}${refused.stderr}`);
+  assert.equal(
+    refused.stderr.includes("is staged and is ephemeral by") &&
+      refused.stderr.includes("nothing was committed"),
+    true,
+    refused.stderr,
+  );
+});
+
+/**
+ * THE IGNORE RULE AND THE LOG PATH ARE ONE SOURCE, and the question is put to
+ * GIT rather than to two string constants.
+ *
+ * `FLEET_IGNORED` (src/fleet.ts:29) is what `tiphys init` writes into the fleet
+ * `.gitignore`, and `tiphys sync` classifies by asking `git check-ignore`
+ * against that file (src/commands/sync.ts:186). So the only assertion that
+ * settles "is this log ephemeral" is the one git answers. Comparing
+ * `TOOL_CALL_LOG_DIR[0]` to the string "state" would pass in a fleet whose
+ * ignore file had been changed, which is the guard-that-cannot-go-red shape.
+ */
+test("git itself reports the tool-call log ephemeral in a real tiphys init fleet, and the task directory durable", (t) => {
+  const tmp = makeTempDir(t);
+  const fleet = join(tmp, "fleet");
+  assert.equal(runCli(["init", fleet]).status, 0);
+
+  const taskId = "t-ignore";
+  mkdirSync(join(fleet, "tasks", taskId), { recursive: true });
+  mkdirSync(join(fleet, "worktrees", taskId), { recursive: true });
+  const resolved = observer.resolveToolCallLog(join(fleet, "worktrees", taskId));
+  assert.equal(resolved.ok, true, resolved.ok ? "" : resolved.reason);
+  const logPath = (resolved as { ok: true; path: string }).path;
+
+  const ask = (absolute: string): { status: number; stdout: string } => {
+    const run = spawnSync("git", ["-C", fleet, "check-ignore", "--no-index", "-v", "--", absolute], {
+      encoding: "utf8",
+    });
+    return { status: run.status ?? -1, stdout: run.stdout ?? "" };
+  };
+
+  const logAnswer = ask(logPath);
+  assert.equal(logAnswer.status, 0, `git does not ignore ${logPath}`);
+  /* The rule that covers it is PRINTED, so the evidence names which line of
+     which file did the covering rather than only that something did. */
+  assert.equal(logAnswer.stdout.includes(".gitignore"), true, logAnswer.stdout);
+
+  /* THE CONTROL, and it is the half that makes the assertion above mean
+     something: the task directory it used to live in is NOT ignored, so this
+     test would have been red before the move for the right reason. */
+  const taskAnswer = ask(join(fleet, "tasks", taskId, "tool-calls.jsonl"));
+  assert.equal(
+    taskAnswer.status,
+    1,
+    `tasks/ is ignored, so this test proves nothing: ${taskAnswer.stdout}`,
+  );
+});
+
+/* -------------------------------------------------------------------- */
+/* CR-A-007: an undelivered status line is reported on EVERY arm         */
+/* -------------------------------------------------------------------- */
+
+/**
+ * THE NORMAL ARM IS THE ONE THAT WAS SILENT, which is why CR-A-002 survived
+ * four phases: `statusSuffix` reaches only the `incomplete` reason, and a
+ * consumer install takes the `completed` path on every healthy turn.
+ *
+ * The delivery is made to fail the way the existing witness makes it fail, by
+ * replacing the directory the emit writes into with a REGULAR FILE, so the
+ * reason the adapter reports is the kernel's own and not a stub's. The two
+ * assertions that matter are jointly necessary: the outcome is STILL
+ * `completed` (nothing about reporting may change what the adapter reports,
+ * criterion 8) and stderr NAMES the failure.
+ */
+test("a status line that could not be delivered is reported on stderr even when the turn completes", async (t) => {
+  const lab = makeTurnLab(t, "t-a007");
+  const marker = join(lab.tmp, "payload-ran");
+
+  /* THE STATUS TARGET, BROKEN ON PURPOSE. `state/` is a directory in every
+     fleet; replacing it with a regular file makes the real `tiphys status
+     emit` fail for a real reason. */
+  rmSync(join(lab.fleet, "state"), { recursive: true, force: true });
+  writeFileSync(join(lab.fleet, "state"), "not a directory\n");
+
+  const captured: string[] = [];
+  const original = process.stderr.write.bind(process.stderr);
+  (process.stderr as { write: unknown }).write = ((chunk: unknown) => {
+    captured.push(String(chunk));
+    return true;
+  }) as typeof process.stderr.write;
+  let outcome: Outcome;
+  try {
+    outcome = await adapterModule.claudeCodeAdapter.launch({
+      taskId: lab.taskId,
+      worktree: lab.worktree,
+      command: [process.execPath, "-e", `require("fs").writeFileSync(${JSON.stringify(marker)}, "ran")`],
+      hookPath: lab.hookPath,
+      recordPath: lab.recordPath,
+      deadlineSeconds: undefined,
+      env: undefined,
+      briefPath: lab.briefPath,
+      role: undefined,
+      declaredTier: undefined,
+      phaseId: undefined,
+    });
+  } finally {
+    (process.stderr as { write: unknown }).write = original;
+  }
+
+  /* THE OUTCOME IS UNCHANGED. A report that could change the verdict would be
+     a policy, and this adapter ships none on this path. */
+  assert.equal(outcome.kind, "completed", JSON.stringify(outcome));
+  assert.equal(existsSync(marker), true, "the payload did not run");
+
+  const stderr = captured.join("");
+  assert.equal(
+    stderr.includes("the status line was not delivered"),
+    true,
+    `nothing was reported; stderr was ${JSON.stringify(stderr)}`,
+  );
+  assert.equal(stderr.includes(adapterModule.ADAPTER_NAME), true, stderr);
 });

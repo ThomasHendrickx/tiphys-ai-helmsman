@@ -150,6 +150,61 @@ function firstSegmentUnder(root: string, path: string): string | undefined {
 }
 
 /**
+ * The ref surface, as an ALLOWLIST, derived from what git actually writes.
+ *
+ * THE CARVE-OUT IS A CAPABILITY, NOT A DIRECTORY, and drawing it at a
+ * directory is the defect CR-A-001 records. `.git/hooks/post-merge` and
+ * `.git/config` are inside `<root>/.git` and are not ref updates: they are
+ * EXECUTABLE POLICY for every later git command in that clone, so a single
+ * permitted write into either turns the release manager's own
+ * `git merge --ff-only` into the working-tree write this block had refused one
+ * command earlier. Measured end to end, both members, at
+ * delivery/work-history/plugin-security-fixes.md:1.
+ *
+ * DERIVED, NOT REMEMBERED. The entries below are the paths a real
+ * `git fetch` followed by a real `git merge --ff-only` created or rewrote
+ * under `.git` in a measured clone, plus the siblings the same operations
+ * produce when the merge is not a fast-forward (`MERGE_HEAD`, `MERGE_MSG`,
+ * `MERGE_MODE`, `SQUASH_MSG`, `COMMIT_EDITMSG`), when a checkout or reset runs
+ * (`HEAD`, the `*_HEAD` family), and when git packs refs or objects
+ * (`packed-refs`, `shallow`). The measurement is in the work history; the
+ * standing proof that the set is still WIDE ENOUGH is
+ * test/project-write-block.test.ts, which runs a real merge and requires every
+ * `.git` path it wrote to be permitted, filtered on the FIRST SEGMENT rather
+ * than on this predicate so the test cannot narrow itself alongside a bug.
+ *
+ * WHAT IS DELIBERATELY OUTSIDE IT. `hooks/` (git executes it), `config` (it
+ * can set `core.hooksPath`, `core.fsmonitor` and `alias.*`, each of which is a
+ * command git runs), `info/` (`info/exclude` changes what git considers
+ * tracked and `info/attributes` names filter drivers), `worktrees/` and
+ * `modules/` (each holds another checkout's own `config.worktree` and hooks),
+ * and `.git` itself as a path. Every one of those is refused with `hooks/` and
+ * `config` named, because a refusal that does not say what it refused sends
+ * the reader to look for a hook defect.
+ */
+const GIT_REF_SURFACE_FILES = new Set([
+  "HEAD",
+  "ORIG_HEAD",
+  "FETCH_HEAD",
+  "MERGE_HEAD",
+  "CHERRY_PICK_HEAD",
+  "REVERT_HEAD",
+  "REBASE_HEAD",
+  "BISECT_HEAD",
+  "AUTO_MERGE",
+  "index",
+  "packed-refs",
+  "shallow",
+  "MERGE_MSG",
+  "MERGE_MODE",
+  "SQUASH_MSG",
+  "COMMIT_EDITMSG",
+]);
+
+/** The subtrees of `.git` a ref update writes into, as first segments. */
+const GIT_REF_SURFACE_DIRS = new Set(["refs", "logs", "objects"]);
+
+/**
  * Is `path` under `root`'s own `.git`?
  *
  * SEGMENT-WISE, never a substring test. `<root>/.gitignore` and
@@ -158,9 +213,37 @@ function firstSegmentUnder(root: string, path: string): string | undefined {
  * FIRST segment only, because the carve-out is for THIS clone's refs; a nested
  * submodule's `.git` deeper down is another clone's working tree and is not
  * what AGENTS.md's clause hands the release manager.
+ *
+ * THIS IS THE LOCATION TEST AND IT IS NOT THE CARVE-OUT. `isGitRefSurface`
+ * below is the carve-out; this function is exported because a caller that
+ * wants to know "is this path inside this clone's git directory at all", such
+ * as the wide-enough half of the merge test, must be able to ask that WITHOUT
+ * asking the narrower question, or the test narrows itself alongside a bug.
  */
 export function isGitInternal(root: string, path: string): boolean {
   return firstSegmentUnder(root, path) === ".git";
+}
+
+/**
+ * Is `path` on the REF SURFACE of `root`'s own `.git`?
+ *
+ * The one predicate `decideWrite` carves out on. False for `<root>/.git`
+ * itself, because writing a file over the git directory is not a ref update
+ * by any spelling.
+ */
+export function isGitRefSurface(root: string, path: string): boolean {
+  if (!isGitInternal(root, path)) {
+    return false;
+  }
+  const gitDir = join(root, ".git");
+  const inside = firstSegmentUnder(gitDir, path);
+  if (inside === undefined) {
+    return false;
+  }
+  if (GIT_REF_SURFACE_DIRS.has(inside)) {
+    return true;
+  }
+  return relative(gitDir, path) === inside && GIT_REF_SURFACE_FILES.has(inside);
 }
 
 /**
@@ -227,6 +310,24 @@ export function bypassDoesNotApply(
   if (expiry <= at) {
     return `${declaration} does not apply: its expiry ${bypass.expiresAt} is not after ${now}`;
   }
+  /* THE SAME ARGUMENT ONE LEVEL DOWN, and leaving it out was CR-A-005. The
+     `/` case below is refused because `isInside(projectRoot, "/")` is false,
+     which is a refusal by accident of the containment test rather than by a
+     rule. An entry equal to the PROJECT ROOT passes that test and, because
+     `isInside` is reflexive, covers every path in the project: it is the same
+     off switch, declared one directory in. It is named explicitly rather than
+     left to fall out of the coverage check, because a declaration that is an
+     off switch and a declaration that simply misses this write are different
+     states and an operator must be able to tell them apart. One such entry
+     refuses the whole declaration: an off switch beside three honest entries
+     is still an off switch. */
+  const rootEntry = bypass.paths.find((entry) => resolve(entry) === projectRoot);
+  if (rootEntry !== undefined) {
+    return (
+      `${declaration} does not apply: its path list names the project root ` +
+      `${rootEntry}, which is an off switch rather than an explicit path list`
+    );
+  }
   const covers = bypass.paths.some((entry) => {
     const listed = resolve(entry);
     /* A listed path buys nothing outside the project it was declared for.
@@ -289,12 +390,43 @@ export function decideWrite(
       reason: `${target} is outside every project working tree`,
     };
   }
-  if (isGitInternal(root, target)) {
+  if (isGitRefSurface(root, target)) {
     return {
       verdict: "permit",
       reason:
         `${target} is a ref update under ${join(root, ".git")}, which is the ` +
         `release-manager carve-out of AGENTS.md's projects-read-only clause`,
+    };
+  }
+  /* A PATH INSIDE `.git` THAT IS NOT ON THE REF SURFACE GETS ITS OWN REFUSAL,
+     because the working-tree wording below would be a false diagnosis for it
+     and would send the reader to look for the wrong thing. */
+  if (isGitInternal(root, target)) {
+    const refusal =
+      `${target} is inside ${join(root, ".git")} and is not on the ref ` +
+      `surface the release-manager carve-out covers (HEAD and the other ` +
+      `*_HEAD files, index, packed-refs, shallow, the merge and commit ` +
+      `message buffers, and refs/, logs/ and objects/), so it is refused: ` +
+      `hooks/ is executed by git and config can name a command through ` +
+      `core.hooksPath, core.fsmonitor or alias.*, which makes either one a ` +
+      `working-tree write by the next git command rather than a ref update`;
+    if (bypass === undefined) {
+      return { verdict: "refuse", reason: `${refusal}, and no write bypass is declared` };
+    }
+    const why = bypassDoesNotApply(bypass, root, target, now);
+    if (why !== undefined) {
+      return { verdict: "refuse", reason: `${refusal}, and ${why}` };
+    }
+    return {
+      verdict: "permit",
+      reason: `${target} is permitted by the write bypass declared at ${bypass.declaredAt}`,
+      bypass: {
+        project: bypass.project,
+        expiresAt: bypass.expiresAt,
+        declaredAt: bypass.declaredAt,
+        declaredBy: bypass.declaredBy,
+        reason: bypass.reason,
+      },
     };
   }
   const refusal =

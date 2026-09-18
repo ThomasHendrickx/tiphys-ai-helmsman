@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -13,7 +14,7 @@ import {
 } from "node:fs";
 import type { Dirent } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -100,6 +101,7 @@ const block = (await import(new URL("../plugin/src/hooks/project-write-block.ts"
   runHook(raw: string, now: string): { exitCode: number; stderr: string };
   canonicalisePath(path: string): string;
   isGitInternal(root: string, path: string): boolean;
+  isGitRefSurface(root: string, path: string): boolean;
 };
 
 /* -------------------------------------------------------------------- */
@@ -311,9 +313,17 @@ test("a real git merge --ff-only moves the ref and the block permits every path 
        updates the working tree is the release manager's act, and this test
        asserts only that the REF UPDATES are permitted, which is the line
        M4-D-27 draws and the one AGENTS.md's clause draws. */
+    /* SELECTED ON THE FIRST SEGMENT, NOT ON THE CARVE-OUT PREDICATE. Until
+       CR-A-001 this filter called `isGitInternal`, which was ALSO the predicate
+       `decideWrite` carved out on, so the test asked "is every path the
+       carve-out covers permitted", which is a tautology, and it narrowed itself
+       automatically whenever the carve-out narrowed. Asking the location
+       question independently is what makes this the WIDE-ENOUGH proof: if the
+       ref surface ever stops covering something a real merge really writes,
+       this goes red. */
     const canonicalProject = block.canonicalisePath(project);
-    const refUpdates = written.filter((path) =>
-      block.isGitInternal(canonicalProject, block.canonicalisePath(join(project, path))),
+    const refUpdates = written.filter(
+      (path) => path === ".git" || path.startsWith(`.git/`),
     );
     assert.equal(refUpdates.length > 0, true, `no .git path among ${written.join(", ")}`);
     for (const path of refUpdates) {
@@ -902,5 +912,227 @@ test("the write-bypass type validates a declaration and refuses one with no expi
     assert.equal(rel.status, 1, `${rel.stdout}${rel.stderr}`);
   } finally {
     rmSync(scratch, { recursive: true, force: true });
+  }
+});
+
+/* -------------------------------------------------------------------- */
+/* CR-A-001: the .git carve-out is the REF SURFACE, not the directory    */
+/* -------------------------------------------------------------------- */
+
+/**
+ * TWO STRUCTURALLY DIFFERENT MEMBERS, because one witness is not a class.
+ *
+ * `.git/hooks/post-merge` PLACES a program where git executes it. `.git/config`
+ * REDIRECTS where git looks for programs, through `core.hooksPath`,
+ * `core.fsmonitor` or `alias.*`; it was driven end to end with `.git/hooks`
+ * EMPTY, which is what proves the second member does not reach its escalation
+ * through the first. A fix that special-cased `hooks/` alone would close one
+ * and leave the other, which is exactly the instance-not-mechanism shape the
+ * fix-round contract is about. `.git/info/exclude` is a third member and is
+ * asserted with them because it is neither: it changes what git CONSIDERS
+ * tracked, so it is a policy write that executes nothing.
+ */
+test("the .git carve-out permits the ref surface and refuses hooks, config and info", () => {
+  const fleet = makeFleet();
+  try {
+    const root = makePlainProject(fleet, "app");
+    const canonical = block.canonicalisePath(root);
+    const roots: ProjectRootsShape = { kind: "observed", roots: [canonical] };
+    const decide = (relative: string): DecisionShape =>
+      block.decideWrite(
+        { tool: "Write", targetPath: join(canonical, relative) },
+        roots,
+        undefined,
+        "2026-09-18T00:00:00Z",
+      );
+
+    /* The ref surface, which the release manager's own merge needs. */
+    for (const permitted of [
+      ".git/refs/heads/main",
+      ".git/refs/remotes/origin/main",
+      ".git/logs/HEAD",
+      ".git/objects/61/780798228d17af2d34fce4cfbdf35556832472",
+      ".git/HEAD",
+      ".git/ORIG_HEAD",
+      ".git/FETCH_HEAD",
+      ".git/MERGE_HEAD",
+      ".git/index",
+      ".git/packed-refs",
+    ]) {
+      const decision = decide(permitted);
+      assert.equal(decision.verdict, "permit", `${permitted}: ${decision.reason}`);
+    }
+
+    /* The three members, and the `.git` entry itself. */
+    for (const refused of [
+      ".git/hooks/post-merge",
+      ".git/hooks/pre-commit",
+      ".git/config",
+      ".git/info/exclude",
+      ".git/info/attributes",
+      ".git/worktrees/w/config.worktree",
+      ".git/modules/sub/hooks/post-merge",
+      ".git",
+    ]) {
+      const decision = decide(refused);
+      assert.equal(decision.verdict, "refuse", `${refused} was permitted: ${decision.reason}`);
+      /* The refusal must SAY what it refused and why, or the reader goes
+         looking for a hook defect (criterion 4's property, one carve-out over). */
+      assert.equal(
+        decision.reason.includes("ref surface") && decision.reason.includes("hooks/"),
+        true,
+        `${refused}: ${decision.reason}`,
+      );
+    }
+
+    /* And the wrapper agrees with the pure decision, exit code for exit code. */
+    assert.equal(
+      runWrapper(payloadFor("Write", root, join(root, ".git", "hooks", "post-merge"))).exitCode,
+      block.EXIT_REFUSE,
+    );
+    assert.equal(
+      runWrapper(payloadFor("Write", root, join(root, ".git", "config"))).exitCode,
+      block.EXIT_REFUSE,
+    );
+    assert.equal(
+      runWrapper(payloadFor("Write", root, join(root, ".git", "refs", "heads", "main"))).exitCode,
+      block.EXIT_PERMIT,
+    );
+  } finally {
+    rmSync(fleet, { recursive: true, force: true });
+  }
+});
+
+/**
+ * THE DANGEROUS STATE, DRIVEN TO ITS CONSEQUENCE RATHER THAN DESCRIBED.
+ *
+ * A permitted `.git/hooks/post-merge` write is not itself the defect; the
+ * defect is that the RELEASE MANAGER'S OWN `git merge --ff-only`, the one
+ * operation the carve-out exists for, then performs the working-tree write the
+ * block refused one command earlier. This test writes the hook DIRECTLY,
+ * without asking the block, runs a real merge, and asserts the working tree
+ * moved: that is the escalation, and it is what makes the refusal above
+ * meaningful rather than a taste in path lists. Then it asserts the block
+ * refuses the write that starts it.
+ */
+test("a post-merge hook turns the release manager's own merge into a working-tree write, and the block now refuses the write that plants it", () => {
+  const fleet = makeFleet();
+  try {
+    const upstream = join(fleet, "upstream");
+    mkdirSync(upstream, { recursive: true });
+    assert.equal(git(upstream, ["init", "-q", "--initial-branch=main"]).status, 0);
+    writeFileSync(join(upstream, "app.txt"), "one\n");
+    assert.equal(git(upstream, ["add", "-A"]).status, 0);
+    assert.equal(git(upstream, ["commit", "-q", "-m", "one"]).status, 0);
+
+    const project = join(fleet, "projects", "app");
+    assert.equal(git(fleet, ["clone", "-q", upstream, project]).status, 0);
+    writeFileSync(join(upstream, "app.txt"), "two\n");
+    assert.equal(git(upstream, ["add", "-A"]).status, 0);
+    assert.equal(git(upstream, ["commit", "-q", "-m", "two"]).status, 0);
+    assert.equal(git(project, ["fetch", "-q", "origin"]).status, 0);
+
+    const marker = join(project, "OWNED.txt");
+    writeFileSync(
+      join(project, ".git", "hooks", "post-merge"),
+      `#!/bin/sh\necho OWNED > "$(git rev-parse --show-toplevel)/OWNED.txt"\n`,
+      { mode: 0o755 },
+    );
+    assert.equal(existsSync(marker), false, "the marker existed before the merge");
+    assert.equal(git(project, ["merge", "--ff-only", "origin/main"]).status, 0);
+    /* THE ESCALATION, MEASURED: the merge ran the hook and the hook wrote the
+       working tree. If this assertion ever fails the whole finding is void. */
+    assert.equal(existsSync(marker), true, "the post-merge hook did not run, so this proves nothing");
+    assert.equal(
+      git(project, ["status", "--porcelain"]).stdout.includes("OWNED.txt"),
+      true,
+    );
+
+    /* And the block refuses the write that plants it, through the real wrapper. */
+    const wrapper = runWrapper(
+      payloadFor("Write", project, join(project, ".git", "hooks", "post-merge")),
+    );
+    assert.equal(wrapper.exitCode, block.EXIT_REFUSE, wrapper.stderr);
+  } finally {
+    rmSync(fleet, { recursive: true, force: true });
+  }
+});
+
+/* -------------------------------------------------------------------- */
+/* CR-A-005: a path list naming the project root is an off switch        */
+/* -------------------------------------------------------------------- */
+
+/**
+ * THE SAME MECHANISM ONE CARVE-OUT OVER, which is why it is fixed in this
+ * round rather than left for its own. `isInside` is reflexive, so an entry
+ * equal to the project root covers every path in the project; the module
+ * already contains the argument that rules this out for `/`.
+ *
+ * The NARROWNESS half is asserted with it, and it is the half that makes this
+ * a guard rather than a blanket: a declaration listing a genuine subtree still
+ * permits a write inside that subtree and still refuses one outside it.
+ */
+test("a write bypass whose path list names the project root is refused, and a genuine subtree still applies", () => {
+  const fleet = makeFleet();
+  try {
+    const root = block.canonicalisePath(makePlainProject(fleet, "app"));
+    const roots: ProjectRootsShape = { kind: "observed", roots: [root] };
+    const declaration = (paths: readonly string[]): BypassShape => ({
+      kind: "write-bypass",
+      contractVersion: "1",
+      project: root,
+      paths,
+      reason: "infrastructure hotfix",
+      expiresAt: "2030-01-01T00:00:00Z",
+      declaredBy: "orchestrator",
+      declaredAt: "2026-01-01T00:00:00Z",
+    });
+    const decide = (paths: readonly string[], target: string): DecisionShape =>
+      block.decideWrite(
+        { tool: "Write", targetPath: target },
+        roots,
+        declaration(paths),
+        "2026-09-18T00:00:00Z",
+      );
+
+    for (const target of [
+      join(root, "src", "app.ts"),
+      join(root, "package.json"),
+      join(root, "deep", "nested", "any.txt"),
+    ]) {
+      const decision = decide([root], target);
+      assert.equal(decision.verdict, "refuse", `${target}: ${decision.reason}`);
+      assert.equal(
+        decision.reason.includes("names the project root"),
+        true,
+        decision.reason,
+      );
+    }
+
+    /* Narrow, not blanket. */
+    const inside = decide([join(root, "src")], join(root, "src", "app.ts"));
+    assert.equal(inside.verdict, "permit", inside.reason);
+    const outside = decide([join(root, "src")], join(root, "package.json"));
+    assert.equal(outside.verdict, "refuse", outside.reason);
+    assert.equal(outside.reason.includes("does not cover"), true, outside.reason);
+
+    /* A root entry beside honest entries is still an off switch. */
+    const mixed = decide([join(root, "src"), root], join(root, "src", "app.ts"));
+    assert.equal(mixed.verdict, "refuse", mixed.reason);
+
+    /* THE SECOND MEMBER OF THE CLASS, AND IT IS STRUCTURALLY DIFFERENT: the
+       same off switch written in a SPELLING that is not byte-equal to the
+       project root. A guard that compared the declared string rather than the
+       RESOLVED path would pass the rows above and let this one through, which
+       is the same "compare the spelling, not the thing" shape CR-A-002 is. The
+       declaration is what an operator types, so its spelling is never
+       guaranteed. */
+    for (const spelling of [`${root}${sep}`, join(root, "src", "..")]) {
+      const alias = decide([spelling], join(root, "src", "app.ts"));
+      assert.equal(alias.verdict, "refuse", `${spelling}: ${alias.reason}`);
+      assert.equal(alias.reason.includes("names the project root"), true, alias.reason);
+    }
+  } finally {
+    rmSync(fleet, { recursive: true, force: true });
   }
 });
