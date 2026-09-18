@@ -1148,5 +1148,6 @@
   "merge-preconditions-ruleset-encoding-compared": "the branch-protection row is red against a disabled ruleset and red against one whose required status checks do not name gates, and a mutant that compares neither is green on both",
   "merge-preconditions-composed-check-absence-is-error": "deregistering the composed dual-review check makes its condition error rather than green, so a condition with no check behind it is never a pass",
   "merge-preconditions-no-verdict-at-head-is-not-applicable": "a head no committed verdict names is not-applicable with an evaluated unmet precondition rather than green",
-  "merge-preconditions-error-dominates-red": "error dominates red in the gate word, so a run that could not look at one condition never reports a verdict about the merge"
+  "merge-preconditions-error-dominates-red": "error dominates red in the gate word, so a run that could not look at one condition never reports a verdict about the merge",
+  "merge-preconditions-composed-check-violations-are-red": "a pair of verdicts in which one refuses the merge reddens condition 2 while condition 1 stays green"
 }

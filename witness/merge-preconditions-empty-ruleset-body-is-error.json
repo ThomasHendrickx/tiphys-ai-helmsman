@@ -16,8 +16,8 @@
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "  if (response.status < 200 || response.status > 299) {",
-      "replace": "  if (false) {"
+      "find": "  if (response.body.trim() === \"\") {",
+      "replace": "  if (response.body === \"this string is not a body any server sends\") {"
     }
   ],
   "deterministic": true,
@@ -29,6 +29,6 @@
       "witness/captures/m4-p12-github-rulesets-list.json",
       "witness/captures/m4-p12-github-ruleset-detail.json"
     ],
-    "provenance": "Captured 2026-09-17 from the live GitHub REST API with curl and $GH_TOKEN, against ThomasHendrickx/tiphys-ai-helmsman: GET /repos/{slug}/commits/713731ff771afa2555b7850b53648923f36cde0c/check-runs (HTTP 200), GET /repos/{slug}/rulesets?includes_parents=true (HTTP 200), and GET /repos/{slug}/rulesets/20446760 (HTTP 200). The reachability probe and its deliberately-invalid-token control are recorded in delivery/work-history/m4-p12.md."
+    "provenance": "Captured 2026-09-17 from the live GitHub REST API with curl, against ThomasHendrickx/tiphys-ai-helmsman: GET /repos/{slug}/commits/713731ff771afa2555b7850b53648923f36cde0c/check-runs (HTTP 200), GET /repos/{slug}/rulesets?includes_parents=true (HTTP 200), and GET /repos/{slug}/rulesets/20446760 (HTTP 200). The reachability probe, including the no-Authorization-header control, is recorded in delivery/work-history/m4-p12.md."
   }
 }

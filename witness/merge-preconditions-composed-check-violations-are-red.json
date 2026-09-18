@@ -1,22 +1,22 @@
 {
-  "id": "merge-preconditions-no-verdict-at-head-is-not-applicable",
-  "behavior": "merge-preconditions-no-verdict-at-head-is-not-applicable",
+  "id": "merge-preconditions-composed-check-violations-are-red",
+  "behavior": "merge-preconditions-composed-check-violations-are-red",
   "tests": [
-    "a head no committed verdict names is not-applicable with an evaluated unmet precondition rather than green"
+    "a pair of verdicts in which one refuses the merge reddens condition 2 while condition 1 stays green"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "        status: \"not-applicable\",\n        units: 0,",
-      "replace": "        status: \"green\",\n        units: 1,"
+      "find": "  if (messages.size > 0) {\n    return { status: \"red\", sentence: [...messages].sort().join(\" | \") };",
+      "replace": "  if (false) {\n    return { status: \"red\", sentence: [...messages].sort().join(\" | \") };"
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    .filter((entry) => String(entry.record[\"head\"] ?? \"\").toLowerCase() === head)",
-      "replace": "    .filter(() => true)"
+      "find": "      const outcome = check.run(verdict.record, contextDirectory);",
+      "replace": "      const outcome = { violations: [], reports: [] };"
     }
   ],
   "deterministic": true,
