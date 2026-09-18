@@ -218,37 +218,105 @@ export type TaskStatus = "open" | "closed";
  */
 export type PayloadClass = "orchestrator" | "project";
 
-/** One granted allowlist extension, as it is recorded in meta.json. */
+/**
+ * One granted allowlist extension, as it is recorded in meta.json.
+ *
+ * BUILT THROUGH THE ACCESSORS, NEVER BY READING `entry.name` DIRECTLY
+ * (CR-B-002, the half of it that is about the record). A bare-string entry
+ * has no `name` property, so `{name: entry.name, reason: entry.reason}`
+ * produced the literal record `{}`: an operator opening the task directory
+ * could see THAT a widening happened and not WHICH name was widened. The
+ * record is now built with `extensionName` / `extensionReason`
+ * (src/exec/env.ts), which read both forms.
+ *
+ * `reason` is OPTIONAL HERE AND REQUIRED ON THE AUDITED ROUTE, and the
+ * difference is the point rather than an inconsistency. This type describes
+ * what was actually recorded; the audited route refuses an entry with no
+ * usable reason before this record is built, so an entry reaching meta.json
+ * without one came through a seam that does not demand one. Recording the
+ * absence AS an absence (the key is simply not present in the JSON) is what
+ * keeps it distinguishable from a blank reason. Defaulting it to `""` would
+ * substitute a valid-looking value for a missing one, which is the same
+ * mechanism as CR-B-002 wearing a record's clothes.
+ */
 export interface CredentialExtensionRecord {
   name: string;
-  reason: string;
+  reason?: string;
 }
 
 /**
- * THE HANDOVER COMPARISON (M4-P8 criterion 6): the name set the kernel
- * handed the adapter against the name set the adapter reported launching
- * with.
+ * THE HANDOVER COMPARISON (M4-P8 criterion 6): what the kernel handed the
+ * adapter against what actually reached the child.
  *
- * `status` says which question was answerable, and it is three-valued on
- * purpose rather than a boolean that quietly means two different things:
+ * TWO PROPERTIES, AND THE STATUS WORD NAMES WHICH OF THEM WERE CHECKED.
+ * That is finding CR-B-001 (clean-room-retro-B-criteria, HIGH) and it is
+ * worth stating as a mechanism rather than as one word: `status: "compared"`
+ * used to be written after comparing NAME SETS ONLY, while an operator reads
+ * "compared" as "the handover was verified". An adapter that keeps the name
+ * set byte-identical and merely restores `HOME` and `XDG_CONFIG_HOME` to
+ * their real paths defeats the whole M2R-004 defense, because that defense
+ * works by REDIRECTING those names rather than by dropping them, and the
+ * record then POSITIVELY ASSERTED a clean handover while the child read the
+ * real gh credential store. The general shape is a record whose status word
+ * is stronger than the check behind it.
  *
- *   compared        both sets were in hand and were compared by NAME.
- *   unreported      the adapter returned no name set. That is not a
- *                   difference and it is not evidence of one; every
- *                   adapter written before this phase reports nothing.
- *                   The child-written probe (scripts/credential-witness.mjs)
- *                   is the half that does not depend on an adapter's
- *                   self-report, which is the point of criterion 5.
- *   not-applicable  the spawn ran under the declared escape hatch, so the
- *                   kernel handed over no environment at all and there is
- *                   nothing a difference could be measured against.
+ * Both halves of the repair are here. The word is weakened so it can only
+ * say what was checked, and the check is strengthened so the pointer VALUES
+ * are compared too.
+ *
+ *   compared          names AND the five CREDENTIAL_STORE_REDIRECTIONS
+ *                     pointers were both in hand and both compared.
+ *   names-compared    the name sets were compared and NO pointer evidence
+ *                     was available. This is the value the old `compared`
+ *                     should have carried: it is a true statement about one
+ *                     property of two, and it never reads as a clean bill.
+ *   pointers-compared the pointers were observed in the child and compared,
+ *                     and the adapter reported no name set. Reachable with
+ *                     any adapter written before M4-P8, which reports
+ *                     nothing, running under the current turn-end hook.
+ *   unreported        neither property could be checked: no reported name
+ *                     set and no pointer evidence.
+ *   not-applicable    the spawn ran under the declared escape hatch, so the
+ *                     kernel handed over no environment at all and there is
+ *                     nothing a difference could be measured against.
+ *
+ * NO VALUE OF ANY VARIABLE IS RECORDED HERE, and the original design's
+ * reason for that is untouched and right: a value comparison that WROTE the
+ * values would put credential material into a record an operator reads.
+ * `changedRedirections` carries NAMES only. The five redirection targets are
+ * harness-owned paths inside the task directory and carry no credential
+ * material, but recording only the names that differ is strictly less and is
+ * enough to act on.
  */
 export interface CredentialHandoverRecord {
-  status: "compared" | "unreported" | "not-applicable";
+  status:
+    | "compared"
+    | "names-compared"
+    | "pointers-compared"
+    | "unreported"
+    | "not-applicable";
   /** Names the adapter reported that the kernel did not hand over. */
   added: string[];
   /** Names the kernel handed over that the adapter did not report. */
   removed: string[];
+  /**
+   * Credential-store pointers whose value where the payload ran is not the
+   * harness-owned path the kernel handed over. Names only, never values.
+   * Empty when the pointers were compared and agreed, and also empty when
+   * there was no pointer evidence, which is why `status` and not this array
+   * is what says whether the comparison happened.
+   */
+  changedRedirections: string[];
+  /**
+   * Where the pointer evidence came from, absent when there was none.
+   *
+   *   child    the kernel-generated turn-end hook recorded the pointers from
+   *            inside the child environment (src/hooks.ts). This does not
+   *            depend on an adapter's self-report.
+   *   adapter  the adapter reported them on its launch outcome. Weaker: it
+   *            is the adapter's word about its own behaviour.
+   */
+  redirectionSource?: "child" | "adapter";
 }
 
 /**
@@ -266,6 +334,17 @@ export interface TaskCredentialRecord {
   /**
    * `scrubbed` when buildChildEnv constructed the environment, `inherited`
    * when allowPrCredentials handed the parent's environment over unchanged.
+   *
+   * THIS FIELD RECORDS THE KERNEL'S DECISION AND ITS OWN CONSTRUCTION, NOT
+   * WHAT THE CHILD RECEIVED, and it is spelled out because it is the second
+   * member of CR-B-001's class found in this record (the derivation is in
+   * delivery/work-history/credential-route-fixes.md). "scrubbed" is a strong
+   * word: it says buildChildEnv ran, staged the five empty redirect targets
+   * and returned an environment, because a failure there is a rollback. It
+   * does NOT say the payload ran with that environment, because between this
+   * field being written and the payload starting there is an adapter. The
+   * field that speaks to what reached the child is `handover`, and it says
+   * which of its two properties it checked.
    */
   scrubMode: "scrubbed" | "inherited";
   /** Every granted extension, in the order the caller declared them. */

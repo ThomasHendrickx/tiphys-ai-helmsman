@@ -3,7 +3,14 @@ import { mkdirSync, rmSync, rmdirSync, unlinkSync, writeFileSync } from "node:fs
 import { constants } from "node:os";
 import { BUILT_IN_ADAPTER_NAME, selectAdapter } from "./adapters/load.ts";
 import { assembleBrief } from "./brief.ts";
-import { buildChildEnv, refuseExtraAllowlist, scrubRoot } from "./exec/env.ts";
+import {
+  CREDENTIAL_STORE_REDIRECTIONS,
+  buildChildEnv,
+  extensionName,
+  extensionReason,
+  refuseExtraAllowlist,
+  scrubRoot,
+} from "./exec/env.ts";
 import { guardSharedRegister } from "./exclusion.ts";
 import type { ChildEnvExtension } from "./exec/env.ts";
 import type { Fleet } from "./fleet.ts";
@@ -324,7 +331,14 @@ export function checkCredentialPolicy(
         `receives the orchestrator's credentials; nothing was created`,
     };
   }
-  const extensionRefusal = refuseExtraAllowlist(options.extraAllowlist ?? []);
+  // `reason-required`: THIS is the audited route (DR-0039 condition 2, M4-P8
+  // criterion 4), and the argument is passed explicitly rather than
+  // defaulted, because a default would be the same "absent takes the
+  // permissive arm" shape CR-B-002 is.
+  const extensionRefusal = refuseExtraAllowlist(
+    options.extraAllowlist ?? [],
+    "reason-required",
+  );
   if (extensionRefusal !== undefined) {
     return { ok: false, reason: `${extensionRefusal}; nothing was created` };
   }
@@ -332,29 +346,79 @@ export function checkCredentialPolicy(
 }
 
 /**
- * COMPARE THE HANDOVER BY NAME SET (M4-P8 criterion 6).
+ * Pointer evidence: what the five credential-store redirections actually
+ * were where the payload ran, and where that observation came from.
+ */
+export interface RedirectionEvidence {
+  source: "child" | "adapter";
+  /** Observed value per name; `null` for a name that was unset. */
+  values: Readonly<Record<string, string | null>>;
+}
+
+/**
+ * COMPARE THE HANDOVER (M4-P8 criterion 6, repaired for CR-B-001).
  *
- * `handed` is what the kernel built and passed, `reported` is what the
- * adapter says it launched with. Neither side's VALUES are compared: a
- * value comparison would put credential material into a record an operator
- * reads, and the property under test is which names crossed.
+ * `handed` is what the kernel built and passed, `reported` is the name set
+ * the adapter says it launched with, `pointers` is what the five
+ * CREDENTIAL_STORE_REDIRECTIONS actually were where the payload ran.
+ *
+ * TWO PROPERTIES, AND THE STATUS SAYS WHICH WERE CHECKED. The name-set
+ * comparison alone used to be written down as `compared`, which an operator
+ * reads as "the handover was verified"; an adapter that keeps the name set
+ * byte-identical and puts `HOME` and `XDG_CONFIG_HOME` back to their real
+ * paths defeats the M2R-004 defense entirely and was recorded as clean. See
+ * `CredentialHandoverRecord` for the five status values and for why the
+ * VALUES are still never written into the record.
+ *
+ * The pointer comparison is by value and the values are DISCARDED: only the
+ * names that differ survive into `changedRedirections`. A name the kernel
+ * never handed over is not compared, because there is no handed value to
+ * compare it against, and the name-set arms are what speak to that case.
  */
 export function compareHandover(
   handed: Record<string, string> | undefined,
   reported: readonly string[] | undefined,
+  pointers?: RedirectionEvidence,
 ): CredentialHandoverRecord {
   if (handed === undefined) {
-    return { status: "not-applicable", added: [], removed: [] };
+    return {
+      status: "not-applicable",
+      added: [],
+      removed: [],
+      changedRedirections: [],
+    };
   }
+  const changedRedirections =
+    pointers === undefined
+      ? []
+      : CREDENTIAL_STORE_REDIRECTIONS.map((redirection) => redirection.name)
+          .filter((name) => {
+            const handedValue = handed[name];
+            if (handedValue === undefined) {
+              return false;
+            }
+            return pointers.values[name] !== handedValue;
+          })
+          .sort();
+  const pointerPart =
+    pointers === undefined ? {} : { redirectionSource: pointers.source };
   if (reported === undefined) {
-    return { status: "unreported", added: [], removed: [] };
+    return {
+      status: pointers === undefined ? "unreported" : "pointers-compared",
+      added: [],
+      removed: [],
+      changedRedirections,
+      ...pointerPart,
+    };
   }
   const handedNames = new Set(Object.keys(handed));
   const reportedNames = new Set(reported);
   return {
-    status: "compared",
+    status: pointers === undefined ? "names-compared" : "compared",
     added: [...reportedNames].filter((name) => !handedNames.has(name)).sort(),
     removed: [...handedNames].filter((name) => !reportedNames.has(name)).sort(),
+    changedRedirections,
+    ...pointerPart,
   };
 }
 
@@ -385,9 +449,31 @@ export type LaunchOutcome =
        * is why criterion 5 asserts on a file the CHILD wrote.
        */
       launchedEnvNames?: readonly string[];
+      /**
+       * THE FIVE CREDENTIAL-STORE POINTERS AS THE ADAPTER LAUNCHED THEM
+       * (CR-B-001). Optional for the same honest reason `launchedEnvNames`
+       * is, and WEAKER than the kernel's own evidence: it is the adapter's
+       * word about its own behaviour. The kernel prefers the child-written
+       * observation from the turn-end hook and falls back to this, and the
+       * record says which of the two it used (`redirectionSource`).
+       */
+      launchedRedirections?: Readonly<Record<string, string | null>>;
     }
   | { kind: "launch-failed"; reason: string }
-  | { kind: "incomplete"; reason: string };
+  | {
+      kind: "incomplete";
+      reason: string;
+      /**
+       * WHAT AN ADAPTER THAT COULD NOT CONFIRM COMPLETION STILL LAUNCHED
+       * WITH (CR-B-003). The payload RAN on this arm, so the handover is a
+       * real question here and the kernel now asks it; before this round the
+       * comparison sat after the `incomplete` return and `meta.json` carried
+       * no `handover` key at all, so a widening on this arm was recorded
+       * nowhere. Optional for the same reason as on the `completed` arm.
+       */
+      launchedEnvNames?: readonly string[];
+      launchedRedirections?: Readonly<Record<string, string | null>>;
+    };
 
 /**
  * The ExecutorAdapter interface (DR-0007, M1-P4 grounding). The ENTIRE
@@ -623,7 +709,21 @@ export const subprocessAdapter: ExecutorAdapter = {
       exitCode,
       ...(request.env === undefined
         ? {}
-        : { launchedEnvNames: Object.keys(request.env).sort() }),
+        : {
+            launchedEnvNames: Object.keys(request.env).sort(),
+            // The five pointers as this adapter launched them, read off the
+            // same `request.env` the two spawnSync calls above spread
+            // (CR-B-001). The kernel treats this as the WEAKER of its two
+            // pointer sources and prefers the turn-end hook's child-written
+            // observation; reporting it anyway means an adapter that cannot
+            // run the hook still has something to be compared against.
+            launchedRedirections: Object.fromEntries(
+              CREDENTIAL_STORE_REDIRECTIONS.map((redirection) => [
+                redirection.name,
+                request.env?.[redirection.name] ?? null,
+              ]),
+            ),
+          }),
     };
   },
 };
@@ -663,7 +763,9 @@ export const subprocessAdapter: ExecutorAdapter = {
 function turnEndEvidence(
   fleet: Fleet,
   taskId: string,
-): { ok: true } | { ok: false; reason: string } {
+):
+  | { ok: true; observed?: Readonly<Record<string, string | null>> }
+  | { ok: false; reason: string } {
   const path = turnEndPath(fleet, taskId);
   const read = readRegularFileIfPresent(path);
   if (read.kind === "absent") {
@@ -691,7 +793,7 @@ function turnEndEvidence(
       reason: `the turn-end record ${path} does not parse as a turn-end record`,
     };
   }
-  const candidate = parsed as { endedAt?: unknown; exitCode?: unknown };
+  const candidate = parsed as { endedAt?: unknown; exitCode?: unknown; env?: unknown };
   if (typeof candidate.endedAt !== "string" || !Number.isInteger(candidate.exitCode)) {
     return {
       ok: false,
@@ -700,7 +802,23 @@ function turnEndEvidence(
         `(it needs a string endedAt and an integer exitCode)`,
     };
   }
-  return { ok: true };
+  // THE CHILD-WRITTEN POINTER OBSERVATION (CR-B-001). Absent on a record
+  // written by an older hook, and the ABSENCE IS NOT A PASS: the caller turns
+  // it into a weaker status word (`names-compared`) rather than into silence,
+  // which is the whole lesson of the finding one file over. A malformed or
+  // partially-typed `env` is read entry by entry and anything that is neither
+  // a string nor null is dropped, so a hostile record cannot smuggle an
+  // object into the comparison.
+  let observed: Record<string, string | null> | undefined;
+  if (typeof candidate.env === "object" && candidate.env !== null) {
+    observed = {};
+    for (const [name, value] of Object.entries(candidate.env as Record<string, unknown>)) {
+      if (typeof value === "string" || value === null) {
+        observed[name] = value;
+      }
+    }
+  }
+  return observed === undefined ? { ok: true } : { ok: true, observed };
 }
 
 /**
@@ -1019,10 +1137,19 @@ export async function spawnTask(
   const credentialRecord: TaskCredentialRecord = {
     payloadClass: options.payloadClass,
     scrubMode: options.allowPrCredentials === true ? "inherited" : "scrubbed",
-    extensions: (options.extraAllowlist ?? []).map((entry) => ({
-      name: entry.name,
-      reason: entry.reason,
-    })),
+    // BUILT THROUGH THE ACCESSORS (CR-B-002, the record half). Reading
+    // `entry.name` directly produced the literal record `{}` for a
+    // bare-string entry, so meta.json said a widening happened and not WHICH
+    // name was widened. `extensionReason` returning undefined is recorded as
+    // an ABSENT key rather than defaulted to "", because a blank reason and a
+    // missing one are different facts and the audited route refuses both.
+    extensions: (options.extraAllowlist ?? []).map((entry) => {
+      const reason = extensionReason(entry);
+      return {
+        name: extensionName(entry),
+        ...(typeof reason === "string" ? { reason } : {}),
+      };
+    }),
   };
 
   const meta: TaskMeta = {
@@ -1045,8 +1172,18 @@ export async function spawnTask(
   }
   createdFiles.push(metaPath(fleet, taskId));
 
+  // THE HOOK RECORDS THE FIVE POINTERS FROM INSIDE THE CHILD (CR-B-001).
+  // Passed on every spawn, including under the declared escape hatch, where
+  // the kernel handed no environment over and so compares nothing: a hook
+  // whose shape depended on the escape hatch would be one more thing that
+  // differs between the two arms, and T-009's lesson is that the arm nobody
+  // witnesses is the one that breaks.
   const hook = runStep(`writing the turn-end hook for task ${taskId}`, () =>
-    writeTurnEndHook(fleet, taskId),
+    writeTurnEndHook(
+      fleet,
+      taskId,
+      CREDENTIAL_STORE_REDIRECTIONS.map((redirection) => redirection.name),
+    ),
   );
   if (!hook.ok) {
     return rollback(hook.reason);
@@ -1139,12 +1276,102 @@ export async function spawnTask(
   if (outcome.kind === "launch-failed") {
     return rollback(`executor launch failed: ${outcome.reason}`);
   }
+  // FROM HERE THE PAYLOAD HAS RUN, ON BOTH REMAINING ARMS (CR-B-003).
+  //
+  // `launch-failed` returned above and is the only arm where nothing ran.
+  // `completed` and `incomplete` both mean a child was launched with an
+  // environment, so "which environment did it actually get" is a real
+  // question on both, and until this round it was asked on neither the
+  // `incomplete` arm nor the arm where the completion precondition fails:
+  // the comparison sat below all three returns and `meta.json` carried no
+  // `handover` key at all. A widening on those arms was recorded NOWHERE
+  // while the same widening on the `completed` arm was recorded and refused.
+  // So the comparison moves up to here, ahead of every arm-specific return,
+  // and `meta.json` is rewritten before any of them.
+  //
+  // The turn-end record is read first because it carries the child-written
+  // pointer observation, and it is read on the `incomplete` arm too: an
+  // adapter that reports incomplete because the HOOK failed leaves no record
+  // and the read simply finds nothing, which is a weaker status word and not
+  // a pass.
+  const evidence = turnEndEvidence(fleet, taskId);
+  const pointers: RedirectionEvidence | undefined = (() => {
+    if (childEnv === undefined) {
+      return undefined;
+    }
+    if (evidence.ok && evidence.observed !== undefined) {
+      return { source: "child", values: evidence.observed };
+    }
+    if (outcome.launchedRedirections !== undefined) {
+      return { source: "adapter", values: outcome.launchedRedirections };
+    }
+    return undefined;
+  })();
+
+  // THE HANDOVER CHECK (M4-P8 criterion 6, repaired by CR-B-001).
+  // src/spawn.ts's request contract has always FORBIDDEN an adapter widening
+  // `env` on its own, in prose, and nothing checked it. The adapter reports
+  // the name set it launched with and the kernel compares it; SINCE THIS
+  // ROUND the kernel also compares the five credential-store pointers, which
+  // is the half a name-set comparison structurally cannot see, because the
+  // M2R-004 defense works by redirecting those names rather than by dropping
+  // them.
+  //
+  // IT RUNS AFTER THE PAYLOAD HAS RUN, so it never rolls anything back: the
+  // worktree may hold real work by now (the V-1 rule), and the refusal's
+  // job is to make the widening impossible to miss, not to destroy
+  // evidence of it. The comparison is recorded in meta.json whichever way
+  // it goes, so a clean handover is an artifact too.
+  const handover = compareHandover(childEnv, outcome.launchedEnvNames, pointers);
+  credentialRecord.handover = handover;
+  const widened =
+    handover.added.length > 0 ||
+    handover.removed.length > 0 ||
+    handover.changedRedirections.length > 0;
+  if (widened) {
+    credentialRecord.refusal =
+      `the ${adapter.name} adapter launched with an environment that differs ` +
+      `from the one the kernel handed it` +
+      (handover.added.length === 0 ? "" : `; added ${handover.added.join(", ")}`) +
+      (handover.removed.length === 0 ? "" : `; removed ${handover.removed.join(", ")}`) +
+      (handover.changedRedirections.length === 0
+        ? ""
+        : `; the credential-store pointer(s) ` +
+          `${handover.changedRedirections.join(", ")} did not have the ` +
+          `harness-owned value the kernel handed over, observed ` +
+          `${handover.redirectionSource ?? "nowhere"}-side`);
+  }
+  const rewroteMeta = runStep(`updating ${metaPath(fleet, taskId)}`, () => {
+    writeTaskMeta(fleet, meta);
+  });
+  if (!rewroteMeta.ok) {
+    // The payload ran, so nothing is rolled back here either; the record
+    // simply could not be completed and says so rather than being silently
+    // left at its pre-launch contents.
+    return {
+      ok: false,
+      reason:
+        `the payload ran (the ${adapter.name} adapter reported ${outcome.kind}) ` +
+        `but the credential record could not be completed ` +
+        `(${rewroteMeta.reason}); the worktree ${worktree}, its task directory ` +
+        `and the pool record are left in place`,
+    };
+  }
+
   if (outcome.kind === "incomplete") {
     // The payload ran, so nothing is rolled back, and the reason says so.
     // The scrub root is deliberately LEFT in place here: the hook child
     // failed, and whatever the children left under the redirected paths
-    // is part of the state an operator inspects.
-    return { ok: false, reason: outcome.reason };
+    // is part of the state an operator inspects. The handover verdict is
+    // now part of the reason as well as of the record, because this arm's
+    // reason is the only thing many callers read.
+    return {
+      ok: false,
+      reason: widened
+        ? `${outcome.reason}; and ${credentialRecord.refusal ?? ""}, recorded in ` +
+          `${metaPath(fleet, taskId)}`
+        : outcome.reason,
+    };
   }
   // THE COMPLETION PRECONDITION (M4-P2 step 5). The only arm left is
   // `completed`, and it is the only arm that DESTROYS something (the
@@ -1154,7 +1381,12 @@ export async function spawnTask(
   // async `launch` lets any adapter resolve `completed` early, so the
   // kernel checks the payload's own artifact instead of believing the
   // report. See turnEndEvidence above for the four refusals.
-  const evidence = turnEndEvidence(fleet, taskId);
+  //
+  // THE READ ITSELF MOVED UP (CR-B-003): `evidence` is computed before the
+  // handover comparison, because the turn-end record is where the child's
+  // own pointer observation lives. Only the REFUSAL is here, so this arm
+  // still refuses exactly what it refused, and it now does so with the
+  // handover already written down.
   if (!evidence.ok) {
     // The scrub root is named only when there IS one. Under the declared
     // escape hatch childEnv is undefined and nothing was ever staged under
@@ -1176,42 +1408,6 @@ export async function spawnTask(
     };
   }
 
-  // THE HANDOVER CHECK (M4-P8 criterion 6). src/spawn.ts's request contract
-  // has always FORBIDDEN an adapter widening `env` on its own, in prose,
-  // and nothing checked it. The adapter now reports the name set it
-  // launched with and the kernel compares it, by NAME, against the set it
-  // handed over.
-  //
-  // IT RUNS AFTER THE PAYLOAD HAS RUN, so it never rolls anything back: the
-  // worktree may hold real work by now (the V-1 rule), and the refusal's
-  // job is to make the widening impossible to miss, not to destroy
-  // evidence of it. The comparison is recorded in meta.json whichever way
-  // it goes, so a clean handover is an artifact too.
-  const handover = compareHandover(childEnv, outcome.launchedEnvNames);
-  credentialRecord.handover = handover;
-  const widened = handover.added.length > 0 || handover.removed.length > 0;
-  if (widened) {
-    credentialRecord.refusal =
-      `the ${adapter.name} adapter launched with an environment that differs ` +
-      `from the one the kernel handed it` +
-      (handover.added.length === 0 ? "" : `; added ${handover.added.join(", ")}`) +
-      (handover.removed.length === 0 ? "" : `; removed ${handover.removed.join(", ")}`);
-  }
-  const rewroteMeta = runStep(`updating ${metaPath(fleet, taskId)}`, () => {
-    writeTaskMeta(fleet, meta);
-  });
-  if (!rewroteMeta.ok) {
-    // The payload ran, so nothing is rolled back here either; the record
-    // simply could not be completed and says so rather than being silently
-    // left at its pre-launch contents.
-    return {
-      ok: false,
-      reason:
-        `the payload exited ${String(outcome.exitCode)} but the credential ` +
-        `record could not be completed (${rewroteMeta.reason}); the worktree ` +
-        `${worktree}, its task directory and the pool record are left in place`,
-    };
-  }
   if (widened) {
     return {
       ok: false,

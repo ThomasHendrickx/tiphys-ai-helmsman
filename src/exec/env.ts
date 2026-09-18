@@ -115,11 +115,22 @@ export interface ChildEnvExtension {
  * THE BARE STRING IS THE PRE-M4-P8 FORM AND IT IS KEPT DELIBERATELY. The
  * field has existed since M2-P8 as `readonly string[]` and the kernel's own
  * tests model a widened allowlist with it (test/credentials-gate.test.ts).
- * A string carries NO reason, so it cannot satisfy the audited route: the
- * route's entry point is `SpawnOptions.extraAllowlist`, which is typed
- * `ChildEnvExtension[]` and cannot express one. Both forms are refused
- * identically for a dangerous NAME, which is the safety half; only the
- * object form can carry the audit half.
+ * A string carries NO reason, so it cannot carry the audit half; both forms
+ * are refused identically for a dangerous NAME, which is the safety half.
+ *
+ * THE SENTENCE THAT USED TO STAND HERE WAS FALSE AND IS WITHDRAWN. It said a
+ * bare string "cannot satisfy the audited route: the route's entry point is
+ * `SpawnOptions.extraAllowlist`, which is typed `ChildEnvExtension[]` and
+ * cannot express one", and delivery/work-history/m4-p8.md item 8 repeated it.
+ * That is a COMPILE-TIME argument about a RUNTIME seam, and the same phase
+ * rejected exactly that argument one field over: test/payload-credentials.ts
+ * records that "the consumer that reaches this seam is a JavaScript plugin,
+ * and a missing field there is `undefined`, not a compile error". A clean-room
+ * review reproduced both a bare string and `{name}` with no `reason` crossing
+ * into a project payload through `spawnTask` (CR-B-002, HIGH), and this round
+ * re-reproduced both before changing anything. A type is not a guard at a seam
+ * a plugin reaches, and `refuseExtraAllowlist` with `reason-required` is the
+ * guard.
  */
 export type ChildEnvExtensionEntry = string | ChildEnvExtension;
 
@@ -134,6 +145,16 @@ export function extensionReason(
 ): string | undefined {
   return typeof entry === "string" ? undefined : entry.reason;
 }
+
+/**
+ * WHETHER THIS CALLER DEMANDS A RECORDED REASON.
+ *
+ * NO DEFAULT, DELIBERATELY. A default here would be the very shape
+ * CR-B-002 is: an omitted argument silently taking the permissive arm.
+ * Every call site says which contract it is enforcing, and the two that
+ * exist say different things for reasons written at each of them.
+ */
+export type ReasonRequirement = "reason-required" | "reason-optional";
 
 /**
  * REFUSE AN EXTENSION THE CHILD MUST NOT CARRY (M4-P8 step 4, criteria 3
@@ -164,9 +185,48 @@ export function extensionReason(
  * The two refusals are ORDERED name-first: a dangerous name is refused
  * whatever reason accompanies it, so a persuasive reason can never buy a
  * credential into a child.
+ *
+ * THE REASON CHECK IS WRITTEN AS A POSITIVE VALIDITY TEST, AND THAT IS THE
+ * WHOLE OF FINDING CR-B-002 (clean-room-retro-B-criteria, HIGH).
+ *
+ * Until this round the guard read
+ * `reason !== undefined && reason.trim().length === 0`, which fires only on
+ * a PRESENT-but-blank reason. `extensionReason` returns `undefined` for a
+ * bare string entry and for an object with no `reason` property, so the
+ * first conjunct excused the absent case and the entry was ACCEPTED. The
+ * mechanism is general: a refusal predicate whose condition requires the
+ * value to be PRESENT leaves ABSENT unchecked, and the field this module's
+ * own doc comment calls mandatory ("every entry carries an exact name and a
+ * reason") is exactly the kind of field that reaches it as `undefined`.
+ *
+ * The repair is the spelling this repository already uses where it got this
+ * right: compute a POSITIVE `usable` predicate (src/cutover.ts:140 is the
+ * same shape, and `extensionName`'s `typeof name !== "string"` test two
+ * refusals above is the same shape again), then decide what to do with
+ * `!usable`. Absent, blank and non-string all reach `!usable` by different
+ * routes and the refusal SAYS which one it was, because an operator reading
+ * "carries no reason" about an entry that has one is looking for the wrong
+ * thing.
+ *
+ * `reasonRequirement` is what the two call sites differ on, and neither is
+ * a default:
+ *
+ *   reason-required   the AUDITED route (`checkCredentialPolicy` in
+ *                     src/spawn.ts). DR-0039 condition 2 and M4-P8
+ *                     criterion 4 are enforced here: an extension with no
+ *                     usable reason is refused before anything is created.
+ *   reason-optional   `buildChildEnv`, the pre-M4-P8 library seam, which
+ *                     documents the bare-string form and whose own tests
+ *                     model a widened allowlist with it. A blank reason is
+ *                     still refused there; an ABSENT one is the documented
+ *                     shorthand for "this caller records nothing", and the
+ *                     caller that must not be allowed that shorthand does
+ *                     not reach this module without passing through the
+ *                     audited route first.
  */
 export function refuseExtraAllowlist(
   entries: readonly ChildEnvExtensionEntry[],
+  reasonRequirement: ReasonRequirement,
 ): string | undefined {
   for (const entry of entries) {
     const name = extensionName(entry);
@@ -191,12 +251,21 @@ export function refuseExtraAllowlist(
       );
     }
     const reason = extensionReason(entry);
-    if (reason !== undefined && reason.trim().length === 0) {
-      return (
-        `the allowlist extension entry ${name} carries no reason; an extension ` +
-        `is an audited widening and a blank reason records nothing a later ` +
-        `reader could check`
-      );
+    const usable = typeof reason === "string" && reason.trim().length > 0;
+    if (!usable) {
+      const shape =
+        reason === undefined
+          ? "no reason field at all"
+          : typeof reason !== "string"
+            ? `a reason that is not a string (${JSON.stringify(reason)})`
+            : `a blank reason (${JSON.stringify(reason)})`;
+      if (reasonRequirement === "reason-required" || reason !== undefined) {
+        return (
+          `the allowlist extension entry ${name} carries ${shape}; an extension ` +
+          `is an audited widening and a reason that is absent, blank or not a ` +
+          `string records nothing a later reader could check`
+        );
+      }
     }
   }
   return undefined;
@@ -296,7 +365,11 @@ export function buildChildEnv(spec: ChildEnvSpec): ChildEnvResult {
   // leave the caller's rollback holding something this call created, and
   // the whole point of refusing here is that a rejected widening costs
   // nothing and changes nothing.
-  const refusal = refuseExtraAllowlist(spec.extraAllowlist ?? []);
+  // `reason-optional`, and the argument is passed rather than defaulted: see
+  // `ReasonRequirement`. This seam predates M4-P8 and documents the
+  // bare-string form; the audited route demands a reason one layer up, in
+  // `checkCredentialPolicy`, before anything is created.
+  const refusal = refuseExtraAllowlist(spec.extraAllowlist ?? [], "reason-optional");
   if (refusal !== undefined) {
     return { ok: false, reason: refusal };
   }
