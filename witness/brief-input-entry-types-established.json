@@ -1,7 +1,7 @@
 {
   "id": "brief-input-entry-types-established",
   "behavior": "brief-input-entry-types-are-established-before-the-open",
-  "class": "classification",
+  "class": "destructive",
   "deterministic": true,
   "repeats": 2,
   "tests": [

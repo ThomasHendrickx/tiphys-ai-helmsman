@@ -410,6 +410,73 @@ is T-029. `chmod o+rx /tmp/claude-0` was run before each full-suite invocation
 and `chmod 700 /tmp/claude-0` after it. With the grant in place that test
 passes, which is why the count above carries no failure attributed to it.
 
+## The witness obligations this round took, and the ones it moved
+
+`red-witness` covers `src/`, `bin/` and `plugin/src/`, so editing ten files in
+those trees is a coverage obligation and not a free change. The first bundle
+run surfaced five separate red-witness problems, ALL of them caused by this
+round's own edits, and they are recorded here because the fix for each is the
+kind a later reader will otherwise re-derive.
+
+1. **`source changed with no witness spec covering it: src/brief.ts`.** A new
+   spec, witness/brief-input-entry-types-established.json:1, carries two
+   structurally different members over that file: the CALLER-supplied read and
+   the FLEET-CONTENT read, each defanged back to a bare open through
+   `process.getBuiltinModule("node:fs")`, which restores the real block rather
+   than only removing the diagnostic. Both were measured separately:
+
+   ```
+   member 0 -> tests 1, pass 0, fail 1
+   member 1 -> tests 1, pass 0, fail 1
+   unmutated -> tests 1, pass 1, fail 0
+   ```
+
+2. **`witness cli-top-level-error-handler` member 1 named a line this round
+   deleted** (`process.exitCode = usage ? EX_USAGE : 1;`). The mechanism it
+   guards is unchanged, so the member was re-aimed at the line that now carries
+   the same decision rather than the witness being weakened.
+3. **`witness shared-exclusion-unreachable-register-fails-closed` member 1
+   named the verdict-printing line** this round wrapped in `labelClock`.
+   Re-aimed the same way.
+4. **`witness spawn-launch-failed-rolls-back-through-a-symlink` carries a PATCH
+   whose first hunk is src/fleet.ts's import line**, which this round changed.
+   The patch's context was updated and `git apply --check` now exits 0.
+5. **`witness sync-staged-lease-refused` stopped guarding its behaviour, and
+   this is the interesting one.** Its second member finds
+   `    }\n    return 1;\n  }\n\n  const durable = [`, which anchors on
+   whatever refusal block sits LAST before the durable set is computed. This
+   round put its scratch refusal there, so the mutation removed the NEW block's
+   `return 1` and left the staged-lease test green: member 0 red 2 of 2, member
+   1 red 0 of 2. **A stored witness can be silently disarmed by an edit that
+   only moves code**, which is a variant of the cannot-go-red shape this
+   repository keeps paying for, and it went red loudly here only because
+   `repeats: 2` measures the member rather than trusting it. The fix was to run
+   the scratch refusal BEFORE the staged-ephemeral one, so the anchor points at
+   its own block again; the ordering choice is stated in src/commands/sync.ts
+   at the point it is made.
+
+## The gate bundle
+
+Run locally at the head this document is committed with, node v26.6.0, `dist/`
+built, `--mode full --base origin/main`.
+
+**`--phase` is required by three gates and the first run did not supply it**,
+so `scope`, `gate-classes` and `merge-preconditions` all reported
+`requires --phase, which was not supplied`. That is a property of the
+invocation, not of the branch: `.github/workflows/gates.yml:233` derives the
+value with a `sed` that leaves a non-phase branch name unchanged. Re-run with
+`--phase claude/sweep-fix-exclusion-sync`, `scope` reports
+`not-applicable: precondition scope-branch-is-a-phase-branch evaluated and
+unmet: branch claude/sweep-fix-exclusion-sync does not match`, which is the
+correct answer for a branch that is deliberately not a phase branch.
+
+`citations` is `not-applicable` here: its precondition is a changed path under
+`delivery/plan/`, `delivery/verification/`, `delivery/decisions/`,
+`delivery/tuition/`, `delivery/requirements/` or `delivery/STATE.md`, and this
+round changes none of those. The citations in this document were therefore
+verified by hand instead, every one of them resolved against the tree at this
+head, and the check is recorded in the derivation file.
+
 ## The claim grep
 
 Both binding forms were run against this document. The line-based form and the
