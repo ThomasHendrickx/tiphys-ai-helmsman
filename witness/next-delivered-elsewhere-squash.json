@@ -1,0 +1,31 @@
+{
+  "id": "next-delivered-elsewhere-squash",
+  "behavior": "next-delivered-elsewhere-squash",
+  "tests": [
+    "delivered-elsewhere reports a squash-merged branch delivered where git branch --merged reports it open"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/next.ts",
+      "find": "  const landed = landedness(contextDir, branchRef, baseRef);",
+      "replace": "  const landed = runGit(contextDir, [\"merge-base\", \"--is-ancestor\", branchRef, baseRef]).status === 0 ? ({ kind: \"landed\", how: \"ancestor\" } as const) : ({ kind: \"unlanded\" } as const);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/next.ts",
+      "find": "  if (landed.kind === \"landed\") {\n    return { kind: \"delivered\", how: landed.how };\n  }",
+      "replace": "  if (landed.kind === \"landed\" && landed.how !== \"squash\") {\n    return { kind: \"delivered\", how: landed.how };\n  }"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git branch --merged, git merge-base --is-ancestor, git merge-tree --write-tree, git cherry",
+    "captures": [
+      "witness/captures/next-delivered-elsewhere-git.txt"
+    ],
+    "provenance": "rule (f) binds these witnesses because src/commands/next.ts spawns git and parses its output: the delivered-elsewhere predicate reads `git merge-base --is-ancestor`'s exit code, `git merge-tree --write-tree`'s tree id and conflict exit, and `git cherry`'s per-commit mark. The cited capture is a real run of all four commands, plus `git branch --merged`, against a repository of exactly the shape test/next.test.ts builds; it was taken on 2026-09-18 with git 2.43.0 and the file records the commands verbatim with their exit codes. test/next.test.ts parses the naive predicate's answer out of it and requires the freshly built repository to reproduce that answer before any claim about the new predicate is made, so the premise is measured rather than hand-written (CLAUDE.md standing warning 10)."
+  }
+}

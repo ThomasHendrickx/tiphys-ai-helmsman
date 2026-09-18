@@ -1,0 +1,24 @@
+{
+  "id": "plugin-entry-point-exports-the-pull-request-capability",
+  "behavior": "plugin-entry-point-exports-the-pull-request-capability",
+  "tests": [
+    "the plugin entry point re-exports the pull-request capability and still defaults to the adapter"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/index.ts",
+      "find": "  runPr,\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/index.ts",
+      "find": "  PR_OPEN_COMMAND,\n",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

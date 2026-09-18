@@ -1,0 +1,37 @@
+{
+  "id": "pr-commands-uninvoked-by-the-kernel",
+  "behavior": "pr-commands-uninvoked-by-the-kernel",
+  "tests": [
+    "no kernel code path under src or bin names either plugin pull-request command"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/next.ts",
+      "find": "const USAGE = \"usage: tiphys next\";",
+      "replace": "const USAGE = \"usage: tiphys next\";\nconst INVOKED_BY_THE_KERNEL = \"pr open\";\nvoid INVOKED_BY_THE_KERNEL;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cli.ts",
+      "find": "  [\"next\", cmdNext],",
+      "replace": "  [\"next\", cmdNext],\n  [\"pr merge\", cmdNext],"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/next.ts",
+      "find": "export const EXIT_WORK_REMAINS = 3;",
+      "replace": "export const EXIT_WORK_REMAINS = 3;\nimport { runPr } from \"../../plugin/src/pr.ts\";\nexport function mergeThePullRequest(): number {\n  return runPr([\"merge\", \"--repo\", \"o/n\", \"--number\", \"1\"], {\n    env: process.env,\n    io: { stderr: () => undefined, stdout: () => undefined },\n    exec: () => ({ status: 0 }),\n  });\n}"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git branch --merged, git merge-base --is-ancestor, git merge-tree --write-tree, git cherry",
+    "captures": [
+      "witness/captures/next-delivered-elsewhere-git.txt"
+    ],
+    "provenance": "rule (f) binds this witness because its phase-owned members mutate src/commands/next.ts, which spawns git and parses its output, NOT because the named test consumes any program's output: that test reads source files with readFileSync and runs no child at all. The distinction is recorded here rather than left to a reader, because the sentence that stood in this field until round 1 was a paste from the delivered-elsewhere witnesses and was false of this one. The capture is cited as the real output of the spawning surface the members touch: witness/captures/next-delivered-elsewhere-git.txt is a run of git branch --merged, git merge-base --is-ancestor, git merge-tree --write-tree and git cherry, taken on 2026-09-18 with git 2.43.0 against a repository of exactly the shape test/next.test.ts builds, and the delivered-elsewhere tests in the same file parse their premise out of it."
+  }
+}

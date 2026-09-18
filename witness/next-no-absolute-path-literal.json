@@ -1,0 +1,31 @@
+{
+  "id": "next-no-absolute-path-literal",
+  "behavior": "next-no-absolute-path-literal",
+  "tests": [
+    "the next command source contains no absolute path literal"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/next.ts",
+      "find": "const USAGE = \"usage: tiphys next\";",
+      "replace": "const USAGE = \"usage: tiphys next\";\nconst LEGACY_FLEET_HOME = \"/home/example/fleet\";\nvoid LEGACY_FLEET_HOME;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/next.ts",
+      "find": "export const EXIT_WORK_REMAINS = 3;",
+      "replace": "export const EXIT_WORK_REMAINS = 3;\nconst LEGACY_SCRATCH = \"/tmp/example/scratch\";\nvoid LEGACY_SCRATCH;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git branch --merged, git merge-base --is-ancestor, git merge-tree --write-tree, git cherry",
+    "captures": [
+      "witness/captures/next-delivered-elsewhere-git.txt"
+    ],
+    "provenance": "rule (f) binds this witness because its phase-owned members mutate src/commands/next.ts, which spawns git and parses its output, NOT because the named test consumes any program's output: that test reads src/commands/next.ts with readFileSync and greps it, and runs no child. Corrected in round 1, where the field carried a sentence pasted from the delivered-elsewhere witnesses that was true of them and false here. The capture cited is the real output of the spawning surface the members touch: witness/captures/next-delivered-elsewhere-git.txt, a run of git branch --merged, git merge-base --is-ancestor, git merge-tree --write-tree and git cherry taken on 2026-09-18 with git 2.43.0 against a repository of exactly the shape test/next.test.ts builds."
+  }
+}
