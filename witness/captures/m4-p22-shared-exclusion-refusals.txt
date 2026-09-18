@@ -1,0 +1,42 @@
+M4-P22 capture: what `tiphys spawn` and `tiphys teardown` print in the two
+dangerous states this phase refuses.
+Taken 2026-09-17 on node v26.6.0, git version 2.43.0.
+
+THE FIXTURE IS THE REAL ONE. Two clones of one fleet home, published to a
+real bare remote over the file transport, both declaring the shared
+exclusion register with a five-second stale window. Environment A acquires
+the fleet on a clock ten minutes behind with an hour of duration, and spawns
+a scout while it still owns the register. Environment B then observes the
+register once and takes the fleet over with `tiphys lock acquire
+--take-over`, which advances the register and CANNOT touch A's local lease
+file, because that file lives under A's gitignored `state/` and never
+travels. A is then holding a live local lease over a fleet B owns, which is
+exactly the state M4-P20 measured and the state `checkHoldership` answers
+yes to.
+
+Each block is the command's stderr, with the liveness advisory line removed
+and blank lines dropped, followed by the exit code of that invocation.
+
+FOUR SUBSTITUTIONS, AND THEY ARE THE ONLY ONES. <ENVA> and <ENVB> are the
+two environment ids (random uuids, different every run), <EXPIRES> is the ISO
+expiry B's takeover wrote into the register, and <LAB> is the scratch
+directory the fixture was built in. Nothing else in any recorded line was
+altered, so a test can substitute its own four values and compare a live line
+against one of these byte for byte.
+
+== spawn: the register names another environment ==
+tiphys spawn: shared exclusion refused spawn: the shared register names environment <ENVB> as holding this fleet until <EXPIRES>, and this environment is <ENVA>; the local lease is evidence about this filesystem only, so mutating tasks here would run a second orchestrator over one fleet; take the fleet over with: tiphys lock acquire --take-over; signal=counter
+exit=1
+
+== teardown: the register names another environment ==
+tiphys teardown: shared exclusion refused teardown: the shared register names environment <ENVB> as holding this fleet until <EXPIRES>, and this environment is <ENVA>; the local lease is evidence about this filesystem only, so mutating tasks here would run a second orchestrator over one fleet; take the fleet over with: tiphys lock acquire --take-over; signal=counter
+exit=1
+
+== spawn: the declared register cannot be read ==
+tiphys spawn: shared exclusion refused spawn: unreachable register refs/heads/tiphys/lease on origin could not be read: fatal: '<LAB>/not-a-repository.git' does not appear to be a git repository; a register that cannot be read cannot show whether another environment is running this fleet, so this refuses rather than falling back to local-only exclusion; signal=clock, because no fencing counter could be read
+exit=1
+
+== teardown: the declared register cannot be read ==
+tiphys teardown: shared exclusion refused teardown: unreachable register refs/heads/tiphys/lease on origin could not be read: fatal: '<LAB>/not-a-repository.git' does not appear to be a git repository; a register that cannot be read cannot show whether another environment is running this fleet, so this refuses rather than falling back to local-only exclusion; signal=clock, because no fencing counter could be read
+exit=1
+

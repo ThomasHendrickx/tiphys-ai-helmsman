@@ -9,6 +9,7 @@ import { judgeBeacon, warnIfWatcherStale } from "../liveness.ts";
 import { expiryHasPassed } from "../lock.ts";
 import { poolList, resolveNetworkTimeoutMs } from "../pool.ts";
 import { classifyEntry, readRegularFileIfPresent } from "../task.ts";
+import { sharedLockStatus } from "../exclusion.ts";
 import { decodeDocument } from "../validate.ts";
 import {
   MACHINE_IDENTITY_EMAIL,
@@ -94,12 +95,24 @@ export const PROFILES: Record<string, readonly string[]> = {
      gets switched off. The others are states a fleet legitimately sits in
      between a spawn and a teardown, or immediately after a reclaim. A test
      walks every profile and asserts none of them promotes any of these. */
+  /* M4-P22: `shared-lock-unreachable` is promoted here and nowhere else. A
+     fleet that has DECLARED the shared exclusion register and cannot read it
+     refuses every lease operation, every spawn and every teardown, so it is
+     not ready for full mode by any reading; and unlike the branch check the
+     remedy is reachable by the operator, who either repairs the remote or
+     removes the declaration. It is not promoted below `full` because the
+     layer is opt-in per fleet home (M4-P21 criterion 1) and a fleet using
+     `local-only` has nothing to reach. The other three statuses cannot be
+     promoted at all: `not-declared`, `free` and `held` are PASS and carry no
+     condition, deliberately, because a register held by another environment
+     is the layer WORKING and not a fault of this fleet. */
   full: [
     "gh-missing",
     "remote-missing",
     "retention-undeclared",
     "retention-not-applicable",
     "kernel-artifacts-incomplete",
+    "shared-lock-unreachable",
   ],
   watch: ["beacon-absent", "beacon-stale"],
 };
@@ -1499,6 +1512,49 @@ export function checkWorktrees(root: string): CheckResult {
   };
 }
 
+/**
+ * CHECK shared-lock (M4-P22 criterion 1): who holds this fleet ACROSS
+ * environments, in exactly one of four statuses.
+ *
+ * CHECK lock above reports the lease on THIS filesystem, which is the only
+ * thing it can report: src/lock.ts:63 states that domain honestly, and
+ * M4-P20 measured two clones of one fleet remote both holding their own
+ * lease at once. This check reports the second layer M4-P21 built, and the
+ * two are separate lines on purpose, because they answer different questions
+ * and an operator reading one of them is entitled to know the other was not
+ * merged into it.
+ *
+ * THE VERDICT IS NOT MADE HERE. `sharedLockStatus` (src/exclusion.ts) owns
+ * it, exactly as `expiryHasPassed` owns CHECK lock's comparison and
+ * `judgeBeacon` owns CHECK beacon's. This check only decides how to present
+ * a status, so doctor and the exclusion layer cannot return two verdicts
+ * about one register.
+ *
+ * THE FOURTH STATUS IS NEVER PASS, which is this check's whole reason for
+ * having four. An unreachable register absorbed into a green line is the
+ * H-C shape: the bundle says fine and the one question that mattered was
+ * never asked. It is a WARN under its own condition so an operator sees it
+ * without doctor exiting nonzero on a fleet that never opted in, and `full`
+ * promotes it (see the PROFILES table).
+ *
+ * IT SPAWNS NOTHING FOR A FLEET THAT HAS NOT OPTED IN. `sharedLockStatus`
+ * reads the fleet home's own package.json first and returns `not-declared`
+ * before any git call, so the cost of this check on every existing fleet is
+ * one file read.
+ */
+export function checkSharedLock(root: string): CheckResult {
+  const status = sharedLockStatus(root);
+  if (status.token === "unreachable") {
+    return {
+      name: "shared-lock",
+      status: "WARN",
+      detail: status.text,
+      condition: "shared-lock-unreachable",
+    };
+  }
+  return { name: "shared-lock", status: "PASS", detail: status.text };
+}
+
 export function runChecks(root: string): CheckResult[] {
   return [
     checkNode(),
@@ -1507,6 +1563,7 @@ export function runChecks(root: string): CheckResult[] {
     checkLayout(root),
     checkRemote(root),
     checkLock(root),
+    checkSharedLock(root),
     checkBeacon(root),
     checkIdentity(root),
     checkRetention(root),

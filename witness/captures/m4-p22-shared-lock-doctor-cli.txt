@@ -1,0 +1,56 @@
+M4-P22 capture: tiphys doctor CHECK shared-lock over a real shared register.
+Taken 2026-09-17 on node v26.6.0, git version 2.43.0, against fleet homes
+built by the kernel's own `tiphys init` and a real bare remote reached over
+the file transport.
+
+Each block is the CHECK shared-lock line the command printed and the exit
+code of that same invocation. The exit code is the WHOLE command's, not this
+check's, and the two blocks that need that said are marked below.
+
+THREE SUBSTITUTIONS, AND THEY ARE THE ONLY ONES. <ENVID> is the environment
+id the fleet home generated (a random uuid, different every run), <EXPIRES>
+is the ISO expiry that run wrote into the register, and <LAB> is the scratch
+directory the fixture was built in. Nothing else in any recorded line was
+altered, so a test can substitute its own three values and compare a live
+line against one of these byte for byte.
+
+THE UNREACHABLE ARMS USE A DEDICATED `register` REMOTE, pointed at a path
+that is not a repository, while `origin` stays healthy. That is deliberate:
+pointing `origin` itself at the broken path also breaks CHECK remote, and
+the exit code of the run would then say nothing about this check.
+
+The generic-profile unreachable block exits 0, which is the point of it: an
+unreachable register is never PASS and does not by itself make doctor exit
+nonzero. The `--for full` block exits 1, and on this fleet home `full` also
+promotes retention conditions, so that exit code is NOT attributable to this
+check alone; the attributable difference is the status word, WARN against
+FAIL, on the CHECK line itself.
+
+== shared-lock: a fleet that never opted in ==
+CHECK shared-lock PASS not-declared (tiphys.sharedExclusion is absent from this fleet home's package.json, so the cross-environment layer is off here)
+exit=0
+
+== shared-lock: declared, and the register holds no lease yet ==
+CHECK shared-lock PASS free (register refs/heads/tiphys/lease on origin holds no lease yet)
+exit=0
+
+== shared-lock: held by the environment that acquired it ==
+CHECK shared-lock PASS held <ENVID> until <EXPIRES> (register refs/heads/tiphys/lease on origin, fencing counter 1)
+exit=0
+
+== shared-lock: the register was released ==
+CHECK shared-lock PASS free (register refs/heads/tiphys/lease on origin was released by environment <ENVID> at fencing counter 2)
+exit=0
+
+== shared-lock: the declared register cannot be read, generic profile ==
+CHECK shared-lock WARN unreachable register refs/heads/tiphys/lease on register could not be read: fatal: '<LAB>/not-a-repository.git' does not appear to be a git repository
+exit=0
+
+== shared-lock: the declared register cannot be read, --for full ==
+CHECK shared-lock FAIL unreachable register refs/heads/tiphys/lease on register could not be read: fatal: '<LAB>/not-a-repository.git' does not appear to be a git repository (required for profile full)
+exit=1
+
+== shared-lock: the declaration itself is unusable ==
+CHECK shared-lock WARN unreachable the declaration naming the register is unusable: tiphys.sharedExclusion must be true or an object, not 5
+exit=0
+

@@ -1,0 +1,31 @@
+{
+  "id": "shared-lock-status-set-is-closed",
+  "behavior": "shared-lock-status-set-is-closed",
+  "tests": [
+    "CHECK shared-lock prints exactly one of four statuses and never PASS for an unreachable register"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/exclusion.ts",
+      "find": "  if (document.state === \"free\") {",
+      "replace": "  if (document.state !== \"held-by-nobody\") {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/exclusion.ts",
+      "find": "export const SHARED_LOCK_STATUS_TOKENS = [\n  \"not-declared\",\n  \"free\",\n  \"held\",\n  \"unreachable\",\n] as const;",
+      "replace": "export const SHARED_LOCK_STATUS_TOKENS = [\n  \"not-declared\",\n  \"free\",\n  \"held\",\n] as const;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "tiphys doctor, over git ls-remote / git fetch / git cat-file",
+    "captures": [
+      "witness/captures/m4-p22-shared-lock-doctor-cli.txt"
+    ],
+    "provenance": "CHECK shared-lock classifies the output of git, which src/exclusion.ts spawns to read the register, and SPAWN_GREP matches src/exclusion.ts, src/commands/doctor.ts, src/spawn.ts and src/teardown.ts, so red-witness rule (f) binds every witness here. The cited capture is REAL output of the shipped `tiphys doctor`, taken 2026-09-17 on node v26.6.0 with git 2.43.0 against fleet homes built by the kernel's own `tiphys init` and a real bare remote reached over the file transport. It records all four statuses and the two reasons that collapse into the fourth, with the exit code of each invocation. The named test rebuilds that fixture by the same steps, substitutes only the three values the capture marks as varying per run (<ENVID>, <EXPIRES>, <LAB>), and compares the live CHECK line byte for byte. The unreachable reason embeds git's own `fatal: ... does not appear to be a git repository`, which is exactly the string a hand-written expectation would have had to guess, and T-003 records what guessing it costs. The two members attack the closed set from its two ends. Member 0 makes a HELD register render as `free`, so a status the set declares stops being reachable and the anti-vacuity half of the test reddens; member 1 removes `unreachable` from the declared set while the code still emits it, so the check emits a status the closed set does not contain. A set that is only compared against what the code happens to print survives neither."
+  }
+}
