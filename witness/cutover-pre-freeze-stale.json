@@ -1,22 +1,22 @@
 {
-  "id": "cutover-retirement-adapter",
-  "behavior": "cutover-retirement-adapter-is-load-bearing",
+  "id": "cutover-pre-freeze-stale",
+  "behavior": "cutover-pre-freeze-stale-refuses-every-kernel-switch",
   "tests": [
-    "a shipped inventory row is unported without the adapter and ported with it"
+    "no switch may report kernel while the pre-freeze ruleset is older than the newest switch write"
   ],
-  "class": "additive",
+  "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  row.negativeWitness = [\"sh\", \"-c\", command as string];",
-      "replace": "  row.negativeWitness = [command as string];"
+      "find": "  if (capturedMs < newest) {",
+      "replace": "  if (false) {"
     },
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  const witness = source[\"negative-witness\"];",
-      "replace": "  const witness = source[\"negativeWitness\"];"
+      "find": "    if (at > newest) {",
+      "replace": "    if (at < newest) {"
     }
   ],
   "consumesExternalOutput": {

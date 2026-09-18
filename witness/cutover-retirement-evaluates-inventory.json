@@ -1,22 +1,22 @@
 {
-  "id": "cutover-retirement-adapter",
-  "behavior": "cutover-retirement-adapter-is-load-bearing",
+  "id": "cutover-retirement-evaluates-inventory",
+  "behavior": "cutover-retirement-evaluates-the-shipped-inventory",
   "tests": [
-    "a shipped inventory row is unported without the adapter and ported with it"
+    "the shipped retirement inventory evaluates every PORT row and reports a verdict for each"
   ],
   "class": "additive",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  row.negativeWitness = [\"sh\", \"-c\", command as string];",
-      "replace": "  row.negativeWitness = [command as string];"
+      "find": "    if (source[\"disposition\"] === \"KEEP\" || source[\"disposition\"] === \"DELETE\") {",
+      "replace": "    if (true) {"
     },
     {
       "kind": "mutation",
       "file": "src/cutover.ts",
-      "find": "  const witness = source[\"negative-witness\"];",
-      "replace": "  const witness = source[\"negativeWitness\"];"
+      "find": "    if (source[\"disposition\"] === \"KEEP\" || source[\"disposition\"] === \"DELETE\") {\n      continue;\n    }",
+      "replace": "    if (source[\"disposition\"] === \"PORT\") {\n      continue;\n    }"
     }
   ],
   "consumesExternalOutput": {

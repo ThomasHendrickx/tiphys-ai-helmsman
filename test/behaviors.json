@@ -1186,7 +1186,6 @@
   "cutover-state-schema-is-what-refuses-the-write": "the cutover-state schema is what rejects a record missing restoreTo",
   "cutover-state-schema-keeps-the-document-extensible": "the cutover-state schema accepts carried keys at the document and record levels",
   "cutover-pre-freeze-absent-refuses-every-kernel-switch": "no switch may report kernel while the pre-freeze ruleset is absent",
-  "cutover-pre-freeze-stale-refuses-every-kernel-switch": "no switch may report kernel while the pre-freeze ruleset is older than the newest switch write",
   "cutover-pre-freeze-fresh-capture-satisfies": "a pre-freeze capture newer than every switch write satisfies the precondition",
   "cutover-pre-freeze-not-required-while-unfrozen": "the pre-freeze precondition is not-required while every switch reads current",
   "cutover-pre-freeze-unreadable-capture-fails-closed": "a pre-freeze capture with no captured-at refuses rather than passing",
@@ -1204,5 +1203,6 @@
   "cutover-verb-is-registered-in-the-cli": "the cutover verb is registered in the CLI and its usage names status",
   "cutover-status-usage-error-without-fleet": "cutover status without --fleet is a usage error and not a refusal",
   "cutover-state-type-row-registered": "tiphys validate --type cutover-state accepts a good state and names a missing restoreTo",
-  "cutover-status-contract-reproduced-live": "the captured status contracts this phase parses are reproduced live"
+  "cutover-status-contract-reproduced-live": "the captured status contracts this phase parses are reproduced live",
+  "cutover-pre-freeze-stale-refuses-every-kernel-switch": "no switch may report kernel while the pre-freeze ruleset is older than the newest switch write"
 }
