@@ -2,8 +2,8 @@ diff --git a/src/fleet.ts b/src/fleet.ts
 --- a/src/fleet.ts
 +++ b/src/fleet.ts
 @@ -1,4 +1,4 @@
--import { existsSync, lstatSync, statSync } from "node:fs";
-+import { existsSync, lstatSync, realpathSync, statSync } from "node:fs";
+-import { existsSync, lstatSync, readFileSync, statSync } from "node:fs";
++import { existsSync, lstatSync, readFileSync, realpathSync, statSync } from "node:fs";
  import type { Stats } from "node:fs";
  import { join, resolve } from "node:path";
  

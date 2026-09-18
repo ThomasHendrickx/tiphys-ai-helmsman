@@ -1,0 +1,24 @@
+{
+  "id": "brief-input-entry-types-established",
+  "behavior": "brief-input-entry-types-are-established-before-the-open",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a named pipe at a brief input path is refused in bounded time and strands nothing"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/brief.ts",
+      "find": "  const briefRead = readRegularPathIfPresent(briefFile);",
+      "replace": "  const briefRead = { kind: \"read\", body: (process.getBuiltinModule(\"node:fs\") as typeof import(\"node:fs\")).readFileSync(briefFile, \"utf8\") } as unknown as ReturnType<typeof readRegularPathIfPresent>;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/brief.ts",
+      "find": "  const warningsRead = readRegularPathIfPresent(warnings);",
+      "replace": "  const warningsRead = ((): ReturnType<typeof readRegularPathIfPresent> => { const fs = process.getBuiltinModule(\"node:fs\") as typeof import(\"node:fs\"); try { return { kind: \"read\", body: fs.readFileSync(warnings, \"utf8\") }; } catch { return { kind: \"absent\" }; } })();"
+    }
+  ]
+}

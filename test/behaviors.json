@@ -1216,7 +1216,7 @@
   "cutover-state-type-row-registered": "tiphys validate --type cutover-state accepts a good state and names a missing restoreTo",
   "cutover-status-contract-reproduced-live": "the captured status contracts this phase parses are reproduced live",
   "cutover-pre-freeze-stale-refuses-every-kernel-switch": "no switch may report kernel while the pre-freeze ruleset is older than the newest switch write",
-  "shared-guard-requires-a-local-lease-not-only-a-tracked-identity": "the shared guard refuses a second fleet home that carries the holder tracked identity but no lease",
+  "shared-guard-requires-a-local-lease-not-only-a-tracked-identity": "the shared guard refuses a second fleet home that carries the holder's tracked identity but no lease",
   "shared-release-failure-restores-the-local-lease": "a shared release that cannot publish restores the local lease it removed",
   "shared-renew-failure-restores-the-local-lease": "a shared renew that cannot publish restores the local lease it extended",
   "sync-refuses-a-kernel-scratch-artifact-in-a-tracked-directory": "sync refuses a kernel scratch artifact in a tracked subdirectory and commits nothing",

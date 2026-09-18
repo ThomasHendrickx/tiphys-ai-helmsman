@@ -272,24 +272,13 @@ export function cmdSync(argv: string[]): number {
   }
   const ephemeral = classified.ephemeral;
 
-  /* CRITERION 4, and the order matters: every staged ephemeral path is
-     reported before anything is staged or committed, so the refusal is a
-     statement about the tree as the operator left it. */
-  const stagedEphemeral = changed.filter(
-    (entry) =>
-      ephemeral.has(entry.path) && entry.index !== " " && entry.index !== "?",
-  );
-  if (stagedEphemeral.length > 0) {
-    for (const entry of stagedEphemeral) {
-      const rule = ephemeral.get(entry.path) as IgnoreRule;
-      process.stderr.write(
-        `tiphys sync: ${entry.path} is staged and is ephemeral by ${renderRule(rule)}; ` +
-          `unstage it with git restore --staged -- ${entry.path} and re-run, nothing was committed\n`,
-      );
-    }
-    return 1;
-  }
-
+  /* THE SCRATCH REFUSAL RUNS BEFORE THE STAGED-EPHEMERAL ONE, and the order
+     is stated because it is a choice. A fleet carrying both a stray scratch
+     file and a staged ephemeral path reports the scratch file and stops; both
+     arms refuse and commit nothing, so no path is committed either way, and
+     the operator sees one refusal at a time rather than two. It also keeps the
+     staged-ephemeral block the last `return 1` before `const durable`, which
+     is where witness/sync-staged-lease-refused.json aims its second member. */
   /* THE DENYLIST IS THREE DIRECTORY PREFIXES AND THE QUESTION IT ANSWERS IS
      NARROWER THAN THE ONE THIS COMMAND ASKS.
 
@@ -335,6 +324,24 @@ export function cmdSync(argv: string[]): number {
           `write-then-rename scratch suffix this kernel uses (${FLEET_SCRATCH_SUFFIXES.join(", ")}), ` +
           `and no fleet .gitignore rule covers it, so committing it would track it forever; ` +
           `remove it and re-run, nothing was committed\n`,
+      );
+    }
+    return 1;
+  }
+
+  /* CRITERION 4, and the order matters: every staged ephemeral path is
+     reported before anything is staged or committed, so the refusal is a
+     statement about the tree as the operator left it. */
+  const stagedEphemeral = changed.filter(
+    (entry) =>
+      ephemeral.has(entry.path) && entry.index !== " " && entry.index !== "?",
+  );
+  if (stagedEphemeral.length > 0) {
+    for (const entry of stagedEphemeral) {
+      const rule = ephemeral.get(entry.path) as IgnoreRule;
+      process.stderr.write(
+        `tiphys sync: ${entry.path} is staged and is ephemeral by ${renderRule(rule)}; ` +
+          `unstage it with git restore --staged -- ${entry.path} and re-run, nothing was committed\n`,
       );
     }
     return 1;
