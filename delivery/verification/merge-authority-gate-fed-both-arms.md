@@ -75,10 +75,54 @@ re-run") arriving through a door that sentence does not name: the commit HAD
 been made, and it was incomplete. `git add -A` fixed it. A reader following the
 rule literally can still get the old verdict.
 
+## ARM 3, ADDED THE SAME DAY: the gate does not care WHICH head it approves
+
+**This arm was not run in the first pass, and not running it was the defect in
+this verification.** It was found by the sweep's validation-group criteria
+reviewer as CR-VS-001 (HIGH) and reproduced here independently before being
+believed.
+
+`check-dual-review`'s registry command takes no head parameter. src/checks.ts:3884
+groups verdicts by the head THE VERDICTS THEMSELVES DECLARE, and nothing compares
+that value to the commit the gate is running against, nor checks that it names a
+commit at all.
+
+Two sub-arms, both run in a throwaway clone:
+
+    ARM 3a: two decorrelated APPROVE verdicts naming
+            deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+            git cat-file -t on it: "could not get object info"
+      -> check-dual-review: GREEN, 2 verdict(s) examined, EXIT 0
+
+    ARM 3b: same verdicts, unchanged, plus a NEW commit of work
+            no verdict mentions
+      -> check-dual-review: GREEN, 2 verdict(s) examined, EXIT 0
+
+So a pair of approving verdicts makes this gate green for that phase on **every
+later head, indefinitely**, on evidence about a commit that need not exist.
+
+**The consequence for this sweep is immediate and is why it is recorded here
+rather than only in the review.** T-040 says no verdict pair has ever been
+committed. This sweep produces the first. The moment it lands, the gate flips
+from not-applicable to applicable and green, and by this arm it then stays green
+regardless of what follows. **The gate's first non-vacuous run in this project's
+history would also be its first false one.** The CR-VS-001 fix therefore lands in
+the same pull request as the verdicts, not after them.
+
+**A probe error worth keeping.** The first attempt at arm 3b appended plain prose
+to `src/cli.ts` to make "unreviewed work". That is not valid TypeScript, so the
+CLI failed to load with ERR_INVALID_TYPESCRIPT_SYNTAX and the run exited 1 with no
+gate line at all. Read quickly, a nonzero exit there could have been mistaken for
+the gate refusing. It was the probe breaking the program under test. The arm was
+re-run with a change that leaves the tree valid.
+
 ## What this settles, and what it does NOT
 
 SETTLED: the gate's red arm and green arm both fire, on real verdict documents
-from this sweep, and the sweep's verdicts carry the fields it requires. Measured
+from this sweep, and the sweep's verdicts carry the fields it requires. SETTLED
+ALSO, by arm 3: what the green MEANS is much weaker than the first pass implied.
+It certifies that a decorrelated approving pair exists somewhere in the corpus,
+not that it is about the head being audited. Measured
 across the three groups completed at the time: `framing` is `criteria-contract`
 against `evidence-integrity`, `review-contract` is `criteria` against `hazard`,
 and `produced-by` names different model families in every pair.
