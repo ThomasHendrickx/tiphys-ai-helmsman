@@ -25,13 +25,29 @@ table replaced, and nothing else in any capture is altered:
 
 | codepoint | glyph name | rendered here as | occurrences replaced |
 |---|---|---|---|
-| U+2139 | information source | `i` at the start of a line | 24 |
+| U+2139 | information source | `i` at the start of a line | 40 |
 | U+2716 | heavy multiplication x | `x` at the start of a line | 6 |
 | U+2714 | heavy check mark | `v` at the start of a line | 12 |
 
-Every replacement is a line-leading reporter glyph. Captures that are already
-pure ASCII (the probe transcripts, the gate bundle, the shell transcripts) are
-verbatim with nothing replaced.
+Every replacement is a line-leading reporter glyph inside a fenced block, and
+the counts are the output of this command run against this file:
+
+```
+$ python3 -c 'import re,sys
+lines=open(sys.argv[1]).read().split("\n"); inf=False; c={"i":0,"v":0,"x":0}
+for l in lines:
+    if l.strip().startswith("```"): inf = not inf; continue
+    if inf and re.match(r"^[ivx] ", l): c[l[0]] += 1
+print(c)' delivery/work-history/credential-route-fixes.md
+{'i': 40, 'v': 12, 'x': 6}
+```
+
+Captures that are already pure ASCII (the probe transcripts, the gate bundle,
+the shell transcripts) are verbatim with nothing replaced. The only OTHER
+alterations anywhere in this document are declared beside the captures they
+apply to: blank lines removed by a `grep -vE` pipe, one absolute scratch prefix
+rendered `<lab>`, one absolute clone path rendered `<clone>`, and one 300
+character table row elided with `...` in the claim-grep output.
 
 ## The two mechanisms, named before the findings
 
@@ -1112,8 +1128,11 @@ ended with a failure and three with 1305/1305 or 1309/1309 and exit 0:
 | branch, inside the final script | 2b4b19d | **exit 1** |
 | branch, the `suite` GATE's own child | 2b4b19d | 1309 pass, 0 fail, 0 skipped, green |
 | branch, direct re-run | 2b4b19d | 1309 pass, 0 skipped, exit 0 |
+| branch, a further re-run | 2b4b19d | 1309 pass, 0 skipped, exit 0 |
 
-Both failing runs carry the same signature, and this is all of it that was
+**Four green to two red, and the four green include the `suite` GATE'S OWN
+CHILD**, which is the run CI's verdict would come from. Both failing runs carry
+the same signature, and this is all of it that was
 captured, because both commands were piped through `tail -12` and the failing
 TEST NAME scrolled past:
 
@@ -1161,7 +1180,181 @@ repository's claim grep exists to catch.
 
 ## Gate results
 
+**Run LOCALLY, at this branch's head and against the merged base, before
+pushing.** DR-0031 item 3: CI enforces that `main` stays green, it is NOT how
+you find out whether you are. The invocation is the one the brief names, with
+`--phase` added because CI supplies it: the workflow derives it from
+`github.head_ref` with
+`sed -E 's#^(claude/)?(m[0-9]+-p[0-9]+).*#\2#'` (.github/workflows/gates.yml:233),
+which for `claude/credential-route-fixes` matches nothing and passes the branch
+name through unchanged. Omitting it locally is NOT the same run: the three
+diff-scoped gates then report `error: requires --phase` instead of the
+`not-applicable` CI will see, which was measured both ways.
+
+```
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+    --evidence <scratch> --base origin/main --head HEAD \
+    --phase claude/credential-route-fixes
+```
+
+Full bundle output, with only the absolute clone path shortened to `<clone>`:
+
+```
+gates: run ad8ba4c718ff7c26166103ca
+gates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)
+gates: registry gate-registry.yaml mode full
+gates: declared 19 applicable 12 verdict 12 green 11 red 1 not-applicable 7 error 0 vacuous 0
+gates: manifest-self-check: green: validated 8 schema document(s) against the closed keyword set (<clone>/src/gates/schemas/citation-config.schema.json, <clone>/src/gates/schemas/coverage-config.schema.json, <clone>/src/gates/schemas/gate-manifest.schema.json, <clone>/src/gates/schemas/gate-result.schema.json, <clone>/src/gates/schemas/phase-declaration.schema.json, <clone>/src/gates/schemas/release-record.schema.json, <clone>/src/gates/schemas/verifier-config.schema.json, <clone>/src/gates/schemas/witness-spec.schema.json), and gates.manifest.json against gate-manifest.schema.json
+gates: coverage: green: 115 inventory id(s) checked; per-kind: decision 6, milestone 98, phase 11; per-milestone: M1 11, M2 16, M3 74, M4 5, M5 3, decision 6
+gates: credential-scrub: green: no pull-request-capable credential resolvable from any of the 7 probed sources
+gates: credential-token: not-applicable: precondition implementer-token-present-owner-action-a-3 evaluated and unmet: node -e process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0) exited 1
+gates: suite: green: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 1309 test(s) from 65 file(s) (pass 1309, fail 0, skipped 0, todo 0, did-not-run 0); discovered 65 file(s) walking test for .test.ts; 1185 behavior(s) resolve; merge base 9d047a22257d
+gates: citations: red: delivery/tuition/T-042-a-refusal-predicate-that-cannot-see-an-absent-value.md: plugin/src/hooks/project-write-block.ts:629 matches no declared root (local or external)
+gates: scope: not-applicable: precondition scope-branch-is-a-phase-branch evaluated and unmet: branch claude/credential-route-fixes does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
+gates: deploy: not-applicable: precondition deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist
+gates: migrations: not-applicable: precondition migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist
+gates: clause-map: green: 74 rows checked, 0 pending a phase not yet in force
+gates: red-witness: green: 15 witness(es) evaluated (1 own, 14 stored re-evaluated in 157759ms); every witness red against every declared dangerous state and green at head
+gates: agent-rules-drift: green: CLAUDE.md's gate block matches gate-registry.yaml row for row (3 preflight step(s), 21 gate(s))
+gates: brief-drift: green: roles/implementer.md's full gate block matches gate-registry.yaml row for row (21 row(s) compared)
+gates: check-agents-references: green: 22 references resolved to a path that the package publishes, 22 of them also to an anchor inside it, under root <clone>
+gates: check-dual-review: not-applicable: precondition dual-review-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1
+gates: license: green: 12 production package(s) inventoried, all with license metadata on the declared allowlist; LICENSE present in the pack listing
+gates: typecheck: green: tsc -b tsconfig.src.json tsconfig.test.json plugin/tsconfig.json --force --listFiles exited 0 and reported 446 distinct file(s); the unit count is those printed paths, not a constant
+gates: gate-classes: not-applicable: precondition gate-classes-branch-is-a-phase-branch evaluated and unmet: branch claude/credential-route-fixes does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
+gates: merge-preconditions: not-applicable: precondition merge-preconditions-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1
+gates: 1 gate(s) reported red: citations
+```
+
+**The one red is CLOSED and the fix is in this branch.** `citations` reddened on
+`delivery/tuition/T-042-...md` for `plugin/src/hooks/project-write-block.ts:629`,
+"matches no declared root". That is the root-list failure CLAUDE.md describes
+and it is a DIFFERENT red from an out-of-range line: the root list at
+src/gates/citations.ts:201 does not declare `plugin/` at all, however correct
+the line number is. The path is now quoted, which is the documented tool for
+naming a file you are not asserting a line of, and the gate was re-run at the
+new head:
+
+```
+gates: registry gate-registry.yaml mode full
+gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0
+gates: citations: green: linted 2 changed document(s) at 20da4cdfed64c922db841a39d845f87c66bc5986: 12 citation(s) resolved, 0 self-citation(s), 0 unverifiable-external
+gates: every applicable gate is green
+CIT_EXIT=0
+```
+
+**Two things are worth saying about which gates ran, because a green gates: run ad8ba4c718ff7c26166103ca
+gates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)
+gates: registry gate-registry.yaml mode full
+gates: declared 19 applicable 12 verdict 12 green 11 red 1 not-applicable 7 error 0 vacuous 0
+gates: manifest-self-check: green: validated 8 schema document(s) against the closed keyword set (<clone>/src/gates/schemas/citation-config.schema.json, <clone>/src/gates/schemas/coverage-config.schema.json, <clone>/src/gates/schemas/gate-manifest.schema.json, <clone>/src/gates/schemas/gate-result.schema.json, <clone>/src/gates/schemas/phase-declaration.schema.json, <clone>/src/gates/schemas/release-record.schema.json, <clone>/src/gates/schemas/verifier-config.schema.json, <clone>/src/gates/schemas/witness-spec.schema.json), and gates.manifest.json against gate-manifest.schema.json
+gates: coverage: green: 115 inventory id(s) checked; per-kind: decision 6, milestone 98, phase 11; per-milestone: M1 11, M2 16, M3 74, M4 5, M5 3, decision 6
+gates: credential-scrub: green: no pull-request-capable credential resolvable from any of the 7 probed sources
+gates: credential-token: not-applicable: precondition implementer-token-present-owner-action-a-3 evaluated and unmet: node -e process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0) exited 1
+gates: suite: green: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 1309 test(s) from 65 file(s) (pass 1309, fail 0, skipped 0, todo 0, did-not-run 0); discovered 65 file(s) walking test for .test.ts; 1185 behavior(s) resolve; merge base 9d047a22257d
+gates: citations: red: delivery/tuition/T-042-a-refusal-predicate-that-cannot-see-an-absent-value.md: plugin/src/hooks/project-write-block.ts:629 matches no declared root (local or external)
+gates: scope: not-applicable: precondition scope-branch-is-a-phase-branch evaluated and unmet: branch claude/credential-route-fixes does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
+gates: deploy: not-applicable: precondition deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist
+gates: migrations: not-applicable: precondition migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist
+gates: clause-map: green: 74 rows checked, 0 pending a phase not yet in force
+gates: red-witness: green: 15 witness(es) evaluated (1 own, 14 stored re-evaluated in 157759ms); every witness red against every declared dangerous state and green at head
+gates: agent-rules-drift: green: CLAUDE.md's gate block matches gate-registry.yaml row for row (3 preflight step(s), 21 gate(s))
+gates: brief-drift: green: roles/implementer.md's full gate block matches gate-registry.yaml row for row (21 row(s) compared)
+gates: check-agents-references: green: 22 references resolved to a path that the package publishes, 22 of them also to an anchor inside it, under root <clone>
+gates: check-dual-review: not-applicable: precondition dual-review-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1
+gates: license: green: 12 production package(s) inventoried, all with license metadata on the declared allowlist; LICENSE present in the pack listing
+gates: typecheck: green: tsc -b tsconfig.src.json tsconfig.test.json plugin/tsconfig.json --force --listFiles exited 0 and reported 446 distinct file(s); the unit count is those printed paths, not a constant
+gates: gate-classes: not-applicable: precondition gate-classes-branch-is-a-phase-branch evaluated and unmet: branch claude/credential-route-fixes does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
+gates: merge-preconditions: not-applicable: precondition merge-preconditions-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1
+gates: 1 gate(s) reported red: citations is
+not evidence that a PARTICULAR gate asserted anything.**
+
+`red-witness` is the one this round takes a real obligation from, and its own
+line carries the units and the verdict directly: `15 witness(es) evaluated
+(1 own, 14 stored re-evaluated in 157759ms); every witness red against every
+declared dangerous state and green at head`. The `1 own` is this round's new
+spec, so both of its members were APPLIED, RUN and observed red, and the gate
+says so per-gate rather than leaving it to be deduced from a bundle count.
+
+`citations` was NOT APPLICABLE until the two tuition entries were added, and the
+first bundle said so by naming its unmet precondition: `no changed path under
+delivery/plan/, delivery/verification/, delivery/decisions/, delivery/tuition/,
+delivery/requirements/, delivery/STATE.md`. A work history is not in that list.
+So this round's largest document is not linted by the citations gate at all, and
+every `path:line` in it was re-resolved by hand against the merged head instead;
+the three that had moved are named where they sit.
+
+**The seven not-applicable gates each printed an EVALUATED unmet precondition**,
+which is what separates a legitimate no-op from a gate that silently did not
+run. `scope` and `gate-classes` are not applicable because this is deliberately
+not a phase branch. `deploy` and `migrations` are structurally not applicable in
+any pre-merge bundle. `credential-token` needs an owner-provisioned token
+(A-3). `check-dual-review` and `merge-preconditions` need two verdicts at the
+head, which is the ORCHESTRATOR's step after this round, not this round's.
+
 ## Claim grep
+
+Both binding forms were run. **The command text below contains all eleven
+phrases, so a whole-file re-run counts this section too**, and the numbers are
+therefore given for the document AS IT STOOD BEFORE this section existed, which
+is what grades the prose. A reader re-running the commands will get **65**
+occurrences, and the difference is this section: the two quoted command texts
+carry eleven phrases each, the disposition table quotes every hit again, and the
+elided grep output above is quoted a second time.
+
+```
+$ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/credential-route-fixes.md
+64:and **an unchecked assumption never becomes a green** (M2-C-3, quoted in the
+288:| ... | 1b | the defect's own neighbourhood ... the defect was never the list, it was the field inside an entry. |
+558:**Strengthening the check closes the hole and needs a source of truth.** Three
+588:where the more precise statement would be that the adapter never said what it
+692:   grep's vocabulary carries `cannot be`; the sentence says `cannot produce`.
+693:   The single-word alternatives (`never`, `always`, `impossible`) are immune to
+730:probe) or on `meta.json`, never on a value read in the parent. That last
+1028:v compareHandover distinguishes a compared handover from an unreported one and from one there was never anything to compare (0.446702ms)
+1272:any pre-merge bundle. `credential-token` needs an owner-provisioned token
+1293:   act impossible. The record says `redirectionSource: "child"`, which is a
+```
+
+Line 288's row is elided in the middle with `...` because the table row is 300
+characters wide; nothing else in the output is altered.
+
+```
+$ tr '\n' ' ' < delivery/work-history/credential-route-fixes.md \
+  | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' \
+  | sort | uniq -c
+      1 always
+      1 cannot be
+      2 impossible
+      2 needs a
+      6 never
+```
+
+**Ten matching LINES, twelve OCCURRENCES, and the wrap-insensitive form finds
+twelve as well, so ZERO were missed by the wrap.** The two numbers differ only
+because line 693 carries three phrases. The wrap-insensitive form was run
+because this prose is hard-wrapped here, which is the condition CLAUDE.md names;
+it happens to have found nothing extra, and that is a measurement rather than a
+reason to skip it next time.
+
+Every occurrence, with what settles it:
+
+| line | phrase | disposition |
+|---|---|---|
+| 64 | never | A QUOTE of M2-C-3, not this round's claim, and the citation beside it resolves to the sentence in the kernel's own source. |
+| 288 | never | Settled by the derivation output immediately above it: `options.extraAllowlist ?? []` appears in command 1b's full output, and the classification says why an absent LIST is a different thing from an absent FIELD. |
+| 558 | needs a | Descriptive, and the three options it introduces are enumerated in the same paragraph with what each buys. Not a claim about what is possible. |
+| 588 | never | A statement about a sentence this round WRITES ("the adapter never said what it had"), quoted to show it is the more precise wording that was NOT used. Settled by the code it describes. |
+| 692, 693 | cannot be, never, always, impossible | These ARE the grep's own vocabulary, quoted while explaining why the vocabulary missed `cannot produce`. Self-referential and settled by the command text itself. |
+| 730 | never | Settled by an adjacent captured command: the `grep -nE 'readFileSync\|process\.env\|result\.'` over the three probe sources and its full output, which enumerates every read the probes make. |
+| 1028 | never | Inside a CAPTURED test name from a real `node --test` run. Not authored prose. |
+| 1272 | needs a | A statement of a gate's precondition, settled by the gate's own printed line in the bundle above: `precondition implementer-token-present-owner-action-a-3 evaluated and unmet`. |
+| 1293 | impossible | A NEGATIVE claim, "does not make the act impossible", which is the safe direction: it declares residue rather than asserting a guarantee. |
+
+**No occurrence was restated as an open question, because none of them is an
+over-claim.** The one sentence in this round that WOULD have been is the M4-P8
+"cannot produce", and it is quoted as the thing being refuted rather than
+repeated.
 
 ## What this round did NOT cover
 
