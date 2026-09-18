@@ -194,6 +194,18 @@ fi
 # (required, green) is exactly right for it, and a row would be a relaxation
 # with nothing to relax.
 #
+# `merge-preconditions` DOES get a row, and the reason is the opposite of
+# typecheck's (M4-P12). It is a merge PRECONDITION reader: its subject is a head
+# that two committed clean-room verdicts name, and on an ordinary pull-request
+# run no such verdict exists yet, so its honest answer is not-applicable with an
+# evaluated, unmet precondition. Under the strict default that would be a red
+# exit test on every phase branch, which is a harness asserting something false
+# rather than a gate misbehaving. The row is the credential-token shape,
+# `green|not-applicable` and not required, and the not-applicable ARM is still
+# checked below: leg 4 requires every not-applicable record to name an evaluated
+# precondition (id, met:false, reason), so a silently skipped or errored gate
+# cannot pass through this row.
+#
 # The PR bundle runs the WHOLE manifest (no --only), so nothing is absent from
 # it and its absent list is the empty one, written literally.
 PR_EXPECT_JSON='{
@@ -210,7 +222,8 @@ PR_EXPECT_JSON='{
     {"id": "credential-scrub", "expect": "green", "required": true},
     {"id": "deploy", "expect": "not-applicable", "required": false, "structural": true},
     {"id": "migrations", "expect": "not-applicable", "required": false, "structural": true},
-    {"id": "credential-token", "expect": "green|not-applicable", "required": false}
+    {"id": "credential-token", "expect": "green|not-applicable", "required": false},
+    {"id": "merge-preconditions", "expect": "green|not-applicable", "required": false}
   ],
   "absent": []
 }'

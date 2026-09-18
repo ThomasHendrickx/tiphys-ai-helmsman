@@ -320,6 +320,7 @@ Then the registry's gates, run by `tiphys gates run --registry gate-registry.yam
 | `license` | script | required | full, direct-pr, local-only | pull_request, push | production packages licensed |
 | `typecheck` | script | required | full, direct-pr, local-only | pull_request | source files type-checked |
 | `gate-classes` | script | required | full, direct-pr | pull_request | declared gate classes checked |
+| `merge-preconditions` | script | conditional | full, direct-pr | pull_request | merge preconditions evaluated |
 | `unit-tests-for-changed-service-methods` | clean-room-checklist (probe `unit-tests-for-changed-service-methods`) | conditional | full, direct-pr | pull_request | changed service methods checked |
 | `fixtures-for-changed-component-states` | clean-room-checklist (probe `fixtures-for-changed-component-states`) | conditional | full, direct-pr | pull_request | changed component states checked |
 

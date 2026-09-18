@@ -223,6 +223,29 @@
         "kind": "branch-matches",
         "pattern": "claude/m[0-9]+-p[0-9]+-.*"
       }
+    },
+    {
+      "id": "merge-preconditions",
+      "command": [
+        "node",
+        "src/gates/merge-preconditions.ts"
+      ],
+      "unitLabel": "merge preconditions evaluated",
+      "applicability": "conditional",
+      "parameters": [
+        "head",
+        "phase"
+      ],
+      "precondition": {
+        "id": "merge-preconditions-verdicts-present",
+        "kind": "command-exit-zero",
+        "command": [
+          "node",
+          "scripts/check-dual-review.mjs",
+          "--precondition",
+          "."
+        ]
+      }
     }
   ],
   "destructiveCommands": [

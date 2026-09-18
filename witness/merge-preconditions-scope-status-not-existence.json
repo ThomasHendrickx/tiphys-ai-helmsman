@@ -1,0 +1,33 @@
+{
+  "id": "merge-preconditions-scope-status-not-existence",
+  "behavior": "merge-preconditions-scope-status-not-existence",
+  "tests": [
+    "condition 5 is red when the scope record reads red and red with a different reason when no record exists, and the gate word is error on the absent arm"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  if (status !== \"green\") {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "      instrument: \"missing\",\n      sentence:\n        `no scope gate record exists at ${path}, so whether the change is the change that was ` +",
+      "replace": "      instrument: \"present\",\n      sentence:\n        `no scope gate record exists at ${path}, so whether the change is the change that was ` +"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "GitHub REST API (api.github.com)",
+    "captures": [
+      "witness/captures/m4-p12-github-check-runs.json",
+      "witness/captures/m4-p12-github-rulesets-list.json",
+      "witness/captures/m4-p12-github-ruleset-detail.json"
+    ],
+    "provenance": "Captured 2026-09-17 from the live GitHub REST API with curl and $GH_TOKEN, against ThomasHendrickx/tiphys-ai-helmsman: GET /repos/{slug}/commits/713731ff771afa2555b7850b53648923f36cde0c/check-runs (HTTP 200), GET /repos/{slug}/rulesets?includes_parents=true (HTTP 200), and GET /repos/{slug}/rulesets/20446760 (HTTP 200). The reachability probe and its deliberately-invalid-token control are recorded in delivery/work-history/m4-p12.md."
+  }
+}
