@@ -65,7 +65,12 @@ Written first, deliberately.
 
 The transcript is complete and unedited except for the substitution named
 below. Each step prints the command, its stdout prefixed `|`, its stderr
-prefixed `!`, and its exit code.
+prefixed `!`, and its exit code. There are FORTY-FOUR blocks and FORTY-FOUR
+exit codes: four record the toolchain and the two filesystems, eleven are the
+setup S1 to S11, and twenty-nine are the rehearsal proper R1 to R29. The two
+counts are checkable with `grep -c '^=== '` and `grep -c '^exit='` over this
+file, and they are quoted as a pair because a step printed without its exit
+code is the one a reader would take on trust.
 
 | step | what it shows |
 |---|---|
