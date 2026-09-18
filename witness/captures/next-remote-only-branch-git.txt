@@ -1,0 +1,23 @@
+# Real git output, recorded 2026-09-18 with git version 2.43.0, against a
+# clone of an upstream carrying exactly one undelivered branch: the shape
+# makeRemoteOnlyUpstream in test/next.test.ts builds. Every command below was
+# run inside the CLONE. Recorded so that the premise this phase's round-1
+# tests rest on, that the LOCAL-ONLY branch walk cannot see the branch and
+# that the branch is genuinely undelivered, is measured from git rather than
+# written to match the implementation (CLAUDE.md standing warning 10).
+
+$ git for-each-ref --format=%(refname) refs/heads/
+refs/heads/main
+(exit 0)
+
+$ git for-each-ref --format=%(objectname) %(refname) %(symref) refs/heads/ refs/remotes/
+58805f99d4d3ad32d21e3e3272bd031622cfb518 refs/heads/main 
+58805f99d4d3ad32d21e3e3272bd031622cfb518 refs/remotes/origin/HEAD refs/remotes/origin/main
+ff7bad3ba16af1a2e136ef3c326dacc3f0d98d95 refs/remotes/origin/feat-open 
+58805f99d4d3ad32d21e3e3272bd031622cfb518 refs/remotes/origin/main 
+(exit 0)
+
+$ git cherry refs/remotes/origin/main refs/remotes/origin/feat-open
++ ff7bad3ba16af1a2e136ef3c326dacc3f0d98d95
+(exit 0)
+

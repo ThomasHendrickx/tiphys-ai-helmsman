@@ -1,0 +1,24 @@
+{
+  "id": "pr-merge-refuses-without-a-target",
+  "behavior": "pr-merge-refuses-without-a-target",
+  "tests": [
+    "pr merge refuses without a --number, before any credential is read and with no child built"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/pr.ts",
+      "find": "    if (number === undefined) {",
+      "replace": "    if (number === undefined && false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/pr.ts",
+      "find": "      return PR_EX_NO_TARGET;",
+      "replace": "      return 0;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

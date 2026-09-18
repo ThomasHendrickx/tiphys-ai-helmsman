@@ -1,0 +1,31 @@
+{
+  "id": "next-in-flight-hidden-by-a-filter-is-not-empty",
+  "behavior": "next-in-flight-hidden-by-a-filter-is-not-empty",
+  "tests": [
+    "next reports a remote-only branch and a project reached through a symlink as in flight"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/next.ts",
+      "find": "      \"refs/heads/\",\n      \"refs/remotes/\",\n    ]);",
+      "replace": "      \"refs/heads/\",\n    ]);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/next.ts",
+      "find": "    projects = readdirSync(fleet.projectsDir, { withFileTypes: true })\n      .map((entry) => entry.name)",
+      "replace": "    projects = readdirSync(fleet.projectsDir, { withFileTypes: true })\n      .filter((entry) => entry.isDirectory())\n      .map((entry) => entry.name)"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git for-each-ref, git merge-base --is-ancestor, git merge-tree --write-tree, git cherry",
+    "captures": [
+      "witness/captures/next-remote-only-branch-git.txt"
+    ],
+    "provenance": "rule (f) binds this witness because its phase-owned members mutate src/commands/next.ts, which spawns git and parses its output: the branch walk reads `git for-each-ref`'s object name, ref name and symref fields, and the delivered-elsewhere predicate reads `git merge-base --is-ancestor`'s exit code, `git merge-tree --write-tree`'s tree id and conflict exit, and `git cherry`'s per-commit mark. The cited captures are real runs against repositories of exactly the shapes test/next.test.ts builds, taken with git 2.43.0; witness/captures/next-remote-only-branch-git.txt was taken on 2026-09-18 against a clone and records each command verbatim with its exit code. The named tests parse the premise out of those captures and require the freshly built repository to reproduce it before any claim about the new behaviour is made, so the premise is measured rather than hand-written (CLAUDE.md standing warning 10)."
+  }
+}
