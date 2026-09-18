@@ -459,7 +459,6 @@ function mutant(name: string, edits: [string, string][]): string {
       body.includes(from),
       `mutation ${name}: the text to replace is not present in the shipped gate, so this witness is stale: ${from}`,
     );
-    assert.ok(body.includes(from), from);
     body = body.replace(from, to);
   }
   const srcDir = join(repoRoot, "src");
