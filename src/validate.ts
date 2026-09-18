@@ -124,12 +124,18 @@ export interface Diagnostic {
  * DR-0047 sweep). The sentence here used to say the vocabulary IS "documented
  * in `schemas/README.md`", which reads as a guarantee that the two agree.
  * Measured at the swept head they did not: this array holds sixteen keywords
- * and that document's table declares fifteen, `uniqueItems` being the missing
- * row, since the day M3-P1 wrote both. Nothing asserts the relation, so no gate
- * could see it. Closing the drift needs a row in `schemas/README.md` and a test
- * pointed at the pair, and `schemas/` is outside this fix round's declared
- * files, so what is corrected HERE is the false claim: a reader of this comment
- * is now told which artifact decides and that the other one can lag.
+ * and that document's table declared fifteen, `uniqueItems` being the missing
+ * row, since the day M3-P1 wrote both. Nothing asserted the relation, so no gate
+ * could see it.
+ *
+ * THE DRIFT IS NOW CLOSED, AND BY THE TEST RATHER THAN BY THE ROW (DR-0047
+ * sweep round 2). The row was added to `schemas/README.md`, which closes the one
+ * instance; what closes the MECHANISM is that test/schemas.test.ts:340 parses
+ * that document's keyword column and compares it to this array, so the two
+ * halves can no longer disagree silently. The document still does not DECIDE
+ * anything: this array is the contract and that one renders it, which is why
+ * the comparison is written as an assertion about the document rather than as a
+ * generator.
  *
  * AND THE SECOND HALF OF THAT SENTENCE IS GONE. It said every entry "therefore
  * also has an entry in `MESSAGE_BY_KEYWORD`", which was false in both

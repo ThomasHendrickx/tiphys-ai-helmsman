@@ -61,6 +61,29 @@ function git(dir: string, args: string[]): string {
   return (run.stdout ?? "").trim();
 }
 
+/**
+ * Ask git the ancestry question the gate asks, as a THIRD-PARTY control.
+ *
+ * The tests below assert on the sentence the shipped gate prints, and a test
+ * that also assumed the ancestry would pass for the wrong reason if the staging
+ * ever stopped producing the history it means to. `merge-base --is-ancestor`
+ * answers with an exit code, so 1 is an answer and anything else is a failure;
+ * folding them together here would be the same collapse the implementation
+ * refuses.
+ */
+function isAncestor(dir: string, candidate: string, descendant: string): boolean {
+  const run = spawnSync("git", ["merge-base", "--is-ancestor", candidate, descendant], {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, ...GIT_IDENTITY },
+  });
+  assert.ok(
+    run.status === 0 || run.status === 1,
+    `git merge-base --is-ancestor exited ${String(run.status)}: ${run.stderr}`,
+  );
+  return run.status === 0;
+}
+
 const scratchDirs: string[] = [];
 function scratch(): string {
   const dir = mkdtempSync(join(tmpdir(), "tiphys-head-anchor-"));
@@ -263,48 +286,251 @@ test("an approving pair naming a real commit that is not the one under audit is 
   /* MEMBER TWO, AND IT IS STRUCTURALLY DIFFERENT FROM MEMBER ONE RATHER THAN
      THE SAME SHAPE TWICE. Here the declared head RESOLVES: it is a real commit
      of this repository, with real content, and the reviews really did review
-     it. What it is not is the commit being audited. Member one fails at
-     resolution and this one fails at comparison, and the two print different
-     sentences.
+     it. What it is not is the commit being audited, NOR AN ANCESTOR OF IT.
+     Member one fails at resolution and this one fails at comparison, and the
+     two print different sentences.
 
-     This is the state the finding describes as imminent: an approving pair
-     lands, and every LATER head then carries it. `staged.head` is exactly that
-     later head, and it contains work no verdict mentions. */
+     THE STAGING IS A SIBLING LINE, AND IT CHANGED IN ROUND 2 BECAUSE THE OLD
+     ONE STOPPED BEING THIS MEMBER. Until round 2 this test staged a LATER
+     commit on the same line, which made the declared head an ANCESTOR of the
+     audited one; that shape is now its own member below (a shipped path differs
+     across the gap) and it refuses by a different route. A commit on a branch
+     cut from the reviewed commit is on neither side of the audited head, which
+     is the comparison route stated without any ancestry in it. */
   const staged = stage(PAIR);
-  writeFileSync(join(staged.dir, "unreviewed.txt"), "work no verdict mentions\n");
+  git(staged.dir, ["checkout", "-q", "-b", "sibling", staged.reviewed]);
+  writeFileSync(join(staged.dir, "sibling.txt"), "another line of work\n");
   git(staged.dir, ["add", "-A"]);
-  git(staged.dir, ["commit", "-q", "-m", "work nobody reviewed"]);
-  const later = git(staged.dir, ["rev-parse", "HEAD"]);
-  assert.notEqual(later, staged.reviewed);
+  git(staged.dir, ["commit", "-q", "-m", "a commit on another line"]);
+  const sibling = git(staged.dir, ["rev-parse", "HEAD"]);
+  git(staged.dir, ["checkout", "-q", "-"]);
+  /* ESTABLISHED RATHER THAN ASSUMED, in both directions, because the whole
+     claim of this member is that neither ancestry holds. */
+  assert.equal(isAncestor(staged.dir, sibling, staged.head), false);
+  assert.equal(isAncestor(staged.dir, staged.head, sibling), false);
 
-  const run = runGate(staged, later);
+  const anchored = stage(PAIR.map((entry) => ({ ...entry, head: sibling })));
+  /* The verdicts above were staged against a DIFFERENT scratch repository, so
+     the sibling sha they name is not an object there; restage them here. */
+  for (const entry of PAIR) {
+    const file = join(staged.dir, "delivery", "review", entry.file);
+    writeFileSync(
+      file,
+      readFileSync(join(anchored.dir, "delivery", "review", entry.file), "utf8"),
+    );
+  }
+  git(staged.dir, ["add", "-A"]);
+  git(staged.dir, ["commit", "-q", "-m", "verdicts naming the sibling commit"]);
+  const later = git(staged.dir, ["rev-parse", "HEAD"]);
+
+  const run = runGate({ ...staged, head: later }, later);
   assert.notEqual(run.exit, 0, run.output);
   assert.notEqual(run.record.status, "green");
   assert.equal(run.record.status, "not-applicable");
   assert.match(
     run.record.detail,
-    /is a commit in this repository and is not the commit under audit/,
+    /is a commit in this repository and is neither the commit under audit .* nor an ancestor of it/,
     run.record.detail,
   );
   assert.match(run.record.detail, new RegExp(`under audit ${later}`), run.record.detail);
-  /* THE TWO MEMBERS PRINT DIFFERENT SENTENCES, which is what makes them two
-     members and not one. */
+  /* THE MEMBERS PRINT DIFFERENT SENTENCES, which is what makes them members
+     and not one shape repeated. */
   assert.doesNotMatch(run.record.detail, /does not resolve to a commit in this repository at all/);
+  assert.doesNotMatch(run.record.detail, /path\(s\) outside delivery\/ differ between them/);
+});
+
+/* ------------------------------------------------------------------ */
+/* ROUND 2, member three: AN ANCESTOR WITH A SHIPPED GAP               */
+/* ------------------------------------------------------------------ */
+
+test("an approving pair naming an ancestor is refused when shipped content differs across the gap, and the differing paths are named", () => {
+  /* THE MEMBER THAT MAKES THE ANCESTRY ALLOWANCE SAFE, and without it the
+     allowance is a hole rather than a fix. Round 1 anchored the corpus with
+     `===`, which no real flow satisfies, because committing a verdict makes the
+     audited commit a CHILD of the declared one. Round 2 admits an ancestor, and
+     an ancestor admitted unconditionally is round 1's original defect wearing a
+     different hat: an approving pair lands and every later descendant carries
+     it, including descendants full of source nobody reviewed.
+
+     This is that state exactly: the reviews are real, they name a real
+     ancestor, and the audited commit carries a change to a path outside the
+     paperwork root. */
+  const staged = stage(PAIR);
+  writeFileSync(join(staged.dir, "src.ts"), "export const nobodyRead = 2;\n");
+  git(staged.dir, ["add", "-A"]);
+  git(staged.dir, ["commit", "-q", "-m", "shipped work nobody reviewed"]);
+  const later = git(staged.dir, ["rev-parse", "HEAD"]);
+  /* THE ANCESTRY HOLDS, ESTABLISHED RATHER THAN ASSUMED. Without this the test
+     would pass for the wrong reason if the staging ever stopped producing a
+     linear history, which is the member-two failure one shape over. */
+  assert.equal(isAncestor(staged.dir, staged.reviewed, later), true);
+
+  const run = runGate({ ...staged, head: later }, later);
+  assert.notEqual(run.exit, 0, run.output);
+  assert.notEqual(run.record.status, "green");
+  assert.equal(run.record.status, "not-applicable");
+  assert.match(
+    run.record.detail,
+    /is an ancestor of the commit under audit .*, but 1 path\(s\) outside delivery\/ differ between them \(src\.ts\)/,
+    run.record.detail,
+  );
+  /* AND IT IS NOT REFUSED BY EITHER OF THE OTHER ROUTES, which is what makes
+     this a third member rather than a restatement of one of them. */
+  assert.doesNotMatch(run.record.detail, /does not resolve to a commit in this repository at all/);
+  assert.doesNotMatch(run.record.detail, /nor an ancestor of it/);
+  assert.equal(runPrecondition({ ...staged, head: later }, later).exit, 1);
+});
+
+/* ------------------------------------------------------------------ */
+/* ROUND 2, member four: THE GREEN CONTROL THE FIX EXISTS FOR          */
+/* ------------------------------------------------------------------ */
+
+test("an approving pair naming an ancestor whose whole gap is paperwork is green, and the green line says it was admitted by ancestry", () => {
+  /* THE CONTROL WITHOUT WHICH THE THREE REFUSALS ARE INDISTINGUISHABLE FROM A
+     GATE THAT CAN NO LONGER GO GREEN AT ALL, which is the defect round 2 is
+     here to fix. Measured on round 1's base at d653022, this exact staging
+     reported `not-applicable`, exit 20, 0 units.
+
+     `stage` ALREADY PRODUCES THIS SHAPE, and that is the point rather than a
+     convenience: the second commit is the verdicts themselves, under
+     `delivery/review/`, which is the real flow. A further paperwork-only commit
+     is added so the gap is more than the verdict documents and the allowance is
+     not being tested only against the one commit that must obviously pass. */
+  const staged = stage(PAIR);
+  writeFileSync(join(staged.dir, "delivery", "work-history.md"), "more paperwork\n");
+  git(staged.dir, ["add", "-A"]);
+  git(staged.dir, ["commit", "-q", "-m", "more paperwork"]);
+  const later = git(staged.dir, ["rev-parse", "HEAD"]);
+  assert.equal(isAncestor(staged.dir, staged.reviewed, later), true);
+  /* THE GAP IS PAPERWORK ONLY, ESTABLISHED FROM GIT rather than assumed from
+     the staging, so a staging change that started writing outside `delivery/`
+     would fail here rather than quietly weaken the control. */
+  const gap = git(staged.dir, ["diff", "--name-only", `${staged.reviewed}..${later}`])
+    .split("\n")
+    .filter((line) => line !== "");
+  assert.ok(gap.length >= 3, gap.join(" , "));
+  assert.deepEqual(gap.filter((path) => !path.startsWith("delivery/")), []);
+
+  const run = runGate({ ...staged, head: later }, later);
+  assert.equal(run.exit, 0, run.output);
+  assert.equal(run.record.status, "green");
+  assert.equal(run.record.units, 2);
+  /* THE RELAXATION IS DISCLOSED, never silent. A green that did not say it was
+     reached by ancestry would be the unfalsifiable record this file refuses
+     everywhere else: a reader could not tell it from an equal-head green. */
+  assert.match(
+    run.record.detail,
+    /2 of 2 verdict\(s\) were admitted by ANCESTRY rather than by naming this commit, their gap to it being paperwork only/,
+    run.record.detail,
+  );
+  assert.match(run.record.detail, new RegExp(`under audit ${later}`), run.record.detail);
+  /* AND THE PRECONDITION AGREES, because the workflow runs it under `set -e`. */
+  assert.equal(runPrecondition({ ...staged, head: later }, later).exit, 0);
+});
+
+test("a paperwork-only gap is still paperwork when a filename is not printable ASCII, which the default diff spelling would have called shipped content", () => {
+  /* THE ONE FILENAME THAT BROKE THE ALLOWANCE, and it is the cannot-go-green
+     shape one filename wide rather than a new class. `git diff --name-only`
+     QUOTES a path outside printable ASCII, so `delivery/na<U+00EF>ve.md` arrives
+     as a double-quoted, octal-escaped spelling that does not start with
+     `delivery/`, and the gap reads as shipped content. Measured on git 2.43.0
+     before the fix; `-z` prints the real path and is what the implementation
+     now passes.
+
+     THE NAME IS BUILT FROM AN ESCAPE, never written as a literal byte, because
+     this file is authored source and the repository's authored bytes are pure
+     ASCII. The escape is the data; the file stays ASCII. */
+  const awkward = `delivery/na\u00efve.md`;
+  assert.match(awkward, /^delivery\/na.ve\.md$/);
+  const staged = stage(PAIR);
+  writeFileSync(join(staged.dir, awkward), "paperwork with an awkward name\n");
+  git(staged.dir, ["add", "-A"]);
+  git(staged.dir, ["commit", "-q", "-m", "paperwork whose name is not printable ascii"]);
+  const later = git(staged.dir, ["rev-parse", "HEAD"]);
+  /* THE DANGEROUS SPELLING IS ESTABLISHED, not assumed: if a future git stopped
+     quoting by default this test would be exercising nothing, and it would say
+     so here rather than pass quietly. */
+  const quoted = git(staged.dir, ["diff", "--name-only", `${staged.reviewed}..${later}`]);
+  assert.match(quoted, /^"delivery\/na/m, quoted);
+
+  const run = runGate({ ...staged, head: later }, later);
+  assert.equal(run.exit, 0, run.output);
+  assert.equal(run.record.status, "green");
+  assert.equal(run.record.units, 2);
+  assert.doesNotMatch(run.record.detail, /path\(s\) outside delivery\/ differ between them/);
+});
+
+test("an approving pair naming a DESCENDANT of the commit under audit is refused on its own route", () => {
+  /* THE DIRECTION THE ALLOWANCE DELIBERATELY DOES NOT OPEN. Ancestry is
+     admitted because the reviewers read the shipped content this commit
+     carries. A verdict naming a commit BELOW the audited one reviewed a tree
+     the audited commit does not contain, so nothing here establishes what those
+     reviewers would have said about the smaller tree. It is refused, and it
+     gets its own sentence rather than being folded into "not an ancestor",
+     because a reader who wrote the head field backwards is owed the diagnosis. */
+  const staged = stage(PAIR);
+  writeFileSync(join(staged.dir, "delivery", "later.md"), "paperwork below\n");
+  git(staged.dir, ["add", "-A"]);
+  git(staged.dir, ["commit", "-q", "-m", "a descendant commit"]);
+  const descendant = git(staged.dir, ["rev-parse", "HEAD"]);
+  const pointed = stage(PAIR.map((entry) => ({ ...entry, head: descendant })));
+  for (const entry of PAIR) {
+    writeFileSync(
+      join(staged.dir, "delivery", "review", entry.file),
+      readFileSync(join(pointed.dir, "delivery", "review", entry.file), "utf8"),
+    );
+  }
+  git(staged.dir, ["add", "-A"]);
+  git(staged.dir, ["commit", "-q", "-m", "verdicts naming a later commit"]);
+  const audited = staged.reviewed;
+  assert.equal(isAncestor(staged.dir, audited, descendant), true);
+
+  const run = runGate({ ...staged, head: audited }, audited);
+  assert.notEqual(run.exit, 0, run.output);
+  assert.notEqual(run.record.status, "green");
+  assert.match(
+    run.record.detail,
+    /is a DESCENDANT of the commit under audit .*, so the reviewers read a tree this commit does not contain/,
+    run.record.detail,
+  );
 });
 
 test("with no --head the audited commit is the context's own HEAD, so the workflow step that passes no flag is anchored too", () => {
   /* THE DEFAULT IS THE ONE CI TAKES. `.github/workflows/gates.yml` runs this
      script as a direct step with no `--head`, so an anchor that existed only
-     when the flag was passed would leave the CI path exactly as it was. */
-  const staged = stage(PAIR);
-  const run = runGate(staged);
-  assert.equal(run.record.status, "not-applicable", run.output);
+     when the flag was passed would leave the CI path exactly as it was.
+
+     BOTH DIRECTIONS ARE ASSERTED HERE, AND THAT IS ROUND 2's CHANGE. Until
+     round 2 this test asserted only that the flagless run reported
+     not-applicable, which was true of EVERY flagless run, including the real
+     one: the default anchor is the context's HEAD and the verdicts name its
+     parent. So the assertion was satisfied by the gate being unable to pass at
+     all, and it would have gone on being satisfied. Now the flagless run is
+     exercised on an arm that passes and an arm that refuses, and both name
+     `staged.head` as the commit under audit, which is what the test is for. */
+  const admitting = stage(PAIR);
+  const green = runGate(admitting);
+  assert.equal(green.record.status, "green", green.output);
   assert.match(
-    run.record.detail,
-    new RegExp(`for the commit under audit ${staged.head}`),
-    run.record.detail,
+    green.record.detail,
+    new RegExp(`for the commit under audit ${admitting.head}`),
+    green.record.detail,
   );
-  assert.equal(runPrecondition(staged).exit, 1);
+  assert.equal(runPrecondition(admitting).exit, 0);
+
+  const refusing = stage(PAIR);
+  writeFileSync(join(refusing.dir, "src.ts"), "export const nobodyRead = 3;\n");
+  git(refusing.dir, ["add", "-A"]);
+  git(refusing.dir, ["commit", "-q", "-m", "shipped work nobody reviewed"]);
+  const later = git(refusing.dir, ["rev-parse", "HEAD"]);
+  const red = runGate(refusing);
+  assert.equal(red.record.status, "not-applicable", red.output);
+  assert.match(
+    red.record.detail,
+    new RegExp(`for the commit under audit ${later}`),
+    red.record.detail,
+  );
+  assert.equal(runPrecondition(refusing).exit, 1);
 });
 
 test("a --head the repository cannot produce is error, never not-applicable and never green", () => {
@@ -517,6 +743,10 @@ test("the DR-0047 sweep behaviors are registered in test/behaviors.json and reso
     "dual-review-head-anchored-green",
     "dual-review-head-unresolvable-never-green",
     "dual-review-head-other-commit-never-green",
+    "dual-review-head-ancestor-shipped-gap-refused",
+    "dual-review-head-evidence-only-ancestor-green",
+    "dual-review-head-descendant-refused",
+    "dual-review-head-awkward-paperwork-name-still-green",
     "dual-review-head-defaults-to-context-head",
     "dual-review-unresolvable-audited-head-is-error",
     "dual-review-registry-declares-head-parameter",

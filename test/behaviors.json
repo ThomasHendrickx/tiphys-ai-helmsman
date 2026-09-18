@@ -1253,5 +1253,12 @@
   "dual-review-produced-by-string-disclosed": "the green decorrelation report says produced-by was compared as a string and is not a cross-family assertion",
   "dual-review-not-applicable-sentence-is-grammatical": "the not-applicable detail is grammatical, because the corpus describer it uses is the parenthetical one",
   "gate-classes-conditional-satisfier-disclosed": "a class satisfied only by a CONDITIONAL gate is named on the green arm, and a class satisfied by required gates is not",
-  "sweep-head-anchor-behaviors-registered": "the DR-0047 sweep behaviors are registered in test/behaviors.json and resolve by name"
+  "sweep-head-anchor-behaviors-registered": "the DR-0047 sweep behaviors are registered in test/behaviors.json and resolve by name",
+  "dual-review-head-ancestor-shipped-gap-refused": "an approving pair naming an ancestor is refused when shipped content differs across the gap, and the differing paths are named",
+  "dual-review-head-evidence-only-ancestor-green": "an approving pair naming an ancestor whose whole gap is paperwork is green, and the green line says it was admitted by ancestry",
+  "dual-review-head-descendant-refused": "an approving pair naming a DESCENDANT of the commit under audit is refused on its own route",
+  "schemas-readme-vocabulary-matches-the-validator": "the authoring vocabulary schemas/README.md declares is exactly the one src/validate.ts enforces",
+  "doctor-worktrees-reports-an-unlistable-pool": "CHECK worktrees reports an unlistable pool as FAIL instead of letting the run abort",
+  "merge-preconditions-selects-by-ancestry": "verdicts naming the commit their own landing produced are selected, where the equality mutant this round replaced finds none",
+  "dual-review-head-awkward-paperwork-name-still-green": "a paperwork-only gap is still paperwork when a filename is not printable ASCII, which the default diff spelling would have called shipped content"
 }
