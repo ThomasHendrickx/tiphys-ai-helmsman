@@ -1,7 +1,7 @@
 import { existsSync, writeFileSync } from "node:fs";
 import { setTimeout as sleep } from "node:timers/promises";
 import { EX_USAGE } from "../cli.ts";
-import { loadFleet } from "../fleet.ts";
+import { loadFleet, refuseOpenPathForWrite } from "../fleet.ts";
 import {
   acquireLease,
   leaseStatus,
@@ -71,6 +71,16 @@ async function maybeHoldForTest(
   }
   const observed = observeLease(lockPath);
   const nowMs = Date.now();
+  /* THE MARKER PATHS ARE DERIVED FROM A CALLER-SUPPLIED PATH, so their entry
+     type is established before either is opened for writing. A named pipe at
+     `<barrier>.observed` blocked this seam forever with zero output, which is
+     the same class this round closed in the lease and brief readers; the seam
+     is inert unless the variable is set, which changes how it is REACHED and
+     not what it does once reached. */
+  const observedRefusal = refuseOpenPathForWrite(`${barrier}.observed`);
+  if (observedRefusal !== undefined) {
+    throw new Error(`lock test hold point: ${observedRefusal}`);
+  }
   writeFileSync(`${barrier}.observed`, "");
   const startNs = process.hrtime.bigint();
   const limitNs = BigInt(HOLD_WAIT_LIMIT_MS) * 1_000_000n;
@@ -96,6 +106,13 @@ async function maybeHoldForTest(
   }
   // Record that the hold really held, and why the wait ended, so the
   // witness can assert the interleave rather than assume it.
+  /* Re-established immediately before this second write rather than once
+     per call: the two writes are separated by a wait of up to thirty seconds
+     and the path is derived from one the CALLER supplied. */
+  const releasedRefusal = refuseOpenPathForWrite(`${barrier}.released`);
+  if (releasedRefusal !== undefined) {
+    throw new Error(`lock test hold point: ${releasedRefusal}`);
+  }
   writeFileSync(
     `${barrier}.released`,
     `held after ${String(waitedMs)}ms (monotonic), barrier observed\n`,
@@ -116,11 +133,41 @@ async function maybeHoldForTest(
  * above, and a value that does not parse is a loud refusal rather than a
  * silent fall back to the real clock: a seam that quietly ignores its input
  * would make a skew witness green while measuring no skew at all.
+ *
+ * AND IT IS GATED, BECAUSE IT SHIPS. `judgeByCounter` (src/exclusion.ts:553)
+ * computes `unchangedForMs = nowMs - previous.firstSeenMs`, so the module's
+ * promised "two readings of ONE clock" become one reading of a clock the
+ * CALLER supplies. Measured in the published CLI before this gate existed:
+ * the honest challenger was refused with "fencing counter 1 has stood still
+ * for 0ms of the 900000ms this environment requires", and the SAME command
+ * with this one variable set an hour ahead took a live lease over instantly
+ * and still printed `signal=counter`. A captured witness of that run was
+ * indistinguishable from an honest one.
+ *
+ * TWO CHANGES, and they are different in kind. The ALLOWANCE
+ * (TIPHYS_ALLOW_TEST_CLOCK=1) makes reaching the seam a declared act rather
+ * than a side effect of one environment variable. The LABEL makes the run
+ * SAY SO: `injectedClockSuffix` below is appended to every verdict line the
+ * shared layer prints, so the output of a measurement can never be quoted as
+ * the output of a real judgement. An allowance alone would leave the second
+ * hole open, which is why both are here.
  */
+export const TEST_CLOCK_ALLOWANCE = "TIPHYS_ALLOW_TEST_CLOCK";
+
 function testClockMs(): number | undefined {
   const raw = process.env.TIPHYS_LOCK_TEST_NOW_MS;
   if (raw === undefined || raw === "") {
     return undefined;
+  }
+  if (process.env[TEST_CLOCK_ALLOWANCE] !== "1") {
+    throw new Error(
+      `lock test clock: TIPHYS_LOCK_TEST_NOW_MS is set and ` +
+        `${TEST_CLOCK_ALLOWANCE}=1 is not, so this run would have decided ` +
+        `cross-environment exclusion against a clock its caller supplied ` +
+        `while printing the same verdict an honest run prints; set ` +
+        `${TEST_CLOCK_ALLOWANCE}=1 to declare that this run is a measurement, ` +
+        `or unset TIPHYS_LOCK_TEST_NOW_MS`,
+    );
   }
   const parsed = Number(raw);
   if (!Number.isFinite(parsed)) {
@@ -134,6 +181,18 @@ function testClockMs(): number | undefined {
 }
 
 /**
+ * What a verdict line gains when the decision clock was injected. Empty on
+ * every honest run, so no shipped output changes for anyone who does not set
+ * the variable.
+ */
+function injectedClockSuffix(): string {
+  return process.env.TIPHYS_LOCK_TEST_NOW_MS === undefined ||
+    process.env.TIPHYS_LOCK_TEST_NOW_MS === ""
+    ? ""
+    : "(injected-clock)";
+}
+
+/**
  * Emit the shared exclusion layer's verdict line. One line, and it always
  * names the SIGNAL that reached the verdict (criterion 6): `signal=counter`
  * where the register was reachable and its fencing counter decided, or
@@ -142,8 +201,18 @@ function testClockMs(): number | undefined {
  */
 function reportShared(outcome: { shared?: { line: string } }): void {
   if (outcome.shared !== undefined) {
-    process.stdout.write(`${outcome.shared.line}\n`);
+    process.stdout.write(`${labelClock(outcome.shared.line)}\n`);
   }
+}
+
+/**
+ * Mark every `signal=<basis>` token in a verdict line when this run's
+ * decision clock was injected. The token is what criterion 6 asks the
+ * command to print, so it is the token that has to carry the caveat.
+ */
+function labelClock(line: string): string {
+  const suffix = injectedClockSuffix();
+  return suffix === "" ? line : line.replace(/signal=(counter|clock)/g, `signal=$1${suffix}`);
 }
 
 function usageError(message?: string): number {
@@ -172,7 +241,7 @@ function failure(outcome: { reason: string; claimTimeout?: boolean }): number {
     outcome.claimTimeout === true
       ? "; a crashed mutation can leave this file behind, but deleting it while a mutation is genuinely in flight can produce two lock holders, so confirm no tiphys process is running against this fleet before removing it"
       : "";
-  process.stderr.write(`tiphys lock: ${outcome.reason}${remedy}\n`);
+  process.stderr.write(`tiphys lock: ${labelClock(outcome.reason)}${remedy}\n`);
   return 1;
 }
 

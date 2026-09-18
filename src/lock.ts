@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
   linkSync,
-  readFileSync,
   renameSync,
   unlinkSync,
   writeFileSync,
@@ -17,6 +16,7 @@ import {
   preflightShared,
   readSharedExclusion,
 } from "./exclusion.ts";
+import { readRegularPathIfPresent } from "./fleet.ts";
 import type {
   SharedExclusionConfig,
   SharedIntent,
@@ -183,18 +183,31 @@ export function renderLease(lease: Lease): string {
   return `${JSON.stringify(lease, null, 2)}\n`;
 }
 
-/** Read the current lock file state: absent, or present with raw bytes. */
+/**
+ * Read the current lock file state: absent, or present with raw bytes.
+ *
+ * THE ENTRY TYPE IS ESTABLISHED BEFORE THE OPEN (T-008's shape in shipped
+ * code). A bare `readFileSync` here blocked FOREVER with zero output on a
+ * named pipe at the lease path, and took `lock status`, `lock acquire`,
+ * `lock renew` and `lock release` with it, while `tiphys doctor` returned in
+ * the same second against the same FIFO with "is a named pipe, not a regular
+ * file, so it was not opened". Two readers of one path, one of which
+ * established the type; this is now the same reader.
+ *
+ * A refusal THROWS rather than returning a fourth `ObservedLease` variant.
+ * The function already threw on every non-ENOENT error, so the contract its
+ * callers were written against is unchanged, and bin/tiphys.ts turns the
+ * throw into one diagnostic line and a nonzero exit.
+ */
 export function observeLease(lockPath: string): ObservedLease {
-  let raw: string;
-  try {
-    raw = readFileSync(lockPath, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { kind: "absent" };
-    }
-    throw error;
+  const read = readRegularPathIfPresent(lockPath);
+  if (read.kind === "absent") {
+    return { kind: "absent" };
   }
-  return { kind: "present", raw, lease: parseLease(raw) };
+  if (read.kind === "refused") {
+    throw new Error(read.reason);
+  }
+  return { kind: "present", raw: read.body, lease: parseLease(read.body) };
 }
 
 /**
@@ -226,15 +239,16 @@ export function renewByMs(lease: Lease): number {
   return Date.parse(lease.expiresAt) - (lease.durationSeconds * 1000) / 2;
 }
 
+/** The same guarded read as observeLease, for the inside of the claim. */
 function readCurrent(lockPath: string): { present: boolean; raw: string } {
-  try {
-    return { present: true, raw: readFileSync(lockPath, "utf8") };
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { present: false, raw: "" };
-    }
-    throw error;
+  const read = readRegularPathIfPresent(lockPath);
+  if (read.kind === "absent") {
+    return { present: false, raw: "" };
   }
+  if (read.kind === "refused") {
+    throw new Error(read.reason);
+  }
+  return { present: true, raw: read.body };
 }
 
 /**
@@ -391,6 +405,16 @@ export async function applyLeaseMutation(
       // lock path use the same discipline, which is the asymmetry the
       // module previously left unjustified.
       const stagePath = stagePathFor(lockPath);
+      /* THE STAGE IS OPENED FOR WRITING and is NOT guarded here, which is a
+         measurement rather than an oversight. open(2) for writing on a FIFO
+         blocks exactly as reading one does, so this looked like a member of
+         the class this round closed. It is not: the claim-held sweep above
+         (CR-202) unlinks `<lock>.stage` UNCONDITIONALLY before either branch
+         writes it, so a planted FIFO is gone by the time this line runs.
+         Measured at this head with a real mkfifo at
+         `state/orchestrator.lock.stage`: `tiphys lock acquire` exits 0 in
+         under a second and the lease is taken. A guard here would therefore
+         be code no witness can redden. */
       writeFileSync(stagePath, next);
       try {
         linkSync(stagePath, lockPath);
@@ -421,6 +445,16 @@ export async function applyLeaseMutation(
       // confirmation read both still happen inside the claim, and the
       // rename remains atomic within one directory.
       const stagePath = stagePathFor(lockPath);
+      /* THE STAGE IS OPENED FOR WRITING and is NOT guarded here, which is a
+         measurement rather than an oversight. open(2) for writing on a FIFO
+         blocks exactly as reading one does, so this looked like a member of
+         the class this round closed. It is not: the claim-held sweep above
+         (CR-202) unlinks `<lock>.stage` UNCONDITIONALLY before either branch
+         writes it, so a planted FIFO is gone by the time this line runs.
+         Measured at this head with a real mkfifo at
+         `state/orchestrator.lock.stage`: `tiphys lock acquire` exits 0 in
+         under a second and the lease is taken. A guard here would therefore
+         be code no witness can redden. */
       writeFileSync(stagePath, next);
       try {
         renameSync(stagePath, lockPath);
@@ -563,6 +597,42 @@ function sharedCommit(
     return { ok: true, sha: outcome.sha };
   }
   return { ok: false, reason: casFailureLine(ctx.config.ref, outcome) };
+}
+
+/**
+ * UNDO A LOCAL LEASE MUTATION WHOSE REGISTER PUBLISH LOST.
+ *
+ * `current` is what the lock file holds NOW (the state this mutation left),
+ * and `restore` is the observation the mutation was decided against, whose
+ * raw bytes are written back verbatim so the restored file is BYTE-IDENTICAL
+ * to the one the command claimed not to have changed.
+ *
+ * The token handed to the primitive is the RESTORED lease's own token, not a
+ * fresh one: the primitive confirms an application by re-reading the token in
+ * the file it just wrote, and a fresh token would fail that confirmation
+ * against bytes that carry the old one.
+ *
+ * Returns the sentence appended to the failure line. A rollback that ITSELF
+ * loses is stated rather than swallowed, because "the local lease was
+ * restored" is a claim a later reader will act on.
+ */
+async function restoreLocal(
+  lockPath: string,
+  current: ObservedLease,
+  restore: Extract<ObservedLease, { kind: "present" }>,
+): Promise<string> {
+  if (restore.lease === undefined) {
+    return "; the local lease could NOT be restored: the observed lease does not parse";
+  }
+  const undone = await applyLeaseMutation(
+    lockPath,
+    current,
+    restore.raw,
+    restore.lease.token,
+  );
+  return undone.won
+    ? "; the local lease was restored"
+    : `; the local lease could NOT be restored (${undone.reason}), so ${lockPath} and the register now disagree`;
 }
 
 export interface AcquireOptions {
@@ -798,7 +868,19 @@ export async function renewLease(
        (criterion 5). The observer sees an increment, never a timestamp. */
     const published = sharedCommit(gate.ctx, preflight, "held", nowMs, durationSeconds);
     if (!published.ok) {
-      const line = `shared exclusion refused renew: ${published.reason}`;
+      /* THE LOCAL LAYER IS ROLLED BACK, exactly as acquire's failure arm
+         does it and through the SAME primitive. src/lock.ts:537 states the
+         invariant: the two layers agree, or the local one is undone by the
+         caller. Until this round `acquireLease` was the only one of the
+         three publishing callers that honoured it, so a failed renew
+         reported failure while the lease file had ALREADY been extended
+         under a new token, and a failed release reported failure while the
+         lease file had already been DELETED. */
+      const line = `shared exclusion refused renew: ${published.reason}${await restoreLocal(
+        lockPath,
+        { kind: "present", raw: renderLease(lease), lease },
+        observed,
+      )}`;
       return {
         ok: false,
         reason: line,
@@ -896,7 +978,15 @@ export async function releaseLease(
       observed.lease.durationSeconds,
     );
     if (!published.ok) {
-      const line = `shared exclusion could not publish the release: ${published.reason}`;
+      /* See renewLease above: the local lease was REMOVED before this
+         publish was attempted, and the holdership guard keys on that file's
+         PRESENCE, so leaving it removed reopens the dual-writer window
+         M1-P4 criterion 12 closed. */
+      const line = `shared exclusion could not publish the release: ${published.reason}${await restoreLocal(
+        lockPath,
+        { kind: "absent" },
+        observed,
+      )}`;
       return {
         ok: false,
         reason: line,

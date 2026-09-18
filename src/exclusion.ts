@@ -1,7 +1,12 @@
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
+import {
+  LOCK_FILE,
+  readRegularPathIfPresent,
+  refuseOpenPathForWrite,
+} from "./fleet.ts";
 
 /**
  * THE SHARED EXCLUSION REGISTER (kernel plan M4, M4-P21).
@@ -161,20 +166,26 @@ export type SharedPreflight =
 /* Declaration                                                         */
 /* ------------------------------------------------------------------ */
 
+/**
+ * THE ENTRY TYPE IS ESTABLISHED BEFORE THE OPEN. This function reads the
+ * fleet `package.json` and `tiphys-environment.json`, both of them paths
+ * this module did not create, and a bare `readFileSync` on a named pipe at
+ * either blocked every lock subcommand forever with zero output. A
+ * non-regular entry is now a REFUSAL naming the observed type, in the same
+ * words doctor already uses, and it is NOT `absent`: reading "this cannot be
+ * opened" as "the layer is off here" is exactly the shape that makes a guard
+ * green everywhere and protective nowhere.
+ */
 function readJsonFile(path: string): { ok: true; value: unknown } | { ok: false; absent: boolean; reason: string } {
-  let raw: string;
-  try {
-    raw = readFileSync(path, "utf8");
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    return {
-      ok: false,
-      absent: code === "ENOENT" || code === "ENOTDIR",
-      reason: `${path} could not be read: ${String(error)}`,
-    };
+  const read = readRegularPathIfPresent(path);
+  if (read.kind === "absent") {
+    return { ok: false, absent: true, reason: `${path} is absent` };
+  }
+  if (read.kind === "refused") {
+    return { ok: false, absent: false, reason: read.reason };
   }
   try {
-    return { ok: true, value: JSON.parse(raw) as unknown };
+    return { ok: true, value: JSON.parse(read.body) as unknown };
   } catch (error) {
     return { ok: false, absent: false, reason: `${path} does not parse as JSON: ${String(error)}` };
   }
@@ -300,6 +311,10 @@ export function ensureEnvironmentId(fleetRoot: string): EnvironmentIdentity {
       "generated once, and tracked so it survives a reclaim. It says nothing " +
       "about any machine.",
   };
+  const refusal = refuseOpenPathForWrite(path);
+  if (refusal !== undefined) {
+    throw new Error(refusal);
+  }
   writeFileSync(path, `${JSON.stringify(document, null, 2)}\n`, "utf8");
   return { envId, generated: true, path };
 }
@@ -530,6 +545,10 @@ export function readObservation(fleetRoot: string): RegisterObservation | undefi
 export function writeObservation(fleetRoot: string, observation: RegisterObservation): void {
   const path = join(fleetRoot, OBSERVATION_FILE);
   mkdirSync(dirname(path), { recursive: true });
+  const refusal = refuseOpenPathForWrite(path);
+  if (refusal !== undefined) {
+    throw new Error(refusal);
+  }
   writeFileSync(path, `${JSON.stringify(observation, null, 2)}\n`, "utf8");
 }
 
@@ -953,7 +972,54 @@ export function guardSharedRegister(
   }
   const mine = readEnvironmentId(fleetRoot);
   if (mine !== undefined && mine === status.envId) {
-    return { kind: "allowed", status };
+    /* THE IDENTITY IS NOT ENOUGH, AND THE PLAN SAYS WHY IN BOTH DIRECTIONS.
+       M4-P21 criterion 3 requires `tiphys-environment.json` to be TRACKED so
+       it survives a reclaim and TRAVELS WITH THE CLONE, and
+       test/cross-environment-lock.test.ts:328 asserts exactly that. M4-P22
+       criteria 2 and 3 require a clone to be refused as a different
+       environment. Both are delivered, and composed they cancel: `tiphys
+       sync` commits and pushes that file (it is not under any prefix in
+       FLEET_IGNORED), so every clone of a synced fleet reads the SAME id and
+       this comparison is TRUE in a place that holds nothing.
+
+       WHAT DOES NOT TRAVEL is `state/`, which IS in FLEET_IGNORED, so the
+       lease artifact is per environment BY CONSTRUCTION rather than by a
+       rule someone has to remember. Requiring it here breaks no criterion's
+       letter: the tracked file is unchanged and still travels, and nothing
+       in `src/` or `bin/` consumed the travels-with-the-clone property for
+       anything but this comparison.
+
+       THE COST, stated rather than discovered: an environment whose `state/`
+       is lost while its container continues is refused here until the stale
+       window lets it take the register over, which is the smoothing
+       criterion 3's tracking was meant to provide. That is a deliberate
+       trade of convenience after a reclaim for a guard that a clone cannot
+       walk through.
+
+       EXPIRY IS DELIBERATELY NOT JUDGED HERE. `checkHoldership`
+       (src/task.ts:518) runs BEFORE this guard in both callers
+       (src/spawn.ts:1005 and src/teardown.ts:438) and refuses an expired or
+       wrongly-held lease already. A second expiry comparison in a second
+       place is the drift src/lock.ts:217 exists to prevent, and this guard
+       does not need it: the question it asks is whether this filesystem
+       carries the lease artifact the register entry stands on. */
+    const local = localLeaseArtifact(fleetRoot);
+    if (local.kind === "present") {
+      return { kind: "allowed", status };
+    }
+    return {
+      kind: "refused",
+      reason:
+        `shared exclusion refused ${command}: the shared register names ` +
+        `environment ${status.envId} as holding this fleet until ` +
+        `${status.expiresAt}, and this fleet home carries that environment's ` +
+        `tracked identity but not its lease (${local.reason}); ` +
+        `${ENVIRONMENT_ID_FILE} is tracked and travels with a clone, so it ` +
+        `names the FLEET's environment and not THIS one, while ${LOCK_FILE} ` +
+        `is gitignored and cannot travel; acquire the fleet here with: ` +
+        `tiphys lock acquire, or take it over with: ` +
+        `tiphys lock acquire --take-over; signal=counter`,
+    };
   }
   return {
     kind: "refused",
@@ -966,4 +1032,39 @@ export function guardSharedRegister(
       `tasks here would run a second orchestrator over one fleet; take the ` +
       `fleet over with: tiphys lock acquire --take-over; signal=counter`,
   };
+}
+
+/**
+ * IS THE LEASE ARTIFACT THE REGISTER ENTRY STANDS ON PRESENT ON THIS
+ * FILESYSTEM?
+ *
+ * Deliberately NOT `leaseStatus` from src/lock.ts. That module imports this
+ * one, and the `src/` import graph is a strict DAG at this head; importing it
+ * back would make the first cycle in the kernel to answer a question that
+ * needs one field. So this reads the lease file through the same guarded
+ * read every other path in this module now uses, and asks only whether a
+ * parsed lease with a holder is there.
+ */
+function localLeaseArtifact(
+  fleetRoot: string,
+): { kind: "present"; holderId: string } | { kind: "absent"; reason: string } {
+  const path = join(fleetRoot, LOCK_FILE);
+  const read = readRegularPathIfPresent(path);
+  if (read.kind === "absent") {
+    return { kind: "absent", reason: `${LOCK_FILE} is absent here` };
+  }
+  if (read.kind === "refused") {
+    return { kind: "absent", reason: read.reason };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(read.body);
+  } catch {
+    return { kind: "absent", reason: `${LOCK_FILE} does not parse as a lease` };
+  }
+  const holderId = (parsed as { holderId?: unknown } | null)?.holderId;
+  if (typeof holderId !== "string" || holderId === "") {
+    return { kind: "absent", reason: `${LOCK_FILE} names no holder` };
+  }
+  return { kind: "present", holderId };
 }

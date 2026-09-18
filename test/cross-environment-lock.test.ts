@@ -71,6 +71,14 @@ function runCli(args: string[], options: { cwd?: string; nowMs?: number } = {}):
   const env: NodeJS.ProcessEnv = { ...process.env };
   if (options.nowMs !== undefined) {
     env.TIPHYS_LOCK_TEST_NOW_MS = String(options.nowMs);
+    /* THE SEAM IS GATED SINCE THE DR-0047 SWEEP (src/commands/lock.ts:120).
+       A shipped CLI that decides cross-environment exclusion against a clock
+       its caller supplies, while printing the verdict an honest run prints,
+       was reproduced taking a live lease over instantly. Declaring the
+       allowance here is what makes THIS run a measurement, and the verdict
+       lines these tests read now carry `(injected-clock)` so a capture of one
+       can never be quoted as a capture of the other. */
+    env.TIPHYS_ALLOW_TEST_CLOCK = "1";
   }
   const spawnOptions: Parameters<typeof spawnSync>[2] = { encoding: "utf8", env };
   if (options.cwd !== undefined) {
