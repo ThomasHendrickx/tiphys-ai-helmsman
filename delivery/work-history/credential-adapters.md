@@ -723,3 +723,105 @@ src/task.ts gains `classifyTaskMeta`, returning `read`, `absent`, `unreadable`,
 the first field that failed. `readTaskMeta` becomes a two-line narrowing wrapper
 whose doc comment says which callers may use it and which may not.
 
+## 6. The red witnesses
+
+Five behaviors were added to `test/behaviors.json`, which is append-only and
+was extended by union: five rows appended, none renumbered, none removed
+(1217 rows against `origin/main`, 1222 here, checked by parsing both).
+
+Each has a witness spec under `witness/`, and each spec carries at least TWO
+members, structurally different. The member table below names the dangerous
+state in words first, because a `find`/`replace` pair is not a description of a
+hazard.
+
+### 6.1 `child-env-refusal-walks-every-vocabulary`
+
+Dangerous state: the audited route accepts a name that a declared vocabulary
+claims.
+
+| member | the dangerous state | why it is a different member |
+|---|---|---|
+| 0 | a registry ROW is present and its predicate claims nothing (`includes: () => false` on the egress row) | the wiring exists and the DATA is unreachable, which is the state M4-P29 left behind |
+| 1 | the REFUSAL consults the registry for only part of the namespace (`name.startsWith("GH_")`) | the data is reachable and the CONSUMER is partial, which is the state before this round |
+
+Green control inside the test: `TIPHYS_EXIT_TEST_MODE` with a reason is
+accepted, so a predicate that refused everything would not pass.
+
+### 6.2 `child-env-vocabulary-registry-covers-every-export`
+
+Dangerous state: a vocabulary the module exports is not walked by the refusal.
+
+| member | the dangerous state | why it is a different member |
+|---|---|---|
+| 0 | a row names a constant the module does not export (a typo) | coverage counted, nothing consulted |
+| 1 | a row names the right constant and its predicate claims one member of it | coverage counted, the constant consulted IN NAME ONLY |
+
+### 6.3 `handover-source-names-the-artifact`
+
+Dangerous state: the record asserts a child-side observation the kernel did not
+verify.
+
+| member | the dangerous state | why it is a different member |
+|---|---|---|
+| 0 | the record VALUE is `"child"` again | the machine-readable half |
+| 1 | the refusal SENTENCE says `observed child-side` again | the operator-facing half, which no test of `meta.json` alone would see |
+
+Green control inside the test: the hook-invoking arm still refuses and still
+names both pointers, so a kernel that had simply stopped comparing would fail.
+
+### 6.4 `spawn-adapter-resolved-path-containment`
+
+Dangerous state: code outside the fleet owner's control is evaluated inside the
+orchestrator process.
+
+| member | the dangerous state | why it is a different member |
+|---|---|---|
+| 0 | the project-tree rule is defanged | reddens the two arms that resolve INTO `<fleet>/projects/` |
+| 1 | the path-shape rule is defanged | reddens the arm that resolves entirely OUTSIDE the fleet home, which member 0 cannot reach |
+
+The test asserts EVALUATION, not resolution: each staged module drops a
+sentinel file on import, and the assertion is that the sentinel is absent. A
+refusal that arrived after the import would satisfy a status-code check and
+fail this one. Green control: the same module shape inside the fleet home, named
+by a fleet-relative path, is evaluated and reaches `launch`.
+
+### 6.5 `task-record-unreadable-is-not-absent`
+
+Dangerous state: a record that exists and did not read is reported as no record.
+
+| member | the dangerous state | why it is a different member |
+|---|---|---|
+| 0 | a body that does not parse is classified `absent` | the truncated-mid-write shape, which fails in `JSON.parse` |
+| 1 | a body that parses and fails the field check is classified `absent` | a COMPLETED write of the wrong shape, which fails one stage later |
+
+Green control: a healthy record still classifies `read` and still carries its
+id and status, and `readTaskMeta` still returns it.
+
+### 6.6 A stored witness this change DEFANGED, and the repair
+
+`spawn-adapter-project-clone-not-a-root` is M4-P4's witness. Its member 0
+re-roots resolution at the project clone, and after this round's containment
+rule that state no longer produces the behaviour the witness guards: the
+resolved path lands inside `<fleet>/projects/` and the loader refuses it for the
+new reason, so the test stayed GREEN under its own dangerous state. The gate
+reported it exactly as designed:
+
+```
+witness spawn-adapter-project-clone-not-a-root no longer guards its behavior
+  (member 0 red 0/2, member 1 red 2/2)
+```
+
+That is a guard that can no longer go red, which is the shape this repository
+keeps paying for, and a defence-in-depth improvement is not a licence to leave
+it standing. Member 0 now re-roots resolution AND shadows
+`refuseResolvedAdapterPath` with a function returning `undefined`, so the
+dangerous state it names is reachable again. Member 1 is untouched and still
+reds 2/2.
+
+**This edited a witness spec outside the file list I was given.** The file is
+`witness/spawn-adapter-project-clone-not-a-root.json`, it belongs to
+src/adapters/load.ts which is mine this round, and no other implementer's file
+list can contain it. It is declared here rather than done quietly, and section 8
+repeats it as an escalation for the reviewer to overrule if that reading is
+wrong.
+
