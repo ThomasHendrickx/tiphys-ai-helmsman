@@ -846,9 +846,14 @@ pass  1347
 fail  0
 skipped 0
 todo 0
-duration_ms 321320.597151
+duration_ms 309103.276682
 EXIT=0
 ```
+
+This run is at the FINAL code head, after the captures and the
+capture-consuming assertions were added, not at an earlier one. An earlier
+`npm test` at an earlier tree also reported 1347 pass and 0 skipped; both are
+quoted rather than one being passed off as the other.
 
 **The skipped count is zero and it is quoted deliberately**, because a bare
 pass count does not distinguish a passing test from a skipped one, and the
@@ -951,9 +956,9 @@ document, the line-based form reports these lines:
 152  (quoted derivation output) src/checks.ts:5029 ... so it cannot be read as an
      authorisation however it is spelled
 674  (quoted derivation output) src/adapters/load.ts:125 ... never `readFileSync`
-951  this list's own copy of the first hit
-953  this list's own copy of the second hit
-967  the paragraph below, which quotes the one phrase that was removed
+956  this list's own copy of the first hit
+958  this list's own copy of the second hit
+972  the paragraph below, which quotes the one phrase that was removed
 ```
 
 **Not one of them is a claim of mine.** Two are verbatim stdout of the greps in
@@ -1016,7 +1021,8 @@ typecheck:    green: tsc -b ... exited 0 and reported 448 distinct file(s)
 
 The suite gate's own count (1347 pass, 0 skipped) is an INDEPENDENT measurement
 of the number in section 7: a different invocation, through the gate's event
-stream, at the same head.
+stream, over the same `src/` and `test/` content. The gate ran one commit
+earlier than the final one; the only change since is this document.
 
 **The three errors are all the same one sentence and none is a defect in this
 change:**
