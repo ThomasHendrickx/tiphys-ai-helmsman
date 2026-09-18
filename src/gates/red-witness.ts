@@ -156,7 +156,7 @@ function errorOutcome(startedAt: string, detail: string): RedWitnessOutcome {
  *
  * WHY IT IS NOT THE SAME LIST AS THE GATE'S PRECONDITION, which reads
  * `src/`, `bin/`, `plugin/`. The precondition decides whether the gate RUNS.
- * This decides what it REQUIRES. T-032 widened the first and left the second,
+ * This decides what it REQUIRES. T-038 widened the first and left the second,
  * so from that fix until this one a diff touching only `plugin/` ran the gate
  * and took no obligation from it: a plugin phase shipping ZERO witnesses was
  * green. Found by M4-P29 while reading this file for a different reason.

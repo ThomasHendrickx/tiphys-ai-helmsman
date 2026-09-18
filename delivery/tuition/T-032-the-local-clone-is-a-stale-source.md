@@ -1,6 +1,12 @@
 # Every agent brief this session told agents to clone a repository whose branch
 # refs were stale
 
+**A SECOND ENTRY WAS BRIEFLY FILED UNDER T-032 AND IS NOW T-038.** It is
+delivery/tuition/T-038-the-plugin-package-had-no-red-witness-gate.md:1, about the
+plugin package shipping with two of its guards switched off. A citation to `T-032`
+written between 2026-09-17 and 2026-09-18 may mean that document rather than this
+one. The collision and its renumbering are recorded in T-039.
+
 Found 2026-09-16 by the M4-P2 patch-refresh implementer, in its own not-covered
 statement, about the instructions it had been given.
 

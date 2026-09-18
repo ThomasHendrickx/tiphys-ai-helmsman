@@ -2404,3 +2404,92 @@ the same hour reads exactly like one made here.
 Nothing was lost: the missing paperwork is in this pull request. What was
 briefly wrong is the record, which is the thing this project treats as the
 deliverable.
+
+## Standing at 2026-09-18, 03:10 UTC (supersedes every table above)
+
+Derived from git and from the stop condition, not from memory. The sections
+dated 2026-09-17 and earlier are the record of those days and stay in place.
+
+### Merged: 28 of 30 M4 phases
+
+Everything except M4-P24 and M4-P25. `main` is at `ac8288f`.
+
+The derivation is the stop condition rather than a grep, because the grep form
+recorded in the 2026-09-17 section over-reports: a wave paperwork commit carries
+the phase id of a phase whose pull request is still open.
+
+```
+node .claude/orchestrator-next.mjs
+```
+
+It prints one line per phase with MERGED or `not started`, and exits nonzero
+while work remains. It reported `24/24 phases merged` on 2026-09-17 with six
+phases unbuilt; that defect is fixed and recorded at
+delivery/tuition/T-036-the-stop-condition-reported-a-finished-milestone.md:1.
+
+### Open: one pull request
+
+| what | pull request | contents |
+|---|---|---|
+| waves 13 and 14 paperwork | #196 | `m4-p24.json`, `m4-p25.json`, the pre-pass sections |
+
+It is on the critical path: src/gates/scope.ts:877 reddens a phase branch whose
+declaration is absent at the merge base, so neither remaining phase can be
+dispatched until this merges.
+
+### Not started: 2 phases, and they are strictly serial
+
+M4-P24 then M4-P25. Two independent reasons, either sufficient alone:
+
+- **Dependency.** delivery/plan/kernel-plan-m4.md:3638 sequences them, and
+  M4-P25's drain predicate consumes the in-flight predicate M4-P24 ships.
+- **Conflict.** Both register a new command in `src/cli.ts` unconditionally,
+  and DR-0046 keeps that dispatch table serialised through M4.
+
+So there is no pairing left to find. The contention map in the 2026-09-17
+section is now spent: every file in it except `src/cli.ts` has had all its
+claimants merged.
+
+### What M4 does NOT owe at its end
+
+The milestone exit test is NOT due here. delivery/plan/kernel-plan-m4.md:80
+records that DR-0041 and DR-0042 together keep it bound to the pilot and refuse
+a kernel-only version, so it falls due at cutover entry. M4-P27 ships that
+trigger and has already merged. Do not read the end of M4-P25 as a cue to run
+it.
+
+### Three harness guards were found unable to go red, and all three are fixed
+
+Each was green and worthless, which is the shape this project keeps paying for.
+They are recorded in full; the one-line summaries here exist so a reader knows
+which document to open.
+
+| guard | how it could not go red | record |
+|---|---|---|
+| the post-merge push-run watcher | its ABSENT arm used `return` inside a node callback, so no run at all exited 0 and read as green | delivery/tuition/T-037-the-absent-arm-of-the-push-watcher-returned-success.md:1 |
+| `red-witness` over the plugin tree | the precondition was widened to `plugin/` and the audited-source list was not, so a plugin-only diff ran the gate and took no obligation | delivery/tuition/T-038-the-plugin-package-had-no-red-witness-gate.md:1 |
+| the stop condition | its phase denominator came from four sources that are all evidence of work, so it grew as work was dispatched and read 24 of 24 | delivery/tuition/T-036-the-stop-condition-reported-a-finished-milestone.md:1 |
+
+### A reading trap that made `main` look red twice
+
+The `gates` workflow shares one concurrency group per ref, so a merge CANCELS
+the still-running post-merge run of the head before it. A cancelled run is
+neither green nor a failure, and a watcher that treats not-success as failure
+reports `main is red` when it is not. The rule and what discharges it are now
+in CLAUDE.md under T-009. Do not re-run a cancelled post-merge run; verify the
+current head's run instead and say that the earlier one was cancelled.
+
+### Two tuition ids each carried two entries
+
+`T-031` and `T-032` were each allocated twice, by two sessions that overlapped.
+The later of each pair is renumbered to `T-037` and `T-038`, the two survivors
+carry redirect notes, and `scripts/check-id-collisions.mjs` now prints the next
+free id for both file-per-id schemes. Full account, including what the check
+does NOT cover, at
+delivery/tuition/T-039-two-tuition-ids-each-carried-two-different-entries.md:1.
+
+### Agent cap, unchanged
+
+Two concurrent agents under DR-0044. With two serial phases left, both waves 13
+and 14 are single-unit workflows. The wave pre-pass records that as a deliberate
+choice rather than an idle slot.
