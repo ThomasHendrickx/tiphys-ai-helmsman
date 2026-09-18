@@ -497,8 +497,22 @@ order is to look first, so every stored mutation was checked against the tree
 before the gate ran:
 
 ```
-node --input-type=module -e '<walk witness/*.json, assert every mutation find
-string still occurs in its file>'
+node --input-type=module -e '
+import {readdirSync, readFileSync, existsSync} from "node:fs";
+let bad=0, checked=0;
+for (const f of readdirSync("witness").filter(n=>n.endsWith(".json"))) {
+  let spec; try{ spec=JSON.parse(readFileSync("witness/"+f,"utf8")); }catch(e){ console.log("PARSE",f,String(e)); continue; }
+  for (const [i,m] of (spec.dangerousStates??[]).entries()) {
+    if (m.kind!=="mutation" || typeof m.file!=="string") continue;
+    checked++;
+    if (!existsSync(m.file)) { console.log("MISSING FILE", f, i, m.file); bad++; continue; }
+    const body=readFileSync(m.file,"utf8");
+    if (!body.includes(m.find)) { console.log("STALE FIND", f, "member", i, m.file, JSON.stringify(m.find).slice(0,90)); bad++; }
+  }
+}
+console.log("checked", checked, "stale", bad);
+'
+
 STALE FIND merge-preconditions-no-verdict-at-head-is-not-applicable.json member 1
   src/gates/merge-preconditions.ts "    .filter((entry) => String(entry.record[\"head\"] ?? \"\")..."
 checked 704 stale 1
@@ -893,4 +907,113 @@ floor.
 
 ## 10. The gate run
 
-GATE_RUN_PLACEHOLDER
+The bundle, run locally on the floor-satisfying toolchain against this branch's
+code head eac7012b5fec80dc094eef47ea330b59ac947261:
+
+```
+node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+  --evidence <scratch>/evidence3 --base origin/main --head HEAD
+
+gates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)
+gates: registry gate-registry.yaml mode full
+gates: declared 19 applicable 11 verdict 10 green 10 red 0 not-applicable 5 error 4 vacuous 0
+gates: manifest-self-check: green: validated 8 schema document(s) against the closed keyword set ... and gates.manifest.json against gate-manifest.schema.json
+gates: coverage: green: 115 inventory id(s) checked; per-kind: decision 6, milestone 98, phase 11; per-milestone: M1 11, M2 16, M3 74, M4 5, M5 3, decision 6
+gates: credential-scrub: green: no pull-request-capable credential resolvable from any of the 7 probed sources
+gates: credential-token: not-applicable: precondition implementer-token-present-owner-action-a-3 evaluated and unmet
+gates: suite: green: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 1387 test(s) from 68 file(s) (pass 1387, fail 0, skipped 0, todo 0, did-not-run 0); discovered 68 file(s) walking test for .test.ts; 1262 behavior(s) resolve; merge base ad2428b76ef6
+gates: citations: not-applicable: precondition citations-diff-touches-documents evaluated and unmet: no changed path under delivery/plan/, delivery/verification/, delivery/decisions/, delivery/tuition/, delivery/requirements/, delivery/STATE.md
+gates: scope: error: gate scope requires --phase, which was not supplied
+gates: deploy: not-applicable: precondition deploy-release-verification-declared ... evaluated and unmet: release-verification.json does not exist
+gates: migrations: not-applicable: precondition migrations-release-verification-declared ... evaluated and unmet: release-verification.json does not exist
+gates: clause-map: green: 74 rows checked, 0 pending a phase not yet in force
+gates: red-witness: error: 151 witness(es) evaluated (10 own, 141 stored re-evaluated in 1853028ms); witness merge-preconditions-unreachable-api-is-error: error: member 1 (mutation of src/gates/merge-preconditions.ts): fetch of origin failed in the scratch clone: git fetch --quiet origin exited 128: error: RPC failed; curl 56 GnuTLS recv error (-110): The TLS connection was non-properly terminated.; error: 8229 bytes of body are still expected; fetch-pack: unexpected disconnect while reading sideband packet; fatal: early EOF; fatal: fetch-pack: invalid index-pack output
+gates: agent-rules-drift: green: CLAUDE.md's gate block matches gate-registry.yaml row for row (3 preflight step(s), 21 gate(s))
+gates: brief-drift: green: roles/implementer.md's full gate block matches gate-registry.yaml row for row (21 row(s) compared)
+gates: check-agents-references: green: 22 references resolved to a path that the package publishes, 22 of them also to an anchor inside it
+gates: check-dual-review: not-applicable: precondition dual-review-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1
+gates: license: green: 12 production package(s) inventoried, all with license metadata on the declared allowlist; LICENSE present in the pack listing
+gates: typecheck: green: tsc -b ... exited 0 and reported 450 distinct file(s); the unit count is those printed paths, not a constant
+gates: gate-classes: error: gate gate-classes requires --phase, which was not supplied
+gates: merge-preconditions: error: gate merge-preconditions requires --phase, which was not supplied
+gates: 4 gate(s) reported error: scope, red-witness, gate-classes, merge-preconditions
+GATES_EXIT=21
+```
+
+**ZERO RED.** Four gates report `error` and each is accounted for rather than
+waved past.
+
+**THREE OF THE FOUR ARE THE BRANCH SHAPE, not this round's code.** `scope`,
+`gate-classes` and `merge-preconditions` all say `requires --phase, which was not
+supplied`. This is not a phase branch: CLAUDE.md's branch-naming rule reserves
+`^claude/m[0-9]+-p[0-9]+-` for a phase's own implementation branch, so
+`claude/sweep-fix-head-anchor-r2` has no phase id and there is no
+`delivery/plan/phase-declarations/<id>.json` to read. A local invocation with no
+`--phase` therefore cannot evaluate them, and the same three errored on round 1's
+branch for the same reason.
+
+**THE FOURTH IS A NETWORK FAILURE INSIDE ONE WITNESS EVALUATION, NOT A FINDING,
+AND SAYING SO IS A CLAIM THAT NEEDED CHECKING.** 151 witnesses were evaluated,
+10 of them this round's own and 141 stored ones re-evaluated because a member of
+each touches a file this round changed. ONE member, of
+`merge-preconditions-unreachable-api-is-error`, could not be evaluated because
+the harness's scratch clone could not fetch from `origin`: `curl 56 GnuTLS recv
+error (-110)`, a transport failure at the agent proxy. No witness reported "no
+longer guards its behavior", and no changed source file reported having no
+witness.
+
+**IT WAS RE-RUN, AND THE RE-RUN IS WHAT SETTLES IT.** `--only red-witness`
+against the same head, 31 minutes, 151 evaluations again:
+
+```
+node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+  --only red-witness --evidence <scratch>/evidence4 --base origin/main --head HEAD
+
+gates: declared 1 applicable 1 verdict 0 green 0 red 0 not-applicable 0 error 1 vacuous 0
+gates: red-witness: error: 151 witness(es) evaluated (10 own, 141 stored re-evaluated in 1832958ms); witness implementer-brief-gate-list-drift: error: member 1 (mutation of scripts/check-brief-drift.mjs): fetch of origin failed in the scratch clone: git fetch --quiet origin exited 128: error: RPC failed; curl 56 GnuTLS recv error (-110): The TLS connection was non-properly terminated.; fatal: expected 'acknowledgments'
+GATES_EXIT=21
+```
+
+**THE FAILING WITNESS MOVED AND THE SIGNATURE DID NOT.** Run A failed on
+`merge-preconditions-unreachable-api-is-error`, run B on
+`implementer-brief-gate-list-drift`, and the two have nothing in common except
+that the harness's scratch clone had to fetch from `origin`. A defect in a
+witness does not move between runs; a flaky transport does. Read from the two
+`witness-records.json` files rather than from the summary lines:
+
+```
+A evaluated 151 green 150      B evaluated 151 green 150
+same witness set: True
+union of the two green sets covers all 151: True
+A's failing witness is green in B: True
+B's failing witness is green in A: True
+uncoveredSources: []  (both runs)
+```
+
+So EVERY one of the 151 witnesses was evaluated GREEN in at least one of the two
+runs, no witness reported "no longer guards its behavior" in either, and no
+changed source file went uncovered. **What is NOT claimed: this gate did not
+reach a green verdict locally, and nothing here makes it do so.** Its own rule is
+that could-not-determine is `error`, and one member could not be determined in
+each run. The CI runner fetches over a different network path and is the place
+that verdict has to be taken.
+
+**AND THE HARNESS HAS NO RETRY ON THAT FETCH, which is a real residue rather
+than an excuse.** `git fetch` in the scratch clone fails the whole gate on one
+transport hiccup, so on this container the gate is non-deterministic by
+construction for a reason that has nothing to do with any witness. It is
+recorded here for the orchestrator; it is outside this round's findings and its
+files.
+
+
+**WHAT THIS RUN IS EVIDENCE ABOUT, stated in T-009's form.** It is the `full`
+mode of the registry bundle, run from a local clone at code head
+eac7012b5fec80dc094eef47ea330b59ac947261 with `--base origin/main`. It is NOT
+evidence about either CI event, and the pull-request arm supplies `--phase` and
+would run the three gates that error here. The commits after eac7012 touch
+`delivery/work-history/head-anchor-r2.md` and nothing else, so the diff every
+gate above reasons over is unchanged by them; `citations` does not read
+`delivery/work-history/` (its own precondition names the trees it does read, and
+that tree is not among them) and `red-witness` selects witnesses by the CHANGED
+SOURCE FILES, which are the same set.
+
