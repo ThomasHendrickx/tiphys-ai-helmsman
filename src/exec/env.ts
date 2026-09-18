@@ -1,6 +1,6 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { GH_TOKEN_VARIABLES, isDangerousEnvName } from "../gates/credentials.ts";
+import { refusedEnvVocabulary } from "../gates/credentials.ts";
 import { refuseOpenForWrite, runStep } from "../task.ts";
 
 /**
@@ -168,7 +168,7 @@ export type ReasonRequirement = "reason-required" | "reason-optional";
  * name here; what this adds is that WIDENING it per invocation is checked
  * against the same vocabulary the gate walks.
  *
- * ONE VOCABULARY, NOT TWO. `GH_TOKEN_VARIABLES` and `isDangerousEnvName`
+ * ONE VOCABULARY, NOT TWO. `refusedEnvVocabulary`
  * are IMPORTED from src/gates/credentials.ts rather than copied here or
  * moved: plan step 4 offers move-or-re-export and requires the choice be
  * recorded, and duplicating the walked vocabulary would create two lists
@@ -182,9 +182,35 @@ export type ReasonRequirement = "reason-required" | "reason-optional";
  * temporal dead zone. `test/payload-credentials.test.ts` imports both
  * modules in both orders so that rule is checked rather than remembered.
  *
- * The two refusals are ORDERED name-first: a dangerous name is refused
- * whatever reason accompanies it, so a persuasive reason can never buy a
- * credential into a child.
+ * THE NAME CHECK IS ORDERED FIRST: a refused name is refused whatever reason
+ * accompanies it, so a persuasive reason can never buy a credential into a
+ * child.
+ *
+ * IT WALKS A DECLARED LIST OF VOCABULARIES, NOT A HAND-PICKED PAIR, AND THAT
+ * IS THE WHOLE OF CH-001 (clean-room-final-credential-hazard, HIGH) WITH
+ * CR-F-CRED-003 AND CR-F-CRED-004 (LOW) UNDER IT.
+ *
+ * Until this round the guard read two literal arms, `GH_TOKEN_VARIABLES` and
+ * `isDangerousEnvName`. src/gates/credentials.ts held a THIRD vocabulary,
+ * `EGRESS_ENV_VOCABULARY`, added by M4-P29 after that container measured
+ * `HTTPS_PROXY` as the single variable turning `api.github.com/user` from
+ * HTTP 403 into HTTP 200 inside a scrubbed child. The two arms could not see
+ * it, so the audited route ACCEPTED an extension naming the one variable this
+ * repository had twice measured to grant real GitHub reach, and it accepted
+ * `SSH_AUTH_SOCK`, an agent socket, because that sat in neither list either.
+ *
+ * The mechanism is general and is why the repair is not a third `if`: adding
+ * a vocabulary to the module that owns them left every consumer's coverage
+ * UNCHANGED AND SILENT, so a subset could only ever be found by probing a
+ * name. This walks `REFUSED_CHILD_ENV_VOCABULARIES`, which is that module's
+ * declared list of its own vocabularies, through `refusedEnvVocabulary`. A
+ * fourth vocabulary is walked here the moment it gains a row there, and
+ * test/payload-credentials.test.ts reddens on a `*_VOCABULARY` or
+ * `*_VARIABLES` export with no row.
+ *
+ * DR-0048 is the decision behind the egress half and it is not re-litigated
+ * here: the default scrubbed child carries seven names and no proxy, so
+ * refusing an egress extension withdraws nothing the design granted.
  *
  * THE REASON CHECK IS WRITTEN AS A POSITIVE VALIDITY TEST, AND THAT IS THE
  * WHOLE OF FINDING CR-B-002 (clean-room-retro-B-criteria, HIGH).
@@ -236,19 +262,9 @@ export function refuseExtraAllowlist(
         `(${JSON.stringify(entry)}); every entry carries an exact name and a reason`
       );
     }
-    if (GH_TOKEN_VARIABLES.includes(name)) {
-      return (
-        `the allowlist extension entry ${name} is a documented gh token variable ` +
-        `and may never cross into a child environment; the default allowlist ` +
-        `gains no credential name and neither may an extension`
-      );
-    }
-    if (isDangerousEnvName(name)) {
-      return (
-        `the allowlist extension entry ${name} is in the walked credential- or ` +
-        `code-execution-capable vocabulary (src/gates/credentials.ts) and may ` +
-        `never cross into a child environment`
-      );
+    const refusedBy = refusedEnvVocabulary(name);
+    if (refusedBy !== undefined) {
+      return `the allowlist extension entry ${name} ${refusedBy.clause}`;
     }
     const reason = extensionReason(entry);
     const usable = typeof reason === "string" && reason.trim().length > 0;

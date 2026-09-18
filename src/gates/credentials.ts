@@ -163,6 +163,27 @@ export const GH_TOKEN_VARIABLES: readonly string[] = [
  *                         are matched by isDangerousEnvName's pattern.
  *   ssh (ssh(1), ssh-add(1)):
  *     SSH_ASKPASS       - program ssh runs to obtain a passphrase.
+ *     SSH_AUTH_SOCK     - the agent socket. ADDED BY THE DR-0047 SWEEP FIX
+ *                         ROUND, and the basis is stated here rather than
+ *                         implied because HALF OF IT IS UNVERIFIED. What was
+ *                         MEASURED in this container: the name sat in neither
+ *                         walked vocabulary, so the audited route ACCEPTED it
+ *                         (clean-room-final-credential-criteria CR-F-CRED-004),
+ *                         and buildChildEnv's default child does not carry it,
+ *                         so refusing an extension that names it withdraws
+ *                         nothing the default grants. What could NOT be
+ *                         verified here: this container has no ssh binary and
+ *                         no man page (`ssh -V` -> command not found, `man 1
+ *                         ssh` -> nothing), so the claim that ssh(1)'s own
+ *                         ENVIRONMENT section documents it was NOT read from
+ *                         the page. The row therefore rests on capability
+ *                         reasoning, not on the walk: the socket is a SIGNING
+ *                         channel (any holder can authenticate as the owner to
+ *                         any host the agent holds a key for), which is
+ *                         strictly stronger than SSH_ASKPASS, a passphrase
+ *                         PROMPT, which the same row already refuses. A later
+ *                         round with the page should either confirm this row
+ *                         from ssh(1) or move it and say why.
  *   node / dynamic loader / shell startup (node(1), ld.so(8), bash(1)):
  *     NODE_OPTIONS       - options node applies at startup (can require
  *                          arbitrary modules), arbitrary code execution.
@@ -184,6 +205,7 @@ export const DANGEROUS_ENV_VOCABULARY: readonly string[] = [
   "GIT_PROXY_COMMAND",
   "GIT_CONFIG_COUNT",
   "SSH_ASKPASS",
+  "SSH_AUTH_SOCK",
   "NODE_OPTIONS",
   "NODE_EXTRA_CA_CERTS",
   "LD_PRELOAD",
@@ -219,15 +241,21 @@ export const DANGEROUS_ENV_VOCABULARY: readonly string[] = [
  * auditing the extension record a task writes, which is a different gate
  * and a different phase.
  *
- * WHY A SEPARATE LIST. `DANGEROUS_ENV_VOCABULARY` is not only this gate's
- * tripwire: src/exec/env.ts imports `isDangerousEnvName` and REFUSES an
- * allowlist extension naming any member. Adding the proxy names there
- * would therefore refuse M4-P8's one audited, reasoned extension as a side
- * effect of a data edit in this file, in a module this phase does not
- * touch. Whether an egress name may ever be extended is a kernel design
- * question with an owner-facing cost, not a consequence to take by
- * accident, so the two lists stay separate and `isDangerousEnvName` is
- * byte-for-byte what it was.
+ * WHY A SEPARATE LIST, AND WHAT DR-0048 CHANGED ABOUT ITS CONSEQUENCE.
+ * M4-P29 kept these names out of `DANGEROUS_ENV_VOCABULARY` so that a data
+ * edit in this file would not, as a side effect, refuse M4-P8's audited
+ * extension in a module that phase did not touch. It named the underlying
+ * question (whether an egress name may ever be extended) as a kernel design
+ * question with an owner-facing cost, and routed it onward rather than
+ * taking it by accident.
+ *
+ * DR-0048 answered that question: the audited route REFUSES egress names.
+ * The two lists still stay separate, because they are walked from different
+ * programs' documentation and their per-name evidence is different, and
+ * `isDangerousEnvName` is still byte-for-byte what it was. What changed is
+ * that the refusal in src/exec/env.ts no longer walks a HAND-PICKED PAIR of
+ * vocabularies: it walks `REFUSED_CHILD_ENV_VOCABULARIES` below, which is
+ * the declared list of every vocabulary in this module, this one included.
  *
  * THE WALK, per name, from the consuming programs' own documentation
  * (curl(1) "ENVIRONMENT", git(1) "http_proxy", wget(1) "ENVIRONMENT"):
@@ -284,6 +312,86 @@ export function isDangerousEnvName(name: string): boolean {
     DANGEROUS_ENV_VOCABULARY.includes(name) ||
     GIT_CONFIG_INJECTION_MEMBER.test(name)
   );
+}
+
+/** One walked vocabulary, as a refusal walks it. */
+export interface RefusedEnvVocabulary {
+  /** Stable id, used in tests and in nothing an operator reads. */
+  id: string;
+  /** The exported constant this row stands for, named for the drift test. */
+  constantName: string;
+  /** Whether this vocabulary claims the name. */
+  includes: (name: string) => boolean;
+  /**
+   * The middle of the refusal sentence: "the allowlist extension entry X "
+   * + this + " and may never cross into a child environment".
+   */
+  clause: string;
+}
+
+/**
+ * EVERY VOCABULARY A CHILD-ENVIRONMENT REFUSAL MUST WALK, IN ONE PLACE.
+ *
+ * THE MECHANISM THIS EXISTS AGAINST (CH-001 high, CR-F-CRED-003, CR-F-CRED-004;
+ * DR-0048): a refusal that walks ONE vocabulary, or a hand-picked subset of
+ * them, while several exist. `refuseExtraAllowlist` (src/exec/env.ts) named
+ * `GH_TOKEN_VARIABLES` and `isDangerousEnvName` as two literal `if` arms and
+ * therefore could not see `EGRESS_ENV_VOCABULARY`, which this module had held
+ * since M4-P29. The defect is not that the third name was forgotten once; it
+ * is that ADDING a vocabulary to this module left every consumer's coverage
+ * unchanged and silent, so the subset could only be discovered by probing a
+ * name.
+ *
+ * So the list of vocabularies is data, exported from the module that owns
+ * them, and a consumer walks the LIST rather than naming members of it. A
+ * fourth vocabulary added below is walked by every consumer of this array the
+ * moment it gains a row here, and `test/payload-credentials.test.ts` reddens
+ * if a `*_VOCABULARY` or `*_VARIABLES` export of this module has NO row,
+ * which is the case a reader cannot see by reading either file alone.
+ *
+ * `probeCredentialSources` deliberately does NOT walk this array: it reports a
+ * different sentence per vocabulary in one fixed order, strongest first, and the three
+ * sentences are read by operators. It is covered by the same drift test from
+ * the other side.
+ */
+export const REFUSED_CHILD_ENV_VOCABULARIES: readonly RefusedEnvVocabulary[] = [
+  {
+    id: "gh-token",
+    constantName: "GH_TOKEN_VARIABLES",
+    includes: (name) => GH_TOKEN_VARIABLES.includes(name),
+    clause:
+      "is a documented gh token variable and may never cross into a child " +
+      "environment; the default allowlist gains no credential name and " +
+      "neither may an extension",
+  },
+  {
+    id: "dangerous",
+    constantName: "DANGEROUS_ENV_VOCABULARY",
+    includes: isDangerousEnvName,
+    clause:
+      "is in the walked credential- or code-execution-capable vocabulary " +
+      "(src/gates/credentials.ts) and may never cross into a child environment",
+  },
+  {
+    id: "egress",
+    constantName: "EGRESS_ENV_VOCABULARY",
+    includes: isEgressEnvName,
+    clause:
+      "is in the walked network-egress vocabulary (src/gates/credentials.ts) " +
+      "and may never cross into a child environment; DR-0048 decided that " +
+      "egress is granted through a declared route with a reader, never " +
+      "through an allowlist extension whose only audit is a prose reason",
+  },
+];
+
+/**
+ * The first vocabulary claiming `name`, or undefined. The ORDER of
+ * `REFUSED_CHILD_ENV_VOCABULARIES` is the order the refusal reports, and it
+ * is narrowest-first so that a name in two vocabularies is reported as the
+ * more specific one.
+ */
+export function refusedEnvVocabulary(name: string): RefusedEnvVocabulary | undefined {
+  return REFUSED_CHILD_ENV_VOCABULARIES.find((vocabulary) => vocabulary.includes(name));
 }
 
 /** The names credential-scrub probes, in probe order. */

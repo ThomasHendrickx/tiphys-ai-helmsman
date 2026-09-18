@@ -702,6 +702,131 @@ test(
   },
 );
 
+test(
+  "an adapter specifier resolving into the project tree or outside the fleet home is refused before the module is evaluated",
+  (t) => {
+    /*
+     * CR-F-CRED-002 / CH-002, AND THE MECHANISM RATHER THAN THE INSTANCE.
+     * M4-P4 criterion 2's witness stages a package in the PROJECT CLONE's
+     * node_modules and asserts a BARE specifier does not reach it. That is one
+     * input shape. The rooting constrains the `node_modules` WALK and it does
+     * not constrain a path, so a path-shaped specifier walks the tree the
+     * rooting chose, and `<fleet>/projects/` is a subdirectory of that tree.
+     *
+     * The class is "code the fleet owner did not put in the fleet home
+     * evaluated inside the process that holds delegated merge authority", and
+     * it has two structurally different members, both driven here through the
+     * real CLI: a specifier landing INSIDE `<fleet>/projects/`, and a
+     * path-shaped specifier landing entirely OUTSIDE the fleet home. Each
+     * module drops a SENTINEL FILE on import, so what is asserted is
+     * EVALUATION, not resolution: a refusal that arrives after the import has
+     * already run the code is no refusal at all.
+     */
+    const scratch = makeScratch(t);
+    const fleetReal = realpathSync(scratch.fleet);
+    const sentinelBody = (sentinel: string): string =>
+      `import { writeFileSync } from "node:fs";\n` +
+      `writeFileSync(${JSON.stringify(sentinel)}, "evaluated\\n");\n` +
+      `export default { name: "sentinel-adapter", requires: [], async launch() { ` +
+      `return { kind: "launch-failed", reason: "sentinel adapter ran" }; } };\n`;
+
+    interface Arm {
+      label: string;
+      sentinel: string;
+      module: string;
+      specifier: string;
+      expect: RegExp;
+    }
+
+    // MEMBER 1: inside the project clone, named by an ABSOLUTE path.
+    const projectAbsoluteSentinel = join(scratch.tmp, "sentinel-project-absolute");
+    const projectAbsoluteModule = join(scratch.clone, "evil-absolute.mjs");
+    // MEMBER 1b: the same tree, named FLEET-RELATIVE, which is the form an
+    // operator would plausibly type and which walks DOWN rather than anywhere.
+    const projectRelativeSentinel = join(scratch.tmp, "sentinel-project-relative");
+    const projectRelativeModule = join(scratch.clone, "evil-relative.mjs");
+    // MEMBER 2, STRUCTURALLY DIFFERENT: outside the fleet home entirely. The
+    // project-tree rule cannot see this one and the path-shape rule cannot see
+    // member 1, so neither rule alone satisfies this test.
+    const outsideSentinel = join(scratch.tmp, "sentinel-outside");
+    const outsideModule = join(scratch.tmp, "evil-outside.mjs");
+
+    const arms: Arm[] = [
+      {
+        label: "absolute into the project tree",
+        sentinel: projectAbsoluteSentinel,
+        module: projectAbsoluteModule,
+        specifier: projectAbsoluteModule,
+        expect: /inside the project tree/,
+      },
+      {
+        label: "fleet-relative into the project tree",
+        sentinel: projectRelativeSentinel,
+        module: projectRelativeModule,
+        specifier: "./projects/demo/evil-relative.mjs",
+        expect: /inside the project tree/,
+      },
+      {
+        label: "absolute outside the fleet home",
+        sentinel: outsideSentinel,
+        module: outsideModule,
+        specifier: outsideModule,
+        expect: /outside the fleet home/,
+      },
+    ];
+
+    for (const arm of arms) {
+      writeFileSync(arm.module, sentinelBody(arm.sentinel));
+    }
+
+    for (const [index, arm] of arms.entries()) {
+      const taskId = `containment-${index}`;
+      const result = spawnCli(scratch, taskId, ["--adapter", arm.specifier]);
+      assert.notEqual(result.status, 0, `${arm.label}: the spawn did not refuse`);
+      assert.match(
+        result.stderr,
+        arm.expect,
+        `${arm.label}: the refusal does not name why (${result.stderr})`,
+      );
+      assert.equal(
+        existsSync(arm.sentinel),
+        false,
+        `${arm.label}: the module WAS EVALUATED inside the orchestrator process`,
+      );
+      assert.equal(
+        existsSync(taskDirOf(scratch, taskId)),
+        false,
+        `${arm.label}: a task directory survived the refusal`,
+      );
+    }
+
+    /*
+     * THE GREEN CONTROL, and it is not optional: without it a loader that
+     * refused every path-shaped specifier would satisfy all three arms above.
+     * The same module shape, INSIDE the fleet home and outside projects/,
+     * named by a fleet-relative path, loads and runs.
+     */
+    const goodSentinel = join(scratch.tmp, "sentinel-good");
+    const goodDir = join(fleetReal, "adapters");
+    mkdirSync(goodDir, { recursive: true });
+    writeFileSync(join(goodDir, "good.mjs"), sentinelBody(goodSentinel));
+    const good = spawnCli(scratch, "containment-control", [
+      "--adapter",
+      "./adapters/good.mjs",
+    ]);
+    assert.equal(
+      existsSync(goodSentinel),
+      true,
+      `a fleet-home adapter was not evaluated (${good.stderr})`,
+    );
+    assert.match(
+      good.stderr,
+      /sentinel adapter ran/,
+      `the fleet-home adapter did not reach launch (${good.stderr})`,
+    );
+  },
+);
+
 test("every adapter behavior in the registry resolves by name to a test title in this file", () => {
   /*
    * BY NAME, NEVER BY COUNT (binding convention 5, the append-only registry
@@ -727,6 +852,7 @@ test("every adapter behavior in the registry resolves by name to a test title in
     "spawn-adapter-shape-refused-creates-nothing",
     "spawn-adapter-name-collision-refused",
     "spawn-adapter-default-recorded-explicitly",
+    "spawn-adapter-resolved-path-containment",
     "kernel-exports-executor-types",
     "kernel-exports-do-not-widen-package",
   ]) {

@@ -1215,5 +1215,10 @@
   "cutover-status-usage-error-without-fleet": "cutover status without --fleet is a usage error and not a refusal",
   "cutover-state-type-row-registered": "tiphys validate --type cutover-state accepts a good state and names a missing restoreTo",
   "cutover-status-contract-reproduced-live": "the captured status contracts this phase parses are reproduced live",
-  "cutover-pre-freeze-stale-refuses-every-kernel-switch": "no switch may report kernel while the pre-freeze ruleset is older than the newest switch write"
+  "cutover-pre-freeze-stale-refuses-every-kernel-switch": "no switch may report kernel while the pre-freeze ruleset is older than the newest switch write",
+  "child-env-refusal-walks-every-vocabulary": "the child-environment refusal walks every declared credential vocabulary, on both reason requirements",
+  "child-env-vocabulary-registry-covers-every-export": "every credential vocabulary the module exports has a row in the refusal registry",
+  "handover-source-names-the-artifact": "an adapter that writes the turn-end record itself produces the same pointer-evidence source as one that invokes the hook, and the record names an artifact rather than an observer",
+  "spawn-adapter-resolved-path-containment": "an adapter specifier resolving into the project tree or outside the fleet home is refused before the module is evaluated",
+  "task-record-unreadable-is-not-absent": "a task record that is truncated and one that fails the field check are each distinguishable from an absent record"
 }

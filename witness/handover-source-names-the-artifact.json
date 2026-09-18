@@ -1,0 +1,24 @@
+{
+  "id": "handover-source-names-the-artifact",
+  "behavior": "handover-source-names-the-artifact",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "an adapter that writes the turn-end record itself produces the same pointer-evidence source as one that invokes the hook, and the record names an artifact rather than an observer"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "      return { source: \"turn-end-record\", values: evidence.observed };",
+      "replace": "      return { source: \"child\" as \"turn-end-record\", values: evidence.observed };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/spawn.ts",
+      "find": "    return \"read from the turn-end record, which the kernel generates the hook for and an adapter can also write\";",
+      "replace": "    return \"observed child-side\";"
+    }
+  ]
+}

@@ -1,0 +1,24 @@
+{
+  "id": "child-env-vocabulary-registry-covers-every-export",
+  "behavior": "child-env-vocabulary-registry-covers-every-export",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "every credential vocabulary the module exports has a row in the refusal registry"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/credentials.ts",
+      "find": "    id: \"egress\",\n    constantName: \"EGRESS_ENV_VOCABULARY\",",
+      "replace": "    id: \"egress\",\n    constantName: \"EGRESS_ENV_VOCABULARY_RENAMED_BY_A_TYPO\","
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/credentials.ts",
+      "find": "export const GH_TOKEN_VARIABLES: readonly string[] = [",
+      "replace": "export const GH_TOKEN_EXTRA_VARIABLES: readonly string[] = [\"GH_UNWALKED\"];\nexport const GH_TOKEN_VARIABLES: readonly string[] = ["
+    }
+  ]
+}

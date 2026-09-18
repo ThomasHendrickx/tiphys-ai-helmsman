@@ -1,4 +1,6 @@
+import { realpathSync } from "node:fs";
 import { createRequire } from "node:module";
+import { isAbsolute, join, relative, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { readRegularFileIfPresent, singleLine } from "../task.ts";
 import type { Fleet } from "../fleet.ts";
@@ -21,15 +23,54 @@ import type { ExecutorAdapter } from "../spawn.ts";
  *   - the PROJECT CLONE is the thing under review and may contain anything
  *     a contributor pushed, including a `node_modules/` directory.
  *
- * So resolution is rooted at `<fleet home>/package.json` and NOTHING here
- * ever consults the project clone, the kernel's own checkout, or
- * `process.cwd()` at the moment of the import. A plain `await
- * import(specifier)` resolves relative to THIS MODULE's URL, which is the
- * kernel checkout, and `import.meta.resolve(specifier, parent)` silently
- * ignores its second argument unless Node is started with
- * `--experimental-import-meta-resolve` (measured on v26.6.0, 2026-09-17:
- * the parent was ignored and the specifier resolved from the CALLER's file).
- * Both of those are the shape this module refuses to be.
+ * So resolution is rooted at `<fleet home>/package.json` rather than at this
+ * module or at `process.cwd()`. A plain `await import(specifier)` resolves
+ * relative to THIS MODULE's URL, which is the kernel checkout, and
+ * `import.meta.resolve(specifier, parent)` silently ignores its second
+ * argument unless Node is started with `--experimental-import-meta-resolve`
+ * (measured on v26.6.0, 2026-09-17: the parent was ignored and the specifier
+ * resolved from the CALLER's file). Both of those are the shape this module
+ * refuses to be.
+ *
+ * THE ROOTING IS NOT BY ITSELF THE PROPERTY, AND THE SENTENCE THAT STOOD HERE
+ * SAID IT WAS (CR-B-004, re-raised as CR-F-CRED-002 and CH-002).
+ *
+ * Until this round this paragraph asserted, without qualification, that
+ * "NOTHING here ever consults the project clone". That is true of BARE
+ * specifiers, which is the only shape M4-P4 criterion 2's witness exercises:
+ * `createRequire` walks the fleet home and its PARENTS looking for
+ * `node_modules`, and the project clone sits BELOW the fleet home at
+ * `<fleet>/projects/<name>`, so no such walk reaches it. It was FALSE of the
+ * module. Measured at `ad2428b`, with a module in the project clone that drops
+ * a sentinel on import: a bare specifier did not evaluate it, an ABSOLUTE
+ * specifier did, and the fleet-relative `./projects/demo/evil.mjs` did,
+ * because a relative path does not walk up looking for `node_modules`, it
+ * walks DOWN the tree the rooting chose.
+ *
+ * The mechanism is a constraint that holds for one INPUT SHAPE, documented as
+ * holding for the module. Both halves are now checked against the RESOLVED
+ * REAL PATH, which is the only thing that describes where the code actually
+ * comes from, rather than against the specifier's spelling:
+ *
+ *   - a resolved path inside `<fleet>/projects/` is refused WHATEVER the
+ *     specifier's shape, because the project tree is the thing under review;
+ *   - a PATH-SHAPED specifier (absolute, or beginning `./` or `../`) whose
+ *     resolved path is outside the fleet home is refused, because an absolute
+ *     specifier can point anywhere and a relative one can climb out with
+ *     `../`. A BARE specifier is exempt from the second check only, because
+ *     `createRequire`'s parent walk legitimately finds a hoisted
+ *     `node_modules` above the fleet home, and refusing that would break an
+ *     ordinary install rather than a hazard.
+ *
+ * `realpathSync` is used for both, so a symlink planted inside the fleet home
+ * pointing into the project clone is refused by the same check rather than by
+ * a second one.
+ *
+ * WHAT IS STILL NOT DEFENDED, said here so the next reader does not re-derive
+ * it: an operator who types an absolute path INTO the fleet home gets what
+ * they typed, and the fleet home is owner-controlled by assumption. This moves
+ * the boundary to the fleet home for every specifier shape; it does not defend
+ * inside it.
  *
  * WHAT THIS MODULE DOES NOT DEFEND. Once a specifier resolves inside the
  * fleet home, its code runs. A legitimate fleet-home adapter that is later
@@ -167,6 +208,14 @@ export function fleetAdapterSpecifier(
  * (`./adapters/mine.js`) is likewise resolved against the fleet home rather
  * than against the current working directory.
  *
+ * THE RESOLVED PATH IS THEN CHECKED FOR CONTAINMENT (CR-F-CRED-002, CH-002).
+ * `requireFromFleet.resolve` is where the rooting happens and it is NOT where
+ * the boundary is enforced, because a path-shaped specifier is not subject to
+ * the walk the rooting performs. `refuseResolvedAdapterPath` below is the
+ * enforcement and it runs BEFORE the `import`, so a refused module is never
+ * evaluated; see the module comment for the two rules and for what they do
+ * not cover.
+ *
  * THE CONDITION SET IS `require`, AND THAT IS A REAL LIMITATION RATHER THAN
  * AN OVERSIGHT. `require.resolve` applies an `exports` map under the
  * `require` condition, so a package whose map offers ONLY an `import`
@@ -180,6 +229,88 @@ export function fleetAdapterSpecifier(
  * place. The alternative, a parameterised ESM resolver, does not exist in
  * stable Node; see the module docs above for the measurement.
  */
+/**
+ * Is `specifier` a PATH rather than a package name? Node's own rule, and it is
+ * spelled out rather than approximated: a specifier is relative when it begins
+ * `./` or `../` (or their platform separator forms), and absolute when
+ * `isAbsolute` says so. Everything else is bare and reaches the `node_modules`
+ * walk.
+ */
+function isPathShapedSpecifier(specifier: string): boolean {
+  if (isAbsolute(specifier)) {
+    return true;
+  }
+  for (const prefix of ["./", "../", `.${sep}`, `..${sep}`]) {
+    if (specifier.startsWith(prefix)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Resolve a path to its real location, or return it unchanged when it cannot
+ * be resolved. An unresolvable path is NOT treated as safe: it is returned as
+ * it stands and the containment rules below judge it, so the failure mode of
+ * this helper is a refusal rather than a pass.
+ */
+function realPathOrItself(path: string): string {
+  try {
+    return realpathSync(path);
+  } catch {
+    return path;
+  }
+}
+
+/** Whether `path` is `root` itself or sits underneath it. */
+function isInside(root: string, path: string): boolean {
+  if (path === root) {
+    return true;
+  }
+  const rel = relative(root, path);
+  return rel !== "" && !rel.startsWith("..") && !isAbsolute(rel);
+}
+
+/**
+ * THE CONTAINMENT RULES, applied to the RESOLVED REAL PATH (CR-F-CRED-002,
+ * CH-002). Exported so a test can drive both rules directly without staging a
+ * module on disk for every member; `loadAdapter` is the only caller in `src/`.
+ *
+ * Returns a refusal reason, or undefined to allow. Both rules name the
+ * resolved path, because an operator reading the refusal has to be able to see
+ * WHERE the specifier landed, which is precisely the thing the specifier's own
+ * spelling hides.
+ */
+export function refuseResolvedAdapterPath(
+  fleet: Fleet,
+  specifier: string,
+  origin: string,
+  resolved: string,
+): string | undefined {
+  const realResolved = realPathOrItself(resolved);
+  const realFleetRoot = realPathOrItself(fleet.root);
+  const realProjectsDir = realPathOrItself(
+    fleet.projectsDir === "" ? join(realFleetRoot, "projects") : fleet.projectsDir,
+  );
+  if (isInside(realProjectsDir, realResolved)) {
+    return (
+      `the adapter ${specifier} (${origin}) resolves to ${realResolved}, which is ` +
+      `inside the project tree ${realProjectsDir}; a project clone is the code ` +
+      `under review and loading an adapter runs it inside the orchestrator ` +
+      `process, so no specifier of any shape may resolve there`
+    );
+  }
+  if (isPathShapedSpecifier(specifier) && !isInside(realFleetRoot, realResolved)) {
+    return (
+      `the adapter ${specifier} (${origin}) is a path-shaped specifier resolving ` +
+      `to ${realResolved}, which is outside the fleet home ${realFleetRoot}; the ` +
+      `fleet home is the only resolution root the kernel trusts for adapters, and ` +
+      `a path specifier is not constrained by the rooting the way a package name is`
+    );
+  }
+  return undefined;
+}
+
 export async function loadAdapter(
   fleet: Fleet,
   specifier: string,
@@ -200,6 +331,10 @@ export async function loadAdapter(
         `exports map offering only an import condition does not resolve here ` +
         `(${code === "" ? singleLine(String(error)) : code})`,
     };
+  }
+  const containmentRefusal = refuseResolvedAdapterPath(fleet, specifier, origin, resolved);
+  if (containmentRefusal !== undefined) {
+    return { ok: false, reason: containmentRefusal };
   }
   let module: unknown;
   try {

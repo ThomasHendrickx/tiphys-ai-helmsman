@@ -1,0 +1,24 @@
+{
+  "id": "child-env-refusal-walks-every-vocabulary",
+  "behavior": "child-env-refusal-walks-every-vocabulary",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "the child-environment refusal walks every declared credential vocabulary, on both reason requirements"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/credentials.ts",
+      "find": "    id: \"egress\",\n    constantName: \"EGRESS_ENV_VOCABULARY\",\n    includes: isEgressEnvName,",
+      "replace": "    id: \"egress\",\n    constantName: \"EGRESS_ENV_VOCABULARY\",\n    includes: () => false,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/exec/env.ts",
+      "find": "    const refusedBy = refusedEnvVocabulary(name);",
+      "replace": "    const refusedBy = name.startsWith(\"GH_\") ? refusedEnvVocabulary(name) : undefined;"
+    }
+  ]
+}
