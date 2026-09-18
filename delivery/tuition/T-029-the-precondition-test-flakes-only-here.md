@@ -195,3 +195,38 @@ that passes.
 Do NOT skip, disable or quarantine it. It guards a real property, the whole
 point of which is that a precondition command failing is an ERROR and not a
 silent skip, which is this repository's most-repeated defect shape.
+
+## Occurrences seven to ten, all consistent with the settled mechanism (2026-09-18)
+
+Contributed by the DR-0047 final approval sweep at head `ad2428b`. None of this
+reopens the section above; one row confirms it unusually cleanly.
+
+| context | reported |
+|---|---|
+| credential group, reviewer's clone, `npm test` | EACCES, `node_modules/ajv/.../contains.js` |
+| exclusion group, reviewer's clone, `npm test` | failing, same test |
+| gates group, reviewer's clone, `suite` GATE alone | red 3 of 3, ERR_MODULE_NOT_FOUND for `src/checks.ts` |
+| gates group, SAME clone and head, `npm test` | **green 2 of 2**, 1341 pass, 0 fail, 0 skipped |
+
+**The last two rows are the cleanest confirmation this entry has.** One head, one
+toolchain, one build state, two invocations: stable red under the `suite` gate,
+stable green under `npm test`. A race would not be stable in either direction.
+An ORDERING DEPENDENCY predicts exactly this, because the two invocations run
+different sets of tests, so they differ in whether a `/tmp/claude-0`-rooted test
+has already granted traversal. The gate runs `npm test`'s script through its own
+harness and its red is reproducible; the difference is what else ran first.
+
+**A third module name**, `src/checks.ts`, alongside the recorded `src/task.ts`,
+`src/validate.ts` and `src/cli.ts`. Four modules now, one test, which is what a
+resolver failing on a directory it cannot traverse looks like: the name is
+whichever module the child happened to need first.
+
+**A second error signature, EACCES**, where the recorded ones are
+ERR_MODULE_NOT_FOUND. Consistent with the same cause, since a child that cannot
+traverse cannot stat, and a resolver reports an unstattable file as not-found
+while a direct open reports it as forbidden. That reasoning is not a measurement
+and nobody has forced both arms from one denied traversal.
+
+**Consequence for reviewers, since three of the four rows are review agents.**
+A sweep reviewer running from a clone under `/tmp/claude-0` will meet this and
+should quote both invocations rather than one, per the section above.
