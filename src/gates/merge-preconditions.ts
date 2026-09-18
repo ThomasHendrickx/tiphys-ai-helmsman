@@ -241,15 +241,30 @@ export type ApiResponse =
  * here that returns a value the caller can mistake for data: a transport
  * failure becomes `{ok: false, reason}` and every caller turns that into
  * `error`.
+ *
+ * NO CREDENTIAL IS READ, AND THAT IS A RULE RATHER THAN AN OVERSIGHT.
+ * test/m2-exit-test.test.ts:425 asserts, by grepping every file under
+ * `src/gates/`, that no production gate reads a LITERAL-NAMED environment
+ * variable, because such a read is an ambient switch that changes a gate's
+ * reported status with nothing in the record to say so. An earlier draft of
+ * this module read `GH_TOKEN` and that test caught it, which is the guard
+ * working. Measured 2026-09-17 from this container, with NO Authorization
+ * header at all: `GET /repos/{slug}`, `GET /repos/{slug}/rulesets` and
+ * `GET /repos/{slug}/commits/{sha}/check-runs` each answered HTTP 200, because
+ * the agent proxy substitutes credentials on the way out and the value in
+ * `GH_TOKEN` is irrelevant (CLAUDE.md standing warning 6's invalid-token
+ * control measures the same thing). WHAT THIS COSTS, recorded rather than left
+ * to be found: in a deployment where the API genuinely requires a credential,
+ * every request here answers 401 or 404 and the gate reports `error`. That is
+ * the fail-closed direction and never a silent pass, and supplying a token
+ * would have to be a DECLARED FLAG in the registry command rather than an
+ * ambient environment read.
  */
-export async function requestJson(url: string, token: string | undefined): Promise<ApiResponse> {
+export async function requestJson(url: string): Promise<ApiResponse> {
   const headers: Record<string, string> = {
     accept: "application/vnd.github+json",
     "user-agent": "tiphys-merge-preconditions",
   };
-  if (token !== undefined && token !== "") {
-    headers["authorization"] = `Bearer ${token}`;
-  }
   try {
     const response = await fetch(url, { headers });
     const body = await response.text();
@@ -305,11 +320,6 @@ export function readJsonBody(url: string, response: ApiResponse): JsonReading {
       reason: `GET ${url} answered a body that is not JSON: ${singleLine((error as Error).message)}`,
     };
   }
-}
-
-function apiToken(): string | undefined {
-  const fromEnv = process.env["GH_TOKEN"] ?? process.env["GITHUB_TOKEN"];
-  return fromEnv === undefined || fromEnv === "" ? undefined : fromEnv;
 }
 
 /**
@@ -799,10 +809,9 @@ function read(path: string): Read {
 async function readRulesets(
   apiBase: string,
   slug: string,
-  token: string | undefined,
 ): Promise<{ ok: true; rulesets: RulesetReading[] } | { ok: false; reason: string }> {
   const listUrl = `${apiBase}/repos/${slug}/rulesets?includes_parents=true`;
-  const listed = readJsonBody(listUrl, await requestJson(listUrl, token));
+  const listed = readJsonBody(listUrl, await requestJson(listUrl));
   if (!listed.ok) {
     return { ok: false, reason: listed.reason };
   }
@@ -823,7 +832,7 @@ async function readRulesets(
     let source = entry;
     if (!Array.isArray(entry["rules"])) {
       const detailUrl = `${apiBase}/repos/${slug}/rulesets/${String(entry["id"] ?? "")}`;
-      const detail = readJsonBody(detailUrl, await requestJson(detailUrl, token));
+      const detail = readJsonBody(detailUrl, await requestJson(detailUrl));
       if (!detail.ok) {
         return { ok: false, reason: detail.reason };
       }
@@ -851,12 +860,9 @@ export async function runGate(flags: Flags): Promise<number> {
   const head = (flags.head as string).toLowerCase();
   const phase = (flags.phase as string).toLowerCase();
   const contextDirectory = absolute(flags.context ?? process.cwd());
-  const apiBase = (flags["api-base"] ?? process.env["TIPHYS_GITHUB_API_BASE"] ?? DEFAULT_API_BASE)
-    .replace(/\/+$/, "");
-  const slug =
-    flags.repo ?? process.env["TIPHYS_GITHUB_REPO"] ?? slugFromGit(contextDirectory) ?? "";
+  const apiBase = (flags["api-base"] ?? DEFAULT_API_BASE).replace(/\/+$/, "");
+  const slug = flags.repo ?? slugFromGit(contextDirectory) ?? "";
   const shared = { gate: GATE_ID, unitLabel: UNIT_LABEL, startedAt };
-  const token = apiToken();
 
   if (slug === "") {
     return emit(
@@ -867,9 +873,9 @@ export async function runGate(flags: Flags): Promise<number> {
         units: 0,
         endedAt: now(),
         detail:
-          "no repository could be established: `git -C <context> remote get-url origin` named none, " +
-          "and neither --repo <owner/name> nor TIPHYS_GITHUB_REPO was supplied. Without one, condition " +
-          "4 and the branch-protection encoding have nothing to ask about",
+          "no repository could be established: `git -C <context> remote get-url origin` named none " +
+          "and --repo <owner/name> was not supplied. Without one, condition 4 and the " +
+          "branch-protection encoding have nothing to ask about",
       },
       [],
     );
@@ -883,7 +889,7 @@ export async function runGate(flags: Flags): Promise<number> {
      a thing to PROBE at the start of a run that depends on it, in either
      direction, so this is the probe and not an assumption. */
   const probeUrl = `${apiBase}/repos/${slug}`;
-  const probe = readJsonBody(probeUrl, await requestJson(probeUrl, token));
+  const probe = readJsonBody(probeUrl, await requestJson(probeUrl));
   if (!probe.ok) {
     return emit(
       resultPath,
@@ -1011,7 +1017,7 @@ export async function runGate(flags: Flags): Promise<number> {
   });
 
   const checkRunsUrl = `${apiBase}/repos/${slug}/commits/${head}/check-runs`;
-  const checkRuns = readJsonBody(checkRunsUrl, await requestJson(checkRunsUrl, token));
+  const checkRuns = readJsonBody(checkRunsUrl, await requestJson(checkRunsUrl));
   if (!checkRuns.ok) {
     rows.push({
       id: "condition-4",
@@ -1069,7 +1075,7 @@ export async function runGate(flags: Flags): Promise<number> {
     sentence: arbitration.sentence,
   });
 
-  const rulesets = await readRulesets(apiBase, slug, token);
+  const rulesets = await readRulesets(apiBase, slug);
   if (!rulesets.ok) {
     rows.push({
       id: "branch-protection",
