@@ -1,0 +1,24 @@
+{
+  "id": "cutover-state-type-row",
+  "behavior": "cutover-state-type-row-registered",
+  "tests": [
+    "tiphys validate --type cutover-state accepts a good state and names a missing restoreTo"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  [\"cutover-state\", \"cutover-state.schema.json\"],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  [\"cutover-state\", \"cutover-state.schema.json\"],",
+      "replace": "  [\"cutover-state\", \"charter.schema.json\"],"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

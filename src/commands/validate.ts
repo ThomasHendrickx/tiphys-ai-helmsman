@@ -106,6 +106,15 @@ export const TYPE_TABLE: ReadonlyMap<string, string> = new Map([
      `mechanism-rule-evidence-resolves` are registered for type `tuition` and
      nothing runs them until the type resolves. */
   ["tuition", "tuition.schema.json"],
+  /* M4-P25 criterion 4. The fleet's `cutover.json`. It carries NO `kind`
+     field, so this row extends `--type` and NOT `resolveAutoType`; `role-brief`
+     above is the standing precedent for that half of M3R-001, and the half the
+     rule is actually about, a schema that ships without a `--type` row and
+     forces a later implementer to edit an undeclared file, is satisfied here.
+     The document is validated programmatically on every write as well
+     (src/cutover.ts:253), which is what criterion 4 means by validated by the
+     schema rather than by the command. */
+  ["cutover-state", "cutover-state.schema.json"],
   /* M4-P3 criterion 4. tasks/<id>/executor.json, the launch record an
      ExecutorAdapter writes.
 

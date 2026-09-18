@@ -1,0 +1,24 @@
+{
+  "id": "cutover-status-exit-needs-all-five-kernel",
+  "behavior": "cutover-status-nonzero-while-a-switch-reads-current",
+  "tests": [
+    "cutover status exits nonzero while any switch still reads current"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/cutover.ts",
+      "find": "  return allKernel && items.length === 0 ? 0 : EX_WORK_REMAINS;",
+      "replace": "  return items.length === 0 ? 0 : EX_WORK_REMAINS;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/cutover.ts",
+      "find": "  const allKernel = CUTOVER_SWITCHES.every((name) => state.switches[name].state === \"kernel\");",
+      "replace": "  const allKernel = CUTOVER_SWITCHES.some((name) => state.switches[name].state === \"kernel\");"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

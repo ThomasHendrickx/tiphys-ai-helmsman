@@ -51,12 +51,15 @@ import {
 } from "node:fs";
 import { dirname, join } from "node:path";
 import type { Fleet } from "./fleet.ts";
+import { packageRoot } from "./modes.ts";
 import {
   classifyEntry,
   readRegularFileIfPresent,
   turnEndPath,
   type GuardResult,
 } from "./task.ts";
+import { validateToLines } from "./validate.ts";
+import type { SchemaDocument } from "./validate.ts";
 
 /* -------------------------------------------------------------------- */
 /* The five switches                                                     */
@@ -254,6 +257,20 @@ export function publishCutoverState(
   path: string,
   state: CutoverState | CutoverDocument,
 ): void {
+  /* M4-P25 criterion 4, AND THE ORDER IS THE PROPERTY. The shipped schema
+     refuses a switch record missing `restoreTo` (or `flippedAt`, `flippedBy`
+     or `reason`) BEFORE the temporary file is opened, so a refused write
+     leaves the destination byte-identical and, where there was none, leaves
+     no file at all. The check lives in the schema rather than here because a
+     check implemented only in a command cannot bind a later writer, and the
+     later writer is exactly who M4-P26's rollback depends on: `targetFor`
+     reads the recorded value rather than reconstructing an intent. */
+  const diagnostics = cutoverSchemaDiagnostics(state);
+  if (diagnostics.length > 0) {
+    throw new Error(
+      `the cutover state was refused by ${CUTOVER_STATE_SCHEMA_FILENAME} and NOTHING was written: ${diagnostics.join("; ")}`,
+    );
+  }
   const directory = dirname(path);
   mkdirSync(directory, { recursive: true });
   /* The suffix is random, never a pid. C-2 forbids a pid as an identity, and
@@ -1125,6 +1142,11 @@ export interface RetirementRow {
    * "PORT, verify not weaker" from a judgment into a command.
    */
   negativeWitness?: string[];
+  /**
+   * The exit status the row RECORDED for its negative witness, when it
+   * records one. Present, it is required to match: see `evaluatePortRow`.
+   */
+  expectedWitnessExit?: number;
 }
 
 export type PortVerdict = "ported" | "unported";
@@ -1188,13 +1210,26 @@ export function evaluatePortRow(
   if (!nonEmptyString(row.destination)) {
     return { id, verdict: "unported", reason: "PORT row names no destination" };
   }
-  const destination = join(repoRoot, row.destination);
-  if (classifyEntry(destination).kind !== "regular") {
-    return {
-      id,
-      verdict: "unported",
-      reason: `destination ${row.destination} does not exist as a file`,
-    };
+  /* A DESTINATION MAY NAME MORE THAN ONE ARTIFACT, and that is the inventory's
+     own declared convention rather than a reading invented here: its checker
+     splits the field on commas at scripts/check-retirement-inventory.mjs:754.
+     Measured 2026-09-18 against the shipped inventory: three rows
+     (`next-script:gittry`, `next-script:gitcount`, `next-script:harderrors`)
+     carry `roles/investigator.md, checklists/clean-room.yaml`, and treating
+     the field as ONE path reported all three as `unported` with a reason about
+     a file that does not exist. That is a false finding about the kernel
+     produced by a disagreement about a separator, so EVERY named path must
+     exist and the first that does not is the one named. Splitting a
+     single-path field yields that one path, so nothing else changes. */
+  const destinations = row.destination.split(/\s*,\s*/).filter((part) => part.length > 0);
+  for (const part of destinations) {
+    if (classifyEntry(join(repoRoot, part)).kind !== "regular") {
+      return {
+        id,
+        verdict: "unported",
+        reason: `destination ${part} does not exist as a file`,
+      };
+    }
   }
   /* THE COMMAND'S TYPE IS ESTABLISHED BEFORE IT IS DESTRUCTURED OR SPAWNED,
      and `destination` one line up is why this line looks the way it does: that
@@ -1258,6 +1293,26 @@ export function evaluatePortRow(
         "negative witness exits 0 under the new artifact, so the destination is WEAKER than the rule it replaced",
     };
   }
+  /* A NONZERO EXIT IS NOT THE SAME THING AS A RED WITNESS, and this is the
+     vacuous red one level below the vacuous green above. `grep` exits 1 when
+     it searched and found nothing, which is the answer that makes the row's
+     claim stand, and 2 when it could not search at all: a missing subject
+     file, an unreadable directory, a bad pattern. Accepting any nonzero
+     status reports a row as PORTED on the strength of an error message, which
+     is a guard that fails open when its own tool fails. The row's own
+     `negative-witness.exit` is what it recorded when it was written, so when
+     the row declares one it is REQUIRED to match. Same rule, same reason, as
+     scripts/check-retirement-inventory.mjs:628 applies to its widening grep.
+     Measured 2026-09-18 over the shipped inventory: all 199 PORT rows record
+     exit 1 and all 199 observed exit 1, so this changes no verdict today and
+     is a guard against the day one of them starts erroring instead. */
+  if (row.expectedWitnessExit !== undefined && run.status !== row.expectedWitnessExit) {
+    return {
+      id,
+      verdict: "unported",
+      reason: `negative witness exits ${String(run.status)} under the new artifact but the row recorded ${String(row.expectedWitnessExit)}, so it did not search and find nothing, it failed`,
+    };
+  }
   return {
     id,
     verdict: "ported",
@@ -1307,4 +1362,428 @@ export function readRetirementInventory(path: string): InventoryRead {
     return { kind: "refused", reason: `${path} has no rows array` };
   }
   return { kind: "read", rows: rows as RetirementRow[] };
+}
+
+/* -------------------------------------------------------------------- */
+/* M4-P25: the shipped state schema                                      */
+/* -------------------------------------------------------------------- */
+
+/** The shipped schema document's basename, in the package's `schemas/`. */
+export const CUTOVER_STATE_SCHEMA_FILENAME = "cutover-state.schema.json";
+
+/**
+ * Absolute path of the shipped cutover-state schema.
+ *
+ * `packageRoot()` walks UP and TESTS rather than counting `..`, because the
+ * depth differs between running from `src/` and running from `dist/src/`
+ * (src/modes.ts:39 states the same reason for the same walk).
+ */
+export function cutoverStateSchemaPath(): string {
+  return join(packageRoot(), "schemas", CUTOVER_STATE_SCHEMA_FILENAME);
+}
+
+let cachedCutoverSchema: SchemaDocument | undefined;
+
+/** The shipped schema document, read once. */
+export function cutoverStateSchema(): SchemaDocument {
+  if (cachedCutoverSchema === undefined) {
+    const path = cutoverStateSchemaPath();
+    const read = readRegularFileIfPresent(path);
+    if (read.kind !== "read") {
+      throw new Error(
+        read.kind === "absent"
+          ? `${path} is missing from this installation`
+          : read.reason,
+      );
+    }
+    cachedCutoverSchema = JSON.parse(read.body) as SchemaDocument;
+  }
+  return cachedCutoverSchema;
+}
+
+/**
+ * Validate a whole cutover document against the SHIPPED SCHEMA.
+ *
+ * WHY THIS IS NOT `validateCutoverDocument`, and the two are kept apart on
+ * purpose. That function is this module's READ guard and answers "can this
+ * file be interpreted". This one is the WRITE guard and answers "is this
+ * document one the package is prepared to ship", and criterion 4 says the
+ * required-field rule is validated BY THE SCHEMA rather than by a command.
+ * A check implemented only in a command is one the schema cannot enforce for
+ * a later writer, and a later writer is precisely who rollback depends on:
+ * M4-P26's `targetFor` READS the recorded `restoreTo` (src/cutover.ts:352)
+ * rather than remembering an intent, so a record written without one is a
+ * switch that can never be rolled back.
+ */
+export function cutoverSchemaDiagnostics(document: unknown): string[] {
+  return validateToLines(cutoverStateSchema(), document);
+}
+
+/* -------------------------------------------------------------------- */
+/* M4-P25 criterion 5: the pre-freeze precondition                       */
+/* -------------------------------------------------------------------- */
+
+/**
+ * The captured pre-freeze state, relative to the REPOSITORY root. It carries
+ * the branch-protection ruleset as it was before the first flip, so the
+ * restore request M4-P26 generates has an input rather than a memory. T-025
+ * is why: the one step that cannot be rehearsed is the one that failed, and
+ * its INPUT can be captured in advance even when its EXECUTION cannot.
+ */
+export const PRE_FREEZE_RULESET_PATH = "delivery/plan/cutover/pre-freeze-ruleset.json";
+
+export type PreFreezeVerdict =
+  /** No switch reads `kernel`, so nothing has been frozen and nothing is owed. */
+  | { kind: "not-required" }
+  | { kind: "satisfied"; capturedAt: string }
+  | { kind: "refused"; arm: "absent" | "stale" | "unreadable"; reason: string };
+
+/**
+ * THE CAPTURE TIME IS READ FROM THE DOCUMENT, NOT FROM ITS MTIME, and that is
+ * a correction rather than a preference.
+ *
+ * The criterion says the capture must not be OLDER than the most recent switch
+ * write. An mtime does not survive the journey: `git clone` and `git checkout`
+ * set every working-tree mtime to the moment of the checkout, so a capture
+ * taken weeks before a flip reads as newer than the flip on any fresh clone,
+ * and the guard reports satisfied on exactly the machine a reviewer uses.
+ * Measured, and the measurement is in the work history. So the document
+ * records `captured-at` and the comparison is content to content.
+ *
+ * FAIL CLOSED ON AN UNREADABLE CAPTURE. A document with no `captured-at`, or
+ * one that does not parse as an instant, is `unreadable` and refuses. Treating
+ * it as satisfied would make a malformed capture indistinguishable from a good
+ * one, which is the guard that cannot go red.
+ */
+export function preFreezeGuard(repoRoot: string, state: CutoverState): PreFreezeVerdict {
+  const frozen = CUTOVER_SWITCHES.filter((name) => state.switches[name].state === "kernel");
+  if (frozen.length === 0) {
+    return { kind: "not-required" };
+  }
+  const path = join(repoRoot, PRE_FREEZE_RULESET_PATH);
+  const read = readRegularFileIfPresent(path);
+  if (read.kind === "absent") {
+    return {
+      kind: "refused",
+      arm: "absent",
+      reason: `${PRE_FREEZE_RULESET_PATH} is absent, so the pre-freeze branch-protection ruleset was never captured and there is nothing to restore to`,
+    };
+  }
+  if (read.kind === "refused") {
+    return { kind: "refused", arm: "unreadable", reason: read.reason };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(read.body) as unknown;
+  } catch (error) {
+    return {
+      kind: "refused",
+      arm: "unreadable",
+      reason: `${PRE_FREEZE_RULESET_PATH} is not valid JSON: ${String(error)}`,
+    };
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return {
+      kind: "refused",
+      arm: "unreadable",
+      reason: `${PRE_FREEZE_RULESET_PATH} is not a JSON object`,
+    };
+  }
+  const capturedAt = (parsed as Record<string, unknown>)["captured-at"];
+  if (!nonEmptyString(capturedAt)) {
+    return {
+      kind: "refused",
+      arm: "unreadable",
+      reason: `${PRE_FREEZE_RULESET_PATH} records no captured-at, so it cannot be compared with any switch write`,
+    };
+  }
+  const capturedMs = Date.parse(capturedAt);
+  if (Number.isNaN(capturedMs)) {
+    return {
+      kind: "refused",
+      arm: "unreadable",
+      reason: `${PRE_FREEZE_RULESET_PATH} records captured-at ${JSON.stringify(capturedAt)}, which does not parse as an instant`,
+    };
+  }
+  /* The NEWEST switch write across all five, not only the frozen ones: a
+     switch written back to `current` after the capture is still a write, and
+     the capture has to be at least as new as the whole table. */
+  let newest = Number.NEGATIVE_INFINITY;
+  let newestName = "";
+  for (const name of CUTOVER_SWITCHES) {
+    const at = Date.parse(state.switches[name].flippedAt);
+    if (Number.isNaN(at)) {
+      return {
+        kind: "refused",
+        arm: "unreadable",
+        reason: `switch ${name} records flippedAt ${JSON.stringify(state.switches[name].flippedAt)}, which does not parse as an instant, so the capture could not be compared with it`,
+      };
+    }
+    if (at > newest) {
+      newest = at;
+      newestName = name;
+    }
+  }
+  if (capturedMs < newest) {
+    return {
+      kind: "refused",
+      arm: "stale",
+      reason: `${PRE_FREEZE_RULESET_PATH} was captured at ${capturedAt}, which is older than the most recent switch write (${newestName} at ${state.switches[newestName as CutoverSwitchName].flippedAt}), so it does not describe the state before that flip`,
+    };
+  }
+  return { kind: "satisfied", capturedAt };
+}
+
+/* -------------------------------------------------------------------- */
+/* M4-P25 criterion 2: the branch count, which is INFORMATIONAL ONLY     */
+/* -------------------------------------------------------------------- */
+
+export type BranchCount =
+  | { kind: "counted"; count: number; branches: string[] }
+  | { kind: "unexaminable"; reason: string };
+
+/**
+ * Count the PUSHED, UNMERGED branches, and print them nowhere near the drain
+ * verdict.
+ *
+ * THIS NUMBER DOES NOT FEED THE PREDICATE, AND THAT IS THE DECISION (M4-D-15,
+ * delivery/plan/kernel-plan-m4.md:3279). Remote ref deletion is refused in
+ * this container, and `git push --dry-run` does not probe push authorization
+ * at all, in either direction, for any ref namespace
+ * (delivery/verification/m4-prototype-probes.md:165). A drain defined as "no
+ * unmerged branches" therefore waits forever on an owner action that has no
+ * local pre-check, which is a predicate that can never read clean. It is
+ * reported because an operator wants to see it, and it is reported on its own
+ * line so that no reader can mistake it for a reason the cutover is blocked.
+ *
+ * `unexaminable` is a THIRD answer for the same reason it is one in
+ * `inFlightItems`: a repository with no `origin/<default>` cannot be asked
+ * this question, and printing `0` there would be an answer nobody measured.
+ */
+export function unmergedBranchCount(repoRoot: string, upstream = "origin/main"): BranchCount {
+  const listed = runGit(repoRoot, [
+    "for-each-ref",
+    "--format=%(refname:short)",
+    "--no-merged",
+    upstream,
+    "refs/remotes/origin",
+  ]);
+  if (listed.status !== 0) {
+    return {
+      kind: "unexaminable",
+      reason: `git for-each-ref --no-merged ${upstream} exited ${String(listed.status)}: ${singleLineText(listed.stderr)}`,
+    };
+  }
+  const branches = listed.stdout
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0 && line !== "origin/HEAD");
+  return { kind: "counted", count: branches.length, branches };
+}
+
+function singleLineText(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/* -------------------------------------------------------------------- */
+/* M4-P25 criterion 6: the retirement verdict over the real inventory    */
+/* -------------------------------------------------------------------- */
+
+/** The M4-P23 inventory, relative to the REPOSITORY root. */
+export const RETIREMENT_INVENTORY_PATH = "delivery/plan/cutover/retirement-inventory.json";
+
+/**
+ * The first tokens a retirement row's command may start a segment with.
+ *
+ * MIRRORED FROM `scripts/check-retirement-inventory.mjs`, DELIBERATELY, AND
+ * THE DRIFT IS ASSERTED BY A TEST rather than by this comment. The script is
+ * this project's own predicate and is KEPT rather than shipped (DR-0029), so
+ * the kernel cannot import it; but the two lists screening the same rows must
+ * not diverge, so `test/cutover.test.ts` reads the script's
+ * `ALLOWED_FIRST_TOKENS` and requires this set to be no wider.
+ *
+ * WHAT THE LIST BUYS AND WHAT IT DOES NOT. Every tool on it is one with no
+ * option for writing a file, so a row cannot modify the tree this command is
+ * auditing. It is a TOOL allowlist, not a sandbox: the child still runs with
+ * this process's privileges and can read anything this process can read.
+ */
+export const RETIREMENT_COMMAND_TOKENS: ReadonlySet<string> = new Set([
+  "grep",
+  "test",
+  "ls",
+  "wc",
+  "comm",
+  "diff",
+  "head",
+  "tail",
+  "cat",
+]);
+
+const RETIREMENT_COMMAND_FORBIDDEN: readonly { re: RegExp; why: string }[] = [
+  { re: /[<>]/, why: "redirection" },
+  { re: /\$\(/, why: "command substitution" },
+  { re: /`/, why: "backtick substitution" },
+];
+
+/**
+ * Screen one inventory command. The rows are DATA FROM A FILE, so the command
+ * is screened before anything spawns it, and the check is on the EXECUTABLE
+ * POSITION of every segment rather than on the whole string: a whole-string
+ * denylist refuses `grep -c 'npm ci' gate-registry.yaml`, which runs no npm at
+ * all and merely searches for those characters.
+ */
+export function screenRetirementCommand(command: unknown): string[] {
+  if (!nonEmptyString(command)) {
+    return ["negative-witness command is missing or empty"];
+  }
+  const problems: string[] = [];
+  for (const forbidden of RETIREMENT_COMMAND_FORBIDDEN) {
+    if (forbidden.re.test(command)) {
+      problems.push(`negative-witness command uses ${forbidden.why}`);
+    }
+  }
+  for (const segment of command.split(/\|\||&&|[|;&\n]/)) {
+    const first = segment.trim().split(/\s+/)[0];
+    if (first === undefined || first === "") {
+      continue;
+    }
+    if (!RETIREMENT_COMMAND_TOKENS.has(first)) {
+      problems.push(
+        `negative-witness command segment starts with ${JSON.stringify(first)}, which is not on the allowlist`,
+      );
+    }
+  }
+  return problems;
+}
+
+export type RowAdaptation =
+  | { kind: "row"; row: RetirementRow }
+  | { kind: "refused"; result: PortResult };
+
+/**
+ * Turn one row of the SHIPPED inventory into the shape `evaluatePortRow`
+ * takes.
+ *
+ * THIS ADAPTER EXISTS BECAUSE THE TWO SHAPES REALLY ARE DIFFERENT, and the
+ * difference is silent in the dangerous direction. `RetirementRow` declares
+ * `negativeWitness` as an argv ARRAY (src/cutover.ts:1128), and the M4-P23
+ * inventory writes `negative-witness` as an OBJECT carrying a SHELL STRING
+ * (delivery/plan/cutover/retirement-inventory.json:1). Handing the shipped
+ * document straight to `evaluatePortRow` therefore returns `unported` with
+ * "PORT row carries no negative-witness command" for every row in it: a
+ * verdict that looks like a finding about the kernel and is a finding about a
+ * key spelling. The adapter is named, tested and refuses rather than
+ * defaulting, so the mismatch cannot come back as a silent all-red.
+ */
+export function retirementRowFromDocument(raw: unknown): RowAdaptation {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return {
+      kind: "refused",
+      result: {
+        id: `(row ${JSON.stringify(raw)})`,
+        verdict: "unported",
+        reason: "inventory row is not an object, so its disposition could not be read",
+      },
+    };
+  }
+  const source = raw as Record<string, unknown>;
+  const id = nonEmptyString(source["id"]) ? source["id"] : "(row with no id)";
+  const row: RetirementRow = {
+    id,
+    disposition: source["disposition"] as Disposition,
+  };
+  if (nonEmptyString(source["destination"])) {
+    row.destination = source["destination"];
+  }
+  const witness = source["negative-witness"];
+  if (source["disposition"] !== "PORT") {
+    return { kind: "row", row };
+  }
+  if (typeof witness !== "object" || witness === null || Array.isArray(witness)) {
+    return {
+      kind: "refused",
+      result: {
+        id,
+        verdict: "unported",
+        reason: "PORT row carries no negative-witness object",
+      },
+    };
+  }
+  const command = (witness as Record<string, unknown>)["command"];
+  const problems = screenRetirementCommand(command);
+  if (problems.length > 0) {
+    return {
+      kind: "refused",
+      result: { id, verdict: "unported", reason: problems.join("; ") },
+    };
+  }
+  /* `sh -c` is how the row's own checker runs it
+     (scripts/check-retirement-inventory.mjs:377), so the command that was
+     screened is the command that runs. */
+  row.negativeWitness = ["sh", "-c", command as string];
+  const recorded = (witness as Record<string, unknown>)["exit"];
+  if (typeof recorded === "number" && Number.isInteger(recorded)) {
+    row.expectedWitnessExit = recorded;
+  }
+  return { kind: "row", row };
+}
+
+export interface RetirementReport {
+  results: PortResult[];
+  unported: number;
+}
+
+export type RetirementRead =
+  | { kind: "read"; report: RetirementReport }
+  | { kind: "refused"; reason: string };
+
+/**
+ * Evaluate every PORT row of the inventory.
+ *
+ * THE VACUOUS VERDICT IS THE ONE THIS GUARDS AGAINST. `ported` is not "the
+ * named kernel artifact exists"; a file can exist and say nothing. Both halves
+ * are required and the second is the one that matters: the row's negative
+ * witness was RED against a subject that does not carry the rule, so a witness
+ * exiting 0 means the probe discriminates nothing and the row is `unported`.
+ * That derivation is M4-P26's `evaluatePortRow` and is REUSED here rather than
+ * reimplemented; this function supplies the reading, the adaptation and the
+ * screen.
+ */
+export function evaluateRetirementInventory(
+  inventoryPath: string,
+  repoRoot: string,
+): RetirementRead {
+  const read = readRetirementInventory(inventoryPath);
+  if (read.kind === "absent") {
+    return {
+      kind: "refused",
+      reason: `${inventoryPath} is absent, so no retirement criterion could be evaluated`,
+    };
+  }
+  if (read.kind === "refused") {
+    return { kind: "refused", reason: read.reason };
+  }
+  const results: PortResult[] = [];
+  for (const raw of read.rows) {
+    const source =
+      typeof raw === "object" && raw !== null
+        ? (raw as unknown as Record<string, unknown>)
+        : ({} as Record<string, unknown>);
+    /* Only PORT rows are printed (criterion 6). A KEEP or DELETE row is not a
+       retirement that can be incomplete, and an UNREADABLE disposition is not
+       a KEEP: it goes to `evaluatePortRow`, which names it `unported`. */
+    if (source["disposition"] === "KEEP" || source["disposition"] === "DELETE") {
+      continue;
+    }
+    const adapted = retirementRowFromDocument(raw);
+    if (adapted.kind === "refused") {
+      results.push(adapted.result);
+      continue;
+    }
+    results.push(evaluatePortRow(adapted.row, repoRoot));
+  }
+  return {
+    kind: "read",
+    report: { results, unported: results.filter((r) => r.verdict === "unported").length },
+  };
 }

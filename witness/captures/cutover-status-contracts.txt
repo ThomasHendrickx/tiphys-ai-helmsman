@@ -1,0 +1,46 @@
+# captured 2026-09-18 with git version 2.43.0 and GNU grep 3.11
+#
+# The two external programs `tiphys cutover status` spawns and PARSES.
+#
+#   1. git for-each-ref --format=%(refname:short) --no-merged <upstream>
+#      refs/remotes/origin, whose STDOUT is the informational branch count.
+#   2. sh -c <a retirement row's negative-witness command>, whose EXIT STATUS
+#      is half of the ported verdict.
+#
+# Every block below is a real run. The named test
+# `the captured status contracts this phase parses are reproduced live`
+# re-runs each of them in a scratch repository and requires the live exit
+# status to equal the one recorded here, so none of these is a hand-written
+# string chosen to match the implementation.
+#
+# THE TWO FACTS THAT EARN THEIR PLACE. An empty stdout with exit 0 is what
+# makes "no unmerged branch" decidable, and it is why an upstream that does not
+# resolve has to be a THIRD answer rather than a zero: that case exits 128, not
+# 0 with an empty list. And grep distinguishes 1 (searched, found nothing) from
+# 2 (could not search), which is why a negative witness is required to match
+# the exit its row recorded rather than merely to be nonzero.
+
+## git for-each-ref --no-merged origin/main refs/remotes/origin, no unmerged branch
+exit=0
+stdout-bytes=0
+
+## git for-each-ref --no-merged origin/main refs/remotes/origin, two unmerged branches
+origin/f1
+origin/f2
+exit=0
+
+## git for-each-ref --no-merged origin/nope refs/remotes/origin, an upstream that does not resolve
+fatal: malformed object name origin/nope
+exit=128
+
+## sh -c "grep -c token present.md", the token is present
+1
+exit=0
+
+## sh -c "grep -c absent-token present.md", the token is absent
+0
+exit=1
+
+## sh -c "grep -c token missing.md", the file is absent
+grep: missing.md: No such file or directory
+exit=2

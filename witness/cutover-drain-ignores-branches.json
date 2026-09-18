@@ -1,0 +1,24 @@
+{
+  "id": "cutover-drain-ignores-branches",
+  "behavior": "cutover-drain-ignores-pushed-unmerged-branches",
+  "tests": [
+    "a fleet with many pushed unmerged branches and no in-flight work drains clean and exits 0"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/cutover.ts",
+      "find": "  return allKernel && items.length === 0 ? 0 : EX_WORK_REMAINS;",
+      "replace": "  return allKernel && items.length === 0 && (branches.kind === \"counted\" ? branches.count === 0 : false)\n    ? 0\n    : EX_WORK_REMAINS;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/cutover.ts",
+      "find": "  lines.push(items.length === 0 ? \"DRAIN clean\" : `DRAIN ${String(items.length)} in flight`);",
+      "replace": "  const counted = items.length + (branches.kind === \"counted\" ? branches.count : 0);\n  lines.push(counted === 0 ? \"DRAIN clean\" : `DRAIN ${String(counted)} in flight`);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

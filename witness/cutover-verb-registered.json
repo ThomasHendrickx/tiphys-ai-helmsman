@@ -1,0 +1,24 @@
+{
+  "id": "cutover-verb-registered",
+  "behavior": "cutover-verb-is-registered-in-the-cli",
+  "tests": [
+    "the cutover verb is registered in the CLI and its usage names status"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cli.ts",
+      "find": "  [\"cutover\", cmdCutover],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cli.ts",
+      "find": "  [\"cutover\", cmdCutover],",
+      "replace": "  [\"cutover-disabled\", cmdCutover],"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

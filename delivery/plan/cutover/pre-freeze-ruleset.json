@@ -1,0 +1,186 @@
+{
+  "kind": "pre-freeze-ruleset",
+  "captured-at": "2026-09-18T07:59:41.048Z",
+  "captured-by": "M4-P25, kernel plan M4 acceptance criterion 5",
+  "repository": "ThomasHendrickx/tiphys-ai-helmsman",
+  "why": "The branch-protection ruleset and the credential grants AS THEY WERE before the first freeze switch is written to kernel. M4-P26 restores authority by preparing a request an owner acts on, and that step cannot be rehearsed (T-025). Its INPUT can be, and this is it. tiphys cutover status refuses to let any switch report kernel while this file is absent or older than the most recent switch write.",
+  "method": "curl with the Authorization header set from the environment, through the agent proxy, against api.github.com. No credential value is recorded in this file. Every body below is the response verbatim as JSON.",
+  "captures": [
+    {
+      "endpoint": "GET /repos/ThomasHendrickx/tiphys-ai-helmsman/rulesets",
+      "status": 200,
+      "body": [
+        {
+          "id": 20446760,
+          "name": "main-protection",
+          "target": "branch",
+          "source_type": "Repository",
+          "source": "ThomasHendrickx/tiphys-ai-helmsman",
+          "enforcement": "active",
+          "node_id": "RRS_lACqUmVwb3NpdG9yec5OzvEuzgE3_ig",
+          "_links": {
+            "self": {
+              "href": "https://api.github.com/repos/ThomasHendrickx/tiphys-ai-helmsman/rulesets/20446760"
+            },
+            "html": {
+              "href": "https://github.com/ThomasHendrickx/tiphys-ai-helmsman/rules/20446760"
+            }
+          },
+          "created_at": "2026-08-05T11:47:45.337+02:00",
+          "updated_at": "2026-08-05T11:47:45.368+02:00"
+        }
+      ]
+    },
+    {
+      "endpoint": "GET /repos/ThomasHendrickx/tiphys-ai-helmsman/rulesets/20446760",
+      "status": 200,
+      "body": {
+        "id": 20446760,
+        "name": "main-protection",
+        "target": "branch",
+        "source_type": "Repository",
+        "source": "ThomasHendrickx/tiphys-ai-helmsman",
+        "enforcement": "active",
+        "conditions": {
+          "ref_name": {
+            "exclude": [],
+            "include": [
+              "~DEFAULT_BRANCH"
+            ]
+          }
+        },
+        "rules": [
+          {
+            "type": "deletion"
+          },
+          {
+            "type": "non_fast_forward"
+          },
+          {
+            "type": "pull_request",
+            "parameters": {
+              "required_approving_review_count": 0,
+              "dismiss_stale_reviews_on_push": false,
+              "required_reviewers": [],
+              "require_code_owner_review": false,
+              "require_last_push_approval": false,
+              "required_review_thread_resolution": false,
+              "require_extra_approval_for_unattributed_changes": true,
+              "allowed_merge_methods": [
+                "merge",
+                "squash",
+                "rebase"
+              ]
+            }
+          },
+          {
+            "type": "required_status_checks",
+            "parameters": {
+              "strict_required_status_checks_policy": true,
+              "do_not_enforce_on_create": false,
+              "required_status_checks": [
+                {
+                  "context": "gates"
+                }
+              ]
+            }
+          }
+        ],
+        "node_id": "RRS_lACqUmVwb3NpdG9yec5OzvEuzgE3_ig",
+        "created_at": "2026-08-05T11:47:45.337+02:00",
+        "updated_at": "2026-08-05T11:47:45.368+02:00",
+        "bypass_actors": [],
+        "current_user_can_bypass": "never",
+        "_links": {
+          "self": {
+            "href": "https://api.github.com/repos/ThomasHendrickx/tiphys-ai-helmsman/rulesets/20446760"
+          },
+          "html": {
+            "href": "https://github.com/ThomasHendrickx/tiphys-ai-helmsman/rules/20446760"
+          }
+        }
+      }
+    },
+    {
+      "endpoint": "GET /repos/ThomasHendrickx/tiphys-ai-helmsman/rules/branches/main",
+      "status": 200,
+      "body": [
+        {
+          "type": "deletion",
+          "ruleset_source_type": "Repository",
+          "ruleset_source": "ThomasHendrickx/tiphys-ai-helmsman",
+          "ruleset_id": 20446760
+        },
+        {
+          "type": "non_fast_forward",
+          "ruleset_source_type": "Repository",
+          "ruleset_source": "ThomasHendrickx/tiphys-ai-helmsman",
+          "ruleset_id": 20446760
+        },
+        {
+          "type": "pull_request",
+          "parameters": {
+            "required_approving_review_count": 0,
+            "dismiss_stale_reviews_on_push": false,
+            "required_reviewers": [],
+            "require_code_owner_review": false,
+            "require_last_push_approval": false,
+            "required_review_thread_resolution": false,
+            "require_extra_approval_for_unattributed_changes": true,
+            "allowed_merge_methods": [
+              "merge",
+              "squash",
+              "rebase"
+            ]
+          },
+          "ruleset_source_type": "Repository",
+          "ruleset_source": "ThomasHendrickx/tiphys-ai-helmsman",
+          "ruleset_id": 20446760
+        },
+        {
+          "type": "required_status_checks",
+          "parameters": {
+            "strict_required_status_checks_policy": true,
+            "do_not_enforce_on_create": false,
+            "required_status_checks": [
+              {
+                "context": "gates"
+              }
+            ]
+          },
+          "ruleset_source_type": "Repository",
+          "ruleset_source": "ThomasHendrickx/tiphys-ai-helmsman",
+          "ruleset_id": 20446760
+        }
+      ]
+    }
+  ],
+  "not-captured": [
+    {
+      "endpoint": "GET /repos/ThomasHendrickx/tiphys-ai-helmsman/branches/main/protection",
+      "status": 403,
+      "message": "Resource not accessible by integration",
+      "refused-by": "GitHub",
+      "consequence": "The LEGACY branch-protection view of main is not recorded. The ruleset captures above are the mechanism that actually protects this branch (the ruleset is enforcement active and its conditions name ~DEFAULT_BRANCH), so the protected state IS recorded; what is missing is the second, older rendering of it."
+    },
+    {
+      "endpoint": "GET /repos/ThomasHendrickx/tiphys-ai-helmsman/actions/permissions",
+      "status": 403,
+      "message": "Access to this GitHub Actions path is not permitted through this proxy.",
+      "refused-by": "the agent proxy",
+      "consequence": "The Actions permission grants are NOT recorded. Restoring them after a rollback is an owner action with no captured before-state."
+    },
+    {
+      "endpoint": "GET /repos/ThomasHendrickx/tiphys-ai-helmsman/collaborators",
+      "status": 403,
+      "message": "Access to this GitHub API path is not permitted through this proxy.",
+      "refused-by": "the agent proxy",
+      "consequence": "The collaborator and per-actor grants are NOT recorded, for the same reason and with the same consequence."
+    }
+  ],
+  "what-this-file-does-not-establish": [
+    "It records the ruleset as one identity could read it on the capture date. It is not a claim that no other ruleset, organisation policy or repository setting bears on main.",
+    "The three refused endpoints above mean the CREDENTIAL GRANT half of criterion 5 is captured only in part. The ruleset half is real and complete; the grants half needs an owner with access this container does not hold.",
+    "Nothing here has been applied, compared or restored. It is an input for M4-P26 restore-request, which prepares a request rather than performing it."
+  ]
+}
