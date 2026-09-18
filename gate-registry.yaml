@@ -282,12 +282,31 @@ gates:
       question is whether any verdict DOCUMENT exists under `delivery/review/`
       and not whether that directory does; this repository has the directory and
       has never had a verdict document in it.
+      THE COMMIT UNDER AUDIT IS A PARAMETER, AND ITS ABSENCE WAS THE DR-0047
+      SWEEP'S ONE HIGH FINDING (CR-VS-001). Without it the check grouped by the
+      head THE VERDICT DOCUMENTS THEMSELVES DECLARE, and nothing compared that
+      to the commit the gate was running against or established that it named a
+      commit at all. Reproduced: two decorrelated APPROVE verdicts naming
+      `deadbeefdeadbeefdeadbeefdeadbeefdeadbeef`, a sha `git cat-file -t`
+      reports as not an object, gave `check-dual-review: green`, 2 units, exit
+      0, in a repository whose HEAD was a real commit and carried a further
+      commit of work no verdict mentioned. So ONE committed approving pair
+      turned this gate green for that phase at every later head, indefinitely.
+      The runner already had the mechanism: `scope` has declared
+      `parameters: [base, head]` since M2 and the runner appends the flags to
+      the gate command. This entry simply never declared it. With `--head` the
+      audited commit comes from the RUN and the declared head comes from the
+      EVIDENCE, and the second is measured against the first instead of
+      replacing it. With no `--head` the script falls back to the commit the
+      context's own HEAD resolves to, which is what keeps the direct workflow
+      step in `.github/workflows/gates.yml` correct.
     command: [node, scripts/check-dual-review.mjs, .]
     unitLabel: review verdicts examined for decorrelation
     applicability: conditional
     verified-by: script
     modes: [full, direct-pr]
     events: [pull_request]
+    parameters: [head]
     precondition:
       id: dual-review-verdicts-present
       kind: command-exit-zero

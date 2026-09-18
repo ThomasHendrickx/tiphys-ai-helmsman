@@ -23,11 +23,22 @@
  * deliberately identical: the two modules now share this one engine.
  *
  * THE MESSAGE TABLE IS THE CONTRACT, not Ajv's `message` field. A keyword
- * whose Ajv error reaches `renderAjvError` without an entry in
- * `MESSAGE_BY_KEYWORD` is a Tiphys DEFECT and is reported as one, naming the
- * keyword, rather than being papered over with Ajv's own sentence. That
- * refusal is what stops Ajv wording leaking into a public contract by
- * omission (DR-0013 criterion 8).
+ * whose Ajv error reaches `renderAjvError` and matches no `case` of that
+ * function's switch falls to its `default:` arm, which is a Tiphys DEFECT and
+ * is reported as one, naming the keyword, rather than being papered over with
+ * Ajv's own sentence. That refusal is what stops Ajv wording leaking into a
+ * public contract by omission (DR-0013 criterion 8).
+ *
+ * THIS PARAGRAPH NAMED THE WRONG MECHANISM UNTIL THE DR-0047 SWEEP (CR-VS-004).
+ * It said the refusal came from a `MESSAGE_BY_KEYWORD` set. That set existed,
+ * nothing ever read it (three references: its own declaration and two comments
+ * saying it was the contract), and its contents disagreed with
+ * `AUTHORING_VOCABULARY` in BOTH directions: `$ref`, `items`, `properties` and
+ * `then` were in the vocabulary and not in the set, `minimum`, `maximum` and
+ * `maxItems` were in the set and not in the vocabulary. A dead constant that a
+ * file's own documentation calls the contract is how the next reader edits the
+ * thing that does nothing, so it is deleted and this sentence now names the
+ * switch, which is what actually refuses.
  *
  * YAML IS INPUT DECODING AND IS A SEPARATE STAGE (DR-0013 YAML clause 3).
  * `decodeDocument` decodes; `validateInstance` validates an already-decoded
@@ -101,12 +112,28 @@ export interface Diagnostic {
 }
 
 /**
- * THE DECLARED AUTHORING VOCABULARY (DR-0013 clause 7), documented in
- * `schemas/README.md` and asserted by `test/schemas.test.ts`. Ajv supplies
- * Draft 2020-12 entire; this list is what Tiphys schemas are ALLOWED to use,
- * so a keyword outside it is a deliberate expansion rather than an accident.
- * Every entry has both a positive and a negative test (validator criterion 2)
- * and therefore also has an entry in `MESSAGE_BY_KEYWORD`.
+ * THE DECLARED AUTHORING VOCABULARY (DR-0013 clause 7). THIS LIST IS THE SOURCE
+ * OF TRUTH. Ajv supplies Draft 2020-12 entire; this is what Tiphys schemas are
+ * ALLOWED to use, so a keyword outside it is a deliberate expansion rather than
+ * an accident. Every entry has both a positive and a negative test (validator
+ * criterion 2), asserted by `test/schemas.test.ts`, which DERIVES its cases
+ * from this array rather than from a hand-written list.
+ *
+ * `schemas/README.md` RENDERS THIS LIST FOR A HUMAN READER AND IS NOT ITSELF
+ * THE CONTRACT, and the distinction was paid for (CR-VS-004, FIND-02 of the
+ * DR-0047 sweep). The sentence here used to say the vocabulary IS "documented
+ * in `schemas/README.md`", which reads as a guarantee that the two agree.
+ * Measured at the swept head they did not: this array holds sixteen keywords
+ * and that document's table declares fifteen, `uniqueItems` being the missing
+ * row, since the day M3-P1 wrote both. Nothing asserts the relation, so no gate
+ * could see it. Closing the drift needs a row in `schemas/README.md` and a test
+ * pointed at the pair, and `schemas/` is outside this fix round's declared
+ * files, so what is corrected HERE is the false claim: a reader of this comment
+ * is now told which artifact decides and that the other one can lag.
+ *
+ * AND THE SECOND HALF OF THAT SENTENCE IS GONE. It said every entry "therefore
+ * also has an entry in `MESSAGE_BY_KEYWORD`", which was false in both
+ * directions and about a constant nothing read; see the module header.
  */
 export const AUTHORING_VOCABULARY: readonly string[] = [
   "$ref",
@@ -311,30 +338,6 @@ function valueAt(instance: unknown, instancePath: string): unknown {
   }
   return node;
 }
-
-/**
- * Ajv keywords this engine translates. A keyword absent from this map is a
- * defect and says so: see the module header. The map's KEY SET is also the
- * mechanical half of "every keyword in the declared vocabulary has a
- * diagnostic", asserted in `test/schemas.test.ts`.
- */
-const MESSAGE_BY_KEYWORD = new Set<string>([
-  "type",
-  "required",
-  "additionalProperties",
-  "enum",
-  "const",
-  "minimum",
-  "maximum",
-  "minItems",
-  "maxItems",
-  "minLength",
-  "pattern",
-  "uniqueItems",
-  "contains",
-  "oneOf",
-  "if",
-]);
 
 /**
  * Translate ONE Ajv error into the Tiphys contract. `undefined` means the

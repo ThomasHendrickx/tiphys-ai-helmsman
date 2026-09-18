@@ -2904,6 +2904,43 @@ export const DECORRELATION_DIMENSIONS: readonly string[] = [
 /** The merge-authority value that makes decorrelation a precondition of merge. */
 export const DELEGATED_MERGE_AUTHORITY = "delegated-under-conditions";
 
+/**
+ * SAY WHAT `produced-by` ACTUALLY COMPARED, ON THE GREEN LINE (CR-VS-003).
+ *
+ * The comparison is `canonicalScalar`: NFKC, whitespace collapse, lowercase,
+ * then `!==`. Reproduced at the swept head with one variable changed: two
+ * `produced-by` strings naming two different MODELS of one vendor, in the
+ * vendor-plus-model-plus-organisation form this project's own reviews use, are
+ * certified "distinct on produced-by", green, exit 0. Two models of ONE family
+ * pass as decorrelated, which is T-001's own property failing inside the
+ * kernel's decorrelation check. The two strings are quoted verbatim in the
+ * sweep evidence rather than here, because no vendor model name may appear in
+ * the kernel's shipped surface (test/schemas.test.ts:800).
+ *
+ * WHY THIS IS A SENTENCE AND NOT A FAMILY VOCABULARY, and the reason is a
+ * settled one rather than an omission. M4-P10 deferred the family comparison to
+ * M4-P11 (delivery/work-history/m4-p10.md:654); M4-P11 DECLINED the mechanism in
+ * its own words, "a closed enum of family names was rejected: no such vocabulary
+ * can be kept current" (delivery/work-history/m4-p11.md:142). That reason holds
+ * and shipping the enum that phase rejected would be reopening it by the back
+ * door. What was never done is the OTHER half of the reviewer's own proposal:
+ * stop the green line reading as a cross-family assertion. A bundle-level green
+ * saying "distinct on produced-by" is read as "two families reviewed this", and
+ * nothing here establishes that. So the line now says what it measured.
+ *
+ * WHAT WOULD CLOSE IT, named rather than left open: a `produced-by-family`
+ * field in `schemas/verdict.schema.json`, required, compared instead of the free
+ * string, with the vocabulary OPEN (any two distinct values decorrelate) so no
+ * list has to be kept current. That is a schema change and a decision record,
+ * both outside this fix round's declared files.
+ */
+export function producedByCaveat(compared: readonly string[]): string {
+  return compared.includes("produced-by")
+    ? "; produced-by was compared as a canonicalised STRING and not as a model FAMILY, so two models of one " +
+        "family are distinct here and this line is not a cross-family assertion"
+    : "";
+}
+
 export interface LoadedVerdict {
   path: string;
   record: Record<string, unknown>;
@@ -3148,7 +3185,22 @@ export function loadCommittedVerdicts(
     return loadVerdictsFromWorktree(contextDirectory, source.reason);
   }
   const refSha = source.refSha;
-  const listed = listCommittedTree(contextDirectory, refSha, REVIEW_DIRECTORY, false);
+  /* RECURSIVE SINCE THE DR-0047 SWEEP (CR-VS-002), AND THE ARGUMENT THAT USED
+     TO SIT AT `loadPaperworkVerdicts` FOR WHY THIS ONE WAS FLAT IS WITHDRAWN.
+     One function had two callers at two depths, so a committed document could
+     be INSIDE the corpus that can contradict a single-family declaration and
+     OUTSIDE the corpus that can refuse a merge. Measured before the change: two
+     APPROVE verdicts at this directory's top level plus a committed THIRD
+     verdict for the same phase and head reading FIX-ROUND-NEEDED one directory
+     down gave `check-dual-review: green`, exit 0, with the refusal neither
+     counted nor mentioned; and with BOTH verdicts one directory down the gate
+     reported `0 verdict document(s)` and not-applicable while `git ls-files`
+     listed them. `ls-tree` without `-r` yields the SUBTREE'S NAME, which
+     `VERDICT_FILE_PATTERN` discards, so the drop was silent by construction,
+     which is the fail-open direction for a predicate that approves when the set
+     is clean. Depth is now a property of the LISTING FUNCTION's one contract
+     rather than of which caller reached it. */
+  const listed = listCommittedTree(contextDirectory, refSha, REVIEW_DIRECTORY, true);
   if (!listed.ok) {
     return { ok: false, reason: listed.reason };
   }
@@ -3180,11 +3232,15 @@ function loadPaperworkVerdicts(
     refSha,
     scope: `every verdict document under ${PAPERWORK_ROOT}/`,
   };
-  /* `recursive` HERE AND NOT ON THE PAIR CORPUS. The pair's directory is flat
-     by convention and `readdirSync` never recursed it, so recursing would have
-     been a silent behaviour change on the arm that already worked. The
-     paperwork root is a tree of phase directories and the whole point of this
-     corpus is that placement must not hide a verdict from it. THE LISTING
+  /* `recursive` HERE AND, SINCE THE DR-0047 SWEEP, ON THE PAIR CORPUS TOO. The
+     paragraph that stood here said the pair's directory is flat by convention
+     and that recursing it would be a silent behaviour change on the arm that
+     already worked. CR-VS-002 measured what the asymmetry cost instead: a
+     verdict one directory down was inside THIS corpus and outside that one, so
+     a committed review refusing the head under audit could contradict a
+     declaration and could not refuse a merge. Both corpora now read the same
+     depth; the boundaries still differ, and that difference is the real one.
+     THE LISTING
      ITSELF IS THE SAME FUNCTION the pair corpus uses (FIX ROUND 2, DV-002):
      two listing idioms maintained side by side is what let one of them be
      wrong in a nested context while the other was right. */
@@ -3539,7 +3595,14 @@ function loadVerdictsFromWorktree(
   }
   let names: string[];
   try {
-    names = readdirSync(directory);
+    /* `recursive` SO THE TWO ARMS READ THE SAME DEPTH (CR-VS-002). The commit
+       arm lists the whole subtree, and an arm that read one level would make
+       WHICH ARM RAN decide whether a refusing verdict one directory down is
+       part of the corpus. That is the same one-rule-two-readings shape this
+       section already removed for the selection rule. `recursive` yields paths
+       relative to `directory`, which is what `join` below already expects, and
+       a nested name still has to pass `VERDICT_FILE_PATTERN`. */
+    names = readdirSync(directory, { recursive: true }).map((name) => String(name));
   } catch (error) {
     if (entry.kind === "regular") {
       return {
@@ -3923,6 +3986,203 @@ function headGroupFor(
     }
   }
   return { members, unkeyed };
+}
+
+/* ------------------------------------------------------------------ */
+/* ANCHORING THE CORPUS TO THE COMMIT UNDER AUDIT (CR-VS-001)           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE MECHANISM THIS SECTION CLOSES, STATED ONE LEVEL UP FROM THE FINDING:
+ * a gate whose verdict is about EVIDENCE THE CALLER SUPPLIED, with no check
+ * that the evidence is about the thing being audited.
+ *
+ * `headGroupFor` above groups by the head THE VERDICT DOCUMENTS THEMSELVES
+ * DECLARE. Before this section nothing compared that value to the commit the
+ * gate was running against, and nothing established that it named a commit at
+ * all. Both arms were reproduced end to end through the shipped script:
+ *
+ *   ARM A  two decorrelated APPROVE verdicts naming
+ *          deadbeefdeadbeefdeadbeefdeadbeefdeadbeef, which
+ *          `git cat-file -t` reports as not an object, in a repository whose
+ *          HEAD is a real commit          -> GREEN, 2 units, exit 0
+ *   ARM B  the same verdicts plus a further commit of work no verdict
+ *          mentions                       -> GREEN, exit 0
+ *
+ * So ONE committed approving pair turned this gate green for that phase at
+ * every later head, indefinitely, on evidence about one old commit. That is
+ * T-009's own rule ("a gate result is evidence only for the configuration it
+ * ran under") failing inside the gate that carries DR-0012's merge grant.
+ *
+ * THE ASYMMETRY THAT MAKES THE FIX SOUND, and it is the whole of the design.
+ * The AUDITED head comes from the CALLER: the gate runner passes `--head` from
+ * the pull-request event (the registry entry now declares `parameters: [head]`,
+ * the same mechanism `scope` has always used), and with no `--head` it is the
+ * commit the context's own `HEAD` resolves to, which is what the checkout put
+ * there. The DECLARED head comes from a document an agent under review wrote.
+ * One of those two is a fact about the run and the other is a claim in the
+ * evidence, and the claim must be measured against the fact rather than
+ * replacing it.
+ */
+
+/** Resolve one ref to a full commit sha inside a context directory. */
+export function resolveCommitIn(
+  contextDirectory: string,
+  ref: string,
+): { ok: true; sha: string } | { ok: false; reason: string } {
+  /* `^{commit}` AND NOT A BARE `rev-parse`. A bare `rev-parse` of a forty-hex
+     string that is in no object database ECHOES IT BACK and exits 0, so it
+     cannot tell a commit from a sha somebody typed. The peel is what makes
+     this a question about the object database rather than about the syntax of
+     the argument, and it also refuses a tag or a tree that is not a commit.
+     `--end-of-options` keeps a ref that begins with `-` from being read as a
+     flag. */
+  const resolved = gitIn(
+    ["rev-parse", "--verify", "--quiet", "--end-of-options", `${ref}^{commit}`],
+    contextDirectory,
+  );
+  if (!resolved.ok) {
+    return { ok: false, reason: resolved.reason };
+  }
+  const sha = resolved.stdout.trim();
+  if (!FULL_SHA.test(sha)) {
+    return {
+      ok: false,
+      reason: `git rev-parse ${ref}^{commit} in ${contextDirectory} produced ${sha}, which is not a full commit sha`,
+    };
+  }
+  return { ok: true, sha };
+}
+
+/**
+ * The commit a merge gate's verdict is ABOUT.
+ *
+ * THREE OUTCOMES AND NOT TWO, for the same reason `RegimeOutcome` has three:
+ * "there is no commit to anchor to" and "the anchor could not be established"
+ * are different facts. `unanchored` is reached only on the WORKTREE arm with
+ * no `--head`, which is a context that is not a git repository at all, and
+ * every sentence built from it says so rather than implying an anchor that was
+ * never taken.
+ */
+export type AuditedHead =
+  | { kind: "anchored"; head: string; how: string }
+  | { kind: "unanchored"; reason: string }
+  | { kind: "error"; reason: string };
+
+export function resolveAuditedHead(
+  contextDirectory: string,
+  requested: string | undefined,
+  source: VerdictCorpusSource,
+): AuditedHead {
+  if (requested !== undefined) {
+    const resolved = resolveCommitIn(contextDirectory, requested);
+    if (!resolved.ok) {
+      /* M2-C-3. A caller that named a head this repository cannot produce has
+         not told the gate which commit to judge, and a gate that carried on
+         would be judging whatever the documents felt like naming, which is the
+         state this whole section exists to end. `error`, never green and never
+         not-applicable: nothing has been evaluated. */
+      return {
+        kind: "error",
+        reason:
+          `--head ${requested} does not resolve to a commit in ${contextDirectory}, so the commit under audit ` +
+          `was not established and no merge verdict can be reached over evidence that names its own subject: ${resolved.reason}`,
+      };
+    }
+    return { kind: "anchored", head: resolved.sha, how: `--head ${requested}` };
+  }
+  if (source.kind === "commit") {
+    return { kind: "anchored", head: source.refSha, how: `${source.ref}, resolved in ${contextDirectory}` };
+  }
+  return { kind: "unanchored", reason: source.reason };
+}
+
+/** One verdict that is not about the audited commit, and why it is not. */
+export interface OffHeadVerdict {
+  path: string;
+  declared: string;
+  /** Does the declared head name a commit in THIS repository at all? */
+  resolves: boolean;
+}
+
+/** The corpus split by the commit under audit. */
+export interface HeadPartition {
+  onHead: LoadedVerdict[];
+  offHead: OffHeadVerdict[];
+  /**
+   * Verdicts whose own `head` could not be established at all, as DOCUMENTS
+   * and as the sentences that name them.
+   *
+   * BOTH SHAPES, because the two callers need different halves and deriving one
+   * from the other by matching on a message prefix is the string-parsing shape
+   * this file refuses everywhere else. A caller that keeps them in the corpus
+   * needs the documents; a caller that reports them needs the sentences.
+   */
+  unkeyed: Diagnostic[];
+  unkeyedVerdicts: LoadedVerdict[];
+}
+
+/**
+ * Split a loaded corpus into the verdicts that are about the audited commit
+ * and the ones that are not.
+ *
+ * TWO REFUSAL ROUTES, AND THEY ARE STRUCTURALLY DIFFERENT RATHER THAN TWO
+ * INSTANCES OF ONE SHAPE, which is what makes the pair a witness for the class
+ * instead of one shape twice:
+ *
+ *   RESOLUTION   the declared head is not a commit in this repository. The
+ *                document is evidence about an object nobody can produce.
+ *   COMPARISON   the declared head IS a commit here and is not the one under
+ *                audit. The document is real evidence about other work.
+ *
+ * Both leave the verdict out of the audited group, and BOTH ARE PRINTED with
+ * which route they took, because a document silently dropped from a merge
+ * corpus is the fail-open direction this file has already been bitten by at
+ * `loadCommittedVerdicts`, at the `phase` canonicalisation and at
+ * `headGroupFor`. A reader is owed the fact that the corpus holds two
+ * approving reviews of something else.
+ */
+export function partitionByAuditedHead(
+  contextDirectory: string,
+  verdicts: readonly LoadedVerdict[],
+  auditedHead: string,
+): HeadPartition {
+  const onHead: LoadedVerdict[] = [];
+  const offHead: OffHeadVerdict[] = [];
+  const unkeyed: Diagnostic[] = [];
+  const unkeyedVerdicts: LoadedVerdict[] = [];
+  for (const candidate of verdicts) {
+    const key = headKeyOf(candidate.record, candidate.path);
+    if (!key.ok) {
+      unkeyed.push({ pointer: "#/head", message: key.message });
+      unkeyedVerdicts.push(candidate);
+      continue;
+    }
+    if (key.value === auditedHead) {
+      onHead.push(candidate);
+      continue;
+    }
+    offHead.push({
+      path: candidate.path,
+      declared: key.value,
+      resolves: resolveCommitIn(contextDirectory, key.value).ok,
+    });
+  }
+  return { onHead, offHead, unkeyed, unkeyedVerdicts };
+}
+
+/** One operator-facing line per verdict the audit excluded, naming its route. */
+export function describeOffHeadVerdicts(
+  offHead: readonly OffHeadVerdict[],
+  auditedHead: string,
+): string[] {
+  return [...offHead]
+    .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
+    .map((entry) =>
+      entry.resolves
+        ? `${entry.path} declares head ${entry.declared}, which is a commit in this repository and is not the commit under audit ${auditedHead}, so it is a review of other work and is not evidence about this head`
+        : `${entry.path} declares head ${entry.declared}, which does not resolve to a commit in this repository at all, so it is evidence about an object nobody can produce and it is not evidence about the commit under audit ${auditedHead}`,
+    );
 }
 
 /* ------------------------------------------------------------------ */
@@ -4581,8 +4841,14 @@ export function singleFamilyException(
  * check compares `produced-by` as a canonicalised STRING, never as a model
  * FAMILY, so two values naming one vendor pass as decorrelated; that was
  * measured twice against this repository's own reviews and recorded at
- * delivery/verification/m4-prototype-probes.md:1. Closing it is M4-P11's
- * declared scope, which edits this same function. And a
+ * delivery/verification/m4-prototype-probes.md:1. THE DEFERRAL CHAIN FOR IT
+ * TERMINATED WITH NO OWNER, which is what CR-VS-003 found and what this
+ * paragraph used to hide: it said "closing it is M4-P11's declared scope", and
+ * M4-P11 declined the mechanism (delivery/work-history/m4-p11.md:142) and
+ * shipped the single-family EXCEPTION instead, which is a different question.
+ * No later phase picked it up. The string comparison therefore STANDS, and what
+ * the DR-0047 sweep changed is that the green line now says so: see
+ * `producedByCaveat`, which also names what would close it. And a
  * `produced-by` line is written BY the reviewing agent, so it is forgeable; an
  * observed alternative exists and is M4-D-06's business, not this check's.
  */
@@ -4839,7 +5105,7 @@ export const dualReviewDecorrelation: DerivedCheck = {
             [...exceptionReports]
           : [
               ...exceptionReports,
-              `REPORT dual-review-decorrelation ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} are distinct on ${compared.join(", ")}`,
+              `REPORT dual-review-decorrelation ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} are distinct on ${compared.join(", ")}${producedByCaveat(compared)}`,
             ],
     };
   },

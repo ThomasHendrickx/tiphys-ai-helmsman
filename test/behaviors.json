@@ -1241,5 +1241,17 @@
   "exclusion-and-lease-modules-classify-before-opening": "the exclusion and lease modules open no path they have not classified",
   "cli-help-affordance-prints-usage-on-stdout": "--help and help print the usage line on stdout and exit 0",
   "cli-documents-no-unimplemented-error-marking": "bin/tiphys.ts documents no error-marking mechanism that nothing sets",
-  "lock-hold-point-marker-entry-type-is-established-before-the-open": "a named pipe at a lock hold-point marker is refused in bounded time"
+  "lock-hold-point-marker-entry-type-is-established-before-the-open": "a named pipe at a lock hold-point marker is refused in bounded time",
+  "dual-review-head-anchored-green": "a decorrelated approving pair that names the commit under audit is green, and the green line names that commit",
+  "dual-review-head-unresolvable-never-green": "an approving pair naming a head that is not a commit at all is never green, and the excluded documents are named",
+  "dual-review-head-other-commit-never-green": "an approving pair naming a real commit that is not the one under audit is never green, and is named as a review of other work",
+  "dual-review-head-defaults-to-context-head": "with no --head the audited commit is the context's own HEAD, so the workflow step that passes no flag is anchored too",
+  "dual-review-unresolvable-audited-head-is-error": "a --head the repository cannot produce is error, never not-applicable and never green",
+  "dual-review-registry-declares-head-parameter": "the gate registry declares head as a parameter of check-dual-review, which is how the runner supplies the audited commit",
+  "dual-review-pair-corpus-reads-the-subtree": "a verdict pair committed one directory down is read, rather than reported as an empty corpus",
+  "dual-review-nested-refusal-cannot-be-hidden": "a committed third review refusing the audited head is counted even one directory down, so the pair cannot be approved over it",
+  "dual-review-produced-by-string-disclosed": "the green decorrelation report says produced-by was compared as a string and is not a cross-family assertion",
+  "dual-review-not-applicable-sentence-is-grammatical": "the not-applicable detail is grammatical, because the corpus describer it uses is the parenthetical one",
+  "gate-classes-conditional-satisfier-disclosed": "a class satisfied only by a CONDITIONAL gate is named on the green arm, and a class satisfied by required gates is not",
+  "sweep-head-anchor-behaviors-registered": "the DR-0047 sweep behaviors are registered in test/behaviors.json and resolve by name"
 }
