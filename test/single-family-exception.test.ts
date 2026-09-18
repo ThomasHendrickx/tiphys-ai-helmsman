@@ -156,7 +156,7 @@ const runModule = (await import(new URL("../src/gates/run.ts", import.meta.url).
 const scriptModule = (await import(
   new URL("../scripts/check-dual-review.mjs", import.meta.url).href
 )) as {
-  evaluate: (directory: string) => {
+  evaluate: (directory: string, head?: string) => {
     status: string;
     units: number;
     lines: string[];
@@ -307,6 +307,32 @@ function stage(options: StageOptions): string {
     )}`;
   }
   writeFileSync(join(dir, "charter.yaml"), charter);
+  /* THE COMMIT THE STAGED VERDICTS SAY THEY REVIEWED (CR-VS-001).
+     `check-dual-review` is anchored to the commit under audit since the DR-0047
+     sweep, so a fixture declaring the literal head its YAML shipped with
+     (`dcbe6704...`, which is a real commit of THIS repository and of no staged
+     one) is a review of another commit and is correctly excluded. Staging it
+     unanchored would have made seventeen arms of this file assert about an
+     empty corpus.
+
+     THE SHAPE IS THE REAL WORKFLOW'S, not a trick to get past the check: an
+     empty commit is created FIRST and is what the verdicts name, then the
+     verdicts and everything else are committed ON TOP. That is what a real
+     review does, and it is why the two shas differ. The tests then audit the
+     REVIEWED commit by passing `--head`, which is what the gate runner does
+     from the pull-request event. */
+  git(repo, ["init", "-q", "."]);
+  git(repo, ["commit", "-q", "--allow-empty", "-m", "reviewed"]);
+  const reviewed = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: repo,
+    encoding: "utf8",
+    env: { ...process.env, ...GIT_IDENTITY },
+  });
+  assert.equal(reviewed.status, 0, `git rev-parse HEAD failed: ${reviewed.stderr}`);
+  const reviewedHead = (reviewed.stdout ?? "").trim();
+  assert.match(reviewedHead, /^[0-9a-f]{40}$/, `unusable reviewed head ${reviewedHead}`);
+  REVIEWED_HEAD.set(dir, reviewedHead);
+
   const place = (verdict: StagedVerdict): void => {
     const from = join(options.real === true ? realVerdictDir : fixturesDir, verdict.file);
     const directory = join(dir, verdict.directory ?? join("delivery", "review"));
@@ -323,12 +349,23 @@ function stage(options: StageOptions): string {
       assert.notEqual(rewritten, body, `${verdict.file} has no single-line phase to rewrite`);
       body = rewritten;
     }
+    /* EVERY staged verdict is retargeted at the reviewed commit, including the
+       ones placed AFTER the commit for the uncommitted arms: those arms are
+       about committed-versus-working-tree and would otherwise become about the
+       head instead, which is a different question. */
+    /* A fixture with NO `head:` line is left alone, and that is not an
+       oversight: this repository's own two real verdicts predate M4-P10's
+       required `head` and the arms that use them are about exactly that state.
+       Such a verdict stays in the corpus as UNKEYED, which is what the derived
+       check refuses. */
+    if (/^head: .*$/m.test(body)) {
+      body = body.replace(/^head: .*$/m, `head: ${reviewedHead}`);
+    }
     writeFileSync(to, body);
   };
   for (const verdict of options.verdicts) {
     place(verdict);
   }
-  git(repo, ["init", "-q", "."]);
   /* HELD OUT OF THE COMMIT AND PUT BACK AFTER IT, and held OUTSIDE the
      repository while it is held, so the hold itself commits nothing. */
   const held = options.regimeDocumentsUncommitted ?? [];
@@ -341,7 +378,10 @@ function stage(options: StageOptions): string {
     git(repo, ["commit", "-q", "-m", "stage"]);
   } else {
     /* A commit must exist for HEAD to resolve; the CHARTER is what is left
-       uncommitted, which is the state criterion 9 is about. */
+       uncommitted, which is the state criterion 9 is about. The `reviewed`
+       commit above already satisfies that, and a second empty commit is kept
+       so HEAD and the reviewed head stay two different commits on this arm as
+       they are on every other. */
     git(repo, ["commit", "-q", "--allow-empty", "-m", "empty"]);
   }
   for (const document of held) {
@@ -376,6 +416,23 @@ function stage(options: StageOptions): string {
   return dir;
 }
 
+/**
+ * The reviewed commit each staged context's verdicts name.
+ *
+ * KEYED BY THE CONTEXT DIRECTORY, which is unique per arm because `scratch()`
+ * makes a fresh temporary directory every time. Recorded by `stage` and read by
+ * the two runners, so no test has to carry the sha itself and no runner has to
+ * guess it out of the repository's shape.
+ */
+const REVIEWED_HEAD = new Map<string, string>();
+
+/** The commit a staged context's verdicts reviewed, refusing to guess. */
+function reviewedHeadOf(dir: string): string {
+  const head = REVIEWED_HEAD.get(dir);
+  assert.ok(head !== undefined, `no reviewed head was recorded for ${dir}`);
+  return head;
+}
+
 interface ScriptRun {
   exit: number;
   stdout: string;
@@ -389,11 +446,25 @@ interface ScriptRun {
 }
 
 /** Run the SHIPPED script over a staged context and read the record it wrote. */
-function runScript(dir: string): ScriptRun {
+function runScript(dir: string, options: { anchor?: boolean } = {}): ScriptRun {
   const recordPath = join(dir, "result.json");
+  /* `anchor: false` IS FOR THE ONE ARM THAT HAS NO COMMIT TO NAME: the worktree
+     fallback, staged by deleting `.git`. Passing `--head` there would be a
+     caller naming a commit in a directory that is not a repository, which the
+     gate correctly refuses as `error`, and that refusal is a different subject
+     from the sentence that arm exists to exercise. */
+  const head = options.anchor === false ? [] : ["--head", reviewedHeadOf(dir)];
   const run = spawnSync(
     process.execPath,
-    [scriptPath, dir, "--result", recordPath, "--evidence", join(dir, "evidence")],
+    [
+      scriptPath,
+      dir,
+      ...head,
+      "--result",
+      recordPath,
+      "--evidence",
+      join(dir, "evidence"),
+    ],
     { cwd: repoRoot, encoding: "utf8" },
   );
   const stdout = `${run.stdout ?? ""}${run.stderr ?? ""}`;
@@ -712,6 +783,13 @@ test("a bundle carrying the declared exception exits 0 and names the declaring g
             id: "check-dual-review",
             command: [process.execPath, scriptPath, "."],
             unitLabel: "review verdicts examined for decorrelation",
+            /* `parameters: [head]`, EXACTLY AS `gate-registry.yaml` DECLARES IT
+               SINCE THE DR-0047 SWEEP (CR-VS-001). The runner appends
+               `--head <sha>` for every declared parameter, which is how the
+               commit under audit reaches the gate from the RUN rather than from
+               the evidence. Without this line the bundle would audit the
+               staging commit and correctly find no review of it. */
+            parameters: ["head"],
             /* CONDITIONAL, exactly as `gate-registry.yaml` declares it, and
                that is the whole hazard: a conditional gate's not-applicable
                never reaches `requiredNotApplicable`, so before this phase the
@@ -726,7 +804,17 @@ test("a bundle carrying the declared exception exits 0 and names the declaring g
   );
   const run = spawnSync(
     process.execPath,
-    [cliEntry, "gates", "run", "--manifest", manifest, "--evidence", evidence],
+    [
+      cliEntry,
+      "gates",
+      "run",
+      "--manifest",
+      manifest,
+      "--evidence",
+      evidence,
+      "--head",
+      reviewedHeadOf(context),
+    ],
     { cwd: context, encoding: "utf8" },
   );
   const summary = JSON.parse(readFileSync(join(evidence, "summary.json"), "utf8")) as Summary;
@@ -962,7 +1050,7 @@ test("a declared exception over fewer than two reviews is error, because DR-0038
     declare: ["family-a"],
     verdicts: [{ file: "decorrelated-criteria.yaml" }],
   });
-  const outcome = withoutTheDecorrelationCheck(() => scriptModule.evaluate(dir));
+  const outcome = withoutTheDecorrelationCheck(() => scriptModule.evaluate(dir, reviewedHeadOf(dir)));
   assert.equal(outcome.status, "error");
   assert.equal(outcome.units, 1);
   assert.equal(outcome.singleFamily, undefined);
@@ -974,7 +1062,7 @@ test("a declared exception over fewer than two reviews is error, because DR-0038
 
 test("a declared exception reported while the check carrying the falsifiers did not run is error", () => {
   const dir = arm("permissive-arm-fixture-declared").stage();
-  const outcome = withoutTheDecorrelationCheck(() => scriptModule.evaluate(dir));
+  const outcome = withoutTheDecorrelationCheck(() => scriptModule.evaluate(dir, reviewedHeadOf(dir)));
   assert.equal(outcome.checksRun, 0, "the deregistration did not take effect");
   assert.equal(outcome.status, "error");
   assert.equal(outcome.units, 2, "two verdicts were still read, so this is not the units arm");
@@ -986,7 +1074,10 @@ test("a declared exception reported while the check carrying the falsifiers did 
 });
 
 test("with the check registered, the same declared context reaches not-applicable, which is the control the two refusals need", () => {
-  const outcome = scriptModule.evaluate(arm("permissive-arm-fixture-declared").stage());
+  const outcome = (() => {
+    const staged = arm("permissive-arm-fixture-declared").stage();
+    return scriptModule.evaluate(staged, reviewedHeadOf(staged));
+  })();
   assert.equal(outcome.status, "green", "evaluate reports the comparison; the script maps it");
   assert.equal(outcome.checksRun, 1);
   assert.notEqual(outcome.singleFamily, undefined);
@@ -1162,7 +1253,7 @@ test("a corpus-scoped refusal names the source that corpus was read from, on bot
      arm is the pair refusal, and a pair refusal needs a corpus of one. */
   const noGit = stage({ verdicts: [{ file: "decorrelated-criteria.yaml" }] });
   rmSync(join(noGit, ".git"), { recursive: true, force: true });
-  const fromTree = runScript(noGit);
+  const fromTree = runScript(noGit, { anchor: false });
   assert.match(
     fromTree.stdout,
     /\(corpus: delivery\/review read from the WORKING TREE because/,

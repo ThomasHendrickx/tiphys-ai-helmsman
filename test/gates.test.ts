@@ -3793,6 +3793,16 @@ test("the shipped registry run against a consumer package tree with no scripts d
         "check-dual-review",
         "--evidence",
         evidence,
+        /* `--head` BECAUSE THE REGISTRY ENTRY NOW DECLARES `parameters: [head]`
+           (CR-VS-001, the DR-0047 sweep). A gate missing a declared parameter is
+           `error` BEFORE its precondition is evaluated, which is also `error`
+           but for a different reason, and this test's subject is the
+           precondition. Supplying the flag keeps the variable under test the one
+           the test names. The value is never dereferenced by the runner; the
+           child is what would resolve it, and here the child does not exist,
+           which is the point. */
+        "--head",
+        "HEAD",
       ],
       dir,
     );
