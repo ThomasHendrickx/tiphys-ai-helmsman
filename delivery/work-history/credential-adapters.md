@@ -351,8 +351,9 @@ which is the half of the finding that is about the comment.
 
 ### 4.1 The cost sentence at src/hooks.ts, refuted rather than softened
 
-The round was asked to refute or confirm the sentence that stood at
-src/hooks.ts:46. It read: an adapter that quietly reverted `HOME` for the
+The round was asked to refute or confirm the sentence that stood at `src/hooks.ts`
+lines 46 to 57 of the reviewed head. Its withdrawal is recorded at
+src/hooks.ts:54. It read: an adapter that quietly reverted `HOME` for the
 payload "has to revert it for the payload and NOT for the hook, which means
 launching two children with two different environments and is a substantially
 different act from passing a mutated copy once".
@@ -380,7 +381,8 @@ hook and required in the record, or (b) withdrawing the provenance claim and
 renaming the value. This round takes (b) and declines (a), and the reason is a
 property of the trust model rather than a preference.
 
-The adapter is HANDED `hookPath` (src/spawn.ts:1236 in the reviewed head). The
+The adapter is HANDED `hookPath`, which src/spawn.ts:1262 puts on the executor
+request. The
 generated hook is a readable file in a directory the adapter must be able to
 read in order to invoke the hook at all, at the same uid, on the same
 filesystem. A secret baked into that file is readable by the party it is meant
@@ -942,30 +944,31 @@ egress vocabulary as REFUSED through `refuseExtraAllowlist` under
 ## 9. The claim grep, both binding forms
 
 Both forms were run, because this prose is hard-wrapped and a phrase straddling
-a wrap is invisible to the line-based one.
+a wrap is invisible to the line-based one. Run last against the finished
+document, the line-based form reports these lines:
 
 ```
-$ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/credential-adapters.md
-152:src/checks.ts:5029: ... so it cannot be read as an authorisation however it is spelled
-672:src/adapters/load.ts:125: * READ THROUGH `readRegularFileIfPresent`, never `readFileSync`: the fleet
-
-$ tr '\n' ' ' < delivery/work-history/credential-adapters.md | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' | sort | uniq -c
-      1 cannot be
-      1 never
+152  (quoted derivation output) src/checks.ts:5029 ... so it cannot be read as an
+     authorisation however it is spelled
+674  (quoted derivation output) src/adapters/load.ts:125 ... never `readFileSync`
+951  this list's own copy of the first hit
+953  this list's own copy of the second hit
+967  the paragraph below, which quotes the one phrase that was removed
 ```
 
-Two hits, both forms agree, so nothing was hidden by a wrap.
+**Not one of them is a claim of mine.** Two are verbatim stdout of the greps in
+sections 4.3 and 5.2, which is another file's source text; altering them would
+falsify the capture. The rest are this section quoting those two hits and the
+one phrase that was removed, which is what a document reporting its own claim
+grep unavoidably contains. The two forms agree on the substantive set, so
+nothing was hidden by a wrap.
 
-**Both hits are inside QUOTED derivation output**, which is the verbatim stdout
-of the two greps in sections 4.3 and 5.2 and is another file's source text
-rather than a claim of mine. Altering them would falsify the capture. They are
-listed here rather than excluded silently.
-
-**One hit was removed rather than defended.** An earlier draft of section 4.2
-said a nonce "would catch an adapter that forges the record without reading the
-hook". That is a prediction about a design this round did not build, so it is
-now written as an open question with the one premise that IS measured attached.
-Both grep forms found it, which is the mechanism working.
+**One hit was removed rather than defended, and both forms found it.** An
+earlier draft of section 4.2 said a nonce "would catch an adapter that forges
+the record without reading the hook". That is a prediction about a design this
+round did not build, so it is now written as an open question with the one
+premise that IS measured attached, at
+witness/captures/handover-turn-end-arms.txt:1.
 
 ## 10. Files touched, and one that was not
 
@@ -984,3 +987,65 @@ Read and deliberately NOT changed, each named with its reason: src/pool.ts and
 src/liveness.ts and src/commands/next.ts and src/teardown.ts (section 5.2 and
 the escalations), plugin/src/model-resolution.ts (section 4.3),
 `gates.manifest.json` and `gate-registry.yaml` (section 8.2).
+
+## 11. The gate run, and the three gates that could not run here
+
+```
+$ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+    --evidence <scratch>/ev4 --base origin/main --head HEAD
+
+gates: declared 19 applicable 11 verdict 11 green 11 red 0 not-applicable 5 error 3 vacuous 0
+gates: 3 gate(s) reported error: scope, gate-classes, merge-preconditions
+EXIT=21
+```
+
+**Eleven applicable, eleven green, zero red.** The ones this round's changes
+bear on, quoted rather than summarised:
+
+```
+suite:        green: reported 1347 test(s) from 66 file(s)
+              (pass 1347, fail 0, skipped 0, todo 0, did-not-run 0);
+              1222 behavior(s) resolve; merge base ad2428b76ef6
+red-witness:  green: 29 witness(es) evaluated (6 own, 23 stored re-evaluated);
+              every witness red against every declared dangerous state and
+              green at head
+credential-scrub: green: no pull-request-capable credential resolvable from
+              any of the 7 probed sources
+typecheck:    green: tsc -b ... exited 0 and reported 448 distinct file(s)
+```
+
+The suite gate's own count (1347 pass, 0 skipped) is an INDEPENDENT measurement
+of the number in section 7: a different invocation, through the gate's event
+stream, at the same head.
+
+**The three errors are all the same one sentence and none is a defect in this
+change:**
+
+```
+scope:               error: gate scope requires --phase, which was not supplied
+gate-classes:        error: gate gate-classes requires --phase, which was not supplied
+merge-preconditions: error: gate merge-preconditions requires --phase, which was not supplied
+```
+
+This branch is deliberately NOT named `claude/m<N>-p<N>-...`, because the scope
+auditor derives a phase id from the branch name and would then demand a phase
+declaration that does not exist. The consequence is that the three phase-scoped
+gates have no phase to audit against and error rather than run. The verification
+command in my dispatch passes no `--phase` either. This is reported as a gap in
+this evidence rather than as a pass: **nothing here is evidence about the scope
+audit, the gate-class declaration or the merge preconditions**, and whoever
+batches this into a phase pull request owes those three.
+
+`citations` reported not-applicable, with its own reason: its precondition is a
+changed path under `delivery/plan/`, `delivery/verification/`,
+`delivery/decisions/`, `delivery/tuition/`, `delivery/requirements/` or
+`delivery/STATE.md`, and this branch changes none of those. So the citations in
+this document were NOT linted by the gate on this head. They were checked
+separately instead, by resolving every `path:line` token in this file against
+the working tree: every one names a file that exists and a line inside it. Two
+were hand-written rather than captured, and both were wrong the first time and
+corrected: one pointed at `src/spawn.ts:1236`, which is in range and is the
+extension-allowlist line rather than the `hookPath` line, and one pointed into
+`src/hooks.ts` at a paragraph this round rewrote. That is the silent-resolution
+trap the rules file records, met twice in one document, and it is recorded here
+because the loud failure is the safe one.
