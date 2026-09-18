@@ -1259,5 +1259,6 @@
   "dual-review-head-descendant-refused": "an approving pair naming a DESCENDANT of the commit under audit is refused on its own route",
   "schemas-readme-vocabulary-matches-the-validator": "the authoring vocabulary schemas/README.md declares is exactly the one src/validate.ts enforces",
   "doctor-worktrees-reports-an-unlistable-pool": "CHECK worktrees reports an unlistable pool as FAIL instead of letting the run abort",
-  "merge-preconditions-selects-by-ancestry": "verdicts naming the commit their own landing produced are selected, where the equality mutant this round replaced finds none"
+  "merge-preconditions-selects-by-ancestry": "verdicts naming the commit their own landing produced are selected, where the equality mutant this round replaced finds none",
+  "dual-review-head-awkward-paperwork-name-still-green": "a paperwork-only gap is still paperwork when a filename is not printable ASCII, which the default diff spelling would have called shipped content"
 }

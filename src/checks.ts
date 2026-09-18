@@ -4267,14 +4267,28 @@ export function relateDeclaredHead(
   if (!prefix.ok) {
     return { kind: "undetermined", reason: prefix.reason };
   }
+  /* `-z` IS LOAD-BEARING FOR THE SAME REASON `--no-renames` IS, and it was
+     measured rather than reasoned. Without it git QUOTES any path outside the
+     printable ASCII set, so a paperwork file whose name carries one non-ASCII
+     character arrives wrapped in double quotes with octal escapes, which does
+     not start with `delivery/` and is classified as shipped content. Measured
+     on git 2.43.0, one repository, one commit, one flag changed: the default
+     form printed the quoted spelling and the `-z` form printed the real path.
+
+     The failure that would cause is fail-CLOSED, so it admits nothing it should
+     not; it is fixed anyway because refusing a green a project is entitled to is
+     the cannot-go-green shape this whole section exists to end, one filename
+     narrower. `-z` also makes the separator NUL rather than newline, which is
+     why the split changed with it: a newline split over `-z` output would read
+     the whole list as one path. */
   const diff = gitIn(
-    ["diff", "--no-renames", "--name-only", `${declared}..${auditedHead}`, "--"],
+    ["diff", "-z", "--no-renames", "--name-only", `${declared}..${auditedHead}`, "--"],
     contextDirectory,
   );
   if (!diff.ok) {
     return { kind: "undetermined", reason: diff.reason };
   }
-  const changed = diff.stdout.split("\n").map((line) => line.trim()).filter((line) => line !== "");
+  const changed = diff.stdout.split("\0").map((line) => line.trim()).filter((line) => line !== "");
   const shipped = changed.filter((path) => !path.startsWith(prefix.prefix));
   return shipped.length === 0
     ? { kind: "evidence-only-ancestor", changed }

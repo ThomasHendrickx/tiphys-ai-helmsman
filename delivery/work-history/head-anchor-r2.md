@@ -21,14 +21,14 @@ files this round edits (no `dist/`, no `*.tsbuildinfo`). Invocation: `npm test`,
 which `package.json` defines as `node --test "test/**/*.test.ts"`.
 
 ```
-i tests 1386
+i tests 1387
 i suites 0
-i pass 1386
+i pass 1387
 i fail 0
 i cancelled 0
 i skipped 0
 i todo 0
-i duration_ms 331221.852506
+i duration_ms 358168.95449
 NPM_TEST_EXIT=0
 ```
 
@@ -55,9 +55,9 @@ i duration_ms 351278.448468
 NPM_TEST_EXIT=0
 ```
 
-This round adds SIX tests, three in test/dual-review-head-anchor.test.ts:1, one
+This round adds SEVEN tests, four in test/dual-review-head-anchor.test.ts:1, one
 in test/schemas.test.ts:340, one in test/doctor.test.ts:2321 and one in
-test/merge-preconditions.test.ts:1135. 1380 + 6 is 1386, which is the number
+test/merge-preconditions.test.ts:1135. 1380 + 7 is 1387, which is the number
 above. The SKIPPED count is zero on both arms, so no test was converted into a
 skip by this round.
 
@@ -217,9 +217,13 @@ The reviewer's first check.
    elsewhere gets every gap refused. The prefix is `PAPERWORK_ROOT`, which is
    the kernel's own declared root and not a name invented here, and a consumer
    with another layout is not covered.
-6. **Rename detection is disabled and nothing else about `git diff`'s
-   configuration is controlled.** A repository with an exotic `diff.*` setting
-   was not tested.
+6. **Two `git diff` spellings are controlled and the rest are not.** Rename
+   detection is disabled with `--no-renames`, because a rename from `src/a.ts`
+   to `delivery/b.md` would otherwise print the DESTINATION ONLY and the
+   deletion of a shipped file would be invisible. Path quoting is disabled with
+   `-z`, for the opposite direction, and that one was found by reading the
+   implementation rather than by any test (see section 4c). Nothing else about
+   a repository's `diff.*` configuration is controlled or tested.
 7. **No CI arm was exercised.** Everything here ran locally on the
    floor-satisfying toolchain. `.github/workflows/gates.yml` is outside this
    round's edits and the interaction between the new admission and its direct
@@ -356,7 +360,7 @@ test/dual-review-head-anchor.test.ts:246, :346, :388 and :221.
 **A FIFTH ROUTE, DIRECTION, is refused and tested separately.** A verdict naming
 a DESCENDANT of the audited commit reviewed a tree the audited commit does not
 contain. It is refused on its own sentence at
-test/dual-review-head-anchor.test.ts:431, and the ancestry check that places it
+test/dual-review-head-anchor.test.ts:463, and the ancestry check that places it
 is run in both directions inside the test rather than assumed.
 
 **AN EQUAL HEAD STILL PASSES.** That is decided at src/checks.ts:4248, before
@@ -381,6 +385,41 @@ excluded`, and conditions 1 and 2 green; the mutant reports `not-applicable`,
 units 0, and ZERO rows, so DR-0012's conditions are not evaluated at all. The
 test is test/merge-preconditions.test.ts:1135 and it reads the gap from git
 rather than assuming it from the staging.
+
+### The fifth member of M1's class, found by reading rather than by review
+
+`git diff --name-only` QUOTES a path outside printable ASCII. A paperwork file
+named with one such character therefore arrived as a double-quoted,
+octal-escaped spelling that does not start with `delivery/`, and a
+paperwork-only gap was classified as shipped content. Measured on git 2.43.0,
+one repository, one commit, one flag changed:
+
+```
+git diff --no-renames --name-only A..B      ->  "delivery/na\303\257ve.md"
+git diff -z --no-renames --name-only A..B   ->  delivery/na<the real byte>ve.md
+```
+
+It is fail-CLOSED, so it admitted nothing it should not. It is fixed anyway
+because refusing a green a project is entitled to is the cannot-go-green shape
+this round exists to end, one filename narrower.
+
+**RED**, a copy of this tree with `-z` and the NUL split reverted and nothing
+else changed:
+
+```
+X a paperwork-only gap is still paperwork when a filename is not printable ASCII,
+  which the default diff spelling would have called shipped content
+  AssertionError: check-dual-review: not-applicable (0 review verdicts examined ...)
+    actual: 20, expected: 0
+```
+
+**GREEN** on this branch: `status=green`, `units=2`. The test also asserts that
+git DOES quote by default, by running the unquoted-form command itself, so a
+future git that stopped quoting would fail the test rather than pass it
+vacuously. It is test/dual-review-head-anchor.test.ts:431.
+
+Transliteration note for that block only: the reporter's U+2716 is rendered `X`,
+1 occurrence.
 
 ### M2: doctor aborts, and the run is what proves it
 
@@ -785,7 +824,13 @@ witness/fixtures/dual-review/README.md
 
 ## 8. The claim grep
 
-Both binding forms were run. The line-based one:
+**THE LISTING BELOW WAS TAKEN WITH ITSELF ABSENT FROM THE DOCUMENT, and that is
+said first because it is the one thing a reader of a self-referential capture has
+to know.** Pasting the listing back in makes every quoted hit a hit again, so the
+numbers a reviewer measures on the FINAL text are larger than the ones the
+listing was taken at. Both are given.
+
+The binding line-based form, run with section 8 removed:
 
 ```
 grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/head-anchor-r2.md
@@ -793,52 +838,30 @@ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|
 104:### M2. A REPORTING CONSUMER THAT DOES NOT CATCH WHAT ITS SIBLING CATCHES
 108:src/commands/next.ts:335 catches it and reports into `unknown`. Doctor did not,
 154:could never be met either, so every real run of it reported not-applicable and
-234:10. **M4's fix is witnessed only on this container.** The red arm needs a
-405:first so that "the run never reached this check" cannot pass as a fix. It is
-428:The red arm needs a repository that is NOT under the OS temp root, and that was
-560:src/checks.ts and src/spawn.ts, never the definition. Section 4b's walk of all
-581:#     catches, so one path degrades and the other aborts.
-791:grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/head-anchor-r2.md
-798:tr '\n' ' ' < delivery/work-history/head-anchor-r2.md | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' | wc -l
-810:| the M1 finding | "never green" | the RED capture in section 4: all FOUR members, the green control included, report `status=not-applicable units=0` at d653022 |
-811:| M2's heading and its body | "DOES NOT CATCH", "catches it" | D2a in section 7 lists all three callers of `poolList`; src/commands/next.ts:335 is the catching one and its `catch` is visible in the file |
-812:| the second call site | "could never be met either" | the mutant witness in section 4: with the equality selection restored the gate reports `not-applicable`, units 0, and ZERO rows |
-813:| residue 10 | "needs a" | the two-arm capture in section 4, plus the two base-arm runs from under `/tmp/claude-0` that pass, which is why the probe was staged at `/home/t029probe/` |
-815:| the classifier consolidation | "never the definition" | `grep -n 'file\|find' witness/doctor-kernel-artifacts-fifo.json witness/doctor-kernel-artifacts-resolution.json witness/mechanism-evidence-resolves.json witness/spawn-completed-without-turn-end-is-incomplete.json witness/tuition-applied-target-exists.json` prints five `find` strings, every one of them a call site in src/commands/doctor.ts, src/checks.ts or src/spawn.ts; the 1386-pass suite is the second check |
-816:| derive.sh's own comment | "catches" | quoted script text, not a claim by this document |
+238:10. **M4's fix is witnessed only on this container.** The red arm needs a
+402:It is fail-CLOSED, so it admitted nothing it should not. It is fixed anyway
+444:first so that "the run never reached this check" cannot pass as a fix. It is
+467:The red arm needs a repository that is NOT under the OS temp root, and that was
+599:src/checks.ts and src/spawn.ts, never the definition. Section 4b's walk of all
+620:#     catches, so one path degrades and the other aborts.
 ```
 
-The wrap-insensitive one, because this document is prose hard-wrapped by hand:
+Ten matching lines, and every one of them is dispositioned in the table below.
+
+**ON THE FINAL TEXT**, the document a reviewer will actually run the command
+against, with this section present:
 
 ```
-tr '\n' ' ' < delivery/work-history/head-anchor-r2.md | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' | wc -l
-37
+grep -cEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/head-anchor-r2.md          ->  30   (matching LINES)
+grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/head-anchor-r2.md | wc -l  ->  70   (OCCURRENCES)
+tr '\n' ' ' < delivery/work-history/head-anchor-r2.md | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' | wc -l  ->  70
 ```
 
-**THE TWO COMMANDS COUNT DIFFERENT THINGS AND ARE MADE COMPARABLE BEFORE BEING
-COMPARED**, which is the point CLAUDE.md's own table makes by counting
-OCCURRENCES on both sides. At the moment the listing above was taken the binding
-line-based form reported 17 matching LINES and 37 OCCURRENCES, and the wrap form
-reported 37. 37 against 37, so no hit phrase straddled a wrap. Comparing 17
-against 37 would have looked like twenty hidden hits, which is a comparison error
-rather than a finding.
-
-**AND THE COUNTS MOVED WHEN THE LISTING WAS PASTED IN, which is stated rather
-than hidden**, because the listing is part of the document it counts and pasting
-it makes every quoted hit a hit again. Re-measured on the FINAL text, the one a
-reviewer will run the command against:
-
-```
-grep -cEi  '<the alternation>' delivery/work-history/head-anchor-r2.md   ->  34   (matching LINES)
-grep -oEi  '<the alternation>' delivery/work-history/head-anchor-r2.md | wc -l  ->  74   (OCCURRENCES)
-tr '\n' ' ' < delivery/work-history/head-anchor-r2.md | grep -oEi '<the alternation>' | wc -l  ->  74
-```
-
-74 against 74 on the final text as well. The listing is deliberately NOT re-pasted
-at the new numbers: quoting it again would move them again, and the property that
-matters is that the two occurrence counts agree, which they do at both
-measurements. Every hit that is a CLAIM BY THIS DOCUMENT rather than a quotation
-of the command, the script or the table is in the table above.
+**THE TWO FORMS ARE MADE COMPARABLE BEFORE BEING COMPARED**, which is the point
+CLAUDE.md's own table makes by counting OCCURRENCES on both sides: the binding
+command counts LINES and the wrap-insensitive one counts OCCURRENCES, and
+comparing those two directly would read every multi-hit line as a hidden hit.
+70 against 70, so no hit phrase straddles a wrap in this document.
 
 ### What settles each hit
 
@@ -848,9 +871,10 @@ of the command, the script or the table is in the table above.
 | the M1 finding | "never green" | the RED capture in section 4: all FOUR members, the green control included, report `status=not-applicable units=0` at d653022 |
 | M2's heading and its body | "DOES NOT CATCH", "catches it" | D2a in section 7 lists all three callers of `poolList`; src/commands/next.ts:335 is the catching one and its `catch` is visible in the file |
 | the second call site | "could never be met either" | the mutant witness in section 4: with the equality selection restored the gate reports `not-applicable`, units 0, and ZERO rows |
+| the fifth member | "it admitted nothing it should not" | the direction is established by the rule itself: the quoted spelling fails the `delivery/` prefix test, which can only move a verdict OUT of the admitted set; the RED capture in section 4 is that move happening |
 | residue 10 | "needs a" | the two-arm capture in section 4, plus the two base-arm runs from under `/tmp/claude-0` that pass, which is why the probe was staged at `/home/t029probe/` |
 | the doctor control | "cannot pass as a fix" | the test asserts a CONTROL run first, which reaches `CHECK worktrees` and `CHECK kernel-artifacts`, before it chmods; test/doctor.test.ts:2321 |
-| the classifier consolidation | "never the definition" | `grep -n 'file\|find' witness/doctor-kernel-artifacts-fifo.json witness/doctor-kernel-artifacts-resolution.json witness/mechanism-evidence-resolves.json witness/spawn-completed-without-turn-end-is-incomplete.json witness/tuition-applied-target-exists.json` prints five `find` strings, every one of them a call site in src/commands/doctor.ts, src/checks.ts or src/spawn.ts; the 1386-pass suite is the second check |
+| the classifier consolidation | "never the definition" | section 4b's walk of all 704 stored mutations reports one stale member and it is the merge-preconditions one, not any of these five; the 1387-pass suite is the second check |
 | derive.sh's own comment | "catches" | quoted script text, not a claim by this document |
 
 ## 9. Bytes and citations

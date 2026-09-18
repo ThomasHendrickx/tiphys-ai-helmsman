@@ -428,6 +428,38 @@ test("an approving pair naming an ancestor whose whole gap is paperwork is green
   assert.equal(runPrecondition({ ...staged, head: later }, later).exit, 0);
 });
 
+test("a paperwork-only gap is still paperwork when a filename is not printable ASCII, which the default diff spelling would have called shipped content", () => {
+  /* THE ONE FILENAME THAT BROKE THE ALLOWANCE, and it is the cannot-go-green
+     shape one filename wide rather than a new class. `git diff --name-only`
+     QUOTES a path outside printable ASCII, so `delivery/na<U+00EF>ve.md` arrives
+     as a double-quoted, octal-escaped spelling that does not start with
+     `delivery/`, and the gap reads as shipped content. Measured on git 2.43.0
+     before the fix; `-z` prints the real path and is what the implementation
+     now passes.
+
+     THE NAME IS BUILT FROM AN ESCAPE, never written as a literal byte, because
+     this file is authored source and the repository's authored bytes are pure
+     ASCII. The escape is the data; the file stays ASCII. */
+  const awkward = `delivery/na\u00efve.md`;
+  assert.match(awkward, /^delivery\/na.ve\.md$/);
+  const staged = stage(PAIR);
+  writeFileSync(join(staged.dir, awkward), "paperwork with an awkward name\n");
+  git(staged.dir, ["add", "-A"]);
+  git(staged.dir, ["commit", "-q", "-m", "paperwork whose name is not printable ascii"]);
+  const later = git(staged.dir, ["rev-parse", "HEAD"]);
+  /* THE DANGEROUS SPELLING IS ESTABLISHED, not assumed: if a future git stopped
+     quoting by default this test would be exercising nothing, and it would say
+     so here rather than pass quietly. */
+  const quoted = git(staged.dir, ["diff", "--name-only", `${staged.reviewed}..${later}`]);
+  assert.match(quoted, /^"delivery\/na/m, quoted);
+
+  const run = runGate({ ...staged, head: later }, later);
+  assert.equal(run.exit, 0, run.output);
+  assert.equal(run.record.status, "green");
+  assert.equal(run.record.units, 2);
+  assert.doesNotMatch(run.record.detail, /path\(s\) outside delivery\/ differ between them/);
+});
+
 test("an approving pair naming a DESCENDANT of the commit under audit is refused on its own route", () => {
   /* THE DIRECTION THE ALLOWANCE DELIBERATELY DOES NOT OPEN. Ancestry is
      admitted because the reviewers read the shipped content this commit
@@ -714,6 +746,7 @@ test("the DR-0047 sweep behaviors are registered in test/behaviors.json and reso
     "dual-review-head-ancestor-shipped-gap-refused",
     "dual-review-head-evidence-only-ancestor-green",
     "dual-review-head-descendant-refused",
+    "dual-review-head-awkward-paperwork-name-still-green",
     "dual-review-head-defaults-to-context-head",
     "dual-review-unresolvable-audited-head-is-error",
     "dual-review-registry-declares-head-parameter",
