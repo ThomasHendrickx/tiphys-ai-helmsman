@@ -498,10 +498,28 @@ test("the next command source contains no absolute path literal", () => {
 test(
   "next prints the whole cannot-see block and the same exit code when the network is unreachable",
   (t) => {
+    const parent = makeTempDir(t);
+    const repo = makeDemoRepo(parent);
     const fleet = makeFleet(t);
-    const repo = makeDemoRepo(makeTempDir(t));
     const project = join(fleet.projects, "demo");
     spawnSync("cp", ["-a", repo, project]);
+
+    // THE REACHABLE ARM HAS TO BE REACHABLE OR THE WHOLE TEST IS ONE STATE
+    // TWICE. A bare clone on local disk is what this container can actually
+    // reach; every outbound git URL here goes through a proxy and none of them
+    // answers. So `origin` is a real remote that `git ls-remote` resolves, and
+    // the probe below MEASURES that rather than assuming it.
+    const remote = join(parent, "origin.git");
+    git(parent, ["clone", "--quiet", "--bare", repo, remote]);
+    git(project, ["remote", "add", "origin", remote]);
+    const reachableProbe = spawnSync("git", ["-C", project, "ls-remote", "origin"], {
+      encoding: "utf8",
+    });
+    assert.equal(
+      reachableProbe.status,
+      0,
+      `the reachable arm could not reach its own remote: ${reachableProbe.stderr}`,
+    );
 
     const reachable = runNext(fleet);
     const beforeBlock = cannotSeeLines(reachable.stdout);
@@ -511,32 +529,36 @@ test(
       `the cannot-see block printed ${String(beforeBlock.length)} of ${String(nextModule.CANNOT_SEE.length)} entries`,
     );
     for (const item of nextModule.CANNOT_SEE) {
-      assert.ok(
-        reachable.stdout.includes(item),
-        `the cannot-see block omitted: ${item}`,
-      );
+      assert.ok(reachable.stdout.includes(item), `the cannot-see block omitted: ${item}`);
     }
 
-    // THE NETWORK GOES AWAY. `origin` is repointed at a path that does not
-    // exist, so every remote operation in this clone fails, and the fleet
-    // home itself has no remote at all.
-    git(project, ["remote", "add", "origin", join(fleet.root, "no-such-remote.git")]);
-    const unreachable = runNext(fleet, { GIT_TERMINAL_PROMPT: "0" });
-    const probe = spawnSync("git", ["-C", project, "ls-remote", "origin"], {
-      encoding: "utf8",
-    });
-    assert.notEqual(probe.status, 0, "the remote was still reachable, so nothing was witnessed");
+    // TWO STRUCTURALLY DIFFERENT UNREACHABLE STATES, because one is not a
+    // class: a remote path that does not exist at all, and a TCP endpoint that
+    // refuses the connection. The first is how a moved or deleted mirror
+    // fails, the second is how a network outage fails, and a command that
+    // degrades on either is the shape CLAUDE.md standing warning 6 records.
+    for (const [label, url] of [
+      ["absent local remote", join(parent, "no-such-remote.git")],
+      ["refused connection", "git://127.0.0.1:9/nothing.git"],
+    ] as const) {
+      git(project, ["remote", "set-url", "origin", url]);
+      const probe = spawnSync("git", ["-C", project, "ls-remote", "origin"], {
+        encoding: "utf8",
+      });
+      assert.notEqual(probe.status, 0, `${label}: the remote was still reachable, so nothing was witnessed`);
 
-    assert.deepEqual(
-      cannotSeeLines(unreachable.stdout),
-      beforeBlock,
-      "the cannot-see block changed when the network went away",
-    );
-    assert.equal(
-      unreachable.status,
-      reachable.status,
-      "the exit code changed when the network went away",
-    );
+      const unreachable = runNext(fleet, { GIT_TERMINAL_PROMPT: "0" });
+      assert.deepEqual(
+        cannotSeeLines(unreachable.stdout),
+        beforeBlock,
+        `${label}: the cannot-see block changed when the network went away`,
+      );
+      assert.equal(
+        unreachable.status,
+        reachable.status,
+        `${label}: the exit code changed when the network went away`,
+      );
+    }
   },
 );
 
