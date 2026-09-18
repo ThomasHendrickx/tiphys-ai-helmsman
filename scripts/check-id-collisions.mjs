@@ -30,6 +30,17 @@
 import { execFileSync } from "node:child_process"
 import { basename } from "node:path"
 
+/* A reader who pipes this into `head` closes the pipe, and an unhandled EPIPE
+   on stdout crashes node with a stack trace that looks like a defect in the
+   check. Exit quietly on that one code and rethrow every other, so a real
+   write failure is still loud. Measured 2026-09-18: `node
+   scripts/check-id-collisions.mjs | head -1` printed the line and then an
+   eleven-frame EPIPE trace. */
+process.stdout.on("error", (err) => {
+  if (err && err.code === "EPIPE") process.exit(0)
+  throw err
+})
+
 const SCHEMES = [
   {
     label: "tuition",
