@@ -1156,5 +1156,12 @@
   "merge-preconditions-composed-check-absence-is-error": "deregistering the composed dual-review check makes its condition error rather than green, so a condition with no check behind it is never a pass",
   "merge-preconditions-no-verdict-at-head-is-not-applicable": "a head no committed verdict names is not-applicable with an evaluated unmet precondition rather than green",
   "merge-preconditions-error-dominates-red": "error dominates red in the gate word, so a run that could not look at one condition never reports a verdict about the merge",
-  "merge-preconditions-composed-check-violations-are-red": "a pair of verdicts in which one refuses the merge reddens condition 2 while condition 1 stays green"
+  "merge-preconditions-composed-check-violations-are-red": "a pair of verdicts in which one refuses the merge reddens condition 2 while condition 1 stays green",
+  "plugin-git-carve-out-is-the-ref-surface": "the .git carve-out permits the ref surface and refuses hooks, config and info",
+  "plugin-post-merge-hook-write-is-refused": "a post-merge hook turns the release manager's own merge into a working-tree write, and the block now refuses the write that plants it",
+  "plugin-bypass-path-list-is-not-the-project-root": "a write bypass whose path list names the project root is refused, and a genuine subtree still applies",
+  "plugin-tool-call-log-is-not-published-by-sync": "a secret the observer captured verbatim does not reach the fleet remote, in a Bash command or in a Write body",
+  "plugin-tool-call-log-is-ephemeral-by-git": "git itself reports the tool-call log ephemeral in a real tiphys init fleet, and the task directory durable",
+  "plugin-undelivered-status-reported-on-every-arm": "a status line that could not be delivered is reported on stderr even when the turn completes",
+  "plugin-runtime-packages-declared-for-consumers": "every package the shipped plugin resolves is declared in a consumer-installed stanza"
 }

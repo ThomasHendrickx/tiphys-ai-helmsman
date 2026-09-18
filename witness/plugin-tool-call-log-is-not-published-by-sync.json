@@ -1,0 +1,24 @@
+{
+  "id": "plugin-tool-call-log-is-not-published-by-sync",
+  "behavior": "plugin-tool-call-log-is-not-published-by-sync",
+  "tests": [
+    "a secret the observer captured verbatim does not reach the fleet remote, in a Bash command or in a Write body"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/tool-call-observer.ts",
+      "find": "  const logDir = join(fleetRoot, ...TOOL_CALL_LOG_DIR);\n",
+      "replace": "  const logDir = taskDir;\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/tool-call-observer.ts",
+      "find": "export const TOOL_CALL_LOG_DIR = [\"state\", \"tool-calls\"] as const;\n",
+      "replace": "export const TOOL_CALL_LOG_DIR = [\"status\", \"tool-calls\"] as const;\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,31 @@
+{
+  "id": "plugin-post-merge-hook-write-is-refused",
+  "behavior": "plugin-post-merge-hook-write-is-refused",
+  "tests": [
+    "a post-merge hook turns the release manager's own merge into a working-tree write, and the block now refuses the write that plants it"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  if (isGitRefSurface(root, target)) {\n",
+      "replace": "  if (isGitInternal(root, target)) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "const GIT_REF_SURFACE_DIRS = new Set([\"refs\", \"logs\", \"objects\"]);\n",
+      "replace": "const GIT_REF_SURFACE_DIRS = new Set([\"refs\", \"logs\", \"objects\", \"hooks\"]);\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git merge --ff-only, run for real in a clone whose .git/hooks/post-merge was planted directly; the escalation is asserted by the marker file the hook wrote, not described",
+    "captures": [
+      "witness/captures/m4-p9-end-to-end-agent-turn.txt"
+    ],
+    "provenance": "The test refuses to prove anything unless the planted hook actually ran: it asserts the marker is absent before the merge and present after, so a git build that did not run the hook fails the test loudly instead of turning it into a tautology."
+  }
+}

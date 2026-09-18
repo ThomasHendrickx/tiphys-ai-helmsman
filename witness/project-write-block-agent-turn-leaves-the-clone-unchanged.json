@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "plugin/src/hooks/project-write-block.ts",
-      "find": "  if (isGitInternal(root, target)) {\n",
-      "replace": "  if (isGitInternal(root, target) || true) {\n"
+      "find": "  if (isGitRefSurface(root, target)) {\n",
+      "replace": "  if (isGitRefSurface(root, target) || true) {\n"
     },
     {
       "kind": "mutation",

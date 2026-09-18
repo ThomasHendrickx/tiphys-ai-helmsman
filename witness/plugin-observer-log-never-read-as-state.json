@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "plugin/src/hooks/tool-call-observer.ts",
-      "find": "import { appendFileSync, statSync } from \"node:fs\";\n",
-      "replace": "import { appendFileSync, readFileSync, statSync } from \"node:fs\";\n"
+      "find": "import { appendFileSync, mkdirSync, statSync } from \"node:fs\";\n",
+      "replace": "import { appendFileSync, mkdirSync, readFileSync, statSync } from \"node:fs\";\n"
     },
     {
       "kind": "mutation",

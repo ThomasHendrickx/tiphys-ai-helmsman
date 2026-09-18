@@ -1,0 +1,31 @@
+{
+  "id": "plugin-undelivered-status-reported-on-every-arm",
+  "behavior": "plugin-undelivered-status-reported-on-every-arm",
+  "tests": [
+    "a status line that could not be delivered is reported on stderr even when the turn completes"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/adapter.ts",
+      "find": "  if (delivery !== \"\") {\n    process.stderr.write(`tiphys ${ADAPTER_NAME} adapter: the status line was not delivered: ${delivery}\\n`);\n  }\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/adapter.ts",
+      "find": "    process.stderr.write(`tiphys ${ADAPTER_NAME} adapter: the status line was not delivered: ${delivery}\\n`);\n",
+      "replace": "    process.stdout.write(`tiphys ${ADAPTER_NAME} adapter: the status line was not delivered: ${delivery}\\n`);\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "tiphys status emit, made to fail against a fleet whose state directory has been replaced by a regular file",
+    "captures": [
+      "test/fixtures/plugin-hook-payloads/hook-json-output-contract.txt"
+    ],
+    "provenance": "The reason reported on stderr is the kernel command's own failure, produced by breaking the emitter's target on disk, so the string the adapter prints is not one this test chose."
+  }
+}
