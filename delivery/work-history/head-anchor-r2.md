@@ -817,17 +817,28 @@ tr '\n' ' ' < delivery/work-history/head-anchor-r2.md | grep -oEi 'cannot be|imp
 
 **THE TWO COMMANDS COUNT DIFFERENT THINGS AND ARE MADE COMPARABLE BEFORE BEING
 COMPARED**, which is the point CLAUDE.md's own table makes by counting
-OCCURRENCES on both sides. The binding line-based form reports 17 matching LINES;
-counted as occurrences it reports 37:
+OCCURRENCES on both sides. At the moment the listing above was taken the binding
+line-based form reported 17 matching LINES and 37 OCCURRENCES, and the wrap form
+reported 37. 37 against 37, so no hit phrase straddled a wrap. Comparing 17
+against 37 would have looked like twenty hidden hits, which is a comparison error
+rather than a finding.
+
+**AND THE COUNTS MOVED WHEN THE LISTING WAS PASTED IN, which is stated rather
+than hidden**, because the listing is part of the document it counts and pasting
+it makes every quoted hit a hit again. Re-measured on the FINAL text, the one a
+reviewer will run the command against:
 
 ```
-grep -oEi '<the same alternation>' delivery/work-history/head-anchor-r2.md | wc -l
-37
+grep -cEi  '<the alternation>' delivery/work-history/head-anchor-r2.md   ->  34   (matching LINES)
+grep -oEi  '<the alternation>' delivery/work-history/head-anchor-r2.md | wc -l  ->  74   (OCCURRENCES)
+tr '\n' ' ' < delivery/work-history/head-anchor-r2.md | grep -oEi '<the alternation>' | wc -l  ->  74
 ```
 
-37 against 37, so no hit phrase straddles a wrap in this document. The wrap-form
-number alone would have looked like twenty hidden hits, which is the comparison
-error rather than a finding.
+74 against 74 on the final text as well. The listing is deliberately NOT re-pasted
+at the new numbers: quoting it again would move them again, and the property that
+matters is that the two occurrence counts agree, which they do at both
+measurements. Every hit that is a CLAIM BY THIS DOCUMENT rather than a quotation
+of the command, the script or the table is in the table above.
 
 ### What settles each hit
 
