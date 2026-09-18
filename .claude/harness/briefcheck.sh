@@ -20,7 +20,28 @@
 # branches counted. The agent measured before accepting it; that is the only
 # reason it cost nothing.
 REQUIRED='MY HYPOTHESIS, UNVERIFIED'
-DIAGNOSTIC='CI run [0-9]|AssertionError|failed in CI|passes locally|the failure|red in CI'
+# `the failure` WAS IN THIS LIST AND IS REMOVED, measured 2026-09-17.
+#
+# It fired on the wave-12 dispatch brief, whose only match was the phrase
+# "a reason naming the failure" -- a QUOTE OF THE PLAN'S OWN CRITERION about
+# what a gate should print, not a diagnosis handed to an agent. That is a false
+# refusal, and a check that refuses correct work trains its reader to skip it.
+#
+# The narrowing is measured rather than judged. Across every dispatch brief in
+# this milestone, which phrase each one matched:
+#
+#   m4-p17-r1.js   AssertionError, red in CI   <- a real diagnosis, no marker: REFUSE
+#   m4-p2-r4.js    AssertionError              <- a real diagnosis, no marker: REFUSE
+#   m4-p29-r1.js   AssertionError              <- a real diagnosis WITH marker: PASS
+#   m4-p1-r1.js    (none)
+#   m4-wave8..11   (none)
+#   m4-wave12.js   the failure                 <- the false positive
+#
+# Neither case this check exists to catch matches on `the failure`, so removing
+# it costs nothing measured and removes the one false refusal. THAT IS A CLAIM
+# ABOUT THE BRIEFS WRITTEN SO FAR, not a proof: if a future brief hands over a
+# diagnosis phrased only as "the failure", this list is where it goes back.
+DIAGNOSTIC='CI run [0-9]|AssertionError|failed in CI|passes locally|red in CI'
 status=0
 for f in "$@"; do
   b=$(basename "$f")
