@@ -1197,24 +1197,25 @@ $ node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
     --phase claude/credential-route-fixes
 ```
 
-Full bundle output, with only the absolute clone path shortened to `<clone>`:
+Full bundle output at the final head 33040d5, with only the absolute clone path
+shortened to `<clone>`:
 
 ```
-gates: run ad8ba4c718ff7c26166103ca
+gates: run 262b6caa91e419e6387d5e69
 gates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)
 gates: registry gate-registry.yaml mode full
-gates: declared 19 applicable 12 verdict 12 green 11 red 1 not-applicable 7 error 0 vacuous 0
+gates: declared 19 applicable 12 verdict 12 green 12 red 0 not-applicable 7 error 0 vacuous 0
 gates: manifest-self-check: green: validated 8 schema document(s) against the closed keyword set (<clone>/src/gates/schemas/citation-config.schema.json, <clone>/src/gates/schemas/coverage-config.schema.json, <clone>/src/gates/schemas/gate-manifest.schema.json, <clone>/src/gates/schemas/gate-result.schema.json, <clone>/src/gates/schemas/phase-declaration.schema.json, <clone>/src/gates/schemas/release-record.schema.json, <clone>/src/gates/schemas/verifier-config.schema.json, <clone>/src/gates/schemas/witness-spec.schema.json), and gates.manifest.json against gate-manifest.schema.json
 gates: coverage: green: 115 inventory id(s) checked; per-kind: decision 6, milestone 98, phase 11; per-milestone: M1 11, M2 16, M3 74, M4 5, M5 3, decision 6
 gates: credential-scrub: green: no pull-request-capable credential resolvable from any of the 7 probed sources
 gates: credential-token: not-applicable: precondition implementer-token-present-owner-action-a-3 evaluated and unmet: node -e process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0) exited 1
 gates: suite: green: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 1309 test(s) from 65 file(s) (pass 1309, fail 0, skipped 0, todo 0, did-not-run 0); discovered 65 file(s) walking test for .test.ts; 1185 behavior(s) resolve; merge base 9d047a22257d
-gates: citations: red: delivery/tuition/T-042-a-refusal-predicate-that-cannot-see-an-absent-value.md: plugin/src/hooks/project-write-block.ts:629 matches no declared root (local or external)
+gates: citations: green: linted 2 changed document(s) at 33040d50dea8a4fd6a072c35b90bee1b68357a1c: 12 citation(s) resolved, 0 self-citation(s), 0 unverifiable-external
 gates: scope: not-applicable: precondition scope-branch-is-a-phase-branch evaluated and unmet: branch claude/credential-route-fixes does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
 gates: deploy: not-applicable: precondition deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist
 gates: migrations: not-applicable: precondition migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist
 gates: clause-map: green: 74 rows checked, 0 pending a phase not yet in force
-gates: red-witness: green: 15 witness(es) evaluated (1 own, 14 stored re-evaluated in 157759ms); every witness red against every declared dangerous state and green at head
+gates: red-witness: green: 15 witness(es) evaluated (1 own, 14 stored re-evaluated in 137230ms); every witness red against every declared dangerous state and green at head
 gates: agent-rules-drift: green: CLAUDE.md's gate block matches gate-registry.yaml row for row (3 preflight step(s), 21 gate(s))
 gates: brief-drift: green: roles/implementer.md's full gate block matches gate-registry.yaml row for row (21 row(s) compared)
 gates: check-agents-references: green: 22 references resolved to a path that the package publishes, 22 of them also to an anchor inside it, under root <clone>
@@ -1223,55 +1224,43 @@ gates: license: green: 12 production package(s) inventoried, all with license me
 gates: typecheck: green: tsc -b tsconfig.src.json tsconfig.test.json plugin/tsconfig.json --force --listFiles exited 0 and reported 446 distinct file(s); the unit count is those printed paths, not a constant
 gates: gate-classes: not-applicable: precondition gate-classes-branch-is-a-phase-branch evaluated and unmet: branch claude/credential-route-fixes does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
 gates: merge-preconditions: not-applicable: precondition merge-preconditions-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1
-gates: 1 gate(s) reported red: citations
+gates: required gate(s) not applicable: scope, gate-classes
+GATES_EXIT=20
 ```
 
-**The one red is CLOSED and the fix is in this branch.** `citations` reddened on
+**Twelve applicable, twelve verdicts, TWELVE GREEN, zero red, zero error and
+ZERO VACUOUS.** The vacuous count is quoted with the rest because a gate that
+asserted nothing is the failure this bundle's own harness exists to refuse.
+
+**`GATES_EXIT=20` IS NOT A RED, AND SAYING SO WITHOUT THE REASON WOULD BE THE
+BUNDLE-LEVEL SUBSTITUTION T-009 NAMES.** The runner exits nonzero because two
+REQUIRED gates are not applicable, which it prints by name: `required gate(s)
+not applicable: scope, gate-classes`. Both carry the same
+branch-matches-a-phase-branch precondition, both EVALUATED it, and both recorded
+it unmet, because this is deliberately not a phase branch. CI does not evaluate
+that exit code directly: the workflow runs `scripts/m2-exit-test.sh`
+(.github/workflows/gates.yml:225), and that harness resolves a NON-phase run to
+expect `green|not-applicable` for exactly those two gates, with a valid recorded
+precondition, and still fails on a red, an error, a vacuous, or a
+not-applicable with NO evaluated precondition. The run above is the first of
+those and not the last.
+
+**An earlier bundle at an earlier head had ONE red, `citations`, and it is
+closed.** It reddened on
 `delivery/tuition/T-042-...md` for `plugin/src/hooks/project-write-block.ts:629`,
 "matches no declared root". That is the root-list failure CLAUDE.md describes
 and it is a DIFFERENT red from an out-of-range line: the root list at
 src/gates/citations.ts:201 does not declare `plugin/` at all, however correct
 the line number is. The path is now quoted, which is the documented tool for
-naming a file you are not asserting a line of, and the gate was re-run at the
-new head:
+naming a file you are not asserting a line of, and `citations` is green above,
+having linted the two tuition documents and resolved twelve citations.
 
-```
-gates: registry gate-registry.yaml mode full
-gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0
-gates: citations: green: linted 2 changed document(s) at 20da4cdfed64c922db841a39d845f87c66bc5986: 12 citation(s) resolved, 0 self-citation(s), 0 unverifiable-external
-gates: every applicable gate is green
-CIT_EXIT=0
-```
-
-**Two things are worth saying about which gates ran, because a green gates: run ad8ba4c718ff7c26166103ca
-gates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)
-gates: registry gate-registry.yaml mode full
-gates: declared 19 applicable 12 verdict 12 green 11 red 1 not-applicable 7 error 0 vacuous 0
-gates: manifest-self-check: green: validated 8 schema document(s) against the closed keyword set (<clone>/src/gates/schemas/citation-config.schema.json, <clone>/src/gates/schemas/coverage-config.schema.json, <clone>/src/gates/schemas/gate-manifest.schema.json, <clone>/src/gates/schemas/gate-result.schema.json, <clone>/src/gates/schemas/phase-declaration.schema.json, <clone>/src/gates/schemas/release-record.schema.json, <clone>/src/gates/schemas/verifier-config.schema.json, <clone>/src/gates/schemas/witness-spec.schema.json), and gates.manifest.json against gate-manifest.schema.json
-gates: coverage: green: 115 inventory id(s) checked; per-kind: decision 6, milestone 98, phase 11; per-milestone: M1 11, M2 16, M3 74, M4 5, M5 3, decision 6
-gates: credential-scrub: green: no pull-request-capable credential resolvable from any of the 7 probed sources
-gates: credential-token: not-applicable: precondition implementer-token-present-owner-action-a-3 evaluated and unmet: node -e process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0) exited 1
-gates: suite: green: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 1309 test(s) from 65 file(s) (pass 1309, fail 0, skipped 0, todo 0, did-not-run 0); discovered 65 file(s) walking test for .test.ts; 1185 behavior(s) resolve; merge base 9d047a22257d
-gates: citations: red: delivery/tuition/T-042-a-refusal-predicate-that-cannot-see-an-absent-value.md: plugin/src/hooks/project-write-block.ts:629 matches no declared root (local or external)
-gates: scope: not-applicable: precondition scope-branch-is-a-phase-branch evaluated and unmet: branch claude/credential-route-fixes does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
-gates: deploy: not-applicable: precondition deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist
-gates: migrations: not-applicable: precondition migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist
-gates: clause-map: green: 74 rows checked, 0 pending a phase not yet in force
-gates: red-witness: green: 15 witness(es) evaluated (1 own, 14 stored re-evaluated in 157759ms); every witness red against every declared dangerous state and green at head
-gates: agent-rules-drift: green: CLAUDE.md's gate block matches gate-registry.yaml row for row (3 preflight step(s), 21 gate(s))
-gates: brief-drift: green: roles/implementer.md's full gate block matches gate-registry.yaml row for row (21 row(s) compared)
-gates: check-agents-references: green: 22 references resolved to a path that the package publishes, 22 of them also to an anchor inside it, under root <clone>
-gates: check-dual-review: not-applicable: precondition dual-review-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1
-gates: license: green: 12 production package(s) inventoried, all with license metadata on the declared allowlist; LICENSE present in the pack listing
-gates: typecheck: green: tsc -b tsconfig.src.json tsconfig.test.json plugin/tsconfig.json --force --listFiles exited 0 and reported 446 distinct file(s); the unit count is those printed paths, not a constant
-gates: gate-classes: not-applicable: precondition gate-classes-branch-is-a-phase-branch evaluated and unmet: branch claude/credential-route-fixes does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
-gates: merge-preconditions: not-applicable: precondition merge-preconditions-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1
-gates: 1 gate(s) reported red: citations is
+**Two things are worth saying about which gates ran, because a green BUNDLE is
 not evidence that a PARTICULAR gate asserted anything.**
 
 `red-witness` is the one this round takes a real obligation from, and its own
 line carries the units and the verdict directly: `15 witness(es) evaluated
-(1 own, 14 stored re-evaluated in 157759ms); every witness red against every
+(1 own, 14 stored re-evaluated in 137230ms); every witness red against every
 declared dangerous state and green at head`. The `1 own` is this round's new
 spec, so both of its members were APPLIED, RUN and observed red, and the gate
 says so per-gate rather than leaving it to be deduced from a bundle count.
@@ -1301,6 +1290,14 @@ is what grades the prose. A reader re-running the commands will get **65**
 occurrences, and the difference is this section: the two quoted command texts
 carry eleven phrases each, the disposition table quotes every hit again, and the
 elided grep output above is quoted a second time.
+
+**THE LINE NUMBERS BELOW ARE FROM commit 33040d5**, the state of this file
+before the "Gate results" and "Claim grep" sections were written into it. Both
+sections were added afterwards, so at the final head every number below has
+shifted by the length of what was inserted (line 64 is now line 80, 288 is 304,
+and so on). The numbers are kept as they were measured rather than silently
+renumbered, because a re-run at a later head produces different numbers again
+and a renumbered capture is indistinguishable from an edited one.
 
 ```
 $ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/credential-route-fixes.md
