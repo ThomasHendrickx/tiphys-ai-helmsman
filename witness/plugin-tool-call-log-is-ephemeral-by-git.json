@@ -20,12 +20,5 @@
     }
   ],
   "deterministic": true,
-  "repeats": 2,
-  "consumesExternalOutput": {
-    "program": "git check-ignore --no-index -v, asked in a fleet home that tiphys init really created",
-    "captures": [
-      "witness/captures/m4-p9-pretooluse-payloads.txt"
-    ],
-    "provenance": "The ephemeral question is put to git against the .gitignore tiphys init writes from FLEET_IGNORED, which is the same file and the same command tiphys sync classifies with, rather than to a string comparison between two constants that could both drift together."
-  }
+  "repeats": 2
 }

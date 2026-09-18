@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "plugin/src/hooks/project-write-block.ts",
-      "find": "  const rootEntry = bypass.paths.find((entry) => resolve(entry) === projectRoot);\n",
-      "replace": "  const rootEntry = undefined as string | undefined;\n"
+      "find": "  if (rootEntry !== undefined) {\n",
+      "replace": "  if (false) {\n"
     },
     {
       "kind": "mutation",
