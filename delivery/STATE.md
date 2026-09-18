@@ -2452,10 +2452,11 @@ claimants merged.
 
 ### What M4 does NOT owe at its end
 
-The milestone exit test is NOT due here. DR-0041 binds it to the pilot and
-DR-0042 refuses a kernel-only version, so it falls due at cutover entry, which
-M4-P27 ships and which has already merged. Do not read the end of M4-P25 as a
-trigger to run it.
+The milestone exit test is NOT due here. delivery/plan/kernel-plan-m4.md:80
+records that DR-0041 and DR-0042 together keep it bound to the pilot and refuse
+a kernel-only version, so it falls due at cutover entry. M4-P27 ships that
+trigger and has already merged. Do not read the end of M4-P25 as a cue to run
+it.
 
 ### Three harness guards were found unable to go red, and all three are fixed
 
