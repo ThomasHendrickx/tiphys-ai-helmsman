@@ -477,6 +477,24 @@ The checker is reproduced above rather than described because a reviewer needs t
 be able to re-run it: it is the only thing standing between a text-addressed
 mutation and a witness that silently stops witnessing.
 
+**THE REWRITTEN MEMBER WAS THEN APPLIED AND ITS TEST RUN**, because "the
+mutation applies again" and "the mutation still reddens the behaviour" are
+different facts and only the second is what a witness is for. A copy of this
+tree with member 1 applied:
+
+```
+member 0 applies: True
+member 1 applies: True
+mutated member 1
+X a head no committed verdict names is not-applicable with an evaluated unmet
+  precondition rather than green (404.109014ms)
+```
+
+Transliteration note for that block only: the reporter's U+2716 is rendered `X`,
+2 occurrences (the failing line is printed twice, once in the run and once in the
+failing-tests summary, and only the first is quoted here). The same test on the
+unmutated tree passes, which is the run quoted in section 0.
+
 ## 5. The worktree arm: RESTATED WITH A REASON, not closed
 
 Round 1's residue 2 says the worktree arm of `check-dual-review` is not
@@ -771,24 +789,51 @@ Both binding forms were run. The line-based one:
 
 ```
 grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/head-anchor-r2.md
-CLAIM_GREP_PLACEHOLDER
+92:The finding is "green forever once fed" becoming "never green", which is the
+104:### M2. A REPORTING CONSUMER THAT DOES NOT CATCH WHAT ITS SIBLING CATCHES
+108:src/commands/next.ts:335 catches it and reports into `unknown`. Doctor did not,
+154:could never be met either, so every real run of it reported not-applicable and
+234:10. **M4's fix is witnessed only on this container.** The red arm needs a
+405:first so that "the run never reached this check" cannot pass as a fix. It is
+428:The red arm needs a repository that is NOT under the OS temp root, and that was
+560:src/checks.ts and src/spawn.ts, never the definition. Section 4b's walk of all
+581:#     catches, so one path degrades and the other aborts.
+791:grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/head-anchor-r2.md
+798:tr '\n' ' ' < delivery/work-history/head-anchor-r2.md | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' | wc -l
+810:| the M1 finding | "never green" | the RED capture in section 4: all FOUR members, the green control included, report `status=not-applicable units=0` at d653022 |
+811:| M2's heading and its body | "DOES NOT CATCH", "catches it" | D2a in section 7 lists all three callers of `poolList`; src/commands/next.ts:335 is the catching one and its `catch` is visible in the file |
+812:| the second call site | "could never be met either" | the mutant witness in section 4: with the equality selection restored the gate reports `not-applicable`, units 0, and ZERO rows |
+813:| residue 10 | "needs a" | the two-arm capture in section 4, plus the two base-arm runs from under `/tmp/claude-0` that pass, which is why the probe was staged at `/home/t029probe/` |
+815:| the classifier consolidation | "never the definition" | `grep -n 'file\|find' witness/doctor-kernel-artifacts-fifo.json witness/doctor-kernel-artifacts-resolution.json witness/mechanism-evidence-resolves.json witness/spawn-completed-without-turn-end-is-incomplete.json witness/tuition-applied-target-exists.json` prints five `find` strings, every one of them a call site in src/commands/doctor.ts, src/checks.ts or src/spawn.ts; the 1386-pass suite is the second check |
+816:| derive.sh's own comment | "catches" | quoted script text, not a claim by this document |
 ```
 
 The wrap-insensitive one, because this document is prose hard-wrapped by hand:
 
 ```
 tr '\n' ' ' < delivery/work-history/head-anchor-r2.md | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' | wc -l
-CLAIM_WRAP_PLACEHOLDER
+37
 ```
 
-The two numbers are comparable and equal, so no hit phrase straddles a wrap in
-this document.
+**THE TWO COMMANDS COUNT DIFFERENT THINGS AND ARE MADE COMPARABLE BEFORE BEING
+COMPARED**, which is the point CLAUDE.md's own table makes by counting
+OCCURRENCES on both sides. The binding line-based form reports 17 matching LINES;
+counted as occurrences it reports 37:
+
+```
+grep -oEi '<the same alternation>' delivery/work-history/head-anchor-r2.md | wc -l
+37
+```
+
+37 against 37, so no hit phrase straddles a wrap in this document. The wrap-form
+number alone would have looked like twenty hidden hits, which is the comparison
+error rather than a finding.
 
 ### What settles each hit
 
 | line | the phrase | what settles it |
 |---|---|---|
-| the M1 mechanism | "in every flow that commits its reviews" | the orchestrator's measurement at 5867a918cda809f7c5d4bc366fc7940458c140c0 quoted in section 1, and member 4 of the probe in section 4, whose RED column is that exact shape reported not-applicable |
+| the M1 mechanism (settled voluntarily; the grep no longer hits it) | "in every flow that commits its reviews" | the orchestrator's measurement at 5867a918cda809f7c5d4bc366fc7940458c140c0 quoted in section 1, and member 4 of the probe in section 4, whose RED column is that exact shape reported not-applicable |
 | the M1 finding | "never green" | the RED capture in section 4: all FOUR members, the green control included, report `status=not-applicable units=0` at d653022 |
 | M2's heading and its body | "DOES NOT CATCH", "catches it" | D2a in section 7 lists all three callers of `poolList`; src/commands/next.ts:335 is the catching one and its `catch` is visible in the file |
 | the second call site | "could never be met either" | the mutant witness in section 4: with the equality selection restored the gate reports `not-applicable`, units 0, and ZERO rows |
@@ -801,7 +846,8 @@ this document.
 
 ```
 node scripts/check-authored-bytes.mjs
-BYTES_PLACEHOLDER
+(no output)
+exit=0
 ```
 
 No em dashes were used. Every citation in this document is `path.ext:LINE`
