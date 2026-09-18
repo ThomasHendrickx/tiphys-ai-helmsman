@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { MACHINE_IDENTITY_EMAIL, MACHINE_IDENTITY_NAME } from "./commands/init.ts";
+import { guardSharedRegister } from "./exclusion.ts";
 import type { Fleet } from "./fleet.ts";
 import {
   poolDestroy,
@@ -437,6 +438,20 @@ export async function teardownTask(
   const holdership = checkHoldership(fleet);
   if (!holdership.ok) {
     return { ok: false, reason: holdership.reason };
+  }
+
+  /* THE CROSS-ENVIRONMENT HALF (M4-P22 criterion 3), rule 0's second limb.
+     `checkHoldership` above returns OK when this environment holds the local
+     lease, and the local lease is evidence about this filesystem alone
+     (src/lock.ts:63). With the shared register naming another environment,
+     the old guard is green and teardown would remove a worktree the other
+     orchestrator is working in. One reason line, nonzero exit, and NOTHING
+     REMOVED: it runs before `resolveContext`, so no pool record is read, no
+     worktree is probed and no branch is deleted. A teardown that refuses
+     after deleting something has failed in the way that matters. */
+  const sharedGuard = guardSharedRegister(fleet.root, "teardown");
+  if (sharedGuard.kind === "refused") {
+    return { ok: false, reason: sharedGuard.reason };
   }
 
   const resolved = resolveContext(fleet, options.taskId, options.fromReconstructed);

@@ -1139,5 +1139,12 @@
   "project-write-block-agent-turn-leaves-the-clone-unchanged": "the captured agent turn changed nothing in the project clone and its payload is refused",
   "project-write-block-bash-payload-carries-no-target": "the captured Bash payload carries no write target and the Write and Edit payloads do",
   "project-write-block-manifest-matcher-matches-adjudicated-tools": "the plugin manifest registers the project-write block for exactly the adjudicated tools",
-  "write-bypass-type-is-registered-and-requires-an-expiry": "the write-bypass type validates a declaration and refuses one with no expiry"
+  "write-bypass-type-is-registered-and-requires-an-expiry": "the write-bypass type validates a declaration and refuses one with no expiry",
+  "shared-lock-doctor-statuses-reproduced": "doctor CHECK shared-lock reproduces every recorded status against a live register",
+  "shared-lock-status-set-is-closed": "CHECK shared-lock prints exactly one of four statuses and never PASS for an unreachable register",
+  "shared-lock-unreachable-promoted-only-by-full": "the shared-lock condition the check emits is the one only the full profile promotes",
+  "shared-exclusion-spawn-refuses-another-environment": "spawn refuses while the shared register names another environment although the local lease is held by this one",
+  "shared-exclusion-spawn-unreachable-register-refused": "spawn refuses and creates nothing when the declared shared register cannot be read",
+  "shared-exclusion-teardown-refuses-another-environment": "teardown refuses and removes nothing while the shared register names another environment",
+  "shared-exclusion-teardown-unreachable-register-refused": "teardown refuses and removes nothing when the declared shared register cannot be read"
 }

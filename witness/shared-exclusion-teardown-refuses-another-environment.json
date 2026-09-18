@@ -1,0 +1,31 @@
+{
+  "id": "shared-exclusion-teardown-refuses-another-environment",
+  "behavior": "shared-exclusion-teardown-refuses-another-environment",
+  "tests": [
+    "teardown refuses and removes nothing while the shared register names another environment"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/exclusion.ts",
+      "find": "  if (mine !== undefined && mine === status.envId) {",
+      "replace": "  if (true) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/teardown.ts",
+      "find": "  const sharedGuard = guardSharedRegister(fleet.root, \"teardown\");\n  if (sharedGuard.kind === \"refused\") {",
+      "replace": "  const sharedGuard = guardSharedRegister(fleet.root, \"teardown\");\n  if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "tiphys spawn and tiphys teardown, over git ls-remote / git fetch / git cat-file / git push --force-with-lease=<ref>:<sha>",
+    "captures": [
+      "witness/captures/m4-p22-shared-exclusion-refusals.txt"
+    ],
+    "provenance": "The refusal line embeds git's own stderr through src/exclusion.ts, which spawns git, and SPAWN_GREP matches src/exclusion.ts, src/spawn.ts and src/teardown.ts, so red-witness rule (f) binds this witness. The cited capture is REAL stderr of the shipped `tiphys spawn` and `tiphys teardown`, taken 2026-09-17 on node v26.6.0 with git 2.43.0 against two clones of one fleet home published to a real bare remote. The fixture is the dangerous state itself: environment A acquires the fleet, spawns a scout, and environment B then takes the fleet over with `tiphys lock acquire --take-over`, which advances the register on the remote and cannot touch A's local lease file because `state/` is gitignored and never travels. The named test rebuilds that sequence, substitutes only the four values the capture marks as varying per run (<ENVA>, <ENVB>, <EXPIRES>, <LAB>), and compares the live reason line and exit code byte for byte. The two members separate the decision from its enforcement: member 0 makes src/exclusion.ts accept any environment id as this one, and member 1 makes src/teardown.ts ignore a correct verdict. Under either one the scout worktree, its uncommitted scratch file and its branch are destroyed on a fleet another environment owns, which is the half of criterion 3 that matters: a teardown that refuses after deleting something has failed in the way that counts."
+  }
+}

@@ -90,6 +90,9 @@ const CHECK_NAMES = [
   /* M4-P17: the two checks AGENTS.md:310 required and the kernel lacked. */
   "tasks",
   "branches",
+  /* M4-P22: who holds this fleet ACROSS environments, which CHECK lock
+     cannot answer because the local lease never travels. */
+  "shared-lock",
 ];
 
 function runCli(
@@ -1973,4 +1976,285 @@ test("M4-P30's doctor behaviors are registered in test/behaviors.json", () => {
       `behavior ${id} does not resolve in test/behaviors.json`,
     );
   }
+});
+
+/* ================================================================== */
+/* M4-P22 criterion 1: CHECK shared-lock and its four statuses         */
+/* (kernel plan M4, delivery/plan/kernel-plan-m4.md:3062).             */
+/* ================================================================== */
+
+const { SHARED_LOCK_STATUS_TOKENS } = (await import(
+  new URL("../src/exclusion.ts", import.meta.url).href
+)) as { SHARED_LOCK_STATUS_TOKENS: readonly string[] };
+
+const { checkSharedLock } = (await import(
+  new URL("../src/commands/doctor.ts", import.meta.url).href
+)) as {
+  checkSharedLock: (
+    root: string,
+  ) => { name: string; status: string; detail: string; condition?: string };
+};
+
+/**
+ * The register contract captured from the REAL command, committed at
+ * `witness/captures/m4-p22-shared-lock-doctor-cli.txt`. Every expectation
+ * below is read out of that file and compared against a live run, which is
+ * what red-witness rule (c) and T-003 require of a behaviour whose output a
+ * test classifies: a hand-written expectation chosen to match the
+ * implementation is indistinguishable from a fabricated one.
+ */
+const P22_CLI_CAPTURE = readFileSync(
+  join(repoRoot, "witness", "captures", "m4-p22-shared-lock-doctor-cli.txt"),
+  "utf8",
+);
+
+interface SharedLockLab {
+  lab: string;
+  plain: string;
+  fleet: string;
+  remote: string;
+  envId: string;
+  holder: string;
+}
+
+/**
+ * The fixture the capture was taken over, rebuilt by the same steps: a fleet
+ * home that never opted in, and one built by `tiphys init --shared-exclusion`
+ * with a real bare remote reached over the file transport.
+ */
+function sharedLockLab(t: { after(fn: () => void): void }): SharedLockLab {
+  const lab = makeTempDir(t);
+  const plain = join(lab, "plain");
+  assert.equal(runCli(["init", plain]).status, 0);
+  const remote = join(lab, "fleet.git");
+  git(lab, ["init", "--bare", "--quiet", "--initial-branch=main", remote]);
+  const fleet = join(lab, "fleet");
+  const init = runCli(["init", fleet, "--shared-exclusion"]);
+  assert.equal(init.status, 0, init.stderr);
+  git(fleet, ["remote", "add", "origin", remote]);
+  git(fleet, ["push", "--quiet", "origin", "HEAD:refs/heads/main"]);
+  return { lab, plain, fleet, remote, envId: "", holder: "" };
+}
+
+/** The CHECK shared-lock line of a live run, with its exit code. */
+function sharedLockRun(
+  cwd: string,
+  extra: string[] = [],
+): { line: string; exit: number } {
+  const result = runCli(["doctor", ...extra], { cwd });
+  const line = checkLine(result.stdout, "shared-lock");
+  assert.ok(line !== undefined, `doctor printed no shared-lock line:\n${result.stdout}`);
+  return { line, exit: result.status ?? -1 };
+}
+
+/** A capture block's CHECK line and exit code, with this run's values substituted. */
+function capturedSharedLock(
+  heading: string,
+  substitutions: { lab: string; envId?: string; expires?: string },
+): { line: string; exit: number } {
+  const block = capturedBlock(P22_CLI_CAPTURE, heading);
+  const raw = block.find((entry) => entry.startsWith("CHECK "));
+  const exit = block.find((entry) => entry.startsWith("exit="));
+  assert.ok(raw !== undefined, `no CHECK line recorded under "${heading}"`);
+  assert.ok(exit !== undefined, `no exit code recorded under "${heading}"`);
+  let line = raw.split("<LAB>").join(substitutions.lab);
+  if (substitutions.envId !== undefined) {
+    line = line.split("<ENVID>").join(substitutions.envId);
+  }
+  if (substitutions.expires !== undefined) {
+    line = line.split("<EXPIRES>").join(substitutions.expires);
+  }
+  assert.equal(
+    line.includes("<"),
+    false,
+    `an unsubstituted placeholder survived into the expectation: ${line}`,
+  );
+  return { line, exit: Number(exit.slice("exit=".length)) };
+}
+
+/**
+ * CRITERION 1, EVERY STATUS AGAINST A LIVE REGISTER.
+ *
+ * The arms run in the order the capture records them, against one fixture,
+ * because the interesting ones are STATE TRANSITIONS of a real register: the
+ * ref does not exist, then an acquire publishes it, then a release writes a
+ * tombstone over it. A test that constructed each state by hand would not be
+ * exercising the register at all.
+ */
+test("doctor CHECK shared-lock reproduces every recorded status against a live register", (t) => {
+  const state = sharedLockLab(t);
+
+  const notDeclared = sharedLockRun(state.plain);
+  assert.deepEqual(
+    notDeclared,
+    capturedSharedLock("shared-lock: a fleet that never opted in", { lab: state.lab }),
+  );
+
+  const free = sharedLockRun(state.fleet);
+  assert.deepEqual(
+    free,
+    capturedSharedLock("shared-lock: declared, and the register holds no lease yet", {
+      lab: state.lab,
+    }),
+  );
+
+  const acquired = runCli(["lock", "acquire", "--duration", "3600"], { cwd: state.fleet });
+  assert.equal(acquired.status, 0, `${acquired.stdout}${acquired.stderr}`);
+  const holder = (acquired.stdout.split("\n")[0] as string).split(" ")[1] as string;
+  const envId = (
+    JSON.parse(readFileSync(join(state.fleet, "tiphys-environment.json"), "utf8")) as {
+      envId: string;
+    }
+  ).envId;
+
+  const held = sharedLockRun(state.fleet);
+  const expires = /until (\S+) /.exec(held.line)?.[1];
+  assert.ok(expires !== undefined, held.line);
+  assert.deepEqual(
+    held,
+    capturedSharedLock("shared-lock: held by the environment that acquired it", {
+      lab: state.lab,
+      envId,
+      expires,
+    }),
+  );
+
+  const released = runCli(["lock", "release", "--holder", holder], { cwd: state.fleet });
+  assert.equal(released.status, 0, `${released.stdout}${released.stderr}`);
+  assert.deepEqual(
+    sharedLockRun(state.fleet),
+    capturedSharedLock("shared-lock: the register was released", { lab: state.lab, envId }),
+  );
+
+  /* THE UNREACHABLE ARMS USE A DEDICATED REGISTER REMOTE so that `origin`,
+     and therefore CHECK remote, is untouched: pointing origin at the broken
+     path would break another check and the run's exit code would say nothing
+     about this one. */
+  git(state.fleet, ["remote", "add", "register", join(state.lab, "not-a-repository.git")]);
+  const packageJson = join(state.fleet, "package.json");
+  const declaration = JSON.parse(readFileSync(packageJson, "utf8")) as Record<string, unknown>;
+  declaration["tiphys"] = {
+    sharedExclusion: { remote: "register", ref: "refs/heads/tiphys/lease" },
+  };
+  writeFileSync(packageJson, `${JSON.stringify(declaration, null, 2)}\n`, "utf8");
+
+  const unreachable = sharedLockRun(state.fleet);
+  assert.deepEqual(
+    unreachable,
+    capturedSharedLock("shared-lock: the declared register cannot be read, generic profile", {
+      lab: state.lab,
+    }),
+  );
+  assert.deepEqual(
+    sharedLockRun(state.fleet, ["--for", "full"]),
+    capturedSharedLock("shared-lock: the declared register cannot be read, --for full", {
+      lab: state.lab,
+    }),
+  );
+
+  declaration["tiphys"] = { sharedExclusion: 5 };
+  writeFileSync(packageJson, `${JSON.stringify(declaration, null, 2)}\n`, "utf8");
+  assert.deepEqual(
+    sharedLockRun(state.fleet),
+    capturedSharedLock("shared-lock: the declaration itself is unusable", { lab: state.lab }),
+  );
+});
+
+/**
+ * CRITERION 1's OTHER HALF: the set is CLOSED at four, and the fourth is
+ * never PASS.
+ *
+ * THE DANGEROUS STATE IS AN UNREACHABLE REGISTER REPORTED AS GREEN. That is
+ * the H-C shape this repository keeps paying for: a check that cannot ask its
+ * question reports the answer it would have liked, and the one fact that
+ * mattered is absorbed into a line an operator scans past. A binary check has
+ * nowhere to put "I could not ask", which is why the fourth status exists at
+ * all (DR-0038's shape, reused).
+ *
+ * The assertion that all FOUR tokens are observed is the anti-vacuity half: a
+ * closed-set check over three reachable statuses and one unreachable one
+ * would pass while proving nothing about the status that matters.
+ */
+test("CHECK shared-lock prints exactly one of four statuses and never PASS for an unreachable register", (t) => {
+  const state = sharedLockLab(t);
+  const observed: Array<{ status: string; token: string }> = [];
+
+  const record = (line: string): void => {
+    const match = /^CHECK shared-lock (PASS|WARN|FAIL) (\S+)/.exec(line);
+    assert.ok(match !== null, `malformed shared-lock line: ${line}`);
+    observed.push({ status: match[1] as string, token: match[2] as string });
+  };
+
+  record(sharedLockRun(state.plain).line);
+  record(sharedLockRun(state.fleet).line);
+  const acquired = runCli(["lock", "acquire", "--duration", "3600"], { cwd: state.fleet });
+  assert.equal(acquired.status, 0, `${acquired.stdout}${acquired.stderr}`);
+  record(sharedLockRun(state.fleet).line);
+  git(state.fleet, ["remote", "set-url", "origin", join(state.lab, "not-a-repository.git")]);
+  record(sharedLockRun(state.fleet).line);
+
+  for (const entry of observed) {
+    assert.ok(
+      SHARED_LOCK_STATUS_TOKENS.includes(entry.token),
+      `${entry.token} is not one of the declared statuses ${SHARED_LOCK_STATUS_TOKENS.join(", ")}`,
+    );
+  }
+  assert.deepEqual(
+    [...new Set(observed.map((entry) => entry.token))].sort(),
+    [...SHARED_LOCK_STATUS_TOKENS].sort(),
+    "the four declared statuses were not all reached, so this assertion is vacuous",
+  );
+  for (const entry of observed) {
+    if (entry.token === "unreachable") {
+      assert.notEqual(entry.status, "PASS", "an unreachable register was reported as PASS");
+    } else {
+      assert.equal(entry.status, "PASS", `${entry.token} was not reported as PASS`);
+    }
+  }
+});
+
+/**
+ * THE PROMOTION IS TWO HALVES AND BOTH ARE ASSERTED HERE, because a
+ * promotion wired to a condition name nothing emits is a guard that cannot
+ * go red, and reading only the table cannot see it.
+ *
+ * Half one: the table. Only `full` promotes the condition. A check promoted
+ * everywhere fails a fleet that never needed it, which is how a check gets
+ * switched off (hazard H-D); a check promoted nowhere cannot make
+ * `--for full` say the fleet is not ready.
+ *
+ * Half two: the check EMITS that exact condition string in the state the
+ * promotion is for. The fixture is a directory carrying nothing but a
+ * package.json with an unusable declaration, which is enough because the
+ * declaration is read before any git call, and that is also the evidence
+ * that a fleet which never opted in pays no subprocess for this check.
+ */
+test("the shared-lock condition the check emits is the one only the full profile promotes", (t) => {
+  const promoting = Object.entries(PROFILES)
+    .filter(([, conditions]) => conditions.includes("shared-lock-unreachable"))
+    .map(([profile]) => profile);
+  assert.deepEqual(promoting, ["full"]);
+  assert.ok(
+    Object.keys(PROFILES).length > 1,
+    "the walk must see more than one profile or it is vacuous",
+  );
+
+  const dir = makeTempDir(t);
+  writeFileSync(
+    join(dir, "package.json"),
+    `${JSON.stringify({ name: "fleet", tiphys: { sharedExclusion: 5 } }, null, 2)}\n`,
+    "utf8",
+  );
+  const emitted = checkSharedLock(dir);
+  assert.equal(emitted.status, "WARN");
+  assert.equal(emitted.condition, "shared-lock-unreachable");
+  assert.ok(emitted.detail.startsWith("unreachable "), emitted.detail);
+
+  // The control: a directory with no declaration emits no condition at all,
+  // so the assertion above is about the unreachable arm and not about every
+  // arm of the check.
+  const off = makeTempDir(t);
+  writeFileSync(join(off, "package.json"), `${JSON.stringify({ name: "fleet" }, null, 2)}\n`, "utf8");
+  assert.equal(checkSharedLock(off).status, "PASS");
+  assert.equal(checkSharedLock(off).condition, undefined);
 });

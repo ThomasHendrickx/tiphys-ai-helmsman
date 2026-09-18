@@ -764,3 +764,206 @@ export function buildRegisterDocument(input: {
     ref: input.ref,
   };
 }
+
+/* ------------------------------------------------------------------ */
+/* What the rest of the kernel asks the register (M4-P22)              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE FOUR STATUSES, AS A CLOSED SET (M4-P22 criterion 1).
+ *
+ * `doctor` prints exactly one of them and a test compares the printed
+ * leading token against this array, so a fifth status cannot be added by
+ * writing a new sentence somewhere: it has to be added here, where the
+ * comparison sees it.
+ *
+ * THE FOURTH IS NEVER PASS. That is the DR-0038 shape reused rather than
+ * reinvented: a check whose question could not be asked reports a third
+ * state instead of being forced into a binary, because an unreachable
+ * register reported as `free` would license exactly the second live
+ * orchestrator this layer exists to refuse
+ * (delivery/decisions/DR-0038-the-declared-single-family-review-exception.md:1).
+ */
+export const SHARED_LOCK_STATUS_TOKENS = [
+  "not-declared",
+  "free",
+  "held",
+  "unreachable",
+] as const;
+
+export type SharedLockStatusToken = (typeof SHARED_LOCK_STATUS_TOKENS)[number];
+
+export type SharedLockStatus =
+  | { token: "not-declared"; text: string }
+  | { token: "free"; text: string }
+  | { token: "held"; envId: string; expiresAt: string; text: string }
+  | { token: "unreachable"; reason: string; text: string };
+
+function unreachableStatus(reason: string): SharedLockStatus {
+  return { token: "unreachable", reason, text: `unreachable ${reason}` };
+}
+
+/**
+ * A PURE READ of this environment's identity: it never generates one.
+ *
+ * `ensureEnvironmentId` above writes a file when none is there, which is
+ * right for `lock acquire`, the command that legitimately enters the layer
+ * and is about to publish a register document. It is wrong for a GUARD: a
+ * refusal must create nothing, and `doctor` must diagnose a fleet without
+ * changing it. An absent identity file therefore reads as "this environment
+ * is not the one the register names", which is the fail-closed answer.
+ */
+export function readEnvironmentId(fleetRoot: string): string | undefined {
+  const read = readJsonFile(join(fleetRoot, ENVIRONMENT_ID_FILE));
+  if (!read.ok) {
+    return undefined;
+  }
+  const value = read.value as Record<string, unknown> | null;
+  const existing = value === null ? undefined : value["envId"];
+  return typeof existing === "string" && existing !== "" ? existing : undefined;
+}
+
+/**
+ * The register's state as one of the four statuses, WITHOUT writing an
+ * observation and WITHOUT generating an identity.
+ *
+ * `preflightShared` is deliberately not used here even though it answers a
+ * similar question, because it WRITES `state/shared-lease.observed.json` as
+ * part of judging staleness. A diagnosis that moves the thing it diagnoses
+ * is not a diagnosis, and the staleness judgement is not wanted here anyway:
+ * see `guardSharedRegister` below for why a stale holder still refuses.
+ *
+ * It DOES fetch, because `readRegister` fetches: the register object has to
+ * be local before its document can be read. That touches `.git/FETCH_HEAD`
+ * in the fleet home and nothing else, and it is stated here rather than left
+ * for a reader to discover.
+ *
+ * TWO CONDITIONS COLLAPSE INTO `unreachable` AND BOTH ARE NAMED IN THE
+ * REASON. A declaration that is present and unusable, and a register whose
+ * document does not parse, are not `free` and cannot be rendered as
+ * `held <envId> until <t>` because neither yields an envId or an expiry. The
+ * criterion's set is closed at four, so they take the one status that means
+ * "this question could not be answered", and the reason says which of them
+ * it was.
+ */
+export function sharedLockStatus(fleetRoot: string): SharedLockStatus {
+  const declaration = readSharedExclusion(fleetRoot);
+  if (declaration.kind === "absent") {
+    return {
+      token: "not-declared",
+      text:
+        `not-declared (${SHARED_EXCLUSION_FIELD} is absent from this fleet ` +
+        `home's package.json, so the cross-environment layer is off here)`,
+    };
+  }
+  if (declaration.kind === "invalid") {
+    return unreachableStatus(
+      `the declaration naming the register is unusable: ${declaration.reason}`,
+    );
+  }
+  const config = declaration.config;
+  const where = `register ${config.ref} on ${config.remote}`;
+  const read = readRegister(fleetRoot, config);
+  if (read.kind === "unreachable") {
+    return unreachableStatus(`${where} could not be read: ${read.reason}`);
+  }
+  if (read.kind === "corrupt") {
+    return unreachableStatus(`${where} is not a lease document: ${read.reason}`);
+  }
+  if (read.kind === "absent") {
+    return { token: "free", text: `free (${where} holds no lease yet)` };
+  }
+  const document = read.document;
+  if (document.state === "free") {
+    return {
+      token: "free",
+      text:
+        `free (${where} was released by environment ${document.envId} at ` +
+        `fencing counter ${String(document.counter)})`,
+    };
+  }
+  return {
+    token: "held",
+    envId: document.envId,
+    expiresAt: document.expiresAt,
+    text:
+      `held ${document.envId} until ${document.expiresAt} (${where}, fencing ` +
+      `counter ${String(document.counter)})`,
+  };
+}
+
+/**
+ * What a task-mutating command is allowed to do, given the register.
+ *
+ * `off` is the fleet that never opted in, and it is returned before any
+ * subprocess is spawned, so nothing about today's behaviour changes for a
+ * fleet home with no declaration.
+ */
+export type SharedMutationVerdict =
+  | { kind: "off" }
+  | { kind: "allowed"; status: SharedLockStatus }
+  | { kind: "refused"; reason: string };
+
+/**
+ * THE CROSS-ENVIRONMENT HALF OF THE HOLDERSHIP GUARD (M4-P22 criteria 2
+ * and 3).
+ *
+ * `checkHoldership` (src/task.ts:439) answers "does THIS process hold THIS
+ * filesystem's lease". That question is answered entirely inside one fleet
+ * home, and src/lock.ts:63 says so: the local lease excludes within one
+ * filesystem and one clock. So in the state this function exists for, the
+ * local lease held by THIS environment and the shared register naming
+ * ANOTHER one, the old guard is GREEN and the fleet has two orchestrators
+ * mutating one set of tasks. That is the dangerous state, and a test that
+ * holds neither lease is green without this function and proves nothing.
+ *
+ * WHY A STALE HOLDER STILL REFUSES. `judgeByCounter` exists so that a lease
+ * whose fencing counter has stood still can be taken over, and that takeover
+ * is a LEASE operation: `tiphys lock acquire --take-over` advances the
+ * counter under the taking-over environment's id, and only then does the
+ * register name this environment. Reading staleness here instead would give
+ * `spawn` and `teardown` their own opinion about who holds the fleet, which
+ * is a second verdict about one lease from a second place, and it would have
+ * to write the observation file to reach it. The refusal names the command
+ * that resolves it, so the remedy is reachable rather than merely correct.
+ *
+ * THE REASON IS ONE LINE, and the callers hand it straight to the same
+ * single-reason path every other refusal uses.
+ */
+export function guardSharedRegister(
+  fleetRoot: string,
+  command: string,
+): SharedMutationVerdict {
+  const status = sharedLockStatus(fleetRoot);
+  if (status.token === "not-declared") {
+    return { kind: "off" };
+  }
+  if (status.token === "unreachable") {
+    return {
+      kind: "refused",
+      reason:
+        `shared exclusion refused ${command}: ${status.text}; a register that ` +
+        `cannot be read cannot show whether another environment is running this ` +
+        `fleet, so this refuses rather than falling back to local-only ` +
+        `exclusion; signal=clock, because no fencing counter could be read`,
+    };
+  }
+  if (status.token === "free") {
+    return { kind: "allowed", status };
+  }
+  const mine = readEnvironmentId(fleetRoot);
+  if (mine !== undefined && mine === status.envId) {
+    return { kind: "allowed", status };
+  }
+  return {
+    kind: "refused",
+    reason:
+      `shared exclusion refused ${command}: the shared register names ` +
+      `environment ${status.envId} as holding this fleet until ` +
+      `${status.expiresAt}, and this environment is ` +
+      `${mine ?? "not identified: " + ENVIRONMENT_ID_FILE + " is absent"}; ` +
+      `the local lease is evidence about this filesystem only, so mutating ` +
+      `tasks here would run a second orchestrator over one fleet; take the ` +
+      `fleet over with: tiphys lock acquire --take-over; signal=counter`,
+  };
+}
