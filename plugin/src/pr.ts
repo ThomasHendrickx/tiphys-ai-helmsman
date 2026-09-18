@@ -124,6 +124,15 @@ export const PR_EX_USAGE = 64;
 /** Exit code when the credential is absent. Nonzero, and not the usage code. */
 export const PR_EX_NO_CREDENTIAL = 65;
 
+/**
+ * Exit code when a subcommand's TARGET was not named. Distinct from
+ * `PR_EX_USAGE`, which means the argv did not parse at all, and from
+ * `PR_EX_NO_CREDENTIAL`, which means there was no authority to act: here the
+ * argv parsed and the authority may well be present, and what is missing is
+ * the thing the action would be performed ON.
+ */
+export const PR_EX_NO_TARGET = 66;
+
 const USAGE =
   "usage: pr <open|merge> --repo <owner/name> [--head <branch>] " +
   "[--base <branch>] [--title <text>] [--number <n>]";
@@ -163,9 +172,19 @@ function singleLine(value: unknown): string {
   return String(value).replace(/\s+/g, " ").trim();
 }
 
-/** The argv `pr open` runs, given its flags. */
-export function openArgv(flags: PrFlags): string[] {
-  const args = ["pr", "create", "--repo", flags.repo ?? "", "--fill"];
+/**
+ * The argv `pr open` runs, given its flags.
+ *
+ * THE REQUIRED FLAGS ARE IN THE TYPE, SO THERE IS NO `?? ""` LEFT TO FIRE.
+ * Both builders used to fall back to an EMPTY STRING for a flag the caller had
+ * not supplied, which is how `pr merge --repo owner/name` came to build
+ * `gh pr merge "" --repo owner/name --squash` and exit 0. A default that turns
+ * a missing REQUIRED argument into a positional the other program has to
+ * interpret is the defect; taking the flag as a required field is the removal
+ * of the mechanism rather than of the one instance that was measured.
+ */
+export function openArgv(flags: PrFlags & { repo: string }): string[] {
+  const args = ["pr", "create", "--repo", flags.repo, "--fill"];
   if (flags.head !== undefined) {
     args.push("--head", flags.head);
   }
@@ -179,15 +198,8 @@ export function openArgv(flags: PrFlags): string[] {
 }
 
 /** The argv `pr merge` runs, given its flags. Squash, which is this process's practice. */
-export function mergeArgv(flags: PrFlags): string[] {
-  return [
-    "pr",
-    "merge",
-    flags.number ?? "",
-    "--repo",
-    flags.repo ?? "",
-    "--squash",
-  ];
+export function mergeArgv(flags: PrFlags & { repo: string; number: string }): string[] {
+  return ["pr", "merge", flags.number, "--repo", flags.repo, "--squash"];
 }
 
 /**
@@ -218,16 +230,50 @@ export function runPr(
   }
   const name = subcommand === "open" ? PR_OPEN_COMMAND : PR_MERGE_COMMAND;
 
-  // THE CREDENTIAL CHECK IS BEFORE ANY CHILD IS BUILT. A refusal that had
-  // already spawned something would have exercised the authority it is
-  // refusing to exercise.
+  // THE TARGET CHECK IS BEFORE THE CREDENTIAL CHECK, WHICH IS BEFORE ANY CHILD
+  // IS BUILT, AND THE ORDER IS THE POINT.
+  //
+  // The credential check below already stated this module's principle: a
+  // refusal that had already spawned something would have exercised the
+  // authority it is refusing to exercise. What that check did NOT establish is
+  // WHAT the authority would be exercised on. `pr merge --repo owner/name`
+  // with no `--number` built `gh pr merge "" --repo owner/name --squash` and
+  // returned 0, so the least reversible operation in this package was spawned
+  // with an unvalidated required argument and nothing in this repository says
+  // what an empty pull-request selector selects (`command -v gh` exits 1 in
+  // this container, CLAUDE.md standing warning 6, so that question is not
+  // answered here, and the refusal does not depend on its answer either way).
+  //
+  // It is checked FIRST because a missing target is a property of the argv
+  // alone: answering it before the environment is read means the refusal is
+  // identical whether or not the caller holds a credential, and a caller who
+  // forgot the flag learns that rather than learning about their token.
+  const repo = flags.repo;
+  let buildArgs: () => string[];
+  if (subcommand === "open") {
+    buildArgs = (): string[] => openArgv({ ...flags, repo });
+  } else {
+    const number = flags.number;
+    if (number === undefined) {
+      options.io.stderr(
+        singleLine(
+          `${name}: no pull request was named: --number is required for ` +
+            `merge, and this command refuses rather than letting gh choose ` +
+            `what an empty selector selects for a squash merge`,
+        ),
+      );
+      return PR_EX_NO_TARGET;
+    }
+    buildArgs = (): string[] => mergeArgv({ ...flags, repo, number });
+  }
+
   const credential = resolveCredential(options.env);
   if (!credential.ok) {
     options.io.stderr(singleLine(`${name}: ${credential.reason}`));
     return PR_EX_NO_CREDENTIAL;
   }
 
-  const args = subcommand === "open" ? openArgv(flags) : mergeArgv(flags);
+  const args = buildArgs();
   const result = options.exec("gh", args, prChildEnv(options.env, credential));
   if (result.status === null || result.status === undefined) {
     options.io.stderr(

@@ -24,6 +24,7 @@ export { ADAPTER_NAME, ADAPTER_REQUIRES, claudeCodeAdapter } from "./adapter.ts"
 export {
   PR_CREDENTIAL_NAMES,
   PR_EX_NO_CREDENTIAL,
+  PR_EX_NO_TARGET,
   PR_EX_USAGE,
   PR_MERGE_COMMAND,
   PR_OPEN_COMMAND,

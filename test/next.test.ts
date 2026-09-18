@@ -6,6 +6,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -53,6 +54,12 @@ const refusalCapturePath = join(
   "captures",
   "pr-refuses-without-credential.txt",
 );
+const remoteCapturePath = join(
+  repoRoot,
+  "witness",
+  "captures",
+  "next-remote-only-branch-git.txt",
+);
 
 type Delivery =
   | { kind: "delivered"; how: "ancestor" | "squash" | "patch-equivalent" }
@@ -64,6 +71,9 @@ const nextModule = (await import(new URL("../src/commands/next.ts", import.meta.
   CANNOT_SEE: readonly string[];
   CANNOT_SEE_HEADING: string;
   deliveredElsewhere(contextDir: string, branchRef: string, baseRef: string): Delivery;
+  baseRefOf(
+    projectDir: string,
+  ): { ok: true; ref: string; how: string; doubt?: string } | { ok: false; reason: string };
 };
 
 const prModule = (await import(new URL("../plugin/src/pr.ts", import.meta.url).href)) as {
@@ -71,6 +81,22 @@ const prModule = (await import(new URL("../plugin/src/pr.ts", import.meta.url).h
   PR_MERGE_COMMAND: string;
   PR_CREDENTIAL_NAMES: readonly string[];
   PR_EX_NO_CREDENTIAL: number;
+  PR_EX_NO_TARGET: number;
+  PR_EX_USAGE: number;
+  openArgv(flags: { repo: string; head?: string; base?: string; title?: string }): string[];
+  mergeArgv(flags: { repo: string; number: string }): string[];
+  runPr(
+    argv: string[],
+    options: {
+      env: Readonly<Record<string, string | undefined>>;
+      io: { stderr(line: string): void; stdout(line: string): void };
+      exec: (
+        program: string,
+        args: string[],
+        env: Record<string, string>,
+      ) => { status: number | null; reason?: string };
+    },
+  ): number;
   resolveCredential(
     env: Readonly<Record<string, string | undefined>>,
   ): { ok: true; name: string; value: string } | { ok: false; reason: string };
@@ -584,6 +610,292 @@ test(
 );
 
 /* ------------------------------------------------------------------ */
+/* Round 1: empty by construction is not empty by observation           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE MECHANISM THESE THREE TESTS GUARD, stated once.
+ *
+ * A CATEGORY THAT IS EMPTY BY CONSTRUCTION MUST NOT BE REPORTED AS A CATEGORY
+ * THAT IS EMPTY BY OBSERVATION. The first version of `tiphys next` enforced
+ * that at CATEGORY granularity only: the three `readdirSync` failures were
+ * recorded, and every place a single CANDIDATE left a walk was silent. Four
+ * such places were measured, and each of them printed `in flight: 0`,
+ * `unknown: 0` and exit 0 over real work.
+ *
+ * Each test below drives the dangerous STATE, not the absent feature, and each
+ * carries its own green control in the same body, because a test that only
+ * ever sees the broken fixture cannot tell a fix from a fixture that stopped
+ * being dangerous.
+ */
+
+test(
+  "next records a task whose meta.json did not read as a task record rather than counting it as zero",
+  (t) => {
+    const fleet = makeFleet(t);
+    const taskDir = join(fleet.root, "tasks", "t-0001");
+    mkdirSync(taskDir, { recursive: true });
+    const metaPath = join(taskDir, "meta.json");
+
+    // GREEN CONTROL FIRST, so the red below is attributable to the record and
+    // not to the presence of a task directory at all. A CLOSED task reads, so
+    // its status IS established, and it belongs in neither category.
+    openTaskMeta(fleet, "t-0001", join(fleet.projects, "demo"));
+    const closed = JSON.parse(readFileSync(metaPath, "utf8")) as Record<string, unknown>;
+    closed["status"] = "closed";
+    writeFileSync(metaPath, `${JSON.stringify(closed, null, 2)}\n`);
+    const control = runNext(fleet);
+    assert.equal(control.status, 0, control.stdout + control.stderr);
+    assert.match(control.stdout, /^unknown: 0$/m);
+    assert.match(control.stdout, /^in flight: 0$/m);
+
+    // TWO STRUCTURALLY DIFFERENT MEMBERS OF THE SAME CLASS, and they are
+    // different because they reach `readTaskMeta`'s single `undefined` by
+    // DIFFERENT ROUTES: one never parses (src/task.ts:390), the other parses
+    // and fails the field check (src/task.ts:404). Collapsing them into one
+    // fixture would be one shape twice.
+    const members: [string, string][] = [
+      ["truncated mid-write", '{"id":"t-0001","project":"demo","shape":"ship"'],
+      [
+        "parses and fails the field check",
+        JSON.stringify({
+          id: "t-0001",
+          project: "demo",
+          shape: "ship",
+          branch: "b",
+          worktree: "w",
+          baseSha: "0",
+          baseOffline: false,
+          status: "OPEN",
+          createdAt: "x",
+        }),
+      ],
+    ];
+    for (const [label, body] of members) {
+      writeFileSync(metaPath, body);
+
+      // THE PREMISE IS MEASURED, not assumed: member one must genuinely fail
+      // to parse and member two must genuinely parse, or the pair is one
+      // member twice and this test proves less than it claims.
+      let parses: boolean;
+      try {
+        JSON.parse(readFileSync(metaPath, "utf8"));
+        parses = true;
+      } catch {
+        parses = false;
+      }
+      assert.equal(
+        parses,
+        label !== "truncated mid-write",
+        `${label}: the fixture did not reach readTaskMeta's undefined by the route this member is for`,
+      );
+
+      const run = runNext(fleet);
+      assert.equal(run.status, nextModule.EXIT_WORK_REMAINS, `${label}: ${run.stdout}${run.stderr}`);
+      assert.match(run.stdout, /^unknown: 1$/m, `${label}: ${run.stdout}`);
+      assert.match(
+        run.stdout,
+        /task t-0001: tasks\/t-0001\/meta\.json did not read as a task record/,
+        `${label}: ${run.stdout}`,
+      );
+      assert.match(
+        run.stdout,
+        /next action: MEASURE the category this command could not read/,
+        `${label}: ${run.stdout}`,
+      );
+    }
+  },
+);
+
+/**
+ * The recorded git run this test's premise is parsed out of. Each block is a
+ * command line, its output lines, and its exit code, taken against a clone of
+ * exactly the shape `makeRemoteOnlyProject` builds.
+ */
+function recordedRemoteBlock(command: string): { lines: string[]; exit: number } {
+  const capture = readFileSync(remoteCapturePath, "utf8");
+  const lines = capture.split("\n");
+  const start = lines.indexOf(`$ ${command}`);
+  assert.notEqual(start, -1, `the capture ${remoteCapturePath} has no block for: ${command}`);
+  const body: string[] = [];
+  for (let index = start + 1; index < lines.length; index += 1) {
+    const line = lines[index] ?? "";
+    if (line.startsWith("(exit ")) {
+      return { lines: body, exit: Number.parseInt(line.slice("(exit ".length), 10) };
+    }
+    body.push(line);
+  }
+  assert.fail(`the capture block for ${command} has no exit line`);
+}
+
+/**
+ * An upstream carrying one branch that is genuinely undelivered, and a clone
+ * of it. A CLONE is the point: it is what `tiphys init` and `tiphys resume`
+ * produce, and in it every branch except the checked-out one exists only
+ * under `refs/remotes/`.
+ */
+function makeRemoteOnlyUpstream(parent: string): string {
+  const upstream = join(parent, "upstream");
+  mkdirSync(upstream, { recursive: true });
+  git(upstream, ["init", "-q", "--initial-branch=main"]);
+  commit(upstream, "base.txt", "base\n", "c0");
+  git(upstream, ["checkout", "-qb", "feat-open"]);
+  // REAL CONTENT, NOT AN EMPTY COMMIT. Measured while writing this test: an
+  // empty commit merges into the base without changing its tree, so the
+  // delivered-elsewhere predicate's CONTENT arm answers `delivered` and the
+  // branch is not dangerous at all.
+  commit(upstream, "open.txt", "o1\n", "o1");
+  git(upstream, ["checkout", "-q", "main"]);
+  return upstream;
+}
+
+test(
+  "next reports a remote-only branch and a project reached through a symlink as in flight",
+  (t) => {
+    const parent = makeTempDir(t);
+    const upstream = makeRemoteOnlyUpstream(parent);
+    const fleet = makeFleet(t);
+
+    // MEMBER A: an ordinary clone, whose undelivered branch exists only as a
+    // remote-tracking ref.
+    git(parent, ["clone", "--quiet", upstream, join(fleet.projects, "cloned")]);
+    // MEMBER B, STRUCTURALLY DIFFERENT: the project is reached through a
+    // SYMLINK, so it is dropped by the directory filter one loop earlier,
+    // before any ref in it is looked at. Different candidate, different
+    // filter, same mechanism.
+    const elsewhere = join(parent, "elsewhere");
+    git(parent, ["clone", "--quiet", upstream, elsewhere]);
+    symlinkSync(elsewhere, join(fleet.projects, "linked"));
+
+    // THE PREMISE IS MEASURED AGAINST REAL GIT OUTPUT, and it is measured
+    // TWICE: the recorded run and this fresh clone must agree that the
+    // LOCAL-ONLY walk sees one ref and the full walk sees the branch.
+    const cloned = join(fleet.projects, "cloned");
+    const recordedLocal = recordedRemoteBlock("git for-each-ref --format=%(refname) refs/heads/");
+    const liveLocal = git(cloned, ["for-each-ref", "--format=%(refname)", "refs/heads/"]).stdout
+      .split("\n")
+      .filter((line) => line !== "");
+    assert.deepEqual(liveLocal, recordedLocal.lines);
+    assert.equal(
+      liveLocal.includes("refs/remotes/origin/feat-open"),
+      false,
+      "the local-only walk listed the remote-only branch, so it is not the dangerous state this test assumes",
+    );
+
+    const recordedCherry = recordedRemoteBlock(
+      "git cherry refs/remotes/origin/main refs/remotes/origin/feat-open",
+    );
+    const liveCherry = git(cloned, [
+      "cherry",
+      "refs/remotes/origin/main",
+      "refs/remotes/origin/feat-open",
+    ]).stdout
+      .split("\n")
+      .filter((line) => line !== "")
+      .map((line) => line.split(" ")[0] ?? "");
+    assert.deepEqual(
+      liveCherry,
+      recordedCherry.lines.map((line) => line.split(" ")[0] ?? ""),
+      "the fresh clone's patch-id marks diverged from the recorded run",
+    );
+    assert.deepEqual(liveCherry, ["+"], "the branch is already upstream, so nothing is at stake");
+
+    const run = runNext(fleet);
+    assert.equal(run.status, nextModule.EXIT_WORK_REMAINS, run.stdout + run.stderr);
+    assert.match(
+      run.stdout,
+      /branch refs\/remotes\/origin\/feat-open in project cloned/,
+      run.stdout,
+    );
+    assert.match(
+      run.stdout,
+      /branch refs\/remotes\/origin\/feat-open in project linked/,
+      run.stdout,
+    );
+
+    // AND THE BASE EACH JUDGEMENT USED IS DISCLOSED, which is what makes the
+    // verdict checkable rather than trusted.
+    assert.match(
+      run.stdout,
+      /project cloned: branches judged against refs\/remotes\/origin\/main \(chosen by origin\/HEAD\)/,
+      run.stdout,
+    );
+
+    // NO DOUBLE COUNTING. `refs/heads/main` and `refs/remotes/origin/main`
+    // sit at one sha, and `refs/remotes/origin/HEAD` is a POINTER at the
+    // second; a walk that judged all three would report one branch as three.
+    const reported = run.stdout
+      .split("\n")
+      .filter((line) => line.startsWith("  branch "));
+    assert.equal(reported.length, 2, run.stdout);
+    assert.equal(
+      run.stdout.includes("refs/remotes/origin/HEAD"),
+      false,
+      "the symbolic ref was judged as a branch of its own",
+    );
+  },
+);
+
+test(
+  "next records a doubt when origin/HEAD and a conventional default branch disagree",
+  (t) => {
+    const parent = makeTempDir(t);
+    const upstream = makeRemoteOnlyUpstream(parent);
+    const fleet = makeFleet(t);
+    const askew = join(fleet.projects, "askew");
+    git(parent, ["clone", "--quiet", upstream, askew]);
+
+    // GREEN CONTROL, in the same body: before origin/HEAD is moved, the same
+    // clone resolves its base with no doubt at all.
+    const before = nextModule.baseRefOf(askew);
+    assert.equal(before.ok, true);
+    assert.equal(
+      (before as { doubt?: string }).doubt,
+      undefined,
+      "an untouched clone already carried a doubt, so the red below is not attributable to the move",
+    );
+
+    git(askew, ["symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/feat-open"]);
+
+    // THE DANGEROUS STATE IS MEASURED, not assumed: the mis-pointed base is
+    // one the branch walk CANNOT rescue, because the real default is an
+    // ANCESTOR of it and therefore reads as delivered. This assertion is why
+    // the fix is a recorded doubt and not a cleverer walk.
+    const ancestor = spawnSync(
+      "git",
+      [
+        "-C",
+        askew,
+        "merge-base",
+        "--is-ancestor",
+        "refs/remotes/origin/main",
+        "refs/remotes/origin/feat-open",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(
+      ancestor.status,
+      0,
+      "the real default is not an ancestor of the mis-pointed base, so the walk would have rescued this and the doubt is not the thing under test",
+    );
+
+    const run = runNext(fleet);
+    assert.equal(run.status, nextModule.EXIT_WORK_REMAINS, run.stdout + run.stderr);
+    assert.match(run.stdout, /^unknown: 1$/m, run.stdout);
+    assert.match(
+      run.stdout,
+      /project askew: origin\/HEAD points at refs\/remotes\/origin\/feat-open while refs\/remotes\/origin\/main also exists/,
+      run.stdout,
+    );
+    assert.match(
+      run.stdout,
+      /project askew: branches judged against refs\/remotes\/origin\/feat-open/,
+      run.stdout,
+    );
+  },
+);
+
+/* ------------------------------------------------------------------ */
 /* Criterion 5: the plugin's pull-request capability                    */
 /* ------------------------------------------------------------------ */
 
@@ -778,6 +1090,82 @@ test(
   },
 );
 
+test(
+  "pr merge refuses without a --number, before any credential is read and with no child built",
+  () => {
+    const spawned: string[][] = [];
+    const stderr: string[] = [];
+    const stdout: string[] = [];
+    const io = {
+      stderr: (line: string) => stderr.push(line),
+      stdout: (line: string) => stdout.push(line),
+    };
+    const exec = (program: string, args: string[]): { status: number } => {
+      spawned.push([program, ...args]);
+      return { status: 0 };
+    };
+
+    // THE DANGEROUS STATE, AND IT IS THE ARGV THAT WAS BUILT, NOT THE ABSENCE
+    // OF A CHECK. Before this refusal, `pr merge --repo owner/name` built
+    // `gh pr merge "" --repo owner/name --squash`, spawned it and returned 0:
+    // the least reversible operation in this package, run with an unvalidated
+    // required argument. What an empty pull-request selector selects is not
+    // established anywhere in this repository, which is the reason to refuse
+    // rather than a reason to wait.
+    const refused = prModule.runPr(["merge", "--repo", "owner/name"], {
+      env: { GH_TOKEN: "a-credential-that-must-not-matter-here" },
+      io,
+      exec,
+    });
+    assert.notEqual(refused, 0, "pr merge with no --number returned success");
+    assert.equal(refused, prModule.PR_EX_NO_TARGET);
+    assert.notEqual(prModule.PR_EX_NO_TARGET, prModule.PR_EX_NO_CREDENTIAL);
+    assert.deepEqual(spawned, [], "a child was built for a merge with no pull request named");
+    assert.deepEqual(stdout, [], "the refusal wrote to stdout");
+    assert.equal(stderr.length, 1, `the refusal wrote ${String(stderr.length)} lines`);
+    assert.match(stderr[0] ?? "", /--number is required for merge/);
+
+    // AND THE REFUSAL DOES NOT DEPEND ON THE CREDENTIAL, which is what "before
+    // the credential is read" means as an assertion rather than as a comment:
+    // the same argv with NO credential at all gets the same code and the same
+    // line, so a caller who forgot the flag is told about the flag.
+    stderr.length = 0;
+    const refusedWithout = prModule.runPr(["merge", "--repo", "owner/name"], {
+      env: {},
+      io,
+      exec,
+    });
+    assert.equal(refusedWithout, prModule.PR_EX_NO_TARGET);
+    assert.deepEqual(spawned, []);
+    assert.match(stderr[0] ?? "", /--number is required for merge/);
+
+    // GREEN CONTROL: the same call WITH a target builds the argv and spawns.
+    stderr.length = 0;
+    const accepted = prModule.runPr(["merge", "--repo", "owner/name", "--number", "7"], {
+      env: { GH_TOKEN: "t" },
+      io,
+      exec,
+    });
+    assert.equal(accepted, 0, stderr.join(" "));
+    assert.deepEqual(spawned, [["gh", "pr", "merge", "7", "--repo", "owner/name", "--squash"]]);
+
+    // NO BUILDER MAY EMIT AN EMPTY POSITIONAL AT ALL. This is the mechanism
+    // rather than the one instance: both builders used to fall back to `""`
+    // for a flag the caller had not supplied.
+    for (const argv of [
+      prModule.openArgv({ repo: "owner/name" }),
+      prModule.openArgv({ repo: "owner/name", head: "h", base: "b", title: "t" }),
+      prModule.mergeArgv({ repo: "owner/name", number: "7" }),
+    ]) {
+      assert.equal(
+        argv.includes(""),
+        false,
+        `a built argv carries an empty element: ${JSON.stringify(argv)}`,
+      );
+    }
+  },
+);
+
 /* ------------------------------------------------------------------ */
 /* Criterion 6: no kernel code path invokes either command              */
 /* ------------------------------------------------------------------ */
@@ -795,11 +1183,30 @@ function sourceFilesUnder(root: string): string[] {
   return found;
 }
 
+/**
+ * WHAT THIS CHECK LOOKS FOR, AND WHY IT IS NOT JUST THE COMMAND NAMES.
+ *
+ * As first written it matched three literals: the two command NAMES and the
+ * relative module path. A kernel module that did
+ * `import { runPr } from "@tiphys/claude-code-plugin"` and called
+ * `runPr(["merge", ...])` contains none of the three, so the class the
+ * criterion is about, A KERNEL CODE PATH INVOKING THE PLUGIN CAPABILITY, had
+ * no member the check could see. The entry-point IDENTIFIER and an IMPORT of
+ * the package by name are added for that, and the import is matched as a
+ * STATEMENT rather than as a substring: `src/commands/init.ts:22` names the
+ * package in prose, correctly, and a bare substring would redden on it.
+ */
+const PLUGIN_INVOCATION_TOKENS = ["plugin/src/pr", "runPr"];
+const PLUGIN_IMPORT_PATTERNS = [
+  /from\s*["']@tiphys\/claude-code-plugin["']/,
+  /import\s*\(\s*["']@tiphys\/claude-code-plugin["']/,
+];
+
 test("no kernel code path under src or bin names either plugin pull-request command", () => {
   const tokens = [
     prModule.PR_OPEN_COMMAND,
     prModule.PR_MERGE_COMMAND,
-    "plugin/src/pr",
+    ...PLUGIN_INVOCATION_TOKENS,
   ];
   const files = [
     ...sourceFilesUnder(join(repoRoot, "src")),
@@ -814,8 +1221,36 @@ test("no kernel code path under src or bin names either plugin pull-request comm
         hits.push(`${file}: ${token}`);
       }
     }
+    for (const pattern of PLUGIN_IMPORT_PATTERNS) {
+      if (pattern.test(body)) {
+        hits.push(`${file}: ${pattern.source}`);
+      }
+    }
   }
   assert.deepEqual(hits, [], "a kernel source names the plugin's pull-request capability");
+
+  // THE CHECK MUST BE ABLE TO SEE THE DEFECT IT IS ABOUT. A grep that no real
+  // invocation would trip is a guard that cannot go red, so the shape of a
+  // real one is run past the same matcher here rather than only through the
+  // witness's mutants.
+  const realInvocation =
+    'import { runPr } from "@tiphys/claude-code-plugin";\n' +
+    "export function merge(): number {\n" +
+    '  return runPr(["merge", "--repo", "o/n", "--number", "1"], options);\n' +
+    "}\n";
+  const caught =
+    tokens.some((token) => realInvocation.includes(token)) ||
+    PLUGIN_IMPORT_PATTERNS.some((pattern) => pattern.test(realInvocation));
+  assert.equal(caught, true, "the criterion-6 matcher does not detect a real invocation");
+
+  // AND IT MUST NOT REDDEN ON A MENTION. src/commands/init.ts names the
+  // package in a comment and that is not an invocation.
+  const mention = ' * the `@tiphys` scope, `@tiphys/kernel` and `@tiphys/claude-code-plugin`).\n';
+  assert.equal(
+    PLUGIN_IMPORT_PATTERNS.some((pattern) => pattern.test(mention)),
+    false,
+    "the import matcher reddens on a prose mention of the package",
+  );
 });
 
 test(
