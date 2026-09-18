@@ -21,8 +21,8 @@
     {
       "kind": "mutation",
       "file": "src/commands/next.ts",
-      "find": "const USAGE = \"usage: tiphys next\";",
-      "replace": "const USAGE = \"usage: tiphys next\";\nimport { runPr } from \"../../plugin/src/pr.ts\";\nexport function mergeThePullRequest(): number {\n  return runPr([\"merge\", \"--repo\", \"o/n\", \"--number\", \"1\"], {\n    env: process.env,\n    io: { stderr: () => undefined, stdout: () => undefined },\n    exec: () => ({ status: 0 }),\n  });\n}"
+      "find": "export const EXIT_WORK_REMAINS = 3;",
+      "replace": "export const EXIT_WORK_REMAINS = 3;\nimport { runPr } from \"../../plugin/src/pr.ts\";\nexport function mergeThePullRequest(): number {\n  return runPr([\"merge\", \"--repo\", \"o/n\", \"--number\", \"1\"], {\n    env: process.env,\n    io: { stderr: () => undefined, stdout: () => undefined },\n    exec: () => ({ status: 0 }),\n  });\n}"
     }
   ],
   "deterministic": true,
