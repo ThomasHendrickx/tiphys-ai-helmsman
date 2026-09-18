@@ -1,0 +1,31 @@
+{
+  "id": "plugin-runtime-packages-declared-for-consumers",
+  "behavior": "plugin-runtime-packages-declared-for-consumers",
+  "tests": [
+    "every package the shipped plugin resolves is declared in a consumer-installed stanza"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/package.json",
+      "find": "  \"peerDependencies\": {\n    \"@tiphys/kernel\": \"^0.1.0\"\n  },\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/status.ts",
+      "find": "    manifestPath = resolve.resolve(\"@tiphys/kernel/package.json\");\n",
+      "replace": "    manifestPath = resolve.resolve(\"@tiphys/kernel/package.json\");\n    void resolve.resolve(\"some-undeclared-helper/index.js\");\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "npm pack, then tar; the manifest and the code the assertion reads are the ones extracted from the real tarball a consumer receives",
+    "captures": [
+      "witness/captures/m4-p9-pretooluse-payloads.txt"
+    ],
+    "provenance": "The two members are structurally different halves of one mechanism: the first takes away the declaration while the resolution stays, and the second adds a resolution while the declaration stays, so a guard that only ever read one side of the comparison is red under exactly one of them."
+  }
+}

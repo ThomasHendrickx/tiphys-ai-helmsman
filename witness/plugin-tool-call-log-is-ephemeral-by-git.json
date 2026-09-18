@@ -1,0 +1,31 @@
+{
+  "id": "plugin-tool-call-log-is-ephemeral-by-git",
+  "behavior": "plugin-tool-call-log-is-ephemeral-by-git",
+  "tests": [
+    "git itself reports the tool-call log ephemeral in a real tiphys init fleet, and the task directory durable"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/tool-call-observer.ts",
+      "find": "  const logDir = join(fleetRoot, ...TOOL_CALL_LOG_DIR);\n",
+      "replace": "  const logDir = taskDir;\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/tool-call-observer.ts",
+      "find": "export const TOOL_CALL_LOG_DIR = [\"state\", \"tool-calls\"] as const;\n",
+      "replace": "export const TOOL_CALL_LOG_DIR = [\"status\", \"tool-calls\"] as const;\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git check-ignore --no-index -v, asked in a fleet home that tiphys init really created",
+    "captures": [
+      "witness/captures/m4-p9-pretooluse-payloads.txt"
+    ],
+    "provenance": "The ephemeral question is put to git against the .gitignore tiphys init writes from FLEET_IGNORED, which is the same file and the same command tiphys sync classifies with, rather than to a string comparison between two constants that could both drift together."
+  }
+}

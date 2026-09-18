@@ -1,0 +1,24 @@
+{
+  "id": "plugin-bypass-path-list-is-not-the-project-root",
+  "behavior": "plugin-bypass-path-list-is-not-the-project-root",
+  "tests": [
+    "a write bypass whose path list names the project root is refused, and a genuine subtree still applies"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  const rootEntry = bypass.paths.find((entry) => resolve(entry) === projectRoot);\n",
+      "replace": "  const rootEntry = undefined as string | undefined;\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/project-write-block.ts",
+      "find": "  const rootEntry = bypass.paths.find((entry) => resolve(entry) === projectRoot);\n",
+      "replace": "  const rootEntry = bypass.paths.find((entry) => entry === projectRoot);\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

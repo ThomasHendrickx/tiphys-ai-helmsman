@@ -1,0 +1,31 @@
+{
+  "id": "plugin-tool-call-log-is-not-published-by-sync",
+  "behavior": "plugin-tool-call-log-is-not-published-by-sync",
+  "tests": [
+    "a secret the observer captured verbatim does not reach the fleet remote, in a Bash command or in a Write body"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/tool-call-observer.ts",
+      "find": "  const logDir = join(fleetRoot, ...TOOL_CALL_LOG_DIR);\n",
+      "replace": "  const logDir = taskDir;\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/hooks/tool-call-observer.ts",
+      "find": "export const TOOL_CALL_LOG_DIR = [\"state\", \"tool-calls\"] as const;\n",
+      "replace": "export const TOOL_CALL_LOG_DIR = [\"status\", \"tool-calls\"] as const;\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "tiphys init, tiphys sync and git, all run for real against a real bare remote; the verdict is git cat-file --batch-all-objects over the remote's whole object database",
+    "captures": [
+      "witness/captures/m4-p9-pretooluse-payloads.txt"
+    ],
+    "provenance": "The payload shapes are the captured PreToolUse shapes, a Bash command and a Write body, and the search for the secret is over every object in the remote rather than over one ref, with a positive control asserting the dump is non-empty so a search that found nothing because it searched nothing cannot read as clean."
+  }
+}
