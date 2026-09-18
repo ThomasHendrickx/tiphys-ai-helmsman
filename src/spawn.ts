@@ -4,6 +4,7 @@ import { constants } from "node:os";
 import { BUILT_IN_ADAPTER_NAME, selectAdapter } from "./adapters/load.ts";
 import { assembleBrief } from "./brief.ts";
 import { buildChildEnv, refuseExtraAllowlist, scrubRoot } from "./exec/env.ts";
+import { guardSharedRegister } from "./exclusion.ts";
 import type { ChildEnvExtension } from "./exec/env.ts";
 import type { Fleet } from "./fleet.ts";
 import { writeTurnEndHook } from "./hooks.ts";
@@ -886,6 +887,25 @@ export async function spawnTask(
   const holdership = checkHoldership(fleet);
   if (!holdership.ok) {
     return { ok: false, reason: holdership.reason };
+  }
+
+  /* THE CROSS-ENVIRONMENT HALF OF THE SAME GUARD (M4-P22 criterion 2), and
+     it runs here rather than inside `checkHoldership` because the two answer
+     different questions and one of them spawns git. `checkHoldership` above
+     has ALREADY RETURNED OK in the state this refuses: the local lease is
+     held by this environment, with TIPHYS_HOLDER_ID matching, while the
+     shared register names another environment. That is precisely M4-P20's
+     measured dangerous state, two clones of one fleet remote each holding a
+     live lease, and the local check has no evidence of it because `state/`
+     is gitignored so the lease artifact never travels (src/fleet.ts:29).
+
+     IT IS BEFORE pool create, before the task directory, before the brief and
+     before any executor, so the refusal creates nothing, which is the same
+     ordering rule the adapter and id-reuse refusals above follow. A fleet
+     with no declaration gets `off` before any subprocess is spawned. */
+  const sharedGuard = guardSharedRegister(fleet.root, "spawn");
+  if (sharedGuard.kind === "refused") {
+    return { ok: false, reason: sharedGuard.reason };
   }
 
   const command = parseExecCommand(options.exec);

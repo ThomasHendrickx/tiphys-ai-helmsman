@@ -1,0 +1,31 @@
+{
+  "id": "shared-lock-doctor-statuses-reproduced",
+  "behavior": "shared-lock-doctor-statuses-reproduced",
+  "tests": [
+    "doctor CHECK shared-lock reproduces every recorded status against a live register"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/exclusion.ts",
+      "find": "function unreachableStatus(reason: string): SharedLockStatus {\n  return { token: \"unreachable\", reason, text: `unreachable ${reason}` };\n}",
+      "replace": "function unreachableStatus(reason: string): SharedLockStatus {\n  return { token: \"free\", reason, text: `free ${reason}` };\n}"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "  if (status.token === \"unreachable\") {\n    return {\n      name: \"shared-lock\",\n      status: \"WARN\",",
+      "replace": "  if (status.token === \"unreachable\") {\n    return {\n      name: \"shared-lock\",\n      status: \"PASS\","
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "tiphys doctor, over git ls-remote / git fetch / git cat-file",
+    "captures": [
+      "witness/captures/m4-p22-shared-lock-doctor-cli.txt"
+    ],
+    "provenance": "CHECK shared-lock classifies the output of git, which src/exclusion.ts spawns to read the register, and SPAWN_GREP matches src/exclusion.ts, src/commands/doctor.ts, src/spawn.ts and src/teardown.ts, so red-witness rule (f) binds every witness here. The cited capture is REAL output of the shipped `tiphys doctor`, taken 2026-09-17 on node v26.6.0 with git 2.43.0 against fleet homes built by the kernel's own `tiphys init` and a real bare remote reached over the file transport. It records all four statuses and the two reasons that collapse into the fourth, with the exit code of each invocation. The named test rebuilds that fixture by the same steps, substitutes only the three values the capture marks as varying per run (<ENVID>, <EXPIRES>, <LAB>), and compares the live CHECK line byte for byte. The unreachable reason embeds git's own `fatal: ... does not appear to be a git repository`, which is exactly the string a hand-written expectation would have had to guess, and T-003 records what guessing it costs. The two members are structurally different halves of one class. Member 0 keeps the check wired up and makes the exclusion module report an UNREACHABLE register as `free`, which is the fail-open conflation that would license a second live orchestrator; member 1 leaves the classification correct and makes doctor print it as PASS, which is the H-C shape where the one fact that mattered is absorbed into a green line an operator scans past."
+  }
+}

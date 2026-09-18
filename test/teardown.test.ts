@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
@@ -1413,4 +1414,492 @@ test("this fix round's new teardown behaviors are registered in test/behaviors.j
       `behavior ${id} does not resolve in test/behaviors.json`,
     );
   }
+});
+
+/* ================================================================== */
+/* M4-P22: the shared exclusion register (kernel plan M4,              */
+/* delivery/plan/kernel-plan-m4.md:3050).                              */
+/* ================================================================== */
+
+const REGISTER_REF = "refs/heads/tiphys/lease";
+const MINUTE_MS = 60_000;
+
+/**
+ * Command-scoped git settings for the register fixtures, carrying the same
+ * values as test/cross-environment-lock.test.ts:100 for the same reasons:
+ * `protocol.file.allow=always` is what makes the file transport usable for
+ * a fleet remote at all, and `push.negotiate=false` suppresses the
+ * negotiation warning this container's global configuration would otherwise
+ * put on the FIRST stderr line of every push, accepted and refused alike.
+ * Standing warning 5: identity is command-scoped and never global.
+ */
+const REGISTER_GIT_FLAGS = [
+  "-c",
+  "user.name=tiphys-test",
+  "-c",
+  "user.email=test@tiphys.invalid",
+  "-c",
+  "commit.gpgsign=false",
+  "-c",
+  "protocol.file.allow=always",
+  "-c",
+  "push.negotiate=false",
+];
+
+function registerGit(cwd: string, args: string[]): { status: number | null; stdout: string; stderr: string } {
+  const result = spawnSync("git", ["-C", cwd, ...REGISTER_GIT_FLAGS, ...args], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      GIT_TERMINAL_PROMPT: "0",
+      GIT_AUTHOR_NAME: "tiphys-test",
+      GIT_AUTHOR_EMAIL: "test@tiphys.invalid",
+      GIT_COMMITTER_NAME: "tiphys-test",
+      GIT_COMMITTER_EMAIL: "test@tiphys.invalid",
+    },
+  });
+  return { status: result.status, stdout: result.stdout ?? "", stderr: result.stderr ?? "" };
+}
+
+function registerGitOk(cwd: string, args: string[]): string {
+  const result = registerGit(cwd, args);
+  assert.equal(result.status, 0, `git ${args.join(" ")} in ${cwd}: ${result.stderr}`);
+  return result.stdout.trim();
+}
+
+function makeBareRemote(root: string, name: string): string {
+  const remote = join(root, name);
+  mkdirSync(remote, { recursive: true });
+  const init = spawnSync(
+    "git",
+    ["-C", remote, ...REGISTER_GIT_FLAGS, "init", "--bare", "--initial-branch=main", "--quiet"],
+    { encoding: "utf8" },
+  );
+  assert.equal(init.status, 0, init.stderr ?? "");
+  return remote;
+}
+
+/** The register's current value, or "" when the ref is absent. */
+function registerSha(remote: string): string {
+  const result = registerGit(remote, ["rev-parse", "--verify", "--quiet", `${REGISTER_REF}^{commit}`]);
+  return result.status === 0 ? result.stdout.trim() : "";
+}
+
+function registerDocument(remote: string): Record<string, unknown> {
+  const sha = registerSha(remote);
+  assert.notEqual(sha, "", `${REGISTER_REF} must exist on ${remote}`);
+  return JSON.parse(registerGitOk(remote, ["cat-file", "-p", `${sha}:lease.json`])) as Record<
+    string,
+    unknown
+  >;
+}
+
+/** A real fleet home built by the kernel's own init, with the opt-in field. */
+function publishSharedFleet(root: string, remote: string): string {
+  const source = join(root, "fleet-source");
+  const init = runCli(["init", source, "--shared-exclusion"]);
+  assert.equal(init.status, 0, init.stderr);
+  registerGitOk(source, ["remote", "add", "origin", remote]);
+  registerGitOk(source, ["push", "--quiet", "origin", "HEAD:refs/heads/main"]);
+  return source;
+}
+
+/**
+ * Clone the fleet and rebuild the three gitignored directories a clone does
+ * not carry. The absence of `state/` is asserted rather than assumed,
+ * because it is the evidence that the LOCAL lease cannot travel, which is
+ * the whole reason the second layer exists (src/fleet.ts:29).
+ */
+function cloneFleetHome(root: string, remote: string, name: string): string {
+  const target = join(root, name);
+  const result = spawnSync(
+    "git",
+    ["-C", root, ...REGISTER_GIT_FLAGS, "clone", "--quiet", remote, target],
+    { encoding: "utf8" },
+  );
+  assert.equal(result.status, 0, result.stderr ?? "");
+  assert.equal(
+    existsSync(join(target, "state")),
+    false,
+    `a freshly cloned fleet home must not carry state/, but ${join(target, "state")} exists`,
+  );
+  for (const dir of ["state", "worktrees", "projects"]) {
+    mkdirSync(join(target, dir), { recursive: true });
+  }
+  return target;
+}
+
+/** Shorten the stale window so a takeover is reachable inside a test. */
+function declareShortWindow(home: string, staleWindowSeconds: number): void {
+  const path = join(home, "package.json");
+  const document = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  document["tiphys"] = {
+    sharedExclusion: { remote: "origin", ref: REGISTER_REF, staleWindowSeconds },
+  };
+  writeFileSync(path, `${JSON.stringify(document, null, 2)}\n`, "utf8");
+}
+
+/** Remove the opt-in field, which is how the control arm turns the layer off. */
+function undeclareSharedExclusion(home: string): void {
+  const path = join(home, "package.json");
+  const document = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  delete document["tiphys"];
+  writeFileSync(path, `${JSON.stringify(document, null, 2)}\n`, "utf8");
+}
+
+function envIdOf(home: string): string {
+  const raw = JSON.parse(readFileSync(join(home, "tiphys-environment.json"), "utf8")) as {
+    envId?: unknown;
+  };
+  assert.equal(typeof raw.envId, "string");
+  return raw.envId as string;
+}
+
+/** The lease document on this filesystem, which is the only lease the old guard reads. */
+function localLease(home: string): { holderId: string; expiresAt: string } {
+  return JSON.parse(readFileSync(join(home, "state", "orchestrator.lock"), "utf8")) as {
+    holderId: string;
+    expiresAt: string;
+  };
+}
+
+/**
+ * THE DANGEROUS STATE, CONSTRUCTED FROM A REAL TAKEOVER RATHER THAN
+ * ASSERTED (M4-P22 criteria 2 and 3).
+ *
+ * The story is the one that actually happens. Environment A holds the fleet.
+ * Its counter stands still, so environment B takes the fleet over with the
+ * command the kernel ships for it. B's takeover advances the register on the
+ * shared remote and CANNOT touch A's local lease file, because that file is
+ * on A's filesystem and `state/` is gitignored so it never travels. A is now
+ * holding a live local lease over a fleet another environment owns, and
+ * `checkHoldership` (src/task.ts:439) answers yes to the only question it
+ * can ask.
+ *
+ * A's lease is written on a clock ten minutes behind with an hour of
+ * duration, so it is still LIVE against the real clock when the assertions
+ * run: an expired lease would be refused by the old guard and the test would
+ * be measuring that instead.
+ */
+function fleetTakenOverByAnotherEnvironment(
+  t: { after(fn: () => void): void },
+  makeRoot: (t: { after(fn: () => void): void }) => string,
+): { root: string; remote: string; homeA: string; homeB: string; holderA: string; envA: string; envB: string } {
+  const root = makeRoot(t);
+  const remote = makeBareRemote(root, "fleet.git");
+  publishSharedFleet(root, remote);
+  const homeA = cloneFleetHome(root, remote, "env-a");
+  const homeB = cloneFleetHome(root, remote, "env-b");
+  declareShortWindow(homeA, 5);
+  declareShortWindow(homeB, 5);
+
+  const base = Date.now();
+  const acquired = runCli(["lock", "acquire", "--duration", "3600"], {
+    cwd: homeA,
+    env: { ...baseEnv(), TIPHYS_LOCK_TEST_NOW_MS: String(base - 10 * MINUTE_MS) },
+  });
+  assert.equal(acquired.status, 0, `${acquired.stdout}${acquired.stderr}`);
+  const holderA = (acquired.stdout.split("\n")[0] as string).split(" ")[1] as string;
+  const envA = envIdOf(homeA);
+  assert.equal(registerDocument(remote)["envId"], envA);
+
+  // B observes the register once, which is what arms its own stale clock.
+  const observed = runCli(["lock", "acquire"], {
+    cwd: homeB,
+    env: { ...baseEnv(), TIPHYS_LOCK_TEST_NOW_MS: String(base) },
+  });
+  assert.equal(observed.status, 1, observed.stdout);
+
+  // The counter has not moved, so on B's OWN clock the window elapses.
+  const takeover = runCli(["lock", "acquire", "--take-over"], {
+    cwd: homeB,
+    env: { ...baseEnv(), TIPHYS_LOCK_TEST_NOW_MS: String(base + 6000) },
+  });
+  assert.equal(takeover.status, 0, `${takeover.stdout}${takeover.stderr}`);
+  const envB = envIdOf(homeB);
+  const document = registerDocument(remote);
+  assert.equal(document["envId"], envB, "the takeover must move the register to B");
+  assert.equal(document["counter"], 2);
+  assert.notEqual(envA, envB, "the two clones must carry different environment ids");
+
+  // A's LOCAL lease is untouched and still live: the old guard is green here.
+  const lease = localLease(homeA);
+  assert.equal(lease.holderId, holderA);
+  assert.ok(
+    Date.parse(lease.expiresAt) > Date.now(),
+    `A's local lease must still be live, it expires ${lease.expiresAt}`,
+  );
+
+  return { root, remote, homeA, homeB, holderA, envA, envB };
+}
+
+/**
+ * What `tiphys spawn` and `tiphys teardown` really print in the two states
+ * this phase refuses, captured 2026-09-17 from the real commands against a
+ * real two-clone fixture and committed at
+ * `witness/captures/m4-p22-shared-exclusion-refusals.txt`.
+ *
+ * THE ASSERTIONS BELOW COMPARE AGAINST THAT FILE RATHER THAN AGAINST A
+ * HAND-WRITTEN STRING. Red-witness rule (c) and T-003 both say why: an
+ * expectation typed out to match the implementation is indistinguishable
+ * from a fabricated one, and this refusal line embeds git's own stderr.
+ */
+const P22_REFUSAL_CAPTURE = readFileSync(
+  fileURLToPath(
+    new URL("../witness/captures/m4-p22-shared-exclusion-refusals.txt", import.meta.url),
+  ),
+  "utf8",
+);
+
+/** The stderr line and exit code one capture block recorded. */
+function capturedRefusal(
+  heading: string,
+  subs: { lab: string; envA?: string; envB?: string; expires?: string },
+): { line: string; exit: number } {
+  const lines = P22_REFUSAL_CAPTURE.split("\n");
+  const at = lines.indexOf(`== ${heading} ==`);
+  assert.ok(at >= 0, `the capture no longer records "${heading}"`);
+  const block: string[] = [];
+  for (let index = at + 1; index < lines.length; index += 1) {
+    const line = lines[index] as string;
+    if (line.startsWith("== ") && line.endsWith(" ==")) {
+      break;
+    }
+    if (line !== "") {
+      block.push(line);
+    }
+  }
+  const raw = block.find((entry) => entry.startsWith("tiphys "));
+  const exit = block.find((entry) => entry.startsWith("exit="));
+  assert.ok(raw !== undefined, `no command line recorded under "${heading}"`);
+  assert.ok(exit !== undefined, `no exit code recorded under "${heading}"`);
+  let line = raw.split("<LAB>").join(subs.lab);
+  for (const [token, value] of [
+    ["<ENVA>", subs.envA],
+    ["<ENVB>", subs.envB],
+    ["<EXPIRES>", subs.expires],
+  ] as Array<[string, string | undefined]>) {
+    if (value !== undefined) {
+      line = line.split(token).join(value);
+    }
+  }
+  assert.equal(
+    line.includes("<"),
+    false,
+    `an unsubstituted placeholder survived into the expectation: ${line}`,
+  );
+  return { line, exit: Number(exit.slice("exit=".length)) };
+}
+
+/**
+ * CRITERION 3: THE SAME SHAPE FOR TEARDOWN, and the half that matters is
+ * NOTHING REMOVED.
+ *
+ * A teardown that refuses AFTER deleting something has failed in the way
+ * that counts, so the assertion is not on the exit code alone: the worktree
+ * must still be standing, the task must still read open, and the scratch
+ * file inside the worktree must still be there byte for byte.
+ *
+ * The task is a SCOUT with a report, which is the one shape whose teardown
+ * runs to completion inside a test without a landed branch. That makes the
+ * control arm decisive: with the layer switched off the very same teardown
+ * of the very same task exits 0 and the worktree is gone. So the refusal in
+ * arm one is the new layer and nothing else.
+ */
+test("teardown refuses and removes nothing while the shared register names another environment", (t) => {
+  const root = makeTempDir(t);
+  const remote = makeBareRemote(root, "fleet.git");
+  publishSharedFleet(root, remote);
+  const homeA = cloneFleetHome(root, remote, "env-a");
+  const homeB = cloneFleetHome(root, remote, "env-b");
+  declareShortWindow(homeA, 5);
+  declareShortWindow(homeB, 5);
+
+  const upstream = join(root, "upstream");
+  registerGitOk(root, ["init", "--initial-branch=main", upstream]);
+  writeFileSync(join(upstream, "readme.md"), "upstream\n");
+  registerGitOk(upstream, ["add", "-A"]);
+  registerGitOk(upstream, ["commit", "-m", "commit one"]);
+  const projectClone = join(homeA, "projects", "demo");
+  registerGitOk(root, ["clone", "--quiet", upstream, projectClone]);
+  const briefFile = join(root, "brief.md");
+  writeFileSync(briefFile, "# Brief\n\nDo the thing.\n");
+  const stub = join(root, "payload.sh");
+  writeFileSync(stub, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+
+  // A holds the fleet, on a clock ten minutes behind, for an hour: the local
+  // lease is still live by the real clock when the register moves under it.
+  const base = Date.now();
+  const acquired = runCli(["lock", "acquire", "--duration", "3600"], {
+    cwd: homeA,
+    env: { ...baseEnv(), TIPHYS_LOCK_TEST_NOW_MS: String(base - 10 * MINUTE_MS) },
+  });
+  assert.equal(acquired.status, 0, `${acquired.stdout}${acquired.stderr}`);
+  const holderA = (acquired.stdout.split("\n")[0] as string).split(" ")[1] as string;
+  const holderEnv = { ...baseEnv(), TIPHYS_HOLDER_ID: holderA };
+
+  // The scout exists because A spawned it while A still owned the register.
+  const spawned = runCli(
+    [
+      "spawn",
+      "--task",
+      "s-shared",
+      "--project",
+      projectClone,
+      "--brief",
+      briefFile,
+      "--shape",
+      "scout",
+      "--exec",
+      stub,
+    ],
+    { cwd: homeA, env: holderEnv },
+  );
+  assert.equal(spawned.status, 0, `${spawned.stdout}${spawned.stderr}`);
+  const worktree = join(homeA, "worktrees", "s-shared");
+  writeFileSync(join(worktree, "scratch.txt"), "scratch\n");
+  writeFileSync(join(homeA, "tasks", "s-shared", "report.md"), "# Scout report\n");
+
+  // B observes once, then takes the fleet over. A's local lease is on A's
+  // filesystem and cannot be touched by that takeover.
+  const observed = runCli(["lock", "acquire"], {
+    cwd: homeB,
+    env: { ...baseEnv(), TIPHYS_LOCK_TEST_NOW_MS: String(base) },
+  });
+  assert.equal(observed.status, 1, observed.stdout);
+  const takeover = runCli(["lock", "acquire", "--take-over"], {
+    cwd: homeB,
+    env: { ...baseEnv(), TIPHYS_LOCK_TEST_NOW_MS: String(base + 6000) },
+  });
+  assert.equal(takeover.status, 0, `${takeover.stdout}${takeover.stderr}`);
+  const envB = envIdOf(homeB);
+  const envA = envIdOf(homeA);
+  const registered = registerDocument(remote);
+  assert.equal(registered["envId"], envB);
+  const expires = registered["expiresAt"] as string;
+
+  // A's local lease is still live and still A's: the old guard is green.
+  const lease = localLease(homeA);
+  assert.equal(lease.holderId, holderA);
+  assert.ok(Date.parse(lease.expiresAt) > Date.now(), lease.expiresAt);
+
+  /* ARM ONE. */
+  const refused = runCli(["teardown", "--task", "s-shared"], { cwd: homeA, env: holderEnv });
+  assert.notEqual(
+    refused.status,
+    0,
+    "teardown succeeded while the shared register named another environment as " +
+      `holding this fleet: ${refused.stdout}${refused.stderr}`,
+  );
+  const lines = refused.stderr.split("\n").filter((entry) => entry.trim() !== "");
+  assert.equal(lines.length, 1, `expected exactly one reason line, got:\n${refused.stderr}`);
+  const expected = capturedRefusal("teardown: the register names another environment", {
+    lab: root,
+    envA,
+    envB,
+    expires,
+  });
+  assert.equal(lines[0], expected.line);
+  assert.equal(refused.status, expected.exit);
+
+  /* NOTHING REMOVED. */
+  assert.ok(existsSync(worktree), "the refusal removed the worktree");
+  assert.equal(readFileSync(join(worktree, "scratch.txt"), "utf8"), "scratch\n");
+  assert.ok(existsSync(join(homeA, "worktrees", "s-shared.pool.json")), "the pool record is gone");
+  assert.equal(
+    (
+      JSON.parse(readFileSync(join(homeA, "tasks", "s-shared", "meta.json"), "utf8")) as {
+        status: string;
+      }
+    ).status,
+    "open",
+  );
+  assert.equal(
+    registerGitOk(projectClone, ["rev-parse", "refs/heads/task/s-shared"]).length,
+    40,
+    "the scout branch was deleted by a refused teardown",
+  );
+
+  /* ARM TWO, THE CONTROL: the same teardown of the same task with the layer
+     switched off runs to completion, so what refused above is this phase's
+     guard and not any pre-existing teardown rule. */
+  undeclareSharedExclusion(homeA);
+  const done = runCli(["teardown", "--task", "s-shared"], { cwd: homeA, env: holderEnv });
+  assert.equal(done.status, 0, `${done.stdout}${done.stderr}`);
+  assert.equal(existsSync(worktree), false, "the control arm did not remove the worktree");
+  assert.equal(
+    (
+      JSON.parse(readFileSync(join(homeA, "tasks", "s-shared", "meta.json"), "utf8")) as {
+        status: string;
+      }
+    ).status,
+    "closed",
+  );
+});
+
+/**
+ * THE SECOND MEMBER OF CRITERION 3's CLASS: an unreachable register, which
+ * refuses for a structurally different reason (no comparison could be made)
+ * and must still remove nothing.
+ */
+test("teardown refuses and removes nothing when the declared shared register cannot be read", (t) => {
+  const root = makeTempDir(t);
+  const remote = makeBareRemote(root, "fleet.git");
+  publishSharedFleet(root, remote);
+  const homeA = cloneFleetHome(root, remote, "env-a");
+
+  const upstream = join(root, "upstream");
+  registerGitOk(root, ["init", "--initial-branch=main", upstream]);
+  writeFileSync(join(upstream, "readme.md"), "upstream\n");
+  registerGitOk(upstream, ["add", "-A"]);
+  registerGitOk(upstream, ["commit", "-m", "commit one"]);
+  const projectClone = join(homeA, "projects", "demo");
+  registerGitOk(root, ["clone", "--quiet", upstream, projectClone]);
+  const briefFile = join(root, "brief.md");
+  writeFileSync(briefFile, "# Brief\n\nDo the thing.\n");
+  const stub = join(root, "payload.sh");
+  writeFileSync(stub, "#!/bin/sh\nexit 0\n", { mode: 0o755 });
+
+  const spawned = runCli(
+    [
+      "spawn",
+      "--task",
+      "s-unreachable",
+      "--project",
+      projectClone,
+      "--brief",
+      briefFile,
+      "--shape",
+      "scout",
+      "--exec",
+      stub,
+    ],
+    { cwd: homeA },
+  );
+  assert.equal(spawned.status, 0, `${spawned.stdout}${spawned.stderr}`);
+  const worktree = join(homeA, "worktrees", "s-unreachable");
+  writeFileSync(join(homeA, "tasks", "s-unreachable", "report.md"), "# Scout report\n");
+
+  registerGitOk(homeA, ["remote", "set-url", "origin", join(root, "not-a-repository.git")]);
+
+  const refused = runCli(["teardown", "--task", "s-unreachable"], { cwd: homeA });
+  assert.notEqual(
+    refused.status,
+    0,
+    `teardown succeeded with the declared register unreachable: ${refused.stdout}${refused.stderr}`,
+  );
+  const lines = refused.stderr.split("\n").filter((entry) => entry.trim() !== "");
+  assert.equal(lines.length, 1, `expected exactly one reason line, got:\n${refused.stderr}`);
+  const expected = capturedRefusal("teardown: the declared register cannot be read", { lab: root });
+  assert.equal(lines[0], expected.line);
+  assert.equal(refused.status, expected.exit);
+  assert.ok(existsSync(worktree), "the refusal removed the worktree");
+  assert.equal(
+    (
+      JSON.parse(readFileSync(join(homeA, "tasks", "s-unreachable", "meta.json"), "utf8")) as {
+        status: string;
+      }
+    ).status,
+    "open",
+  );
 });
