@@ -592,6 +592,31 @@ Two rules, both mechanical:
    witnessed arm and one unwitnessed arm is the exact shape that broke here, and
    the unwitnessed one is the one that broke.
 
+**AND RULE 1 IS DEFEATED BY MERGING QUICKLY, WHICH IS NOT OBVIOUS AND WAS READ
+AS A RED `main` TWICE.** `.github/workflows/gates.yml` sets
+`group: gates-${{ github.ref }}` with `cancel-in-progress: true`. On a `push`
+event the ref is `refs/heads/main` for EVERY merge, so the group is shared and
+**merge N+1 CANCELS the still-running post-merge run for head N.** Measured
+2026-09-18 on `5ec129e` (M4-P21): `macOS smoke=success`, `gates=cancelled`, and
+a watcher that classifies anything not-success as failure printed `main is red`.
+It was not red. A cancelled run is not a green one either, so neither reading is
+right and the naive watcher cannot tell them apart.
+
+What discharges rule 1 when this happens is stated rather than assumed, because
+it is a weaker claim than the rule's plain words:
+
+- `main` is CUMULATIVE, so a green `push` run at head N+1 exercises the main
+  bundle against a tree that CONTAINS head N's changes. That is evidence the
+  landed work passes the push arm.
+- It is NOT evidence about the intermediate tree at head N, which no one will
+  ever check out. Accepting that is a deliberate trade, not an oversight.
+- So on a cancelled post-merge run: do NOT re-run it and do NOT report red.
+  Verify the CURRENT `main` head's push run to completion, and say in the
+  evidence that head N's own run was cancelled by head N+1.
+
+Waiting for each push run before merging the next pull request also works and
+costs a full CI cycle per merge. Neither is free; pick one and say which.
+
 Corollary, paid for in the same incident: an orchestrator-side hotfix to shared
 harness code IS a fix round and owes the full fix-round contract above. PR #27
 fixed one arm of "the harness assumes a run has a phase" and left the sibling
@@ -693,6 +718,27 @@ history, not the current tree:
 git log --all --oneline -- 'delivery/decisions/DR-nnnn*'
 git log --all --oneline -S'DR-nnnn'
 ```
+
+**THOSE TWO COMMANDS ARE WRITTEN FOR THE `DR-nnnn` SCHEME AND THAT IS WHY THE
+RULE BROKE AGAIN, TWICE, IN THE `T-nnn` ONE.** Measured 2026-09-18: `T-031` and
+`T-032` each carried two unrelated tuition entries on `main` at the same time.
+An allocator working in a scheme with no command reads a binding rule, finds
+nothing to run, and falls back to the highest id they can see, which cannot see
+an id another session has allocated and not yet merged. Recorded as
+delivery/tuition/T-039-two-tuition-ids-each-carried-two-different-entries.md:1.
+
+**Run the script, which covers the two file-per-id schemes and prints the next
+free id in each:**
+
+```
+node scripts/check-id-collisions.mjs
+```
+
+Exit 0 means no live collision; exit 1 names every colliding file. Its TAKEN set
+reads all of history, so a deleted id still counts. It covers `T-nnn` and
+`DR-nnnn` only, because those are the schemes that allocate one FILE per id; the
+rest live inside documents and a filename check is blind to them, so for those
+the two `git log` commands above, with the prefix changed, are still the method.
 
 The schemes:
 

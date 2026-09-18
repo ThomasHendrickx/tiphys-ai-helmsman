@@ -6484,6 +6484,139 @@
         "exit": 1,
         "output": "0"
       }
+    },
+    {
+      "id": "claude-md:and-rule-1-is-defeated-by-merging-quickly-which",
+      "root": "CLAUDE.md",
+      "rule": "CLAUDE.md:595",
+      "kind": "bold-lead",
+      "text": "**AND RULE 1 IS DEFEATED BY MERGING QUICKLY, WHICH IS NOT OBVIOUS AND WAS READ",
+      "group": "merge-not-complete",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel artifact tells a reader that the post-merge run rule can be defeated by the next merge, nor that a cancelled run is a third verdict distinct from green and red; the kernel ships no CI watcher yet, so there is nothing for it to attach to",
+      "dr0029-side": "process",
+      "note": "The qualifier on merge-not-complete. That rule says a merge is not complete until the post-merge push run is observed; this one says the observation can be taken away by a later merge, so the rule as written can be unsatisfiable through no fault of the watcher. Measured on 5ec129e, where a naive watcher printed 'main is red' for a run that was cancelled rather than failed.",
+      "probe": "a cancelled run is not a green one",
+      "verified-by": {
+        "command": "grep -c 'a cancelled run is not a green one' AGENTS.md roles/clean-room-reviewer.md checklists/clean-room.yaml",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/clean-room-reviewer.md:0 / checklists/clean-room.yaml:0"
+      }
+    },
+    {
+      "id": "claude-md:merge-n-1-cancels-the-still-running-post-merge-r",
+      "root": "CLAUDE.md",
+      "rule": "CLAUDE.md:599",
+      "kind": "bold-lead",
+      "text": "**merge N+1 CANCELS the still-running post-merge run for head N.** Measured",
+      "group": "merge-not-complete",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "the mechanism is a property of this repository's workflow file, which is not a retirement root and is not shipped; the kernel carries no equivalent concurrency-group rule because it does not generate workflows",
+      "dr0029-side": "process",
+      "note": "The cause, stated separately from the consequence so a reader can check it: the gates workflow groups by github.ref, and on a push event that ref is refs/heads/main for every merge, so all post-merge runs share one group and cancel-in-progress is true. The side is process rather than project: the workflow file is the cause, but what the rule does is tell a reader why an observation the process requires can vanish.",
+      "probe": "cancel-in-progress",
+      "verified-by": {
+        "command": "grep -c 'cancel-in-progress' AGENTS.md roles/clean-room-reviewer.md checklists/clean-room.yaml",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/clean-room-reviewer.md:0 / checklists/clean-room.yaml:0"
+      }
+    },
+    {
+      "id": "claude-md:main-is-cumulative-so-a-green-push-run-at-head-n",
+      "root": "CLAUDE.md",
+      "rule": "CLAUDE.md:608",
+      "kind": "bullet",
+      "text": "- `main` is CUMULATIVE, so a green `push` run at head N+1 exercises the main",
+      "group": "merge-not-complete",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel artifact states what a later head's run is evidence FOR; the kernel's own evidence model is per-run and has no notion of a cumulative branch",
+      "dr0029-side": "process",
+      "note": "The half that makes the cancelled run survivable. It is the weaker of the two claims the rule makes and it is stated as such, because reading it as 'the cancelled run was fine' is the misreading that would make the qualifier useless.",
+      "probe": "main is CUMULATIVE",
+      "verified-by": {
+        "command": "grep -c 'main is CUMULATIVE' AGENTS.md roles/clean-room-reviewer.md checklists/clean-room.yaml",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/clean-room-reviewer.md:0 / checklists/clean-room.yaml:0"
+      }
+    },
+    {
+      "id": "claude-md:it-is-not-evidence-about-the-intermediate-tree-a",
+      "root": "CLAUDE.md",
+      "rule": "CLAUDE.md:611",
+      "kind": "bullet",
+      "text": "- It is NOT evidence about the intermediate tree at head N, which no one will",
+      "group": "merge-not-complete",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel artifact records the limit of the cumulative reading, and a rule stated without its limit is the shape T-009 exists to prevent one scope up",
+      "dr0029-side": "process",
+      "note": "The deliberate trade. The intermediate tree at head N is never checked out by anyone, so accepting no evidence about it is a choice rather than an oversight, and saying so is what stops the next reader treating the cumulative reading as complete.",
+      "probe": "the intermediate tree at head N",
+      "verified-by": {
+        "command": "grep -c 'the intermediate tree at head N' AGENTS.md roles/clean-room-reviewer.md checklists/clean-room.yaml",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/clean-room-reviewer.md:0 / checklists/clean-room.yaml:0"
+      }
+    },
+    {
+      "id": "claude-md:so-on-a-cancelled-post-merge-run-do-not-re-run-i",
+      "root": "CLAUDE.md",
+      "rule": "CLAUDE.md:613",
+      "kind": "bullet",
+      "text": "- So on a cancelled post-merge run: do NOT re-run it and do NOT report red.",
+      "group": "merge-not-complete",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "the kernel ships no CI watcher, so there is no artifact that could carry the three-way verdict; M4-P24's plugin adapter is the first place a watcher could live",
+      "dr0029-side": "process",
+      "note": "The action, which is the part a busy session needs. Both wrong answers cost something: a re-run costs a CI cycle and proves nothing, and a red report starts an investigation into a defect that does not exist.",
+      "probe": "do NOT re-run it and do NOT report red",
+      "verified-by": {
+        "command": "grep -c 'do NOT re-run it and do NOT report red' AGENTS.md roles/clean-room-reviewer.md checklists/clean-room.yaml",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/clean-room-reviewer.md:0 / checklists/clean-room.yaml:0"
+      }
+    },
+    {
+      "id": "claude-md:those-two-commands-are-written-for-the-dr-nnnn-s",
+      "root": "CLAUDE.md",
+      "rule": "CLAUDE.md:722",
+      "kind": "bold-lead",
+      "text": "**THOSE TWO COMMANDS ARE WRITTEN FOR THE `DR-nnnn` SCHEME AND THAT IS WHY THE",
+      "group": "identifier-schemes",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel artifact records that a rule generalised in prose while its mechanism covers one scheme will break in the uncovered schemes; the kernel's identifier guidance names schemes but ships no allocator check",
+      "dr0029-side": "process",
+      "note": "The mechanism behind T-039 and the reason the entry is not 'the orchestrator forgot'. An allocator who reads a binding rule and finds no command for their own scheme falls back to the highest id they can see, which cannot see an id another session has allocated and not yet merged.",
+      "probe": "finds nothing to run",
+      "verified-by": {
+        "command": "grep -c 'finds nothing to run' AGENTS.md roles/implementer.md roles/investigator.md",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/investigator.md:0"
+      }
+    },
+    {
+      "id": "claude-md:run-the-script-which-covers-the-two-file-per-id",
+      "root": "CLAUDE.md",
+      "rule": "CLAUDE.md:730",
+      "kind": "bold-lead",
+      "text": "**Run the script, which covers the two file-per-id schemes and prints the next",
+      "group": "identifier-schemes",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "the check is a repository script and is not wired into any gate, so there is nothing for a kernel artifact to reference; making it a gate is a registry, manifest and rendered-row change and is tracked rather than claimed",
+      "dr0029-side": "process",
+      "note": "The replacement mechanism. It covers T-nnn and DR-nnnn because those allocate one file per id and a filename check can see them; the other nine schemes live inside documents and stay on the two git log commands above. Its own first draft reported sixteen collisions where there were two, which is recorded in T-039 rather than quietly fixed.",
+      "probe": "check-id-collisions",
+      "verified-by": {
+        "command": "grep -c 'check-id-collisions' AGENTS.md roles/implementer.md roles/investigator.md",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/investigator.md:0"
+      }
     }
   ],
   "retired": [
