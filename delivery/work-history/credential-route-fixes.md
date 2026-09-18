@@ -502,6 +502,19 @@ a single site.
 | test/behaviors.json | four rows, appended |
 | witness/payload-credentials-handover-pointer-values-compared.json | created: the red-witness spec covering src/hooks.ts, two members |
 | witness/captures/turn-end-hook-pointer-record.txt | created: real output of the generated hook in three arms |
+| delivery/tuition/T-042-a-refusal-predicate-that-cannot-see-an-absent-value.md | created: mechanism 1, with the discriminator that separates it from a legitimate optional field |
+| delivery/tuition/T-043-a-record-whose-status-word-was-stronger-than-its-check.md | created: mechanism 2, with the one question that detects it |
+
+**The two tuition entries are filed BECAUSE both mechanisms have now been paid
+for twice here**, which is this repository's own threshold for a written
+mechanism over a remembered rule. Mechanism 1 was already repaired once, in the
+migrations adapter's absent-checksum arm, and nobody carried the lesson across.
+Mechanism 2's second member was found by this round's own derivation in the
+record beside the one the review named. The durability table requires a failure
+mode worth not repeating to be a committed file when it is discovered, not at
+the end, and `scripts/check-id-collisions.mjs` reports `tuition: 43 id(s) taken
+across all history, highest T-043, next free T-044` with `no collisions` after
+they were staged.
 
 ### CR-B-002, the fix
 
@@ -561,6 +574,19 @@ were available:
    kernel knows the expected value exactly, so a hash adds a step and a secret
    to manage for no extra property. It would matter for a name whose value the
    kernel must not learn, and there is no such name in this comparison.
+
+**AN EVIDENCE MAP THAT OMITS A POINTER IS TREATED AS A DIFFERENCE, DELIBERATELY,
+AND IT IS T-042'S LESSON APPLIED TO THIS ROUND'S OWN CODE.** The kernel-written
+hook records all five names with JSON `null` for an unset one, and the built-in
+adapter reports all five the same way, so an omitted key does not arise on
+either shipped source. A third-party adapter could still report a partial map,
+and `compareHandover` then counts the omitted pointer as changed and the spawn
+is refused. Reading the omission as "not compared, so fine" would be exactly the
+mechanism this round exists to close, one file along: absent must not be the
+permissive arm. The cost of the choice is stated rather than hidden: the refusal
+sentence for that case says the pointer did not have the harness-owned value,
+where the more precise statement would be that the adapter never said what it
+had. The behaviour is fail-closed either way and no evidence is discarded.
 
 **No credential material enters the record, which is the constraint the
 original design was protecting, and it is still intact.** `changedRedirections`
@@ -1036,27 +1062,102 @@ pass unchanged.
 **The complete sentence.** Interpreter node **v26.6.0**, from
 `/tmp/claude-0/n26/bin/node`, with `node --version` run in the shell that ran
 the suite. `dist/` **built**: `npm ci` exit 0, `npm run build` exit 0
-immediately before, and `git status --porcelain` afterwards listing only the
-six files this round modifies and nothing generated. Invocation **`npm test`**,
-which package.json expands to `node --test "test/**/*.test.ts"`. Result:
+immediately before, and `git status --porcelain` EMPTY afterwards, which is the
+acceptance criterion that nothing generated is tracked. Invocation **`npm test`**,
+which package.json expands to `node --test "test/**/*.test.ts"`. Head
+2b4b19d, base 9d047a2. Result:
 
 ```
-i tests 1302
+i tests 1309
 i suites 0
-i pass 1302
+i pass 1309
 i fail 0
 i cancelled 0
 i skipped 0
 i todo 0
-i duration_ms 332934.909215
-NPM_TEST_EXIT=0
+i duration_ms 351313.771339
+EXIT=0
 ```
 
-**1302 pass and ZERO SKIPPED.** The skipped count is quoted deliberately, per
+**1309 pass and ZERO SKIPPED.** The skipped count is quoted deliberately, per
 standing warning 12: a bare "exit 0" does not distinguish a passing test from a
 skipped one, and this repository has paid three times for an unexplained suite
-count. The base at cbc34f1 reports 1298 with the same interpreter, build state
-and invocation; the difference is the four tests this round adds.
+count. The BASE at 9d047a2 was measured on the same interpreter, build state and
+invocation, in a separate worktree, and reports **1309 minus four**:
+
+```
+i tests 1305
+i suites 0
+i pass 1305
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 659768.262463
+```
+
+The difference is exactly the four tests this round adds, which is the check
+that makes the branch number mean something rather than being quoted alone.
+
+### An intermittent failure was observed TWICE and is NOT explained
+
+**It is recorded rather than dropped, and no claim is made about its cause.**
+`npm test` was run four times across this round on the floor toolchain. Two runs
+ended with a failure and three with 1305/1305 or 1309/1309 and exit 0:
+
+| run | tree | result |
+|---|---|---|
+| base, first run | 9d047a2 worktree | **exit 1** |
+| base, immediate re-run, same tree | 9d047a2 worktree | 1305 pass, 0 skipped, exit 0 |
+| branch, inside the final script | 2b4b19d | **exit 1** |
+| branch, the `suite` GATE's own child | 2b4b19d | 1309 pass, 0 fail, 0 skipped, green |
+| branch, direct re-run | 2b4b19d | 1309 pass, 0 skipped, exit 0 |
+
+Both failing runs carry the same signature, and this is all of it that was
+captured, because both commands were piped through `tail -12` and the failing
+TEST NAME scrolled past:
+
+```
+      at Test.processPendingSubtests (node:internal/test_runner/test:969:18)
+      at Test.postRun (node:internal/test_runner/test:1537:19)
+      at Test.run (node:internal/test_runner/test:1462:12)
+      at process.processTicksAndRejections (node:internal/process/task_queues:104:5)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:969:7) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: undefined,
+    operator: 'fail',
+    diff: 'simple'
+  }
+```
+
+`operator: 'fail'` with `actual` and `expected` both `undefined` is
+`assert.fail(...)`, and there are five such call sites in the suite:
+
+```
+$ grep -rn "assert.fail(" --include=*.test.ts test/
+test/cutover.test.ts:1508:        assert.fail(
+test/cutover.test.ts:1587:        assert.fail(
+test/license-gate.test.ts:1827:  return assert.fail(
+test/gates.test.ts:3558:    assert.fail(
+test/next.test.ts:728:  assert.fail(`the capture block for ${command} has no exit line`);
+```
+
+**One of them is the site standing warning 1 names, and that is a LEAD rather
+than a finding.** test/gates.test.ts:3558 is `readGateRecord`'s "gate wrote no
+record ... which is an environment failure rather than a wrong verdict", in the
+`runCliUnprivileged` region the warning flags for interpreter-path traversal
+under `/tmp/claude-0`, and it is where the clean-room reviewer of this same
+review saw a failure it could not reproduce either. Running that file alone at
+this head reports `tests 54, pass 54, fail 0, skipped 0`, exit 0.
+
+**What is NOT established:** which test failed, whether the two failures are the
+same test, and whether the cause is the branch, the base, concurrency in this
+container or the interpreter path. The first failure happened on the BASE with
+none of this round's changes present, which is one fact that does exist. Two
+plausible causes were not separated, and naming one would be the over-claim this
+repository's claim grep exists to catch.
 
 ## Gate results
 
@@ -1098,8 +1199,17 @@ per-derivation sections above.
    redness for those three.
 7. **The merge-precondition `?? []` candidate named in derivation 1 is not
    closed**, and is recorded there rather than carried silently.
-8. **One platform, one interpreter, one day.** Linux, node v26.6.0, in this
-   container. Nothing was measured on macOS or on a second runner.
+8. **The record-accessor change has no independent red witness on the audited
+   route**, for the reason given with its capture: the refusal makes the losing
+   shape unreachable there. The defanged run isolates it with one variable and
+   is the only demonstration offered.
+9. **`delivery/STATE.md` is not updated.** The two tuition entries this round
+   files (T-042, T-043) and the disposition of CR-B-004 and CR-B-005 are facts
+   the pipeline record should carry, and STATE.md is the orchestrator's file and
+   its sole allocator of owner-action ids. Flagged rather than edited.
+10. **One platform, one interpreter, one day.** Linux, node v26.6.0, in this
+    container. Nothing was measured on macOS or on a second runner.
+
 ## Appendix: the three probe sources
 
 They are recorded here rather than committed as files: they are evidence for

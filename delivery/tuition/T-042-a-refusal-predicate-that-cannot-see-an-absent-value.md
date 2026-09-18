@@ -79,7 +79,7 @@ if (!usable) { refuse, naming WHICH of the three it was }
 ```
 
 This repository already spells it that way where it got it right, for instance
-src/cutover.ts:140 and plugin/src/hooks/project-write-block.ts:629, and it had
+src/cutover.ts:140 and `plugin/src/hooks/project-write-block.ts:629`, and it had
 already repaired one instance of the defect: the migrations adapter refuses a
 matched row that exposes NO applied checksum in a separate arm
 (src/gates/adapters/migrations-command.ts:355), citing M2-C-3, "an unchecked
