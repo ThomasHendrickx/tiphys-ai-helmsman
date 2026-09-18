@@ -1,6 +1,12 @@
 # A patch-based witness member breaks when an unrelated phase edits its target
 # file, and the gate reports ERROR rather than red
 
+**A SECOND ENTRY WAS BRIEFLY FILED UNDER T-031 AND IS NOW T-037.** It is
+delivery/tuition/T-037-the-absent-arm-of-the-push-watcher-returned-success.md:1,
+about a push-run watcher whose absent arm exited 0. A citation to `T-031` written
+between 2026-09-17 and 2026-09-18 may mean that document rather than this one.
+The collision and its renumbering are recorded in T-039.
+
 Measured 2026-09-16 on M4-P2 after merging `main` forward.
 
 ## What happened

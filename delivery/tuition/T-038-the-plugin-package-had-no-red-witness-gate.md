@@ -1,4 +1,4 @@
-# T-032: the second package shipped with two of its guards switched off
+# T-038: the second package shipped with two of its guards switched off
 
 **Measured:** 2026-09-17, on `main` at `14ba6fd`.
 
