@@ -395,6 +395,59 @@ gates:
       kind: branch-matches
       pattern: claude/m[0-9]+-p[0-9]+-.*
 
+  # NEW IN M4-P12 (DR-0012, DR-0036, T-009, R-064, R-065a).
+  - id: merge-preconditions
+    $comment: >-
+      M4-P12. The artifact DR-0012's delegated grant has never had: one record
+      per condition, each carrying the HEAD SHA it was evaluated against, so
+      that "the six conditions held" stops being a sentence somebody wrote and
+      becomes a thing a reader can check. It is a PRECONDITION READER and not a
+      merge command: M4-D-09 puts the merge capability in the plugin at cutover
+      and DR-0036 keeps merge authority with the current process for the whole
+      of M4, so the orchestrator reads this record before merging, by hand.
+      CONDITIONS 1 AND 2 ARE COMPOSED, NOT REIMPLEMENTED. M4-P10 shipped
+      `dual-review-decorrelation` and `verdict-pair-approves` as derived checks
+      in src/checks.ts; this gate is a second caller of the same exported
+      primitives and runs those checks BY ID, so deregistering either one is
+      visible here as an `error` rather than absorbed as a pass.
+      `applicability: conditional`, AND THE PRECONDITION IS ANSWERED IN TWO
+      PLACES BECAUSE IT IS TWO QUESTIONS. The declared `command-exit-zero` block
+      is the SAME probe check-dual-review declares, and it answers the question
+      a registry precondition can answer: does this project have any committed
+      review verdict at all. The narrower question, whether a verdict names THIS
+      head, needs the run's `--head`, and a precondition command is spawned
+      without it (src/gates/run.ts:1524 appends the parameter flags to the GATE
+      command, not to the precondition's). So the gate answers that half itself
+      and emits its own PreconditionRecord with `met: false`, which is SC-011's
+      requirement that not-applicable ASSERT an evaluated precondition rather
+      than stand for silence. Both arms are not-applicable and each names which
+      question was unmet, so a reader is never told only that the gate did not
+      run.
+      `events: [pull_request]` ALONE, and it is derived rather than assigned:
+      scripts/m2-exit-test.sh declares the push arm's gate set once in
+      MAIN_ONLY_GATES and this id is not in it, so the push arm cannot run it,
+      and test/gate-registry.test.ts asserts `events` against that harness
+      rather than against a wish. It is ALSO in gates.manifest.json, because CI
+      invokes the runner with `--manifest`: a gate declared only here is
+      declared and never executed, which is a gate that cannot go red.
+      THE API IS PROBED, NEVER ASSUMED. CLAUDE.md standing warning 6 records
+      REST reachability here measured both ways on different days with the
+      cause unestablished, so the gate probes first and reports `error` with
+      units 0 when it cannot reach the API. Never `not-applicable`, never green:
+      M2-C-3, and the hazard this whole entry exists against is a merge
+      precondition check that is green because it could not look.
+    command: [node, src/gates/merge-preconditions.ts]
+    unitLabel: merge preconditions evaluated
+    applicability: conditional
+    verified-by: script
+    modes: [full, direct-pr]
+    events: [pull_request]
+    parameters: [head, phase]
+    precondition:
+      id: merge-preconditions-verdicts-present
+      kind: command-exit-zero
+      command: [node, scripts/check-dual-review.mjs, --precondition, .]
+
   # NEW IN M3-P2, entry two of three (R-043, D-11).
   - id: unit-tests-for-changed-service-methods
     $comment: >-

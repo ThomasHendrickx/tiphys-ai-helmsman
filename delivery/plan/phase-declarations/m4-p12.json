@@ -9,7 +9,8 @@
     "CLAUDE.md",
     "roles/implementer.md",
     "src/cli.ts",
-    "witness/"
+    "witness/",
+    "scripts/m2-exit-test.sh"
   ],
   "declaredExtras": [
     "test/behaviors.json",

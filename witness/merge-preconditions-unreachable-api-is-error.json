@@ -1,0 +1,33 @@
+{
+  "id": "merge-preconditions-unreachable-api-is-error",
+  "behavior": "merge-preconditions-unreachable-api-is-error",
+  "tests": [
+    "an unreachable API makes the gate report error with units zero and a reason naming the failure, where a catch-and-continue mutant reports green"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    return { ok: false, reason: `GET ${url} could not be performed: ${singleLine(detail)}` };",
+      "replace": "    return { ok: true, status: 200, body: \"{}\" };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  const probe = readJsonBody(probeUrl, await requestJson(probeUrl));\n  if (!probe.ok) {",
+      "replace": "  const probe = readJsonBody(probeUrl, await requestJson(probeUrl));\n  if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "GitHub REST API (api.github.com)",
+    "captures": [
+      "witness/captures/m4-p12-github-check-runs.json",
+      "witness/captures/m4-p12-github-rulesets-list.json",
+      "witness/captures/m4-p12-github-ruleset-detail.json"
+    ],
+    "provenance": "Captured 2026-09-17 from the live GitHub REST API with curl and $GH_TOKEN, against ThomasHendrickx/tiphys-ai-helmsman: GET /repos/{slug}/commits/713731ff771afa2555b7850b53648923f36cde0c/check-runs (HTTP 200), GET /repos/{slug}/rulesets?includes_parents=true (HTTP 200), and GET /repos/{slug}/rulesets/20446760 (HTTP 200). The reachability probe and its deliberately-invalid-token control are recorded in delivery/work-history/m4-p12.md."
+  }
+}
