@@ -1167,5 +1167,6 @@
   "next-unreadable-category-is-not-empty": "next counts a category it could not read as work remaining rather than as empty",
   "pr-refuses-without-credential": "pr open and pr merge each exit nonzero with exactly one line when the credential is absent",
   "pr-credential-never-reaches-the-kernel-process": "the pull-request credential never reaches a kernel adapter child, probed from inside the child",
-  "pr-commands-uninvoked-by-the-kernel": "no kernel code path under src or bin names either plugin pull-request command"
+  "pr-commands-uninvoked-by-the-kernel": "no kernel code path under src or bin names either plugin pull-request command",
+  "plugin-entry-point-exports-the-pull-request-capability": "the plugin entry point re-exports the pull-request capability and still defaults to the adapter"
 }

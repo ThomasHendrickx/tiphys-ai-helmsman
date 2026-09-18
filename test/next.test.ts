@@ -95,7 +95,13 @@ type LaunchOutcome =
 const pluginModule = (await import(
   new URL("../plugin/src/index.ts", import.meta.url).href
 )) as {
-  claudeCodeAdapter: { launch(request: LaunchRequest): Promise<LaunchOutcome> };
+  claudeCodeAdapter: { name: string; launch(request: LaunchRequest): Promise<LaunchOutcome> };
+  default: { name: string; launch: unknown };
+  PR_OPEN_COMMAND?: string;
+  PR_MERGE_COMMAND?: string;
+  runPr?: unknown;
+  resolveCredential?: unknown;
+  prChildEnv?: unknown;
 };
 
 const envModule = (await import(new URL("../src/exec/env.ts", import.meta.url).href)) as {
@@ -724,3 +730,29 @@ test("no kernel code path under src or bin names either plugin pull-request comm
   }
   assert.deepEqual(hits, [], "a kernel source names the plugin's pull-request capability");
 });
+
+test(
+  "the plugin entry point re-exports the pull-request capability and still defaults to the adapter",
+  () => {
+    // THE CAPABILITY IS REACHABLE BY THE PACKAGE NAME. An orchestrator holding
+    // the credential installs `@tiphys/claude-code-plugin` and imports it; a
+    // capability that exists only in an unexported module is a capability
+    // nobody outside this repository can invoke.
+    assert.equal(pluginModule.PR_OPEN_COMMAND, prModule.PR_OPEN_COMMAND);
+    assert.equal(pluginModule.PR_MERGE_COMMAND, prModule.PR_MERGE_COMMAND);
+    for (const name of ["runPr", "resolveCredential", "prChildEnv"] as const) {
+      assert.equal(
+        typeof pluginModule[name],
+        "function",
+        `the plugin entry point does not export ${name}`,
+      );
+    }
+
+    // AND THE DEFAULT EXPORT IS STILL THE ADAPTER, which is the whole of the
+    // loader contract: src/adapters/load.ts refuses a default that is not an
+    // object with a callable launch, and that refusal happens AFTER a worktree,
+    // a branch and a pool record have been created.
+    assert.equal(pluginModule.default.name, pluginModule.claudeCodeAdapter.name);
+    assert.equal(typeof pluginModule.default.launch, "function");
+  },
+);
