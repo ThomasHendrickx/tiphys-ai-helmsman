@@ -1291,6 +1291,10 @@ test(
     });
     const noEvidenceReason = reasonOf(noEvidence);
     assert.match(noEvidenceReason, /was never written/);
+    // The arm's own refusal and the widening are BOTH in the reason: the
+    // record is not the only place the widening appears, because this reason
+    // is the only thing many callers read.
+    assert.match(noEvidenceReason, /LEAKED_SECRET/);
     const noEvidenceHandover = metaOf(scratch, "arm-noevidence").credentials?.handover;
     assert.notEqual(
       noEvidenceHandover,

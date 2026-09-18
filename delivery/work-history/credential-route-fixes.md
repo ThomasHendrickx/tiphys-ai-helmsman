@@ -261,7 +261,7 @@ comment states", which is not.
 |---|---|---|
 | src/exec/env.ts:194 | yes | **DEFECT, fixed in this round.** `reason` is mandatory by the module's own doc comment ("every entry carries an exact name and a reason") and optional by the type. Absent was excused. |
 | src/gates/adapters/migrations-command.ts:331 | yes | **SAME MECHANISM, ALREADY CLOSED, and it is the in-repo precedent.** An applied migration with no checksum would have been a silent id-only pass. The absent arm is a separate refusal at src/gates/adapters/migrations-command.ts:355, added as CR-P7H-2, which names the ids and cites M2-C-3. Its comment even names two structurally different members (a null checksum and an absent key), which is the rule this round follows. Nothing to do. |
-| src/gates/adapters/migrations-command.ts:302 | yes | correct spelling already: a positive `checksum.found && typeof ... === "string" && !== ""` test, whose false arm sets `checksumAbsent`. This is the shape src/exec/env.ts:194 should always have had. |
+| src/gates/adapters/migrations-command.ts:302 | yes | correct spelling already: a positive `checksum.found && typeof ... === "string" && !== ""` test, whose false arm sets `checksumAbsent`. This is the shape src/exec/env.ts:254 now uses. |
 | src/gates/validate.ts:236, :242, :246, :250 | yes | not a defect. These validate the TYPE of a JSON-schema keyword. An absent `additionalProperties`, `required`, `enum` or `$ref` is a legitimate schema, so absence is not a contract breach. |
 | src/gates/coverage.ts:706 | yes (pushes a finding) | not a defect, and named because it is the closest call. An absent `expectedUnits` silently disables the CR-986 floor. That is config-optional by design and the comment above it says so; the floor exists BECAUSE nothing else can catch the case, and a config that states no expectation is stating one. |
 | src/gates/run.ts:1679 | yes | not a defect. `pinFailure` absent means no pin failure occurred, which is the fact, not an omission. |
@@ -422,6 +422,8 @@ a single site.
 | src/hooks.ts | the generated turn-end hook records the five credential-store pointers from inside the child |
 | test/payload-credentials.test.ts | four new tests, two updated for the new status vocabulary |
 | test/behaviors.json | four rows, appended |
+| witness/payload-credentials-handover-pointer-values-compared.json | created: the red-witness spec covering src/hooks.ts, two members |
+| witness/captures/turn-end-hook-pointer-record.txt | created: real output of the generated hook in three arms |
 
 ### CR-B-002, the fix
 
@@ -491,7 +493,15 @@ values are discarded.
 record.** The child writes the observed pointer paths there so the kernel can
 compare them. Those are filesystem PATHS, not secrets, and the record already
 sits in the task directory the operator reads. It is called out here rather than
-left to be discovered.
+left to be discovered, and the sharpest case is stated with it: under the
+DECLARED ESCAPE HATCH the kernel hands no environment over, so the paths the
+hook records are the operator's real `HOME` and real git config locations. The
+hook is rendered with the five names on every spawn including that one, because
+a hook whose SHAPE depended on the escape hatch would be one more thing that
+differs between the two arms, and T-009's lesson is that the arm nobody
+witnesses is the one that breaks. What the kernel does with the record still
+differs: with nothing handed over there is nothing to compare, and the status
+stays `not-applicable`.
 
 ### CR-B-003, judged and closed as part of mechanism 2
 
@@ -570,7 +580,46 @@ witnessed by a probe rather than by a test, the probe drives the REAL
 `spawnTask` against a REAL scratch fleet created by `tiphys init`, with a real
 git upstream, a real clone and a real payload, and every assertion below is on
 a file THE CHILD WROTE (`scripts/credential-witness.mjs`, M4-P8's child-side
-probe) or on `meta.json`, never on a value read in the parent.
+probe) or on `meta.json`, never on a value read in the parent. That last
+sentence is settled by the probe sources rather than asserted: every one of the
+three reads only `readFileSync` of a path under the scratch fleet or the report
+the payload was given, which is what
+
+```
+$ grep -nE 'readFileSync|process\.env|result\.' probe/*.mjs | grep -v '^probe/[a-z]*\.mjs:[0-9]*: *//'
+```
+
+enumerates:
+
+```
+probe/arms.mjs:4:import { mkdtempSync, writeFileSync, existsSync, readFileSync, rmSync } from "node:fs";
+probe/arms.mjs:12:  const r = spawnSync("git", ["-C", dir, ...args], { encoding: "utf8", env: { ...process.env, ...ID } });
+probe/arms.mjs:17:const env = { ...process.env }; delete env.TIPHYS_HOLDER_ID;
+probe/arms.mjs:62:  const meta = existsSync(metaPath) ? JSON.parse(readFileSync(metaPath, "utf8")) : undefined;
+probe/arms.mjs:63:  const child = existsSync(report) ? JSON.parse(readFileSync(report, "utf8")) : undefined;
+probe/arms.mjs:64:  console.log(`${label} spawn ok: ${String(result.ok)}`);
+probe/members.mjs:6:import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+probe/members.mjs:16:  const r = spawnSync("git", ["-C", dir, ...args], { encoding: "utf8", env: { ...process.env, ...ID } });
+probe/members.mjs:21:const env = { ...process.env }; delete env.TIPHYS_HOLDER_ID;
+probe/members.mjs:36:process.env.VERCEL_TOKEN = "write-capable-deploy-token";
+probe/members.mjs:61:  const meta = existsSync(metaPath) ? JSON.parse(readFileSync(metaPath, "utf8")) : undefined;
+probe/members.mjs:62:  const child = existsSync(report) ? JSON.parse(readFileSync(report, "utf8")) : undefined;
+probe/members.mjs:64:    `${label} ${result.ok ? "ACCEPTED" : "refused "}` +
+probe/pointers.mjs:6:import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync } from "node:fs";
+probe/pointers.mjs:16:  const r = spawnSync("git", ["-C", dir, ...args], { encoding: "utf8", env: { ...process.env, ...ID } });
+probe/pointers.mjs:21:const env = { ...process.env }; delete env.TIPHYS_HOLDER_ID;
+probe/pointers.mjs:75:  const meta = existsSync(metaPath) ? JSON.parse(readFileSync(metaPath, "utf8")) : undefined;
+probe/pointers.mjs:76:  const child = existsSync(report) ? JSON.parse(readFileSync(report, "utf8")) : undefined;
+probe/pointers.mjs:77:  console.log(`${label} spawn ok: ${String(result.ok)}`);
+```
+
+Read the three `readFileSync` pairs: each probe reads `meta.json` and the
+report the CHILD wrote, and nothing else. The parent's `process.env` appears in
+exactly three roles, all of them INPUT to a child rather than a source of a
+reported value: the git identity spread into a `git` invocation, the copy handed
+to `tiphys init` with `TIPHYS_HOLDER_ID` deleted, and one WRITE at
+`probe/members.mjs:36` that plants the `VERCEL_TOKEN` canary the arms are
+about. The full source of all three probes is in the appendix.
 
 **Why the per-member probes exist alongside the tests.** A `node --test` test
 stops at its first failing assertion, so running the new tests against the
@@ -919,8 +968,13 @@ per-derivation sections above.
    TypeScript shape and no schema, so `changedRedirections` and
    `redirectionSource` are as unverifiable to a foreign reader as the fields
    beside them.
-6. **No witness spec was added under `witness/`.** The red witnesses for the
-   new behaviour are the captures above and the four registered tests.
+6. **ONE witness spec was added and it covers `src/hooks.ts` only.** The other
+   three changed source files (`src/spawn.ts`, `src/exec/env.ts`,
+   `src/task.ts`) are covered by STORED specs the `red-witness` gate
+   re-evaluated, not by specs written in this round, so the coverage rule is
+   satisfied for them by a witness that is about something else. The captures
+   and the four registered tests above are what carries this round's own
+   redness for those three.
 7. **The merge-precondition `?? []` candidate named in derivation 1 is not
    closed**, and is recorded there rather than carried silently.
 8. **One platform, one interpreter, one day.** Linux, node v26.6.0, in this

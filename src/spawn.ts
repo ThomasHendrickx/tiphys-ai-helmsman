@@ -1404,7 +1404,14 @@ export async function spawnTask(
         `${String(outcome.exitCode)}, but ${evidence.reason}, so the kernel does not ` +
         `accept that the payload ended; nothing was rolled back and nothing was ` +
         `removed: ${residue} left in place for inspection; when you have inspected ` +
-        `them, close the task with "tiphys teardown --task ${taskId}"`,
+        `them, close the task with "tiphys teardown --task ${taskId}"` +
+        // THE WIDENING IS NAMED ON THIS ARM TOO (CR-B-003). The record already
+        // carries it, and this reason is the only thing many callers read, so
+        // leaving it out here would make the arm's refusal say less than the
+        // artifact beside it.
+        (widened
+          ? `; and ${credentialRecord.refusal ?? ""}, recorded in ${metaPath(fleet, taskId)}`
+          : ""),
     };
   }
 
