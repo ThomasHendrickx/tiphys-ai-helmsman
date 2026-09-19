@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    .filter((entry) => String(entry.record[\"head\"] ?? \"\").toLowerCase() === head)",
-      "replace": "    .filter(() => true)"
+      "find": "    if (relation.kind === \"same\" || relation.kind === \"evidence-only-ancestor\") {",
+      "replace": "    if (true || relation.kind === \"same\") {"
     }
   ],
   "deterministic": true,

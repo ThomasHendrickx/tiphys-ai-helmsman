@@ -8,7 +8,7 @@ import { BEACON_FILE, LOCK_FILE, loadFleet, missingLayoutEntries } from "../flee
 import { judgeBeacon, warnIfWatcherStale } from "../liveness.ts";
 import { expiryHasPassed } from "../lock.ts";
 import { poolList, resolveNetworkTimeoutMs } from "../pool.ts";
-import { classifyEntry, readRegularFileIfPresent } from "../task.ts";
+import { classifyEntry, readRegularFileIfPresent, singleLine } from "../task.ts";
 import { sharedLockStatus } from "../exclusion.ts";
 import { decodeDocument } from "../validate.ts";
 import {
@@ -1478,7 +1478,34 @@ export function checkWorktrees(root: string): CheckResult {
       detail: `${root} is not a fleet home, so there is no worktree pool to report`,
     };
   }
-  const entries = poolList(fleet);
+  /* THE POOL LISTING IS ASKED FOR, NEVER ASSUMED TO ANSWER (DR-0047 sweep,
+     round 2). `poolList` THROWS on a `tasks/` it cannot list, which is correct
+     and is what round 1 made it do: a pool whose task directory is unreadable
+     is not an empty pool, and reporting "no pool worktrees" over it was the
+     false PASS the review found. What round 1 could not do from its own files
+     is the other half. Uncaught here, the throw escapes `doctor`'s whole run,
+     so a DIAGNOSTIC command ends with one stack-shaped line and reports none of
+     the checks that had nothing wrong with them.
+
+     src/commands/next.ts:334 already catches the same throw and reports it into
+     `unknown`, and the asymmetry was the finding: one consumer of one function
+     degrades and the other aborts. A check that cannot look must say so and let
+     the rest of the run report, which is the same could-not-determine rule
+     `checkSharedLock` states one screen down, and it is FAIL rather than WARN
+     because an unlistable pool is a broken fleet home and not a fleet that
+     never opted in. */
+  let entries;
+  try {
+    entries = poolList(fleet);
+  } catch (error) {
+    return {
+      name: "worktrees",
+      status: "FAIL",
+      detail:
+        `the worktree pool could not be listed, so whether any pool entry lacks a record is ` +
+        `unknown: ${singleLine(String(error))}`,
+    };
+  }
   if (entries.length === 0) {
     return {
       name: "worktrees",

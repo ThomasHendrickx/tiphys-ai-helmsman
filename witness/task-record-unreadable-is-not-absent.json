@@ -1,0 +1,24 @@
+{
+  "id": "task-record-unreadable-is-not-absent",
+  "behavior": "task-record-unreadable-is-not-absent",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a task record that is truncated and one that fails the field check are each distinguishable from an absent record"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/task.ts",
+      "find": "    return {\n      kind: \"unparsable\",",
+      "replace": "    return {\n      kind: \"absent\" as \"unparsable\","
+    },
+    {
+      "kind": "mutation",
+      "file": "src/task.ts",
+      "find": "  const bad = firstBadMetaField(candidate);\n  if (bad !== undefined) {\n    return {\n      kind: \"malformed\",",
+      "replace": "  const bad = firstBadMetaField(candidate);\n  if (bad !== undefined) {\n    return {\n      kind: \"absent\" as \"malformed\","
+    }
+  ]
+}

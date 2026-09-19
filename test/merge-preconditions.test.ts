@@ -47,7 +47,7 @@ import {
   rmSync,
   writeFileSync,
 } from "node:fs";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
@@ -390,6 +390,12 @@ async function runGate(
   staged: { dir: string; evidence: string },
   apiBase: string,
   extra: string[] = [],
+  /* THE COMMIT UNDER EVALUATION, overridable because one witness needs a head
+     that is a REAL OBJECT of a staged repository rather than the fixed literal
+     every other test here uses. Passing it through `extra` would have put
+     `--head` in the argv twice and made the test depend on which occurrence the
+     flag parser keeps, which is a fact about the parser and not about the gate. */
+  head?: string,
 ): Promise<GateRun> {
   const resultPath = join(staged.evidence, "result.json");
   rmSync(resultPath, { force: true });
@@ -402,7 +408,7 @@ async function runGate(
       "--evidence",
       staged.evidence,
       "--head",
-      FIXTURE_HEAD,
+      head ?? FIXTURE_HEAD,
       "--phase",
       FIXTURE_PHASE,
       "--context",
@@ -493,7 +499,7 @@ function cleanup(staged: { dir: string }): void {
 function rows(stdout: string): Map<string, string> {
   const out = new Map<string, string>();
   for (const line of stdout.split("\n")) {
-    const match = /^(condition-[1-6]|branch-protection) \(([^)]*)\) at ([0-9a-f]{40}): (green|red|error) -- (.*)$/.exec(
+    const match = /^(condition-[1-6]|branch-protection|verdict-selection) \(([^)]*)\) at ([0-9a-f]{40}): (green|red|error) -- (.*)$/.exec(
       line,
     );
     if (match !== null) {
@@ -511,7 +517,7 @@ function status(row: string | undefined): string {
 /* Criterion 1: the suite runs                                        */
 /* ================================================================== */
 
-test("the merge-preconditions gate reports one row per DR-0012 condition plus the branch-protection encoding, each carrying the head sha", async () => {
+test("the merge-preconditions gate reports one row per DR-0012 condition plus the branch-protection encoding and the verdict selection, each carrying the head sha", async () => {
   const staged = stage({ arbitration: goodArbitration(), scopeRecord: scopeRecord("green") });
   try {
     await withApi(
@@ -529,8 +535,19 @@ test("the merge-preconditions gate reports one row per DR-0012 condition plus th
             "condition-4",
             "condition-5",
             "condition-6",
+            /* ADDED BY THE DR-0047 SWEEP, ROUND 2, and it is a ROW rather than
+               a footnote for the reason `branch-protection` is one: this gate's
+               contract is that every fact the orchestrator reads is a row
+               carrying the head it was evaluated against. `verdict-selection`
+               names which committed verdicts were admitted as evidence about
+               this head and which were excluded, which is what all six
+               conditions are then about. Before round 2 the selection was
+               `declared === head`, which no real flow satisfies, so this gate
+               reported not-applicable on every real run and the row would have
+               had nothing to say. */
+            "verdict-selection",
           ],
-          `expected seven rows, saw: ${run.stdout}`,
+          `expected eight rows, saw: ${run.stdout}`,
         );
         for (const [id, value] of printed) {
           assert.equal(
@@ -540,7 +557,7 @@ test("the merge-preconditions gate reports one row per DR-0012 condition plus th
           );
         }
         assert.equal(run.record["status"], "green", `expected green, saw ${run.stdout}${run.stderr}`);
-        assert.equal(run.record["units"], 7);
+        assert.equal(run.record["units"], 8);
         assert.equal(run.record["unitLabel"], gateModule.UNIT_LABEL);
         assert.equal(run.exit, 0);
       },
@@ -1091,4 +1108,109 @@ test("a check run with no head sha is not counted as evidence about the head und
   );
   assert.equal(judged.ok, false);
   assert.match(judged.sentence, /DIFFERENT head/);
+});
+
+/* ================================================================== */
+/* DR-0047 round 2: the corpus is selected by ANCESTRY, not equality  */
+/* ================================================================== */
+
+/** A git identity supplied PER COMMAND (CLAUDE.md standing warning 5). */
+const GIT_IDENTITY = {
+  GIT_AUTHOR_NAME: "tiphys test",
+  GIT_AUTHOR_EMAIL: "test@example.invalid",
+  GIT_COMMITTER_NAME: "tiphys test",
+  GIT_COMMITTER_EMAIL: "test@example.invalid",
+};
+
+function git(dir: string, args: string[]): string {
+  const run = spawnSync("git", args, {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, ...GIT_IDENTITY },
+  });
+  assert.equal(run.status, 0, `git ${args.join(" ")} failed: ${run.stderr}`);
+  return (run.stdout ?? "").trim();
+}
+
+test("verdicts naming the commit their own landing produced are selected, where the equality mutant this round replaced finds none", async () => {
+  /* THE SECOND CALL SITE OF THE MECHANISM, AND IT WAS FOUND BY DERIVATION
+     RATHER THAN BY A REVIEWER. `scripts/check-dual-review.mjs` selected its
+     corpus with `declared === audited`; this gate carried the same comparison
+     at src/gates/merge-preconditions.ts:958 and nobody had looked. A verdict
+     cannot name the commit that carries it, so under equality this gate's
+     precondition ("a merge is being proposed at this head, evidenced by a
+     committed verdict naming it") could never be met and every real run
+     reported not-applicable.
+
+     THE STAGING IS A REAL GIT REPOSITORY, in the two-commit shape the real flow
+     has: the reviews read commit one, and committing them makes commit two. The
+     evidence directory is deliberately left UNTRACKED, so the gap between the
+     two commits is `delivery/` and nothing else, which is what the rule admits.
+
+     This test does not assert a GREEN gate. The arbitration document names the
+     fixture head rather than a sha that does not exist when it is written, so
+     condition 6 is red. What is under test is the SELECTION, and a selection
+     that finds nothing never reaches a row at all. */
+  const staged = stage({ arbitration: goodArbitration(), scopeRecord: scopeRecord("green") });
+  try {
+    git(staged.dir, ["init", "-q", "."]);
+    git(staged.dir, ["add", "charter.yaml", "assurance-modes.yaml"]);
+    git(staged.dir, ["commit", "-q", "-m", "the commit the reviews read"]);
+    const reviewed = git(staged.dir, ["rev-parse", "HEAD"]);
+    for (const name of ["clean-room-criteria.yaml", "clean-room-hazard.yaml"]) {
+      const path = join(staged.dir, "delivery", "review", name);
+      const body = readFileSync(path, "utf8");
+      const anchored = body.replace(/^head: .*$/m, `head: ${reviewed}`);
+      assert.notEqual(anchored, body, `${name} has no single-line head to rewrite`);
+      writeFileSync(path, anchored);
+    }
+    git(staged.dir, ["add", "delivery"]);
+    git(staged.dir, ["commit", "-q", "-m", "the reviews, and therefore a different commit"]);
+    const audited = git(staged.dir, ["rev-parse", "HEAD"]);
+    assert.notEqual(audited, reviewed, "the two commits must differ or this test asserts nothing");
+    /* THE GAP IS PAPERWORK ONLY, read from git rather than assumed from the
+       staging, so a staging change that started tracking the evidence directory
+       would fail here rather than quietly weaken the witness. */
+    const gap = git(staged.dir, ["diff", "--name-only", `${reviewed}..${audited}`])
+      .split("\n")
+      .filter((line) => line !== "");
+    assert.deepEqual(gap.filter((path) => !path.startsWith("delivery/")), [], gap.join(" , "));
+
+    await withApi(greenApi(audited), async (base) => {
+      const run = await runGate(gateSource, staged, base, [], audited);
+      assert.notEqual(run.record["status"], "not-applicable", run.stdout);
+      const printed = rows(run.stdout);
+      const selection = printed.get("verdict-selection");
+      assert.ok(selection !== undefined, `no verdict-selection row: ${run.stdout}`);
+      assert.equal(status(selection), "green", selection);
+      assert.match(selection, /2 verdict\(s\) admitted and 0 excluded/, selection);
+      assert.match(selection, /an ancestor of the commit under audit/, selection);
+      /* AND THE CONDITIONS THE SELECTION FEEDS ACTUALLY RAN. A row printed over
+         an empty corpus would be the vacuous pass, one scope in. */
+      assert.equal(status(printed.get("condition-1")), "green", run.stdout);
+      assert.equal(status(printed.get("condition-2")), "green", run.stdout);
+
+      /* THE DANGEROUS STATE, AND IT IS THE CODE THIS ROUND REPLACED rather than
+         an invented defect: admit only a verdict whose declared head EQUALS the
+         audited one. The corpus empties, the gate reports not-applicable, and
+         DR-0012's six conditions are never evaluated at all. */
+      await withMutant(
+        "selection-by-equality",
+        [
+          [
+            'if (relation.kind === "same" || relation.kind === "evidence-only-ancestor") {',
+            'if (relation.kind === "same") {',
+          ],
+        ],
+        async (entry) => {
+          const mutated = await runGate(entry, staged, base, [], audited);
+          assert.equal(mutated.record["status"], "not-applicable", mutated.stdout);
+          assert.equal(mutated.record["units"], 0);
+          assert.equal(rows(mutated.stdout).size, 0, mutated.stdout);
+        },
+      );
+    });
+  } finally {
+    cleanup(staged);
+  }
 });

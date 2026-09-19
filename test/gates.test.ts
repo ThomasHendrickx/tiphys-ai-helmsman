@@ -3534,6 +3534,17 @@ function runCliUnprivileged(args: string[], worldWritable: string[]) {
       chmodSync(path, 0o777);
     }
     grantTraversalWhenUnderTmp(repoRoot);
+    /* AND THE INTERPRETER, which this helper did not grant and which is why
+       the precondition test flaked here and only here
+       (delivery/tuition/T-029-the-precondition-test-flakes-only-here.md:1).
+       The child is spawned with `process.execPath`, so when the run's own node
+       lives under a mode-700 scratch prefix the unprivileged child cannot
+       traverse to its own interpreter and dies with `spawnSync ... EACCES`
+       before reaching any assertion. That is a property of the INTERPRETER'S
+       PATH and not of the branch, which is exactly what made it read as a
+       branch failure. Granting the repository and not the interpreter was the
+       whole gap. */
+    grantTraversalWhenUnderTmp(process.execPath);
   }
   return spawnSync(process.execPath, [sourceEntry, ...args], {
     encoding: "utf8",
@@ -3793,6 +3804,16 @@ test("the shipped registry run against a consumer package tree with no scripts d
         "check-dual-review",
         "--evidence",
         evidence,
+        /* `--head` BECAUSE THE REGISTRY ENTRY NOW DECLARES `parameters: [head]`
+           (CR-VS-001, the DR-0047 sweep). A gate missing a declared parameter is
+           `error` BEFORE its precondition is evaluated, which is also `error`
+           but for a different reason, and this test's subject is the
+           precondition. Supplying the flag keeps the variable under test the one
+           the test names. The value is never dereferenced by the runner; the
+           child is what would resolve it, and here the child does not exist,
+           which is the point. */
+        "--head",
+        "HEAD",
       ],
       dir,
     );

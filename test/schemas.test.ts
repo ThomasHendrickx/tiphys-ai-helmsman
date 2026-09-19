@@ -33,6 +33,7 @@ const validateModule = (await import(
     instance: unknown,
   ) => string[];
   AUTHORING_VOCABULARY: readonly string[];
+  ANNOTATION_KEYS: readonly string[];
   TIPHYS_DIALECT: string;
 };
 
@@ -289,6 +290,92 @@ test("every keyword in the declared authoring vocabulary has both a positive and
       `${one.keyword}: the negative case`,
     );
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* DR-0047 sweep FIND-02: the RENDERED vocabulary and the ENFORCED one  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Read the keyword column of one table out of `schemas/README.md`.
+ *
+ * THE DOCUMENT IS PARSED RATHER THAN A LIST BEING RE-TYPED HERE. A test that
+ * carried its own copy of the fifteen rows would assert that this file agrees
+ * with itself, which is the shape the finding is about one level down: the
+ * document and `AUTHORING_VOCABULARY` were two hand-written lists with nothing
+ * comparing them, so they disagreed from the day M3-P1 wrote both.
+ *
+ * EVERY BACKTICKED TOKEN IN THE FIRST CELL, not the first one: the table has a
+ * row spelled `` `if` / `then` `` carrying two keywords, so reading one token
+ * per row would under-count by one and this test would then be measuring the
+ * parser rather than the drift.
+ */
+function renderedKeywords(markdown: string, heading: string): string[] {
+  const afterHeading = markdown.split(heading)[1];
+  assert.ok(afterHeading !== undefined, `schemas/README.md has no section ${heading}`);
+  const keywords: string[] = [];
+  let seenHeader = false;
+  for (const line of (afterHeading as string).split("\n")) {
+    if (line.startsWith("| Keyword |")) {
+      seenHeader = true;
+      continue;
+    }
+    if (!seenHeader) {
+      continue;
+    }
+    if (!line.startsWith("|")) {
+      break;
+    }
+    if (line.startsWith("|---")) {
+      continue;
+    }
+    const cell = line.split("|")[1] ?? "";
+    for (const match of cell.matchAll(/`([^`]+)`/g)) {
+      keywords.push(match[1] as string);
+    }
+  }
+  return keywords;
+}
+
+test("the authoring vocabulary schemas/README.md declares is exactly the one src/validate.ts enforces", () => {
+  /* FIND-02 OF THE DR-0047 SWEEP, AND THE TEST IS THE HALF THAT MATTERS.
+     `schemas/README.md` is what a schema author reads before choosing a
+     keyword, and `AUTHORING_VOCABULARY` is what the validator enforces. Nothing
+     compared them, so the document lost `uniqueItems` for the whole of M3 and
+     M4 while five shipped schemas used it. Adding the row without adding this
+     would close one instance of a mechanism whose next instance is the next
+     keyword anybody adds to either half.
+
+     RED BY CONSTRUCTION AT THE HEAD THIS ROUND STARTED FROM: the document held
+     fifteen keywords and the array holds sixteen, so this assertion fails there
+     and passes here, with the row as the only difference. */
+  const markdown = readFileSync(join(schemasDir, "README.md"), "utf8");
+  const declared = renderedKeywords(markdown, "## The declared authoring vocabulary");
+  assert.deepEqual(
+    [...declared].sort(),
+    [...validateModule.AUTHORING_VOCABULARY].sort(),
+    `schemas/README.md declares ${String(declared.length)} keyword(s) and AUTHORING_VOCABULARY holds ` +
+      `${String(validateModule.AUTHORING_VOCABULARY.length)}`,
+  );
+  /* NO ROW IS WRITTEN TWICE. A duplicate would make the sorted comparison above
+     fail loudly rather than silently, and asserting it separately is what tells
+     a reader which of the two is wrong. */
+  assert.equal(new Set(declared).size, declared.length, declared.join(", "));
+
+  /* THE GREEN CONTROL FOR THE PARSER ITSELF. The annotations sentence in the
+     same document already agrees with `ANNOTATION_KEYS`, and it is asserted
+     here so that a parser returning nothing, or returning every backticked
+     token in the file, could not pass the comparison above by accident. */
+  const annotations = [
+    ...(markdown.split("Annotations that carry no constraint and are permitted anywhere:")[1] ?? "")
+      .split(".")[0]
+      .matchAll(/`([^`]+)`/g),
+  ].map((match) => match[1] as string);
+  assert.deepEqual(
+    [...annotations].sort(),
+    [...validateModule.ANNOTATION_KEYS].sort(),
+    annotations.join(", "),
+  );
 });
 
 /* ------------------------------------------------------------------ */

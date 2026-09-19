@@ -14,8 +14,8 @@
     {
       "kind": "mutation",
       "file": "bin/tiphys.ts",
-      "find": "  process.exitCode = usage ? EX_USAGE : 1;",
-      "replace": "  process.exitCode = 0;"
+      "find": "    process.exitCode = 1;",
+      "replace": "    process.exitCode = 0;"
     },
     {
       "kind": "mutation",

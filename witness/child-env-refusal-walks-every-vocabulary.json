@@ -1,0 +1,31 @@
+{
+  "id": "child-env-refusal-walks-every-vocabulary",
+  "behavior": "child-env-refusal-walks-every-vocabulary",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "the child-environment refusal walks every declared credential vocabulary, on both reason requirements"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/credentials.ts",
+      "find": "    id: \"egress\",\n    constantName: \"EGRESS_ENV_VOCABULARY\",\n    includes: isEgressEnvName,",
+      "replace": "    id: \"egress\",\n    constantName: \"EGRESS_ENV_VOCABULARY\",\n    includes: () => false,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/exec/env.ts",
+      "find": "    const refusedBy = refusedEnvVocabulary(name);",
+      "replace": "    const refusedBy = name.startsWith(\"GH_\") ? refusedEnvVocabulary(name) : undefined;"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "node witness/captures/credential-vocabulary-walk.mjs <scrub-dir>",
+    "captures": [
+      "witness/captures/credential-vocabulary-walk.txt"
+    ],
+    "provenance": "The child-environment refusal is a CLASSIFICATION of names against vocabularies the credential-scrub gate module owns, and that module spawns subprocess probes, so rule (f) applies to the diff. The capture at witness/captures/credential-vocabulary-walk.txt:1 is the REAL stdout of witness/captures/credential-vocabulary-walk.mjs, a separate node process run from the repository root on node v26.6.0 on 2026-09-18 with the command `node witness/captures/credential-vocabulary-walk.mjs <scrub-dir>`. It records the seven names buildChildEnv's default child actually carries, one MEMBER row per member of every declared vocabulary with the audited route's verdict and the vocabulary that claimed it, and the gate's environment-probe outcome for the default child, for a child carrying HTTPS_PROXY and for one carrying SSH_AUTH_SOCK. HOW THIS WITNESS'S OWN NAMED TEST CONSUMES IT: the test parses every MEMBER row and asserts the live predicate still refuses that name and still attributes it to the same vocabulary, and it asserts that no refused name appears among the captured DEFAULT-CHILD-NAMES, which is DR-0048's own argument checked against a real run rather than quoted."
+  }
+}

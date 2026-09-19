@@ -1,14 +1,15 @@
-import {
-  existsSync,
-  lstatSync,
-  readFileSync,
-  readdirSync,
-  statSync,
-  writeFileSync,
-} from "node:fs";
-import type { Stats } from "node:fs";
+import { existsSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Fleet } from "./fleet.ts";
+/* IMPORTED UNDER THE OLD NAMES rather than re-exported straight through,
+   because this module CALLS them as well as publishing them. A bare
+   `export ... from` publishes without binding, so the internal call sites below
+   would not resolve and the only signal would be a build error. */
+import {
+  classifyPathEntry as classifyEntry,
+  readRegularPathIfPresent as readRegularFileIfPresent,
+  refuseOpenPathForWrite as refuseOpenForWrite,
+} from "./fleet.ts";
 import { leaseStatus } from "./lock.ts";
 
 /**
@@ -78,127 +79,33 @@ import { leaseStatus } from "./lock.ts";
  * the window is now the only way to reach the block rather than the
  * default path to it.
  */
-export type EntryClass =
-  /** Nothing at the path. */
-  | { kind: "absent" }
-  /** A link is there and resolves to nothing: it exists, and it is empty of evidence. */
-  | { kind: "dangling" }
-  /** Safe to open. */
-  | { kind: "regular" }
-  /** Present, and opening it is not safe: never opened, always named. */
-  | { kind: "irregular"; reason: string }
-  /** Neither lstat nor stat could answer the question. */
-  | { kind: "unexaminable"; reason: string };
-
-function describeType(stats: Stats): string {
-  if (stats.isDirectory()) {
-    return "a directory";
-  }
-  if (stats.isFIFO()) {
-    return "a named pipe";
-  }
-  if (stats.isSocket()) {
-    return "a socket";
-  }
-  if (stats.isCharacterDevice()) {
-    return "a character device";
-  }
-  if (stats.isBlockDevice()) {
-    return "a block device";
-  }
-  return "an entry of an unrecognized type";
-}
-
 /**
- * THE ONE ANSWER TO "may this path be opened". Every reader and every
- * writer of a path this kernel does not itself guarantee to be a regular
- * file goes through this, so there is one implementation of the question
- * and not one per call site.
+ * ONE IMPLEMENTATION, RE-EXPORTED, AND THAT IS THE DR-0047 SWEEP ROUND 2
+ * CONSOLIDATION.
+ *
+ * The paragraphs above explain WHY the probe exists and they still hold. What
+ * changed is where it lives. Until this round there were TWO byte-equivalent
+ * copies of it: `classifyEntry`/`readRegularFileIfPresent`/`refuseOpenForWrite`
+ * here, and `classifyPathEntry`/`readRegularPathIfPresent`/
+ * `refuseOpenPathForWrite` in src/fleet.ts, with identical types, identical
+ * bodies and identical sentences. Round 1 created the second deliberately and
+ * both implementers flagged it: src/lock.ts and src/exclusion.ts sit BELOW this
+ * module in the import graph, so importing from here would have made a cycle.
+ *
+ * THE DIRECTION THAT REMOVES THE COPY WITHOUT MAKING A CYCLE IS DOWNWARD, AND
+ * IT IS THE ONE THE COMMENT ABOVE ALREADY ASKED FOR. src/fleet.ts imports NO
+ * local module at all, so it is the leaf; this module already imports
+ * `Fleet` from it. The chain is task -> fleet, and lock -> fleet, and nothing
+ * points back. The alternative, making lock and exclusion call into here, is
+ * the cycle task -> lock -> task and is what round 1 correctly refused.
+ *
+ * THE NAMES HERE ARE KEPT AS ALIASES rather than the 88 call sites in 31 files
+ * being rewritten. The names are the whole reason the rewrite would be
+ * expensive and none of the reason the duplication was a defect: what mattered
+ * was two bodies that could drift, and there is now one body.
  */
-export function classifyEntry(path: string): EntryClass {
-  try {
-    lstatSync(path);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { kind: "absent" };
-    }
-    return {
-      kind: "unexaminable",
-      reason: `${path} could not be examined: ${String(error)}`,
-    };
-  }
-  let stats: Stats;
-  try {
-    stats = statSync(path);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      return { kind: "dangling" };
-    }
-    return {
-      kind: "unexaminable",
-      reason: `${path} could not be examined: ${String(error)}`,
-    };
-  }
-  if (stats.isFile()) {
-    return { kind: "regular" };
-  }
-  return {
-    kind: "irregular",
-    reason: `${path} is ${describeType(stats)}, not a regular file, so it was not opened`,
-  };
-}
-
-/**
- * Refuse an open-for-WRITE of a path that is not a regular file. The
- * hazard is symmetric: open(2) for writing on a FIFO with no reader blocks
- * exactly as reading one with no writer does, so a staged write and an
- * append are as dangerous as a read. Returns the reason, or undefined when
- * the path may be opened (absent included: creating it is the point).
- */
-export function refuseOpenForWrite(path: string): string | undefined {
-  const entry = classifyEntry(path);
-  if (entry.kind === "irregular" || entry.kind === "unexaminable") {
-    return entry.reason;
-  }
-  return undefined;
-}
-
-/** What a guarded read of a possibly-absent path produced. */
-export type RegularRead =
-  | { kind: "read"; body: string }
-  | { kind: "absent" }
-  /** Present and not readable, with a reason naming the path. */
-  | { kind: "refused"; reason: string };
-
-/**
- * THE ONE READ of a file that might not be there and might not be a file.
- * src/task.ts, src/liveness.ts, src/watcher.ts and src/commands/doctor.ts
- * all read fleet state through this, so "probe before open" is a property
- * of the read and cannot be forgotten by a new caller.
- */
-export function readRegularFileIfPresent(path: string): RegularRead {
-  const entry = classifyEntry(path);
-  if (entry.kind === "absent" || entry.kind === "dangling") {
-    return { kind: "absent" };
-  }
-  if (entry.kind === "irregular" || entry.kind === "unexaminable") {
-    return { kind: "refused", reason: entry.reason };
-  }
-  let body: string;
-  try {
-    body = readFileSync(path, "utf8");
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-      // Removed between the probe and the read.
-      return { kind: "absent" };
-    }
-    return {
-      kind: "refused",
-      reason: `${path} could not be read: ${String(error)}`,
-    };
-  }
-  return { kind: "read", body };
-}
+export type { PathEntryClass as EntryClass, RegularPathRead as RegularRead } from "./fleet.ts";
+export { classifyEntry, readRegularFileIfPresent, refuseOpenForWrite };
 
 export type TaskShape = "ship" | "scout";
 export type TaskStatus = "open" | "closed";
@@ -308,15 +215,33 @@ export interface CredentialHandoverRecord {
    */
   changedRedirections: string[];
   /**
-   * Where the pointer evidence came from, absent when there was none.
+   * WHICH ARTIFACT THE POINTER EVIDENCE WAS READ FROM, absent when there was
+   * none. It is a statement about a FILE, not a provenance the kernel
+   * verified, and the value used to say otherwise.
    *
-   *   child    the kernel-generated turn-end hook recorded the pointers from
-   *            inside the child environment (src/hooks.ts). This does not
-   *            depend on an adapter's self-report.
-   *   adapter  the adapter reported them on its launch outcome. Weaker: it
-   *            is the adapter's word about its own behaviour.
+   *   turn-end-record  read from tasks/<id>/turn-end. The kernel generates the
+   *                    hook that normally writes it, and for an adapter that
+   *                    honours the contract those values come from inside the
+   *                    child environment. THE FILE IS ALSO ADAPTER-REACHABLE:
+   *                    the adapter is handed `hookPath` and the record sits
+   *                    beside it, so an adapter that skips the hook and writes
+   *                    the record itself produces a record the kernel cannot
+   *                    tell from the hook's.
+   *   adapter          read from the adapter's launch outcome. The adapter's
+   *                    word about its own behaviour, and always was.
+   *
+   * THE VALUE WAS `child` UNTIL THE DR-0047 SWEEP FIX ROUND (CR-F-CRED-001,
+   * MEDIUM). Measured: an adapter that reverted HOME and XDG_CONFIG_HOME for
+   * its payload and wrote the turn-end record itself produced
+   * `{"status":"compared","changedRedirections":[],"redirectionSource":"child"}`
+   * while the payload could reach a real gh credential store. The word `child`
+   * asserted an observation no child had made. Neither value is evidence that
+   * the adapter was honest, and the record now says only what it can support.
+   * This is CR-B-001's own mechanism, a record whose status word is stronger
+   * than the check behind it, recurring one level up inside the same record;
+   * see src/hooks.ts for why a nonce does not close it and a rename does.
    */
-  redirectionSource?: "child" | "adapter";
+  redirectionSource?: "turn-end-record" | "adapter";
 }
 
 /**
@@ -446,9 +371,50 @@ export function writeTaskMeta(fleet: Fleet, meta: TaskMeta): void {
 }
 
 /**
- * Read meta.json, or undefined when it is absent, is not a regular file,
- * or does not parse. All three mean the same thing to every caller: this
- * is not a readable record, and it is not evidence that the task finished.
+ * THE FOUR WAYS A TASK RECORD FAILS TO READ, KEPT APART (CR-F02, MEDIUM;
+ * T-036's mechanism).
+ *
+ * `absent` is a category that is empty BY OBSERVATION: the kernel looked and
+ * there is no record. Every other member is a category that is empty BY
+ * CONSTRUCTION: there IS something there and this read could not turn it into
+ * a record. Collapsing them makes "nothing here" and "something here I could
+ * not read" the same answer, and a task killed mid-write is the ordinary
+ * failure this repository keeps meeting, so the two are not the same answer at
+ * any caller that decides whether work is in flight.
+ */
+export type TaskMetaRead =
+  /** A record that read and passed the field check. */
+  | { kind: "read"; meta: TaskMeta }
+  /** Nothing at this path. Empty by observation. */
+  | { kind: "absent" }
+  /** Present and not openable as a regular file, with the probe's reason. */
+  | { kind: "unreadable"; reason: string }
+  /** Present, opened, and not JSON. The truncated-mid-write shape. */
+  | { kind: "unparsable"; reason: string }
+  /** Present, parsed, and not a task record. Names the first bad field. */
+  | { kind: "malformed"; reason: string };
+
+/** Which required field first failed, or undefined when all of them hold. */
+function firstBadMetaField(candidate: Partial<TaskMeta>): string | undefined {
+  if (typeof candidate.id !== "string") return "id (a string)";
+  if (typeof candidate.project !== "string") return "project (a string)";
+  if (candidate.shape !== "ship" && candidate.shape !== "scout") {
+    return 'shape (either "ship" or "scout")';
+  }
+  if (typeof candidate.branch !== "string") return "branch (a string)";
+  if (typeof candidate.worktree !== "string") return "worktree (a string)";
+  if (typeof candidate.baseSha !== "string") return "baseSha (a string)";
+  if (typeof candidate.baseOffline !== "boolean") return "baseOffline (a boolean)";
+  if (candidate.status !== "open" && candidate.status !== "closed") {
+    return 'status (either "open" or "closed")';
+  }
+  if (typeof candidate.createdAt !== "string") return "createdAt (a string)";
+  return undefined;
+}
+
+/**
+ * THE ONE READ of a task record, and the one that says WHICH of the four
+ * outcomes happened.
  *
  * The type probe is INSIDE this function and not in front of one of its
  * callers (CR-520, CR-521). There is exactly one implementation of "read a
@@ -456,33 +422,73 @@ export function writeTaskMeta(fleet: Fleet, meta: TaskMeta): void {
  * cannot reopen the hole: src/teardown.ts reaches this directly, without
  * going through the liveness classifier, and a named pipe here used to
  * hang it forever.
+ *
+ * WHY THIS IS A SEPARATE FUNCTION FROM `readTaskMeta` RATHER THAN ITS NEW
+ * SIGNATURE, declared rather than left to be inferred. Widening the return
+ * type of `readTaskMeta` is the shape this repair wants, and it is a
+ * compile-time break in four modules that this fix round's file list does not
+ * own (src/pool.ts, src/liveness.ts, src/teardown.ts, src/commands/next.ts).
+ * The distinction is therefore made AVAILABLE upstream of all of them here,
+ * `readTaskMeta` is documented as the deliberate NARROWING of it, and the
+ * sites that still collapse are named in the fix round's work history rather
+ * than quietly left.
  */
-export function readTaskMeta(fleet: Fleet, taskId: string): TaskMeta | undefined {
-  const read = readRegularFileIfPresent(metaPath(fleet, taskId));
-  if (read.kind !== "read") {
-    return undefined;
+export function classifyTaskMeta(fleet: Fleet, taskId: string): TaskMetaRead {
+  const path = metaPath(fleet, taskId);
+  const read = readRegularFileIfPresent(path);
+  if (read.kind === "absent") {
+    return { kind: "absent" };
+  }
+  if (read.kind === "refused") {
+    return { kind: "unreadable", reason: read.reason };
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(read.body);
-  } catch {
-    return undefined;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    return {
+      kind: "unparsable",
+      reason:
+        `${path} is present (${read.body.length} byte(s)) and does not parse as ` +
+        `JSON (${detail}), which is what a task record killed mid-write looks ` +
+        `like; it is not evidence that there is no task here`,
+    };
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return {
+      kind: "malformed",
+      reason: `${path} parses as JSON but not as an object, so it is not a task record`,
+    };
   }
   const candidate = parsed as Partial<TaskMeta>;
-  if (
-    typeof candidate.id !== "string" ||
-    typeof candidate.project !== "string" ||
-    (candidate.shape !== "ship" && candidate.shape !== "scout") ||
-    typeof candidate.branch !== "string" ||
-    typeof candidate.worktree !== "string" ||
-    typeof candidate.baseSha !== "string" ||
-    typeof candidate.baseOffline !== "boolean" ||
-    (candidate.status !== "open" && candidate.status !== "closed") ||
-    typeof candidate.createdAt !== "string"
-  ) {
-    return undefined;
+  const bad = firstBadMetaField(candidate);
+  if (bad !== undefined) {
+    return {
+      kind: "malformed",
+      reason:
+        `${path} parses as JSON but is not a task record: it needs ${bad}; it is ` +
+        `not evidence that there is no task here`,
+    };
   }
-  return candidate as TaskMeta;
+  return { kind: "read", meta: candidate as TaskMeta };
+}
+
+/**
+ * Read meta.json, or undefined when it is absent, is not a regular file,
+ * does not parse, or parses and is not a task record.
+ *
+ * THIS IS A DELIBERATE NARROWING OF `classifyTaskMeta` AND THE COLLAPSE IS THE
+ * WHOLE OF CR-F02. `undefined` answers "is there a readable record" and it
+ * cannot answer "is there a task here", because it is returned both when the
+ * kernel looked and found nothing and when it found something it could not
+ * read. A caller that reports an absence, skips an entry, or decides nothing
+ * is in flight must call `classifyTaskMeta` instead; a caller that REFUSES on
+ * every one of the four (teardown does) loses nothing by using this.
+ */
+export function readTaskMeta(fleet: Fleet, taskId: string): TaskMeta | undefined {
+  const read = classifyTaskMeta(fleet, taskId);
+  return read.kind === "read" ? read.meta : undefined;
 }
 
 /** Set meta.json status (teardown's last step; C-1's state authority). */

@@ -1,0 +1,406 @@
+DR-0047 final sweep, exclusion and sync group: the fix-round derivations, captured verbatim.
+Run in /tmp scratch clone of this branch, node v26.6.0, dist/ built.
+Nothing below is summarised: each block is the command and its complete stdout.
+
+===== M1: every reader and writer of the environment identity, and every consumer of the guard
+$ grep -rn "readEnvironmentId\|ensureEnvironmentId\|guardSharedRegister" src/ bin/ plugin/src/ --include=*.ts
+src/spawn.ts:14:import { guardSharedRegister } from "./exclusion.ts";
+src/spawn.ts:1024:  const sharedGuard = guardSharedRegister(fleet.root, "spawn");
+src/exclusion.ts:296:export function ensureEnvironmentId(fleetRoot: string): EnvironmentIdentity {
+src/exclusion.ts:828: * `ensureEnvironmentId` above writes a file when none is there, which is
+src/exclusion.ts:835:export function readEnvironmentId(fleetRoot: string): string | undefined {
+src/exclusion.ts:853: * see `guardSharedRegister` below for why a stale holder still refuses.
+src/exclusion.ts:952:export function guardSharedRegister(
+src/exclusion.ts:973:  const mine = readEnvironmentId(fleetRoot);
+src/lock.ts:14:  ensureEnvironmentId,
+src/lock.ts:534:  const identity = ensureEnvironmentId(root);
+src/teardown.ts:4:import { guardSharedRegister } from "./exclusion.ts";
+src/teardown.ts:452:  const sharedGuard = guardSharedRegister(fleet.root, "teardown");
+
+===== M2: every shared publish, and every local lease mutation
+$ grep -rn "sharedCommit(\|applyLeaseMutation(" src/ bin/ --include=*.ts
+src/lock.ts:285:export async function applyLeaseMutation(
+src/lock.ts:577:function sharedCommit(
+src/lock.ts:627:  const undone = await applyLeaseMutation(
+src/lock.ts:731:  const result = await applyLeaseMutation(
+src/lock.ts:748:    const published = sharedCommit(gate.ctx, preflight, "held", nowMs, durationSeconds);
+src/lock.ts:755:      await applyLeaseMutation(
+src/lock.ts:853:  const result = await applyLeaseMutation(
+src/lock.ts:869:    const published = sharedCommit(gate.ctx, preflight, "held", nowMs, durationSeconds);
+src/lock.ts:960:  const result = await applyLeaseMutation(
+src/lock.ts:973:    const published = sharedCommit(
+
+===== M4: every caller-supplied decision input reaching a shipped command
+$ grep -rn "process\.env\.TIPHYS[A-Z_]*" src/ bin/ plugin/src/ --include=*.ts -o | sort | uniq -c | sort -rn
+      1 src/watcher.ts:618:process.env.TIPHYS_WATCH_TEST_HOLD
+      1 src/task.ts:529:process.env.TIPHYS_HOLDER_ID
+      1 src/commands/lock.ts:62:process.env.TIPHYS_LOCK_TEST_HOLD
+      1 src/commands/lock.ts:190:process.env.TIPHYS_LOCK_TEST_NOW_MS
+      1 src/commands/lock.ts:189:process.env.TIPHYS_LOCK_TEST_NOW_MS
+      1 src/commands/lock.ts:158:process.env.TIPHYS_LOCK_TEST_NOW_MS
+
+===== M5: every process exit path that can print after mutating state (the handler is global, so this is the blast radius)
+$ grep -rn "process.exitCode\|process.exit(" src/ bin/ --include=*.ts
+src/hooks.ts:88:  process.exit(64);
+src/gates/citations.ts:1552:  process.exitCode = main(process.argv.slice(2));
+src/gates/scope.ts:1178:    process.exitCode = main(process.argv.slice(2));
+src/gates/scope.ts:1183:    process.exitCode = EXIT_GATE_ERROR;
+src/gates/credentials.ts:812:    // `process.exitCode`, NEVER `process.exit(gateMain(...))` (M4-P29). This
+src/gates/credentials.ts:825:    // testing. Assigning `process.exitCode` lets the process end normally,
+src/gates/credentials.ts:830:    process.exitCode = gateMain(process.argv.slice(2));
+src/gates/run.ts:700: *   node -e "process.exit(1)"      status 1     error undefined
+src/gates/run.ts:926: *   NOT SUFFICIENT: inline code (`process.exit(existsSync("/marker")?0:1)`),
+src/gates/deploy.ts:34:  process.exitCode = await runReleaseGate("deploy", process.argv.slice(2));
+src/gates/coverage.ts:1178:    process.exitCode = main(process.argv.slice(2));
+src/gates/coverage.ts:1183:    process.exitCode = EXIT_GATE_ERROR;
+src/gates/merge-preconditions.ts:1144:    process.exitCode = await main(process.argv.slice(2));
+src/gates/merge-preconditions.ts:1149:    process.exitCode = EXIT_GATE_ERROR;
+src/gates/migrations.ts:37:  process.exitCode = await runReleaseGate("migrations", process.argv.slice(2));
+src/gates/suite.ts:1166:  // `process.exitCode`, NEVER `process.exit(runSuiteGate(...))` (M4-P29).
+src/gates/suite.ts:1180:  // `process.exitCode` lets the process end normally, which drains the queue
+src/gates/suite.ts:1183:  process.exitCode = runSuiteGate(process.argv.slice(2));
+src/gates/red-witness.ts:595:  // `process.exitCode`, NEVER `process.exit(main(...))` (M4-P29). This gate
+src/gates/red-witness.ts:617:  // Assigning `process.exitCode` lets the process end normally, which drains
+src/gates/red-witness.ts:620:  process.exitCode = main(process.argv.slice(2));
+src/gates/adapters/http-json.ts:144:    process.exitCode = 1;
+src/gates/adapters/http-json.ts:363:    process.exitCode = 64;
+src/gates/adapters/http-json.ts:371:    process.exitCode = 1;
+src/gates/adapters/http-json.ts:381:    process.exitCode = 1;
+src/gates/adapters/migrations-command.ts:110:    process.exitCode = 1;
+src/gates/adapters/migrations-command.ts:426:    process.exitCode = 64;
+src/gates/adapters/migrations-command.ts:434:    process.exitCode = 1;
+src/gates/adapters/migrations-command.ts:444:    process.exitCode = 1;
+src/gates/gate-classes.ts:685:    process.exitCode = main(process.argv.slice(2));
+src/gates/gate-classes.ts:690:    process.exitCode = EXIT_GATE_ERROR;
+bin/tiphys.ts:87:  process.exitCode = 0;
+bin/tiphys.ts:90:    process.exitCode = await run(argv);
+bin/tiphys.ts:94:    process.exitCode = 1;
+
+===== M6/M9: every catch in my files that yields an empty or absent result
+$ grep -nE "catch \\{|catch \\(" -A3 src/pool.ts src/exclusion.ts src/lock.ts src/brief.ts src/roles.ts src/fleet.ts src/commands/sync.ts src/commands/lock.ts src/commands/brief.ts bin/tiphys.ts | grep -B1 -E "= \\[\\]|return undefined|return \\[\\]|absent"
+src/pool.ts:269:  } catch {
+src/pool.ts-270-    return undefined;
+--
+src/exclusion.ts:189:  } catch (error) {
+src/exclusion.ts-190-    return { ok: false, absent: false, reason: `${path} does not parse as JSON: ${String(error)}` };
+--
+src/exclusion.ts:397:  } catch {
+src/exclusion.ts-398-    return undefined;
+--
+src/exclusion.ts:1062:  } catch {
+src/exclusion.ts-1063-    return { kind: "absent", reason: `${LOCK_FILE} does not parse as a lease` };
+--
+src/lock.ts:163:  } catch {
+src/lock.ts-164-    return undefined;
+--
+src/fleet.ts-134-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+src/fleet.ts-135-      return { kind: "absent" };
+--
+src/fleet.ts-272-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+src/fleet.ts-273-      return { kind: "absent" };
+--
+src/fleet.ts-322-      // Removed between the probe and the read.
+src/fleet.ts-323-      return { kind: "absent" };
+
+===== M7: the declared role vocabulary against the briefs the package places
+$ node -e "..." (ROLE_IDS x ROLE_BRIEF_FILES x files on disk)
+orchestrator                 AGENTS.md                              onDisk=true
+investigator                 roles/investigator.md                  onDisk=true
+plan-writer                  roles/plan-writer.md                   onDisk=true
+adversarial-plan-reviewer    roles/adversarial-plan-reviewer.md     onDisk=true
+implementer                  roles/implementer.md                   onDisk=true
+clean-room-reviewer          roles/clean-room-reviewer.md           onDisk=true
+declared roles: 6  placed: 6
+
+===== M8: every open of a path in src/ bin/ plugin/src/, classified
+$ node scratch/classify.mjs   (14 lines before and 3 after each call are searched for a classifier or an O_EXCL flag)
+plugin/src/hooks/project-write-block.ts:603  BARE                                            body = readFileSync(path, "utf8");
+plugin/src/hooks/project-write-block.ts:672  BARE                                            appendFileSync(path, `${JSON.stringify(record)}\n`, "utf8");
+plugin/src/hooks/tool-call-observer.ts:192   BARE                                            appendFileSync(resolved.path, line, "utf8");
+src/brief.ts:80                              GUARDED                                         writeFileSync(target, content);
+src/commands/brief.ts:381                    GUARDED                                         writeFileSync(out, composed.text);
+src/commands/cutover.ts:506                  GUARDED                                         writeFileSync(target, outcome.text);
+src/commands/doctor.ts:133                   GUARDED                                         const parsed: unknown = JSON.parse(readFileSync(candidate, "ut
+src/commands/gates.ts:282                    GUARDED                                         writeFileSync(path, renderGateResult(result)),
+src/commands/init.ts:142                     BARE                                            writeFileSync(join(root, name, ".gitkeep"), "");
+src/commands/init.ts:144                     BARE                                            writeFileSync(join(root, "backlog.md"), "# Backlog\n");
+src/commands/init.ts:177                     BARE                                            writeFileSync(
+src/commands/init.ts:181                     BARE                                            writeFileSync(join(root, ".gitignore"), `${FLEET_IGNORED.join(
+src/commands/lock.ts:84                      GUARDED                                         writeFileSync(`${barrier}.observed`, "");
+src/commands/lock.ts:116                     GUARDED                                         writeFileSync(
+src/commands/plan.ts:122                     GUARDED                                         writeFileSync(target, body, "utf8");
+src/commands/tuition.ts:140                  GUARDED                                         writeFileSync(target, loaded.body, { flag: "wx" });
+src/commands/tuition.ts:232                  GUARDED                                         writeFileSync(out, rendered);
+src/cutover.ts:282                           O_EXCL (cannot block: creates or fails EEXIST)  handle = openSync(temporary, "wx");
+src/exclusion.ts:318                         GUARDED                                         writeFileSync(path, `${JSON.stringify(document, null, 2)}\n`, 
+src/exclusion.ts:552                         GUARDED                                         writeFileSync(path, `${JSON.stringify(observation, null, 2)}\n
+src/exec/env.ts:418                          GUARDED                                         writeFileSync(target, ""),
+src/fleet.ts:319                             GUARDED                                         body = readFileSync(path, "utf8");
+src/hooks.ts:91                              BARE                                            ${envLines}writeFileSync(
+src/hooks.ts:105                             BARE                                            writeFileSync(path, renderTurnEndHook(turnEndPath(fleet, taskI
+src/lock.ts:295                              O_EXCL (cannot block: creates or fails EEXIST)  writeFileSync(mutexPath, token, { flag: "wx" });
+src/lock.ts:418                              BARE                                            writeFileSync(stagePath, next);
+src/lock.ts:458                              BARE                                            writeFileSync(stagePath, next);
+src/pool.ts:663                              O_EXCL (cannot block: creates or fails EEXIST)  writeFileSync(record, `${JSON.stringify(poolRecord, null, 2)}\
+src/spawn.ts:641                             BARE                                            writeFileSync(request.recordPath, `${JSON.stringify(record, nu
+src/status.ts:141                            GUARDED                                         appendFileSync(streamPath, `${JSON.stringify(record)}\n`, "utf
+src/status.ts:142                            GUARDED                                         writeFileSync(temporaryPath, `${JSON.stringify(record, undefin
+src/task.ts:189                              GUARDED                                         body = readFileSync(path, "utf8");
+src/task.ts:445                              BARE                                            writeFileSync(metaPath(fleet, meta.id), renderTaskMeta(meta));
+src/validate.ts:863                          GUARDED                                         return { ok: true, body: readFileSync(path, "utf8") };
+src/version.ts:27                            BARE                                            const raw = readFileSync(findOwnPackageJson(), "utf8");
+src/watcher.ts:394                           GUARDED                                         writeFileSync(stage, body);
+src/watcher.ts:592                           GUARDED                                         const handle = openSync(lastWakePath(fleet), "a");
+src/watcher.ts:622                           BARE                                            writeFileSync(`${barrier}.observed`, "");
+src/watcher.ts:626                           BARE                                            writeFileSync(`${barrier}.released`, "barrier appeared\n");
+src/watcher.ts:631                           BARE                                            writeFileSync(`${barrier}.released`, "timed out without holdin
+src/watcher.ts:672                           O_EXCL (cannot block: creates or fails EEXIST)  writeFileSync(claimPath, "", { flag: "wx" });
+
+TOTAL 41  GUARDED 20  O_EXCL 4  BARE 17
+
+===== M5: the blast radius of the exit-code-contradicts-state mechanism
+$ node -e "the package bin entries, and the dispatch table the one entry point serves"
+package.json bin: {"tiphys":"dist/bin/tiphys.js"}
+dispatch table entries: 20
+version brief checklist cutover init doctor gates lock mode next plan pool resume spawn status sync teardown tuition validate watch
+EPIPE handlers installed in the one entry point: ignoreEpipe(process.stdout), ignoreEpipe(process.stderr)
+
+===== M6/M9: every catch in the files this round owns, with what it yields
+$ grep -nE -A3 "\\} catch" src/pool.ts src/exclusion.ts src/lock.ts src/brief.ts src/roles.ts src/fleet.ts src/commands/sync.ts src/commands/lock.ts src/commands/brief.ts bin/tiphys.ts
+src/pool.ts:269:  } catch {
+src/pool.ts-270-    return undefined;
+src/pool.ts-271-  }
+src/pool.ts-272-}
+--
+src/pool.ts:666:  } catch (error) {
+src/pool.ts-667-    if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+src/pool.ts-668-      return { ok: false, reason: `task id already used: ${taskId}` };
+src/pool.ts-669-    }
+--
+src/pool.ts:881:  } catch {
+src/pool.ts-882-    return false;
+src/pool.ts-883-  }
+src/pool.ts-884-  if (nowMs - mtimeMs <= threshold) {
+--
+src/pool.ts:944:        } catch {
+src/pool.ts-945-          // Already gone; retry either way.
+src/pool.ts-946-        }
+src/pool.ts-947-        result = await runGitRetrying(contextDir, args);
+--
+src/exclusion.ts:189:  } catch (error) {
+src/exclusion.ts-190-    return { ok: false, absent: false, reason: `${path} does not parse as JSON: ${String(error)}` };
+src/exclusion.ts-191-  }
+src/exclusion.ts-192-}
+--
+src/exclusion.ts:397:  } catch {
+src/exclusion.ts-398-    return undefined;
+src/exclusion.ts-399-  }
+src/exclusion.ts-400-  const candidate = parsed as Partial<SharedLeaseDocument>;
+--
+src/exclusion.ts:1062:  } catch {
+src/exclusion.ts-1063-    return { kind: "absent", reason: `${LOCK_FILE} does not parse as a lease` };
+src/exclusion.ts-1064-  }
+src/exclusion.ts-1065-  const holderId = (parsed as { holderId?: unknown } | null)?.holderId;
+--
+src/lock.ts:163:  } catch {
+src/lock.ts-164-    return undefined;
+src/lock.ts-165-  }
+src/lock.ts-166-  const candidate = parsed as Partial<Lease>;
+--
+src/lock.ts:297:    } catch (error) {
+src/lock.ts-298-      if ((error as NodeJS.ErrnoException).code !== "EEXIST") {
+src/lock.ts-299-        throw error;
+src/lock.ts-300-      }
+--
+src/lock.ts:341:    } catch {
+src/lock.ts-342-      // No strand present, which is the normal case.
+src/lock.ts-343-    }
+src/lock.ts-344-
+--
+src/lock.ts:421:      } catch (error) {
+src/lock.ts-422-        if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+src/lock.ts-423-          return {
+src/lock.ts-424-            won: false,
+--
+src/lock.ts:432:        } catch {
+src/lock.ts-433-          // The stage sweep at the top of the claim also covers this.
+src/lock.ts-434-        }
+src/lock.ts-435-      }
+--
+src/lock.ts:461:      } catch (error) {
+src/lock.ts-462-        try {
+src/lock.ts-463-          unlinkSync(stagePath);
+src/lock.ts:464:        } catch {
+src/lock.ts-465-          // Stage cleanup is best effort; the original error surfaces.
+src/lock.ts-466-        }
+src/lock.ts-467-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+--
+src/lock.ts:495:    } catch {
+src/lock.ts-496-      // Claim file already gone; nothing to release.
+src/lock.ts-497-    }
+src/lock.ts-498-  }
+--
+src/roles.ts:382:    } catch {
+src/roles.ts-383-      /* not here; keep walking */
+src/roles.ts-384-    }
+src/roles.ts-385-    const parent = dirname(directory);
+--
+src/fleet.ts:133:  } catch (error) {
+src/fleet.ts-134-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+src/fleet.ts-135-      return { kind: "absent" };
+src/fleet.ts-136-    }
+--
+src/fleet.ts:145:  } catch (error) {
+src/fleet.ts-146-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+src/fleet.ts-147-      return { kind: "other", reason: `${path} is a symlink to nothing` };
+src/fleet.ts-148-    }
+--
+src/fleet.ts:271:  } catch (error) {
+src/fleet.ts-272-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+src/fleet.ts-273-      return { kind: "absent" };
+src/fleet.ts-274-    }
+--
+src/fleet.ts:283:  } catch (error) {
+src/fleet.ts-284-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+src/fleet.ts-285-      return { kind: "dangling" };
+src/fleet.ts-286-    }
+--
+src/fleet.ts:320:  } catch (error) {
+src/fleet.ts-321-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+src/fleet.ts-322-      // Removed between the probe and the read.
+src/fleet.ts-323-      return { kind: "absent" };
+--
+src/commands/lock.ts:288:  } catch (error) {
+src/commands/lock.ts-289-    process.stderr.write(`tiphys lock: ${(error as Error).message}\n`);
+src/commands/lock.ts-290-    return 1;
+src/commands/lock.ts-291-  }
+--
+src/commands/brief.ts:354:  } catch (error) {
+src/commands/brief.ts-355-    process.stderr.write(`tiphys brief compose: ${(error as Error).message}\n`);
+src/commands/brief.ts-356-    return 1;
+src/commands/brief.ts-357-  }
+--
+bin/tiphys.ts:91:  } catch (error) {
+bin/tiphys.ts-92-    const message = error instanceof Error ? error.message : String(error);
+bin/tiphys.ts-93-    process.stderr.write(`tiphys: ${singleLine(message)}\n`);
+bin/tiphys.ts-94-    process.exitCode = 1;
+
+===== M8 RE-RUN against the final tree of this branch
+$ node classify.mjs
+plugin/src/hooks/project-write-block.ts:603  BARE                                            body = readFileSync(path, "utf8");
+plugin/src/hooks/project-write-block.ts:672  BARE                                            appendFileSync(path, `${JSON.stringify(record)}\n`, "utf8");
+plugin/src/hooks/tool-call-observer.ts:192   BARE                                            appendFileSync(resolved.path, line, "utf8");
+src/brief.ts:80                              GUARDED                                         writeFileSync(target, content);
+src/commands/brief.ts:381                    GUARDED                                         writeFileSync(out, composed.text);
+src/commands/cutover.ts:506                  GUARDED                                         writeFileSync(target, outcome.text);
+src/commands/doctor.ts:133                   GUARDED                                         const parsed: unknown = JSON.parse(readFileSync(candidate, "ut
+src/commands/gates.ts:282                    GUARDED                                         writeFileSync(path, renderGateResult(result)),
+src/commands/init.ts:142                     BARE                                            writeFileSync(join(root, name, ".gitkeep"), "");
+src/commands/init.ts:144                     BARE                                            writeFileSync(join(root, "backlog.md"), "# Backlog\n");
+src/commands/init.ts:177                     BARE                                            writeFileSync(
+src/commands/init.ts:181                     BARE                                            writeFileSync(join(root, ".gitignore"), `${FLEET_IGNORED.join(
+src/commands/lock.ts:84                      GUARDED                                         writeFileSync(`${barrier}.observed`, "");
+src/commands/lock.ts:116                     GUARDED                                         writeFileSync(
+src/commands/plan.ts:122                     GUARDED                                         writeFileSync(target, body, "utf8");
+src/commands/tuition.ts:140                  GUARDED                                         writeFileSync(target, loaded.body, { flag: "wx" });
+src/commands/tuition.ts:232                  GUARDED                                         writeFileSync(out, rendered);
+src/cutover.ts:282                           O_EXCL (cannot block: creates or fails EEXIST)  handle = openSync(temporary, "wx");
+src/exclusion.ts:318                         GUARDED                                         writeFileSync(path, `${JSON.stringify(document, null, 2)}\n`, 
+src/exclusion.ts:552                         GUARDED                                         writeFileSync(path, `${JSON.stringify(observation, null, 2)}\n
+src/exec/env.ts:418                          GUARDED                                         writeFileSync(target, ""),
+src/fleet.ts:319                             GUARDED                                         body = readFileSync(path, "utf8");
+src/hooks.ts:91                              BARE                                            ${envLines}writeFileSync(
+src/hooks.ts:105                             BARE                                            writeFileSync(path, renderTurnEndHook(turnEndPath(fleet, taskI
+src/lock.ts:295                              O_EXCL (cannot block: creates or fails EEXIST)  writeFileSync(mutexPath, token, { flag: "wx" });
+src/lock.ts:418                              BARE                                            writeFileSync(stagePath, next);
+src/lock.ts:458                              BARE                                            writeFileSync(stagePath, next);
+src/pool.ts:663                              O_EXCL (cannot block: creates or fails EEXIST)  writeFileSync(record, `${JSON.stringify(poolRecord, null, 2)}\
+src/spawn.ts:641                             BARE                                            writeFileSync(request.recordPath, `${JSON.stringify(record, nu
+src/status.ts:141                            GUARDED                                         appendFileSync(streamPath, `${JSON.stringify(record)}\n`, "utf
+src/status.ts:142                            GUARDED                                         writeFileSync(temporaryPath, `${JSON.stringify(record, undefin
+src/task.ts:189                              GUARDED                                         body = readFileSync(path, "utf8");
+src/task.ts:445                              BARE                                            writeFileSync(metaPath(fleet, meta.id), renderTaskMeta(meta));
+src/validate.ts:863                          GUARDED                                         return { ok: true, body: readFileSync(path, "utf8") };
+src/version.ts:27                            BARE                                            const raw = readFileSync(findOwnPackageJson(), "utf8");
+src/watcher.ts:394                           GUARDED                                         writeFileSync(stage, body);
+src/watcher.ts:592                           GUARDED                                         const handle = openSync(lastWakePath(fleet), "a");
+src/watcher.ts:622                           BARE                                            writeFileSync(`${barrier}.observed`, "");
+src/watcher.ts:626                           BARE                                            writeFileSync(`${barrier}.released`, "barrier appeared\n");
+src/watcher.ts:631                           BARE                                            writeFileSync(`${barrier}.released`, "timed out without holdin
+src/watcher.ts:672                           O_EXCL (cannot block: creates or fails EEXIST)  writeFileSync(claimPath, "", { flag: "wx" });
+
+TOTAL 41  GUARDED 20  O_EXCL 4  BARE 17
+
+===== THE CLAIM GREP, both binding forms, against delivery/work-history/exclusion-sync.md
+$ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/exclusion-sync.md
+269:record` row moved from `pool list` to `pool destroy`, because `pool list` never
+277:| finding 1 | a `git clone` of a synced fleet | a fleet home whose own `state/` was lost | the identity arrived by travelling, versus never moved at all |
+281:| findings 6, 9 | the tasks DIRECTORY cannot be listed | one task's `meta.json` does not read | the whole reconstruction is dropped, versus one row |
+316:catches and reports into its `unknown` list. A task whose `meta.json` is
+406:   catches that and reports it into `unknown`; doctor's `checkWorktrees`
+
+$ tr '\n' ' ' < delivery/work-history/exclusion-sync.md | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to'
+never
+never
+cannot be
+catches
+catches
+
+===== THE CLAIM GREP, FINAL, both binding forms, against the committed work history
+$ grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/exclusion-sync.md
+285:| finding 1 | a `git clone` of a synced fleet | a fleet home whose own `state/` was lost | the identity arrived by travelling, versus never moved at all |
+289:| findings 6, 9 | the tasks DIRECTORY cannot be listed | one task's `meta.json` does not read | the whole reconstruction is dropped, versus one row |
+521:(`a fleet home whose own state/ was lost`, `the tasks DIRECTORY cannot be
+
+$ tr '\n' ' ' < delivery/work-history/exclusion-sync.md | grep -oEi '...' | sort | uniq -c
+      2 cannot be
+      1 never
+
+===== CITATION CHECK: every path:line outside backticks, against a declared root and the file's length
+citations 43 bad 0  (checker in the round's scratch, re-runnable from the work history's own text)
+
+===== FINAL SUITE
+$ npm test   (node v26.6.0, dist/ built)
+# skipped uniqueItems.json: uniqueItems=false with an array of items and additionalItems=false: the schema did not compile under the suite configuration
+i tests 1362
+i pass 1362
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+i duration_ms 349567.399548
+===== FINAL GATE BUNDLE
+gates: run 59d9942c0bd553db93291e20
+gates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)
+gates: registry gate-registry.yaml mode full
+gates: declared 19 applicable 11 verdict 11 green 10 red 1 not-applicable 8 error 0 vacuous 0
+gates: manifest-self-check: green: validated 8 schema document(s) against the closed keyword set (/tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/citation-config.schema.json, /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/coverage-config.schema.json, /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/gate-manifest.schema.json, /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/gate-result.schema.json, /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/phase-declaration.schema.json, /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/release-record.schema.json, /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/verifier-config.schema.json, /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone/src/gates/schemas/witness-spec.schema.json), and gates.manifest.json against gate-manifest.schema.json
+gates: coverage: green: 115 inventory id(s) checked; per-kind: decision 6, milestone 98, phase 11; per-milestone: M1 11, M2 16, M3 74, M4 5, M5 3, decision 6
+gates: credential-scrub: green: no pull-request-capable credential resolvable from any of the 7 probed sources
+gates: credential-token: not-applicable: precondition implementer-token-present-owner-action-a-3 evaluated and unmet: node -e process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0) exited 1
+gates: suite: green: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 1362 test(s) from 66 file(s) (pass 1362, fail 0, skipped 0, todo 0, did-not-run 0); discovered 66 file(s) walking test for .test.ts; 1238 behavior(s) resolve; merge base ad2428b76ef6
+gates: citations: not-applicable: precondition citations-diff-touches-documents evaluated and unmet: no changed path under delivery/plan/, delivery/verification/, delivery/decisions/, delivery/tuition/, delivery/requirements/, delivery/STATE.md
+gates: scope: not-applicable: precondition scope-branch-is-a-phase-branch evaluated and unmet: branch claude/sweep-fix-exclusion-sync does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
+gates: deploy: not-applicable: precondition deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist
+gates: migrations: not-applicable: precondition migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3) evaluated and unmet: release-verification.json does not exist
+gates: clause-map: green: 74 rows checked, 0 pending a phase not yet in force
+gates: red-witness: red: 45 witness(es) evaluated (3 own, 42 stored re-evaluated in 670807ms); witness brief-input-entry-types-established: red: rule (e): the named tests invoke pool destroy, src/pool.ts from the manifest destructiveCommands list, so the derived class is destructive and the declared class classification is weaker
+gates: agent-rules-drift: green: CLAUDE.md's gate block matches gate-registry.yaml row for row (3 preflight step(s), 21 gate(s))
+gates: brief-drift: green: roles/implementer.md's full gate block matches gate-registry.yaml row for row (21 row(s) compared)
+gates: check-agents-references: green: 22 references resolved to a path that the package publishes, 22 of them also to an anchor inside it, under root /tmp/claude-0/-home-user/49c9c4fa-6f01-5020-aa81-c87700265964/scratchpad/fix-exclusion-sync/clone
+gates: check-dual-review: not-applicable: precondition dual-review-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1
+gates: license: green: 12 production package(s) inventoried, all with license metadata on the declared allowlist; LICENSE present in the pack listing
+gates: typecheck: green: tsc -b tsconfig.src.json tsconfig.test.json plugin/tsconfig.json --force --listFiles exited 0 and reported 448 distinct file(s); the unit count is those printed paths, not a constant
+gates: gate-classes: not-applicable: precondition gate-classes-branch-is-a-phase-branch evaluated and unmet: branch claude/sweep-fix-exclusion-sync does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
+gates: merge-preconditions: not-applicable: precondition merge-preconditions-verdicts-present evaluated and unmet: node scripts/check-dual-review.mjs --precondition . exited 1
+gates: 1 gate(s) reported red: red-witness
+EXIT=1
+
+===== RED-WITNESS RE-RUN AFTER THE CLASS CORRECTION
+gates: run e6a5b831c99f09160fe30992
+gates: 2 registry gate(s) declared verified-by clean-room-checklist and NOT executed by this runner: unit-tests-for-changed-service-methods (probe unit-tests-for-changed-service-methods), fixtures-for-changed-component-states (probe fixtures-for-changed-component-states)
+gates: registry gate-registry.yaml mode full
+gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0
+gates: red-witness: green: 45 witness(es) evaluated (3 own, 42 stored re-evaluated in 713261ms); every witness red against every declared dangerous state and green at head
+gates: every applicable gate is green
+EXIT=0

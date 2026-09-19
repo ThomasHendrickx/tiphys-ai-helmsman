@@ -1,6 +1,10 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Fleet } from "./fleet.ts";
+import {
+  readRegularPathIfPresent,
+  refuseOpenPathForWrite,
+} from "./fleet.ts";
 import { briefPath } from "./task.ts";
 
 /**
@@ -38,33 +42,41 @@ export function assembleBrief(
   taskId: string,
   briefFile: string,
 ): BriefResult {
-  let brief: string;
-  try {
-    brief = readFileSync(briefFile, "utf8");
-  } catch (error) {
-    return {
-      ok: false,
-      reason: `cannot read brief file ${briefFile}: ${(error as Error).message}`,
-    };
+  /* THREE PATHS, NONE OF THEM THIS MODULE'S OWN, AND THE TYPE OF EACH IS
+     ESTABLISHED BEFORE IT IS OPENED (T-008's shape in shipped code). Until
+     this round all three were bare: `--brief` is named by the CALLER,
+     `warnings.md` is fleet content the kernel did not create, and the target
+     is a path this module CREATES, which is the write direction and blocks
+     on a FIFO exactly as a read does. A named pipe at any of them took
+     `tiphys spawn` down forever with zero output; `existsSync` did not help,
+     because a FIFO exists. */
+  const briefRead = readRegularPathIfPresent(briefFile);
+  if (briefRead.kind === "absent") {
+    return { ok: false, reason: `cannot read brief file ${briefFile}: it is absent` };
+  }
+  if (briefRead.kind === "refused") {
+    return { ok: false, reason: `cannot read brief file ${briefFile}: ${briefRead.reason}` };
   }
 
-  let content = brief;
+  let content = briefRead.body;
   const warnings = warningsPath(fleet);
-  if (existsSync(warnings)) {
-    let warningsText: string;
-    try {
-      warningsText = readFileSync(warnings, "utf8");
-    } catch (error) {
-      return {
-        ok: false,
-        reason: `cannot read fleet warnings file ${warnings}: ${(error as Error).message}`,
-      };
-    }
+  const warningsRead = readRegularPathIfPresent(warnings);
+  if (warningsRead.kind === "refused") {
+    return {
+      ok: false,
+      reason: `cannot read fleet warnings file ${warnings}: ${warningsRead.reason}`,
+    };
+  }
+  if (warningsRead.kind === "read") {
     const separator = content === "" || content.endsWith("\n") ? "" : "\n";
-    content = `${content}${separator}${warningsText}`;
+    content = `${content}${separator}${warningsRead.body}`;
   }
 
   const target = briefPath(fleet, taskId);
+  const refusal = refuseOpenPathForWrite(target);
+  if (refusal !== undefined) {
+    return { ok: false, reason: `cannot write brief ${target}: ${refusal}` };
+  }
   writeFileSync(target, content);
   return { ok: true, value: target };
 }

@@ -1,0 +1,24 @@
+{
+  "id": "spawn-adapter-resolved-path-containment",
+  "behavior": "spawn-adapter-resolved-path-containment",
+  "class": "destructive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "an adapter specifier resolving into the project tree or outside the fleet home is refused before the module is evaluated"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/adapters/load.ts",
+      "find": "  if (isInside(realProjectsDir, realResolved)) {",
+      "replace": "  if (false as boolean) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/adapters/load.ts",
+      "find": "  if (isPathShapedSpecifier(specifier) && !isInside(realFleetRoot, realResolved)) {",
+      "replace": "  if (false as boolean) {"
+    }
+  ]
+}

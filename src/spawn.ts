@@ -350,9 +350,28 @@ export function checkCredentialPolicy(
  * were where the payload ran, and where that observation came from.
  */
 export interface RedirectionEvidence {
-  source: "child" | "adapter";
+  source: "turn-end-record" | "adapter";
   /** Observed value per name; `null` for a name that was unset. */
   values: Readonly<Record<string, string | null>>;
+}
+
+/**
+ * Render `redirectionSource` into the refusal sentence. It names the ARTIFACT
+ * the values were read from, never a party that observed them: the turn-end
+ * record is adapter-reachable (src/hooks.ts), so a phrase like "observed
+ * child-side", which is what this said until the DR-0047 sweep fix round,
+ * asserts more than the kernel checked (CR-F-CRED-001).
+ */
+function redirectionSourcePhrase(
+  source: CredentialHandoverRecord["redirectionSource"],
+): string {
+  if (source === "turn-end-record") {
+    return "read from the turn-end record, which the kernel generates the hook for and an adapter can also write";
+  }
+  if (source === "adapter") {
+    return "read from the adapter's own launch report";
+  }
+  return "read from no pointer evidence at all";
 }
 
 /**
@@ -453,9 +472,12 @@ export type LaunchOutcome =
        * THE FIVE CREDENTIAL-STORE POINTERS AS THE ADAPTER LAUNCHED THEM
        * (CR-B-001). Optional for the same honest reason `launchedEnvNames`
        * is, and WEAKER than the kernel's own evidence: it is the adapter's
-       * word about its own behaviour. The kernel prefers the child-written
-       * observation from the turn-end hook and falls back to this, and the
-       * record says which of the two it used (`redirectionSource`).
+       * word about its own behaviour. The kernel prefers the turn-end record
+       * the generated hook normally writes and falls back to this, and the
+       * record says which ARTIFACT it read (`redirectionSource`). That is a
+       * weaker claim than which PARTY observed the values, and it used to be
+       * spelled as the stronger one; see CredentialHandoverRecord in
+       * src/task.ts for the measurement that changed the word.
        */
       launchedRedirections?: Readonly<Record<string, string | null>>;
     }
@@ -1300,7 +1322,7 @@ export async function spawnTask(
       return undefined;
     }
     if (evidence.ok && evidence.observed !== undefined) {
-      return { source: "child", values: evidence.observed };
+      return { source: "turn-end-record", values: evidence.observed };
     }
     if (outcome.launchedRedirections !== undefined) {
       return { source: "adapter", values: outcome.launchedRedirections };
@@ -1338,8 +1360,8 @@ export async function spawnTask(
         ? ""
         : `; the credential-store pointer(s) ` +
           `${handover.changedRedirections.join(", ")} did not have the ` +
-          `harness-owned value the kernel handed over, observed ` +
-          `${handover.redirectionSource ?? "nowhere"}-side`);
+          `harness-owned value the kernel handed over, ` +
+          `${redirectionSourcePhrase(handover.redirectionSource)}`);
   }
   const rewroteMeta = runStep(`updating ${metaPath(fleet, taskId)}`, () => {
     writeTaskMeta(fleet, meta);

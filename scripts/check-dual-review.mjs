@@ -76,6 +76,10 @@ const {
   loadCommittedVerdicts,
   describeVerdictCorpusSource,
   missingRegimeDocument,
+  resolveAuditedHead,
+  partitionByAuditedHead,
+  describeOffHeadVerdicts,
+  describeAdmittedVerdicts,
   REVIEW_FAMILIES_FIELD,
   CHARTER_DOCUMENT,
 } = checksModule;
@@ -118,7 +122,7 @@ const DECLARED_EVIDENCE = "declared: true";
 function usage() {
   return (
     "usage: node scripts/check-dual-review.mjs [--precondition] <dir> " +
-    "[--result <path>] [--evidence <dir>]"
+    "[--head <sha>] [--result <path>] [--evidence <dir>]"
   );
 }
 
@@ -128,11 +132,27 @@ function parseArgs(argv) {
     precondition: false,
     result: undefined,
     evidence: undefined,
+    /* THE COMMIT UNDER AUDIT (CR-VS-001). Optional, and its ABSENCE is not the
+       old behaviour: with no `--head` the audited commit is the one the context
+       directory's own `HEAD` resolves to, which is what the checkout put there.
+       The flag exists so the gate runner can pass the pull-request event's head
+       sha explicitly, which `gate-registry.yaml`'s `parameters: [head]` now
+       makes it do, exactly as it has always done for `scope`. */
+    head: undefined,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--precondition") {
       options.precondition = true;
+      continue;
+    }
+    if (argument === "--head") {
+      const value = argv[index + 1];
+      if (value === undefined || value.startsWith("--")) {
+        return { usageError: "--head requires a value" };
+      }
+      options.head = value;
+      index += 1;
       continue;
     }
     if (argument === "--result" || argument === "--evidence") {
@@ -177,6 +197,22 @@ function parseArgs(argv) {
  * script prints WHICH set it examined instead of naming a directory it may not
  * have read.
  *
+ * THE SUBTREE SENTENCE ABOVE WAS FALSE UNTIL THE DR-0047 SWEEP AND IS NOW TRUE
+ * (CR-VS-002). `loadCommittedVerdicts` listed `delivery/review/` NON-recursively
+ * while the falsifiers' loader listed `delivery/` recursively, so this comment
+ * described the wrong corpus and an operator who believed it and filed verdicts
+ * in a subdirectory got `0 verdict document(s)` and a not-applicable gate. Both
+ * loaders now read the same depth, and the comment is left in place rather than
+ * rewritten because the code was changed to match it.
+ *
+ * AND THE CORPUS IS NOW ANCHORED TO THE COMMIT UNDER AUDIT (CR-VS-001). A
+ * verdict that names a different head, or a head that is not a commit here at
+ * all, is EXCLUDED and NAMED. See `resolveAuditedHead` in `src/checks.ts` for
+ * the mechanism and for the two arms that were reproduced green before it.
+ * `unkeyed` verdicts, the ones that do not say what they reviewed, are kept in
+ * the set on purpose: dropping them would turn today's red into a quiet
+ * not-applicable, and the derived check is the thing that refuses them.
+ *
  * `unexaminable` IS THE HALF THIS LOOP USED TO THROW AWAY, AND THROWING IT AWAY
  * HERE COSTS MORE THAN IT DOES IN THE CHECK. This function decides both which
  * documents the checks are RUN OVER and, through `--precondition`, whether the
@@ -189,14 +225,51 @@ function parseArgs(argv) {
  * `error`, which is the same fail-closed rule `REGIME_DOCUMENTS` applies one
  * screen down: at this layer, could-not-determine is `error` and never green.
  */
-export function committedVerdictPaths(directory) {
+export function committedVerdictPaths(directory, requestedHead) {
   const loaded = loadCommittedVerdicts(directory);
   if (!loaded.ok) {
     return { ok: false, reason: loaded.reason };
   }
+  const anchor = resolveAuditedHead(directory, requestedHead, loaded.source);
+  /* THE ANCHOR IS CARRIED, NEVER APPLIED SILENTLY. `error` is returned as a
+     value rather than thrown or folded into an empty corpus, because an empty
+     corpus is what the not-applicable arm is made of and "the commit under
+     audit could not be established" must never be reported as "there is
+     nothing to compare" (M2-C-3). */
+  if (anchor.kind === "error") {
+    return { ok: false, reason: anchor.reason, anchor };
+  }
+  const partition =
+    anchor.kind === "anchored"
+      ? partitionByAuditedHead(directory, loaded.verdicts, anchor.head)
+      : {
+          onHead: [...loaded.verdicts],
+          admitted: [],
+          offHead: [],
+          unkeyed: [],
+          unkeyedVerdicts: [],
+        };
+  /* KEPT: the verdicts about this commit, AND the ones that do not say what
+     they reviewed. Only a verdict that names a DIFFERENT commit is excluded.
+     Dropping an unkeyed verdict would convert the derived check's red into a
+     quiet not-applicable, which is the shrinking-corpus shape this file has
+     paid for three times. */
+  const kept = [...partition.onHead, ...partition.unkeyedVerdicts];
   return {
     ok: true,
-    paths: loaded.verdicts.map((entry) => ({ path: entry.path, instance: entry.record })),
+    anchor,
+    offHead: partition.offHead,
+    offHeadLines:
+      anchor.kind === "anchored" ? describeOffHeadVerdicts(partition.offHead, anchor.head) : [],
+    /* THE ADMISSIONS, PRINTED FOR THE SAME REASON THE EXCLUSIONS ARE. A green
+       reached because the verdicts name the audited commit and a green reached
+       because they name an ancestor whose whole gap is paperwork are different
+       facts, and the second is the one a reader has to be able to audit: it is
+       the relaxation, and an unprinted relaxation is indistinguishable from the
+       equality anchor that could never pass. */
+    admittedLines:
+      anchor.kind === "anchored" ? describeAdmittedVerdicts(partition.admitted, anchor.head) : [],
+    paths: kept.map((entry) => ({ path: entry.path, instance: entry.record })),
     /* M4-P10 FIX ROUND 2's CHANNEL, NOW READ OFF THE SHIPPED LOADER INSTEAD OF
        OFF THIS FILE'S OWN LOOP. The loop is gone (see above), so the candidates
        that could not be examined arrive as `Diagnostic` records and this layer
@@ -249,8 +322,8 @@ export function committedVerdictPaths(directory) {
  * re-resolved, so this refusal cannot be about a different commit than the
  * verdicts it is refusing to judge.
  */
-export function evaluate(directory) {
-  const found = committedVerdictPaths(directory);
+export function evaluate(directory, requestedHead) {
+  const found = committedVerdictPaths(directory, requestedHead);
   if (!found.ok) {
     return { status: "error", units: 0, lines: [found.reason], checksRun: 0 };
   }
@@ -314,6 +387,13 @@ export function evaluate(directory) {
      nothing is lost: the same violation seen from two verdicts differs in its
      trailing path and stays two lines. */
   const seen = new Set();
+  /* THE EXCLUSIONS ARE CARRIED ON THEIR OWN CHANNEL AND NOT MIXED IN HERE
+     (CR-VS-001). A corpus holding two approving reviews of another commit is
+     not a RED branch: it is a branch with no reviews of this commit and some
+     reviews of something else, and those are different facts with different
+     statuses. `main` prints them as EXCLUDED lines and puts them in the
+     evidence; what must never happen again is the third possibility, that they
+     are neither reported nor counted. */
   const lines = [];
   const violations = new Set();
   for (const { path, instance } of found.paths) {
@@ -403,6 +483,14 @@ export function evaluate(directory) {
        not-applicable arm has to name the set it found empty, and the only
        honest name for that set is the one the loader actually used. */
     source: found.source,
+    /* AND SO DOES THE ANCHOR (CR-VS-001), FOR THE SAME REASON ONE SCOPE IN.
+       "No verdict document exists" and "no verdict document is about THIS
+       commit, and here are the two that are about another one" are different
+       facts, and the not-applicable arm printed the first for both until the
+       sweep. */
+    anchor: found.anchor,
+    offHeadLines: found.offHeadLines ?? [],
+    admittedLines: found.admittedLines ?? [],
     /* THE EXCEPTION IS REPORTED ONLY WHEN IT WAS ACTUALLY RELIED ON, and
        "relied on" is derived rather than asserted. Both falsifiers live inside
        the derived check and each produces a violation, so a single-family
@@ -488,6 +576,53 @@ function emit(options, fields) {
   return exitCodeForStatus(result.status);
 }
 
+/**
+ * Name the commit under audit, or say plainly that none was taken.
+ *
+ * SC-011 APPLIED TO THE ANCHOR. A gate line that does not say which commit its
+ * verdict is about is unfalsifiable by the person reading it, which is exactly
+ * what `describeVerdictCorpusSource` exists for one object along. The
+ * `unanchored` sentence is the important one: it is the only arm where the old
+ * behaviour survives, and it must never be mistaken for an anchored green.
+ */
+/**
+ * Name the route by which the corpus was admitted, in the gate's own detail.
+ *
+ * WHY THE GREEN SENTENCE CARRIES THIS AND NOT ONLY THE STDOUT LINES. The record
+ * written to `--result` is what a reviewer reads after the fact, and a green
+ * reached through the ANCESTRY allowance is the one that has to be auditable:
+ * it is the relaxation. A detail that said only "2 verdict(s) for the commit
+ * under audit X" over verdicts that all name X-1 would be true and would hide
+ * the only thing worth checking, which is the SC-011 shape this file applies to
+ * the corpus source and to the exclusions already.
+ */
+function describeAdmissions(lines) {
+  const ancestors = lines.filter((line) => line.includes("an ancestor of the commit under audit"));
+  if (ancestors.length === 0) {
+    return "";
+  }
+  return (
+    `; ${String(ancestors.length)} of ${String(lines.length)} verdict(s) were admitted by ANCESTRY rather than by ` +
+    `naming this commit, their gap to it being paperwork only: ${ancestors.join("; ")}`
+  );
+}
+
+function describeAnchor(anchor) {
+  if (anchor === undefined) {
+    return "";
+  }
+  if (anchor.kind === "anchored") {
+    return ` for the commit under audit ${anchor.head} (from ${anchor.how})`;
+  }
+  if (anchor.kind === "unanchored") {
+    return (
+      " with NO COMMIT UNDER AUDIT, because this context has no resolvable git ref and no --head was given" +
+      `, so whether these documents review this work was NOT established: ${anchor.reason}`
+    );
+  }
+  return ` with NO COMMIT UNDER AUDIT: ${anchor.reason}`;
+}
+
 function main(argv) {
   const startedAt = new Date().toISOString();
   const parsed = parseArgs(argv);
@@ -501,10 +636,16 @@ function main(argv) {
      question with an exit code, which is what `kind: command-exit-zero`
      consumes. */
   if (options.precondition) {
-    const found = committedVerdictPaths(options.directory);
+    const found = committedVerdictPaths(options.directory, options.head);
     if (!found.ok) {
       process.stderr.write(`tiphys ${GATE_ID}: ${found.reason}\n`);
-      return 1;
+      /* AN UNESTABLISHED ANCHOR MAKES THE GATE APPLICABLE, WHICH IS THE
+         OPPOSITE DIRECTION FROM EVERY OTHER FAILURE AT THIS ARM (CR-VS-001).
+         Exit 1 here means "do not run me", and answering that about a run
+         whose SUBJECT could not be established is a not-applicable reached by
+         not looking, the exact shape the paragraph below is about. Exit 0 so
+         the gate runs and `evaluate` refuses it with `error`. */
+      return found.anchor !== undefined && found.anchor.kind === "error" ? 0 : 1;
     }
     /* AN UNEXAMINABLE CANDIDATE MAKES THE GATE APPLICABLE, WHICH IS THE
        OPPOSITE OF WHAT DROPPING IT DID. Exit 1 here means "no pair of reviews
@@ -514,13 +655,22 @@ function main(argv) {
     const unexaminable = found.unexaminable.length;
     process.stdout.write(
       `${GATE_ID}: ${String(found.paths.length)} verdict document(s) ${describeVerdictCorpusSource(found.source)}` +
+        describeAnchor(found.anchor) +
+        (found.offHead.length > 0
+          ? `, and ${String(found.offHead.length)} verdict document(s) about another commit, which are not evidence about this one`
+          : "") +
         (unexaminable > 0 ? `, and ${String(unexaminable)} candidate(s) that could not be examined` : "") +
         "\n",
     );
+    /* THE COUNT IS THE ANCHORED ONE (CR-VS-001), and that is what makes the two
+       arms agree. The workflow step runs this arm and then the gate, so a
+       precondition counting verdicts about ANOTHER commit would report the gate
+       applicable and the gate would then report not-applicable, whose exit code
+       fails a `set -e` step. Both arms now ask the same question. */
     return found.paths.length + unexaminable > 0 ? 0 : 1;
   }
 
-  const run = evaluate(options.directory);
+  const run = evaluate(options.directory, options.head);
   if (run.status === "error") {
     return emit(options, {
       status: "error",
@@ -538,7 +688,24 @@ function main(argv) {
       status: "not-applicable",
       units: 0,
       startedAt,
-      detail: `no verdict document is ${describeVerdictCorpusSource(run.source)}, so there is no pair of reviews to compare`,
+      /* THE DESCRIBER IS THE PHRASE-FORM ONE (CR-VS-006). This sentence was
+         built with `describeVerdictCorpusSource`, which returns a trailing
+         PARENTHETICAL, so the shipped line read "no verdict document is
+         (corpus: ... read from commit ...)", which is not a sentence. Its
+         sibling `describeContextDocumentSource` returns the phrase form the
+         sentence was written for. */
+      detail:
+        `no verdict document was found ${describeVerdictCorpusSource(run.source)}` +
+        describeAnchor(run.anchor) +
+        ", so there is no pair of reviews to compare" +
+        (run.offHeadLines.length > 0
+          ? `; ${String(run.offHeadLines.length)} committed verdict document(s) review other work and are NOT evidence about this commit: ${run.offHeadLines.join("; ")}`
+          : ""),
+      evidenceLines: [
+        `directory: ${options.directory}`,
+        `anchor:${describeAnchor(run.anchor)}`,
+        ...run.offHeadLines,
+      ],
     });
   }
 
@@ -547,6 +714,17 @@ function main(argv) {
      needs in order not to mistake the deregistration witness for an assertion.
      `test/dual-review.test.ts` asserts the check IS registered in the shipped
      registry, so the two facts are separated rather than conflated. */
+  /* THE ANCHOR IS PRINTED BEFORE THE COUNTS, because the counts mean nothing
+     until a reader knows which commit they are counts ABOUT (CR-VS-001). */
+  process.stdout.write(
+    `${GATE_ID}: ${String(run.units)} verdict document(s)${describeAnchor(run.anchor)}\n`,
+  );
+  for (const line of run.admittedLines ?? []) {
+    process.stdout.write(`${GATE_ID}: ADMITTED ${line}\n`);
+  }
+  for (const line of run.offHeadLines ?? []) {
+    process.stdout.write(`${GATE_ID}: EXCLUDED ${line}\n`);
+  }
   process.stdout.write(
     `${GATE_ID}: ${String(run.checksRun)} registered check(s) named ${CHECK_ID} ran over ${String(run.units)} verdict(s)\n`,
   );
@@ -638,10 +816,13 @@ function main(argv) {
     startedAt,
     detail:
       run.status === "green"
-        ? `${String(run.units)} verdict(s) examined by ${String(run.checksRun)} registered check(s) named ${CHECK_ID} and ${String(run.pairChecksRun)} named ${PAIR_CHECK_ID}; no decorrelation violation and the pair approves`
+        ? `${String(run.units)} verdict(s)${describeAnchor(run.anchor)} examined by ${String(run.checksRun)} registered check(s) named ${CHECK_ID} and ${String(run.pairChecksRun)} named ${PAIR_CHECK_ID}; no decorrelation violation and the pair approves${describeAdmissions(run.admittedLines ?? [])}`
         : run.lines.filter((line) => line.startsWith("INVALID")).join("; "),
     evidenceLines: [
       `directory: ${options.directory}`,
+      `anchor:${describeAnchor(run.anchor)}`,
+      ...(run.admittedLines ?? []).map((line) => `ADMITTED ${line}`),
+      ...(run.offHeadLines ?? []),
       `registered checks named ${CHECK_ID}: ${String(run.checksRun)}`,
       `registered checks named ${PAIR_CHECK_ID}: ${String(run.pairChecksRun)}`,
       `verdicts examined: ${String(run.units)}`,

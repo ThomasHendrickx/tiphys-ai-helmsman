@@ -1,0 +1,4 @@
+ARM hook exit 0
+ARM hook bytes {\n  "endedAt": "2026-09-18T16:30:53.420Z",\n  "exitCode": 0,\n  "env": {\n    "HOME": "/root",\n    "XDG_CONFIG_HOME": "/task/scrub-env/xdg-config",\n    "GH_CONFIG_DIR": "/task/scrub-env/gh-config",\n    "GIT_CONFIG_GLOBAL": "/task/scrub-env/gitconfig-global",\n    "GIT_CONFIG_SYSTEM": "/task/scrub-env/gitconfig-system"\n  }\n}\n
+ARM adapter bytes {\n  "endedAt": "1970-01-01T00:00:00.000Z",\n  "exitCode": 0,\n  "env": {\n    "HOME": "/task/scrub-env/home",\n    "XDG_CONFIG_HOME": "/task/scrub-env/xdg-config",\n    "GH_CONFIG_DIR": "/task/scrub-env/gh-config",\n    "GIT_CONFIG_GLOBAL": "/task/scrub-env/gitconfig-global",\n    "GIT_CONFIG_SYSTEM": "/task/scrub-env/gitconfig-system"\n  }\n}\n
+HOOK-NAMES-ITS-OWN-OUTPUT true

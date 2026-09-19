@@ -1,0 +1,31 @@
+{
+  "id": "child-env-vocabulary-registry-covers-every-export",
+  "behavior": "child-env-vocabulary-registry-covers-every-export",
+  "class": "classification",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "every credential vocabulary the module exports has a row in the refusal registry"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/credentials.ts",
+      "find": "    id: \"egress\",\n    constantName: \"EGRESS_ENV_VOCABULARY\",",
+      "replace": "    id: \"egress\",\n    constantName: \"EGRESS_ENV_VOCABULARY_RENAMED_BY_A_TYPO\","
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/credentials.ts",
+      "find": "    constantName: \"DANGEROUS_ENV_VOCABULARY\",\n    includes: isDangerousEnvName,",
+      "replace": "    constantName: \"DANGEROUS_ENV_VOCABULARY\",\n    includes: (name: string) => name === \"NODE_OPTIONS\","
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "node witness/captures/credential-vocabulary-walk.mjs <scrub-dir>",
+    "captures": [
+      "witness/captures/credential-vocabulary-walk.txt"
+    ],
+    "provenance": "Same diff and the same rule (f) obligation, and the same separate-process capture at witness/captures/credential-vocabulary-walk.txt:1, taken 2026-09-18 on node v26.6.0 by `node witness/captures/credential-vocabulary-walk.mjs <scrub-dir>`. HOW THIS WITNESS'S OWN NAMED TEST CONSUMES IT: the registry-coverage test reads the captured PROBE rows and asserts the gate's environment probe reported clean for the default child and resolvable for the egress arm and the ssh arm, so a registry row whose vocabulary claims nothing those real arms contain would be a row that cannot redden anything. The two members are structurally different: member 0 points a row at a constant the module does not export, which is the typo that satisfies a coverage count while consulting nothing, and member 1 leaves the row pointing at the right constant while narrowing its predicate to one member, which is a row that covers its constant in name only."
+  }
+}

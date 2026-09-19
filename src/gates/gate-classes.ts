@@ -64,6 +64,32 @@ import type { GateResultFields, GateStatus } from "./result.ts";
  * src/gates/scope.ts's M3-P11 change B makes for a declaration addition. A
  * reviewer who does not read the printed line gets no protection from it.
  *
+ * THIS CHECK JUDGES NAMING, NEVER ASSERTING, AND SAYING SO IS PART OF ITS JOB
+ * (CR-FS-GATES-01, the DR-0047 final sweep). It establishes that a phase NAMES
+ * a registered gate for each required class. It does not, and from here cannot,
+ * establish that the named gate was APPLICABLE on the head under audit, because
+ * that is a fact about a run and this reads a declaration. Measured at the swept
+ * head, one phase, two commands:
+ *
+ *   gate-classes --phase m4-p28   ->  green, "review: asserted by check-dual-review", exit 0
+ *   check-dual-review --precondition .  ->  exit 1, "0 verdict document(s)"
+ *
+ * Two carve-outs, each correct on its own, composing into the state DR-0029
+ * forbids: a declaration check SHOULD check declarations, and a gate with no
+ * subject SHOULD report not-applicable, and `check-dual-review` is
+ * `applicability: conditional` so its vacuity never reddens the bundle either.
+ * All 17 declarations carrying `gateClasses` satisfy `review` with exactly
+ * `{"gates":["check-dual-review"]}`.
+ *
+ * THE ANSWER IS DISCLOSURE, NOT REFUSAL, and the choice is the module's own
+ * existing trade rather than a new one. Refusing a class satisfied only by a
+ * conditional gate would redden 17 landed declarations over a property this
+ * command cannot measure. So a class satisfied by a gate that is CONDITIONAL in
+ * the registry is named on the green arm, exactly as a declared escape is, and
+ * the sentence says that the named gate's applicability was not checked here. A
+ * reviewer who reads the line can then go and look; a reader of the old line
+ * could not know there was anything to look at.
+ *
  * WHY A BAD DECLARATION IS `red` AND A BAD REGISTRY IS `error`, because
  * M2-C-3 makes that distinction load-bearing. A declaration that does not
  * parse, does not validate, or names a class with no disposition is a DEFECT
@@ -246,7 +272,7 @@ function declarationSchema(): SchemaDocument {
 }
 
 type RegistryIdsResult =
-  | { ok: true; ids: Set<string> }
+  | { ok: true; ids: Set<string>; conditional: Set<string> }
   | { ok: false; reason: string };
 
 /**
@@ -273,16 +299,25 @@ function registryGateIds(path: string): RegistryIdsResult {
     return { ok: false, reason: `gate registry ${path} declares no gates array` };
   }
   const ids = new Set<string>();
+  /* CR-FS-GATES-01. The APPLICABILITY is read here because it is the one fact
+     about a named gate this command can establish from the registry it is
+     already parsing. It is never used to REFUSE a class: it is carried out so
+     the green sentence can name which of the phase's chosen gates can report
+     not-applicable without reddening anything. */
+  const conditional = new Set<string>();
   for (const entry of gates) {
     const id = (entry as { id?: unknown } | null)?.id;
     if (typeof id === "string" && id !== "") {
       ids.add(id);
+      if ((entry as { applicability?: unknown } | null)?.applicability === "conditional") {
+        conditional.add(id);
+      }
     }
   }
   if (ids.size === 0) {
     return { ok: false, reason: `gate registry ${path} declares no usable gate id` };
   }
-  return { ok: true, ids };
+  return { ok: true, ids, conditional };
 }
 
 interface ClassVerdict {
@@ -292,6 +327,15 @@ interface ClassVerdict {
   sentence: string;
   /** True when this class is satisfied by a declared escape rather than a gate. */
   escape: boolean;
+  /**
+   * The gate ids this class names that are `applicability: conditional`.
+   *
+   * NOT A FAILURE AND NOT AN ESCAPE, which is why it is a third field rather
+   * than a reuse of either (CR-FS-GATES-01). A conditional gate is a legitimate
+   * satisfier; what a reader is owed is that it can report not-applicable at a
+   * head and that nothing here checked whether it did.
+   */
+  conditionalGates: string[];
 }
 
 /**
@@ -302,6 +346,7 @@ function judgeClass(
   name: RequiredClass,
   entry: ClassDeclaration | undefined,
   knownGateIds: Set<string>,
+  conditionalGateIds: Set<string> = new Set<string>(),
 ): ClassVerdict {
   if (entry === undefined) {
     return {
@@ -309,6 +354,7 @@ function judgeClass(
       ok: false,
       sentence: `${name}: MISSING, the declaration names no disposition for this required class`,
       escape: false,
+      conditionalGates: [],
     };
   }
   const hasGates = Array.isArray(entry.gates) && entry.gates.length > 0;
@@ -321,6 +367,7 @@ function judgeClass(
         `${name}: AMBIGUOUS, it names gate(s) ${(entry.gates as string[]).join(", ")} and also ` +
         `status ${String(entry.status)}; a class is asserted by a gate or excused by a status, never both`,
       escape: false,
+      conditionalGates: [],
     };
   }
   if (hasGates) {
@@ -334,13 +381,24 @@ function judgeClass(
           `${name}: names gate id(s) ${unknown.join(", ")} that this repository's gate registry ` +
           "does not declare, so nothing runs for this class",
         escape: false,
+        conditionalGates: [],
       };
     }
+    /* CR-FS-GATES-01. The per-class SENTENCE is unchanged, deliberately: it
+       says what the declaration says, and this check judges the declaration.
+       The disclosure is a TRAILING note built by `runClassGate`, beside the
+       declared-escape note it is a sibling of, for two reasons. It keeps one
+       disclosure idiom rather than two, and it keeps every committed capture of
+       this gate's detail a PREFIX of the new one, so the existing witnesses
+       still assert what they were taken to assert instead of being re-recorded
+       to match a change they were supposed to be independent of. */
+    const conditional = named.filter((id) => conditionalGateIds.has(id));
     return {
       name,
       ok: true,
       sentence: `${name}: asserted by ${named.join(", ")}`,
       escape: false,
+      conditionalGates: conditional,
     };
   }
   if (!hasStatus) {
@@ -351,6 +409,7 @@ function judgeClass(
         `${name}: declares neither a gate nor a status, which is the SILENT nothing DR-0029 ` +
         "exists to refuse",
       escape: false,
+      conditionalGates: [],
     };
   }
   if (entry.status === "not-applicable") {
@@ -361,6 +420,7 @@ function judgeClass(
         ok: false,
         sentence: `${name}: not-applicable with no recorded reason; the reason is what makes it data rather than silence`,
         escape: false,
+        conditionalGates: [],
       };
     }
     return {
@@ -368,6 +428,7 @@ function judgeClass(
       ok: true,
       sentence: `${name}: DECLARED not-applicable, reason: ${reason}`,
       escape: true,
+      conditionalGates: [],
     };
   }
   if (entry.status === "not-yet-establishable") {
@@ -380,6 +441,7 @@ function judgeClass(
           `${name}: not-yet-establishable naming no establishing phase; an IOU with no due date ` +
           "is a waiver, which DR-0029 does not grant",
         escape: false,
+        conditionalGates: [],
       };
     }
     if (!PHASE_ID_PATTERN.test(by)) {
@@ -390,6 +452,7 @@ function judgeClass(
           `${name}: not-yet-establishable names establishedBy ${by}, which is not a phase id of ` +
           "the form M<n>-P<n>",
         escape: false,
+        conditionalGates: [],
       };
     }
     return {
@@ -397,6 +460,7 @@ function judgeClass(
       ok: true,
       sentence: `${name}: DECLARED not-yet-establishable, to be established by ${by}`,
       escape: true,
+      conditionalGates: [],
     };
   }
   return {
@@ -404,6 +468,7 @@ function judgeClass(
     ok: false,
     sentence: `${name}: declares unknown status ${String(entry.status)}`,
     escape: false,
+    conditionalGates: [],
   };
 }
 
@@ -493,10 +558,18 @@ function runClassGate(flags: Flags): number {
 
   const classes = declaration.gateClasses;
   const verdicts = REQUIRED_CLASSES.map((name) =>
-    judgeClass(name, classes === undefined ? undefined : classes[name], registryIds.ids),
+    judgeClass(
+      name,
+      classes === undefined ? undefined : classes[name],
+      registryIds.ids,
+      registryIds.conditional,
+    ),
   );
   const failed = verdicts.filter((verdict) => !verdict.ok);
   const escapes = verdicts.filter((verdict) => verdict.ok && verdict.escape);
+  const conditionallySatisfied = verdicts.filter(
+    (verdict) => verdict.ok && verdict.conditionalGates.length > 0,
+  );
   const units = verdicts.length;
 
   if (failed.length > 0) {
@@ -520,6 +593,20 @@ function runClassGate(flags: Flags): number {
       : `; ${String(escapes.length)} class(es) satisfied by a DECLARED ESCAPE rather than a gate, ` +
         "which a reviewer signs off rather than the gate refusing: " +
         escapes.map((verdict) => verdict.name).join(", ");
+  /* THE SECOND DISCLOSURE, AND IT IS ON THE GREEN ARM FOR THE SAME REASON AS
+     THE FIRST (CR-FS-GATES-01). A class whose only satisfier is a conditional
+     gate is DECLARED correctly and may still have had nothing run for it at
+     this head, and the composition of those two correct behaviours is the
+     silent nothing DR-0029 forbids. Naming it here does not make the gate
+     assert anything; it makes the reviewer's signature informed. */
+  const conditionalNote =
+    conditionallySatisfied.length === 0
+      ? ""
+      : `; ${String(conditionallySatisfied.length)} class(es) are satisfied ONLY BY NAMING a gate, and ` +
+        "this check never establishes that the named gate asserted anything on this head: " +
+        conditionallySatisfied
+          .map((verdict) => `${verdict.name} -> ${verdict.conditionalGates.join(", ")}`)
+          .join("; ");
   return emit("gate-classes", resultPath, {
     ...shared,
     status: "green",
@@ -527,7 +614,7 @@ function runClassGate(flags: Flags): number {
     endedAt: now(),
     detail:
       `phase ${declaration.id} declares all ${String(units)} required gate class(es) in ${relPath}: ` +
-      `${verdicts.map((verdict) => verdict.sentence).join("; ")}${escapeNote}`,
+      `${verdicts.map((verdict) => verdict.sentence).join("; ")}${escapeNote}${conditionalNote}`,
   });
 }
 

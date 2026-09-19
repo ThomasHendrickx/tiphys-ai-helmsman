@@ -479,12 +479,54 @@ if (unreplicated.length > 0) {
     `session can recover them. Run: git push -u origin <branch> for each.`;
   exitCode = 6;
 } else if (done.length === PHASE_COUNT) {
-  const exitEvidence = onMain(`delivery/evidence/${MILESTONE}-exit-test`);
-  if (exitEvidence) {
-    next = `NOTHING LEFT. All ${PHASE_COUNT} phases merged and exit-test evidence is on main.`;
+  /* WHAT A FINISHED MILESTONE OWES IS NOT THE SAME FOR EVERY MILESTONE, AND
+     HARD-CODING THE EXIT TEST MADE THIS SCRIPT NAME A WRONG NEXT ACTION.
+     Measured 2026-09-18, the moment M4's last phase merged: it printed `RUN THE
+     M4 EXIT TEST`, which DR-0041 and DR-0042 had already deferred to cutover
+     entry, bound to the pilot and refusing a kernel-only subject. M4-P27 ships
+     that trigger and is merged, so the instruction was not merely early, it was
+     for a step this milestone does not own.
+
+     A stop condition that names the wrong action is worse than one that names
+     none, because it trains the reader to discount the line that is supposed to
+     be beyond discounting. That is T-036's shape one step out: there the
+     denominator was wrong, here the verdict is.
+
+     So the terminal action is DATA per milestone rather than one hard-coded
+     branch, and a milestone with no entry says so instead of guessing. */
+  const TERMINAL = {
+    m4: {
+      owes: "delivery/review",
+      probe: (onMainFn) => onMainFn("delivery/review/verdict-final-exclusion-criteria.json"),
+      action:
+        "RUN THE DR-0047 FINAL APPROVAL SWEEP. All phases merged. M4's exit test is " +
+        "NOT due here: DR-0041 and DR-0042 bind it to the pilot at cutover entry, " +
+        "which M4-P27 ships. What the FINAL STATE owes is the approval stamp, which " +
+        "is two clean-room reviews per shipped subsystem on different model families, " +
+        "landing verdict documents at the TOP LEVEL of delivery/review so " +
+        "check-dual-review can pair them.",
+      done: "NOTHING LEFT. All phases merged and the final approval sweep's verdicts are on main.",
+    },
+  };
+  const terminal = TERMINAL[MILESTONE];
+  if (terminal === undefined) {
+    const exitEvidence = onMain(`delivery/evidence/${MILESTONE}-exit-test`);
+    if (exitEvidence) {
+      next = `NOTHING LEFT. All ${PHASE_COUNT} phases merged and exit-test evidence is on main.`;
+      exitCode = 0;
+    } else {
+      next =
+        `ALL ${PHASE_COUNT} PHASES MERGED and this script carries no terminal rule for ` +
+        `${MILESTONE.toUpperCase()}. What a finished milestone owes is a decided question ` +
+        `(an exit test, an approval sweep, or something else), so this reports the gap ` +
+        `rather than guessing an action. Add an entry to TERMINAL above.`;
+      exitCode = 3;
+    }
+  } else if (terminal.probe(onMain)) {
+    next = terminal.done;
     exitCode = 0;
   } else {
-    next = `RUN THE ${MILESTONE.toUpperCase()} EXIT TEST. All phases merged; exit-test evidence is NOT on main.`;
+    next = terminal.action;
     exitCode = 3;
   }
 } else if (pushedNotMerged.length > 0) {

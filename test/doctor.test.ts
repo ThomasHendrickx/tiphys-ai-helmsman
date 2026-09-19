@@ -2,6 +2,7 @@ import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import {
   appendFileSync,
+  chmodSync,
   cpSync,
   existsSync,
   mkdirSync,
@@ -9,11 +10,12 @@ import {
   readdirSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -2257,4 +2259,101 @@ test("the shared-lock condition the check emits is the one only the full profile
   writeFileSync(join(off, "package.json"), `${JSON.stringify({ name: "fleet" }, null, 2)}\n`, "utf8");
   assert.equal(checkSharedLock(off).status, "PASS");
   assert.equal(checkSharedLock(off).condition, undefined);
+});
+
+/* ------------------------------------------------------------------ */
+/* DR-0047 sweep round 2: CHECK worktrees CATCHES an unlistable pool    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Open the traversal chain under the OS temp root for an unprivileged child.
+ *
+ * THE INTERPRETER IS GRANTED AS WELL AS THE REPOSITORY, and that is the whole
+ * difference from the older copy of this helper. `test/gates.test.ts` grants the
+ * repository only, so a run whose `process.execPath` lives under a mode-700
+ * scratch prefix spawns a child that cannot reach its own interpreter: the
+ * failure is `spawnSync ... EACCES`, it is a property of the interpreter's PATH
+ * rather than of the branch, and it is recorded as
+ * delivery/tuition/T-029-the-precondition-test-flakes-only-here.md:1. Granting
+ * both paths is one extra call and removes the whole class.
+ */
+function grantTraversalUnderTmp(path: string): void {
+  const temp = resolve(tmpdir());
+  let current = resolve(path);
+  while (current.startsWith(`${temp}/`)) {
+    chmodSync(current, statSync(current).mode | 0o055);
+    const parent = dirname(current);
+    if (parent === current) {
+      return;
+    }
+    current = parent;
+  }
+}
+
+const UNPRIVILEGED_UID = 65534;
+
+/**
+ * Run the shipped CLI as an unprivileged uid, so a mode-000 directory is
+ * genuinely unreadable.
+ *
+ * ROOT BYPASSES DIRECTORY PERMISSIONS, measured in this container: a
+ * `readdirSync` of a mode-000 directory as uid 0 returns its entries. So a test
+ * that only chmodded would be green whatever the code did, which is the
+ * cannot-go-red shape T-008 names. Dropping the uid is what makes the dangerous
+ * state actually dangerous.
+ */
+function runCliUnprivileged(args: string[], cwd: string, worldReadable: string[]) {
+  const asRoot = typeof process.getuid === "function" && process.getuid() === 0;
+  if (asRoot) {
+    for (const path of worldReadable) {
+      grantTraversalUnderTmp(path);
+    }
+    grantTraversalUnderTmp(repoRoot);
+    grantTraversalUnderTmp(process.execPath);
+  }
+  return spawnSync(process.execPath, [sourceEntry, ...args], {
+    encoding: "utf8",
+    cwd,
+    ...(asRoot ? { uid: UNPRIVILEGED_UID, gid: UNPRIVILEGED_UID } : {}),
+  });
+}
+
+test("CHECK worktrees reports an unlistable pool as FAIL instead of letting the run abort", (t) => {
+  /* THE DANGEROUS STATE, AND IT IS A STATE ROUND 1 CREATED. `poolList` used to
+     swallow an unlistable `tasks/` into `[]`, so this check printed the false
+     positive claim "no pool worktrees" about a directory it had not read. Round
+     1 made the throw reach the caller, which is right; what it could not do
+     from its own declared files is catch it HERE. src/commands/next.ts:334
+     already catches the same throw and reports it into `unknown`, so one
+     consumer of one function degraded and the other aborted.
+
+     The measurable consequence is not the missing line: it is that a DIAGNOSTIC
+     command stops diagnosing. `CHECK kernel-artifacts` runs after this check,
+     and on the base branch it never prints. */
+  const fleet = initFleet(t);
+  const control = runCliUnprivileged(["doctor"], fleet, [fleet]);
+  assert.match(
+    control.stdout,
+    /CHECK worktrees /,
+    `the control run did not reach CHECK worktrees at all: exit=${String(control.status)} stderr=${control.stderr}`,
+  );
+  assert.match(control.stdout, /CHECK kernel-artifacts /, control.stdout);
+
+  chmodSync(join(fleet, "tasks"), 0o000);
+  const run = runCliUnprivileged(["doctor"], fleet, [fleet]);
+  /* THE CHECK REPORTS THE CONDITION ... */
+  assert.match(
+    run.stdout,
+    /CHECK worktrees FAIL the worktree pool could not be listed/,
+    `exit=${String(run.status)} stdout=${run.stdout} stderr=${run.stderr}`,
+  );
+  /* ... AND THE RUN CARRIES ON, which is the half that distinguishes a caught
+     throw from an uncaught one. A test asserting only the FAIL line would be
+     green against a doctor that printed it and then aborted. */
+  assert.match(run.stdout, /CHECK kernel-artifacts /, run.stdout);
+  /* AND THE NAMED CHECK IS NOT SILENTLY MISSING FROM THE PRINTED SET. */
+  const names = [...run.stdout.matchAll(/^CHECK (\S+) /gm)].map((match) => match[1] as string);
+  assert.ok(names.includes("worktrees"), names.join(", "));
+  assert.ok(names.includes("kernel-artifacts"), names.join(", "));
+  chmodSync(join(fleet, "tasks"), 0o755);
 });

@@ -15,7 +15,7 @@
     {
       "kind": "mutation",
       "file": "src/commands/lock.ts",
-      "find": "    process.stdout.write(`${outcome.shared.line}\\n`);",
+      "find": "    process.stdout.write(`${labelClock(outcome.shared.line)}\\n`);",
       "replace": "    process.stdout.write(\"\");"
     }
   ],

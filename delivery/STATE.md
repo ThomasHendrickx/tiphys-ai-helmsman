@@ -2530,3 +2530,81 @@ which is T-005, T-017 and T-039 one more time.
 them where they stand. Whether to spend thirty-two reviewer agents on a
 retrospective pass before cutover entry, to review a subset, or to accept the
 gap, is with the owner.
+
+## Standing at 2026-09-18, 13:20 UTC: the DR-0047 approval sweep, in progress
+
+Supersedes the question left open in the section above. The owner answered it
+with DR-0047: group the work, cut CI and approval overhead, and take the
+approval stamp once, at the final state. That is what this sweep is.
+
+**Shape.** Eight subsystem groups, each reviewed twice at one head
+(`ad2428b76ef6f53f75b0d7f94c7db50463e077b7`), on two model families, under two
+different contracts. Two agents at a time, which is DR-0044's cap. Each pair is
+pinned to one `(phase, head)` because `check-dual-review` groups verdicts that
+way. Fixes are batched into one round at the end rather than one per group, so
+this costs one CI cycle instead of eight.
+
+**Groups: 3 of 8 complete.** credential, exclusion, gates. Running: validation.
+Pending: cli, cutover, plugin, docs.
+
+**Verdicts so far. No group is approved yet.**
+
+| group | criteria | hazard | highest |
+|---|---|---|---|
+| credential | FIX-ROUND-NEEDED | FIX-ROUND-NEEDED | high |
+| exclusion | FIX-ROUND-NEEDED | FIX-ROUND-NEEDED | high (two) |
+| gates | FIX-ROUND-NEEDED | APPROVE | medium |
+
+**The three highs, each confirmed independently by the orchestrator before any
+fix round was planned:**
+
+1. **Egress crosses the audited credential route.** The refusal walks the
+   gh-token and dangerous vocabularies and not the egress one. Wider than the
+   reviewers reported: `HTTPS_PROXY`, `HTTP_PROXY`, `ALL_PROXY` and
+   `SSH_AUTH_SOCK` are all accepted, while `GH_TOKEN` and `NODE_OPTIONS` are
+   refused. The default scrubbed child carries seven names and no proxy, so
+   denying egress is what the scrub is for. Decided as DR-0048.
+2. **The cross-environment guard tests the wrong property.** It asks which
+   FLEET this is when the property that matters is which ENVIRONMENT. The
+   identity file sits at the fleet root and `FLEET_IGNORED` is `state/`,
+   `worktrees/`, `projects/` only, so `sync` pushes it and every clone inherits
+   it. M4-P22 criteria 2 and 3 are not met. **The plan contradicts itself here**
+   and the amendment is the owner's: M4-P21 criterion 3 REQUIRES a clone to
+   observe the same id, and M4-P22 requires a clone to be refused as a different
+   environment. Options and a recommendation go to the owner when the sweep ends.
+3. **A failed `lock release` deletes the local lease anyway.** Three
+   `sharedCommit` sites at src/lock.ts:678, :799 and :891, and exactly one
+   rollback at src/lock.ts:685, on the acquire path. Because the holdership
+   guard keys on that file's presence, the deletion reopens the dual-writer
+   window M1-P4 criterion 12 closed. Found independently by BOTH reviewers at
+   the same lines.
+
+**What the sweep is buying that per-phase review could not.** Every one of the
+three is a composition defect: each phase is correct alone and the union is not.
+M4-P21 required a tracked identity so it survives a reclaim, M4-P18 then shipped
+a `sync` that pushes every durable path, and M4-P22 built its guard on the
+union. No per-phase diff shows that.
+
+**The gate this all feeds has been proved to work, which it never had been.**
+T-040 records `check-dual-review` reporting not-applicable on every head across
+three milestones, so nobody knew whether it would pass a real pair. Both arms
+are now witnessed and the evidence is at
+delivery/verification/merge-authority-gate-fed-both-arms.md:1. A pair sharing
+`framing` and `review-contract` reddens; the sweep's own decorrelated pair, set
+to APPROVE, goes green and names `verdict-pair-approves`. The sweep's verdicts
+already carry the fields it requires.
+
+**Where the evidence lives.** All of it is on `claude/stop-condition-m4-terminal`,
+committed and pushed per group, with each verdict JSON embedded in its markdown
+rather than landed at the top level of `delivery/review/`. A verdict reading
+FIX-ROUND-NEEDED landed there would correctly redden the gate, so only a pair
+that can honestly say APPROVE is landed. One batched pull request carries the
+lot, which is DR-0047 applied to this work as well.
+
+**A correction recorded rather than quietly fixed.** The orchestrator had told
+the owner an intermittent suite failure was concurrent load. That rested on no
+measurement. The real cause is a permission bit: `/tmp/claude-0` reads 700
+before an isolated run and 755 after, so the traversal grant does not persist
+and a test dropping to an unprivileged uid takes EACCES on the interpreter's own
+path. Recorded at
+delivery/tuition/T-044-a-suite-flake-blamed-on-load-was-a-permission-bit.md:1.

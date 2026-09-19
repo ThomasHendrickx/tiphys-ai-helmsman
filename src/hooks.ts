@@ -48,13 +48,41 @@ export function turnEndHookPath(fleet: Fleet, taskId: string): string {
  * the documented contract, runs in the SAME environment as the payload (the
  * built-in adapter spreads the same `request.env` into both spawnSync calls,
  * and M2R-004 edit 4 is the record of why a second unscrubbed launch is
- * itself the leak). So an adapter that quietly reverted `HOME` for the
- * payload has to revert it for the payload and NOT for the hook, which means
- * launching two children with two different environments and is a
- * substantially different act from passing a mutated copy once. It remains an
- * adapter-controlled launch: an adapter that does exactly that is not caught
- * here, and the record says `redirectionSource: "child"` about where the
- * observation came from rather than claiming the adapter was honest.
+ * itself the leak). Against an adapter that does not invoke this script at
+ * all it proves nothing, and the record no longer says otherwise.
+ *
+ * THE COST SENTENCE THAT STOOD HERE IS WITHDRAWN, BECAUSE IT WAS REFUTED BY
+ * MEASUREMENT (CR-F-CRED-001, MEDIUM).
+ *
+ * It read: an adapter that quietly reverted `HOME` for the payload "has to
+ * revert it for the payload and NOT for the hook, which means launching two
+ * children with two different environments and is a substantially different
+ * act from passing a mutated copy once". Two children is one way to do it and
+ * it is not the cheap way. The cheap way is ONE child with the mutated
+ * environment plus a single `writeFileSync` of the turn-end path, which is
+ * STRICTLY LESS work than the honest path, because the honest path also
+ * spawns the hook. The turn-end path is handed to the adapter beside
+ * `hookPath`, and this generated script names it as a literal, so an adapter
+ * that never runs it can still produce a byte-identical record.
+ *
+ * WHY A NONCE DOES NOT CLOSE THIS, stated because it is the obvious repair and
+ * it was considered and refused rather than overlooked. Baking a per-task
+ * secret into this script and requiring it in the record moves the forgery
+ * from "know the path" to "read the file", and the adapter is HANDED the path
+ * of this file: it runs at the same uid, on the same filesystem, in a
+ * directory it must be able to read to invoke the hook at all. A guard whose
+ * condition the adversary can satisfy by reading one file is green and
+ * worthless, which is this repository's own recorded shape (T-008's
+ * postscript, the red-witness rule one level up). No artifact this script can
+ * write is unforgeable by a party that can read this script.
+ *
+ * So the repair is on the RECORD rather than on the check: the value is
+ * `turn-end-record`, it names the artifact the values were read from, and
+ * `CredentialHandoverRecord` (src/task.ts) says the artifact is
+ * adapter-reachable. A dishonest adapter is still not caught here, and that
+ * residue is declared at delivery/work-history/m4-p8.md item 3; what changed
+ * is that `meta.json` no longer positively asserts a child-side observation
+ * that no child made.
  *
  * The hook still reads no environment it was not told to read, and a hook
  * generated with no `observeNames` behaves exactly as it did before.

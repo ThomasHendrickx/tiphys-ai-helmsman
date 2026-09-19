@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { EX_USAGE } from "../cli.ts";
-import { loadFleet } from "../fleet.ts";
+import { FLEET_SCRATCH_SUFFIXES, isFleetScratchPath, loadFleet } from "../fleet.ts";
 import { MACHINE_IDENTITY_EMAIL, MACHINE_IDENTITY_NAME } from "./init.ts";
 
 /**
@@ -271,6 +271,63 @@ export function cmdSync(argv: string[]): number {
     return 1;
   }
   const ephemeral = classified.ephemeral;
+
+  /* THE SCRATCH REFUSAL RUNS BEFORE THE STAGED-EPHEMERAL ONE, and the order
+     is stated because it is a choice. A fleet carrying both a stray scratch
+     file and a staged ephemeral path reports the scratch file and stops; both
+     arms refuse and commit nothing, so no path is committed either way, and
+     the operator sees one refusal at a time rather than two. It also keeps the
+     staged-ephemeral block the last `return 1` before `const durable`, which
+     is where witness/sync-staged-lease-refused.json aims its second member. */
+  /* THE DENYLIST IS THREE DIRECTORY PREFIXES AND THE QUESTION IT ANSWERS IS
+     NARROWER THAN THE ONE THIS COMMAND ASKS.
+
+     `git check-ignore --no-index` answers "is this path covered by a rule
+     someone wrote down". This command reads that as "is this path meant to
+     be committed". Those are the same question only for paths someone
+     thought to declare, and the fleet ignore set (src/fleet.ts:29) declares
+     three directory prefixes and nothing else. Anything the kernel writes
+     outside them is DURABLE BY DEFAULT.
+
+     Two paths the kernel itself creates land there, and neither is fleet
+     content: the atomic-rename scratch file src/status.ts:142 writes beside
+     its TRACKED target, and the one src/cutover.ts:278 writes at the fleet
+     ROOT under a random name. Both are write-then-rename scratch, both are
+     left behind by the failure this project's own tuition calls ordinary
+     rather than exceptional (a process killed mid-write), and once either is
+     committed it is tracked forever by ordinary git semantics.
+
+     A REFUSAL AND NOT A SILENT EXCLUSION, for the reason criterion 4 already
+     gives about a staged ephemeral path: this command must not quietly drop
+     a path an operator can see in `git status`. The cost is stated rather
+     than discovered: a `tiphys sync` that races a live `tiphys status emit`
+     now fails with a named path instead of committing a temp file, and the
+     operator re-runs.
+
+     THE FLEET IGNORE SET IS NOT WIDENED TO DO THIS, and this module still
+     holds no copy of it. That constant also drives `EPHEMERAL_DIRS`,
+     `DURABLE_DIRS` and the `.gitignore` `tiphys init` writes, so a glob
+     added there would become a directory name `tiphys resume` tried to
+     rebuild. Nothing stops being synced; this is a second, separately named
+     rule about SUFFIXES, declared once in src/fleet.ts and read from there,
+     exactly as the ignore question is asked of git rather than answered
+     here. */
+  const scratch = [...new Set(changed.map((entry) => entry.path))]
+    .filter((path) => !ephemeral.has(path))
+    .map((path) => ({ path, suffix: isFleetScratchPath(path) }))
+    .filter((candidate) => candidate.suffix !== undefined)
+    .sort((a, b) => a.path.localeCompare(b.path));
+  if (scratch.length > 0) {
+    for (const candidate of scratch) {
+      process.stderr.write(
+        `tiphys sync: ${candidate.path} ends in ${candidate.suffix as string}, which is a ` +
+          `write-then-rename scratch suffix this kernel uses (${FLEET_SCRATCH_SUFFIXES.join(", ")}), ` +
+          `and no fleet .gitignore rule covers it, so committing it would track it forever; ` +
+          `remove it and re-run, nothing was committed\n`,
+      );
+    }
+    return 1;
+  }
 
   /* CRITERION 4, and the order matters: every staged ephemeral path is
      reported before anything is staged or committed, so the refusal is a
