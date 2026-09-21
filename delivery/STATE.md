@@ -2608,3 +2608,75 @@ before an isolated run and 755 after, so the traversal grant does not persist
 and a test dropping to an unprivileged uid takes EACCES on the interpreter's own
 path. Recorded at
 delivery/tuition/T-044-a-suite-flake-blamed-on-load-was-a-permission-bit.md:1.
+
+## M4 IS CLOSED. Standing at 2026-09-19, `main` at `de1664d`
+
+Supersedes the "approval sweep, in progress" block above, which recorded 3 of 8
+groups and is out of date.
+
+**All thirty M4 phases are merged**, and pull request #202 closed the DR-0047
+approval sweep on top of them. `main` is
+`de1664d5917da30960a9a7eee88a62881c76dd09`.
+
+**The post-merge `push` runs on that head are green**, which is what T-009 rule 1
+asks for rather than the pull-request arm: `gates` run 35421893179 and
+`macOS smoke` run 35421893194, both completed with conclusion success on
+`de1664d`, neither cancelled by a following merge.
+
+**Six HIGH-severity defects in shipped code were found and fixed** in the one
+batched fix round the sweep's convergence path called for:
+
+| # | mechanism |
+|---|---|
+| 1 | egress variables crossed the audited credential route, because the vocabulary the refusal walks excluded them (DR-0048) |
+| 2 | the cross-environment guard tested fleet identity instead of a demonstrated local lease, so a clone of the fleet passed it |
+| 3 | a failed `lock release` deleted the local lease regardless of the failure, reopening the dual-writer window |
+| 4 | `sync` derived its durable and ephemeral split from a three-entry denylist instead of the shared ignore set |
+| 5 | a non-regular file at a read path hung `spawn` and all four `lock` subcommands with no output, because the path's type was not established before reading |
+| 6 | `check-dual-review` compared a verdict's declared head against nothing, so it approved any head including one that is not an object, and `merge-preconditions` carried the same comparison, so DR-0012's six merge conditions had not been evaluated on any pull request |
+
+Row 6 is one mechanism at two call sites. The derivation and the regions it did
+not cover are in the pull request's work history.
+
+**The merge-authority gate has now been fed on both arms**, and the evidence is
+at delivery/verification/merge-authority-gate-fed-both-arms.md:1. Before this it
+had reported not-applicable on every head across three milestones (T-040), so
+nobody had seen it pass a real pair.
+
+The credential finding became an owner decision record,
+delivery/decisions/DR-0048-the-audited-route-refuses-egress-names.md:1.
+
+### What M4 did not deliver, stated so no reader has to infer it
+
+**The exit test did not run.** M4's exit criterion at
+delivery/plan/kernel-plan-v1.md:366 is the pilot project's next phase merged and
+deploy-verified entirely on v1, with the old process retired. DR-0041 keeps that
+test bound to the pilot and refuses a kernel-only subject, and the question falls
+due at cutover entry on the trigger M4-P27 ships. So the cutover machinery is
+built and tested, and the cutover itself has not been performed. Record at
+delivery/decisions/DR-0041-the-exit-test-stays-bound-to-the-pilot-and-the-kernel-is-not-its-subject.md:1.
+
+### Residue, carried deliberately rather than lost
+
+1. **Three sweep groups were not run: cutover, plugin, docs.** The owner cut them
+   for budget after five groups had returned. Five of eight groups is what the
+   approval evidence rests on, which is less coverage than DR-0047 designed.
+2. **This head carries no approval stamp.** DR-0012 lends merge authority only
+   against two independent clean-room reviews of the same head on different
+   model families. Those were not bought for `de1664d`, so merge authority
+   reverted to the owner, and the owner merged #202. That is the rule working
+   rather than a workaround.
+3. **The worktree arm of `check-dual-review` stays unanchored by design** and
+   prints a sentence saying so. Only the audited-commit arm refuses a mismatched
+   head.
+4. **Two path classifiers remain separate**, left for a consolidation pass that
+   no phase owns.
+5. **The low-severity findings from the five groups that ran are unfixed.** They
+   are in the group verdicts embedded under `delivery/review/`.
+
+### What the next session should read first
+
+The terminal action for M4 is data rather than a hard-coded branch since #202,
+so `.claude/orchestrator-next.mjs` names the DR-0047 sweep for this milestone.
+M5 entry, and whether the M4 exit test is discharged before it, is the
+cutover-entry question above and it is the owner's to trigger.
