@@ -1,0 +1,518 @@
+kind: plan
+status: approved
+baseline-commit: 57df640db9b3a08bf5167c6484bd499db39a0bd3
+binding-rule: If it is not written here, it is not being made. Unanswered questions go to the orchestrator.
+process-summary: >-
+  A six-phase value-delivery correction. Prove the current product loop first, connect
+  declared intent to reported outcomes, make existing review assurance real, expose CI
+  truth, reduce recurring context cost, and then prove scale-out on an existing project.
+  This plan deliberately does less than the investigation's original roadmap.
+standing-context: >-
+  M4 is closed and its cutover machinery is built, but the pilot exit test has not run.
+  The repository has zero structured verdict documents at the top level of
+  delivery/review, full mode lists 14 of the registry's 21 gates, and the three files read
+  most often by agents total 287544 bytes. The shipped npm packages are already small;
+  delivery history is repository weight, not product weight.
+report-code-disagreement:
+  - phase: M5-P3
+    claim: >-
+      Review verdicts were written to temporary storage and the merge gates therefore saw
+      no evidence on real phase branches.
+    verified: true
+  - phase: M5-P4
+    claim: >-
+      Full mode lists 14 gate ids while the registry declares 21 gates for full mode.
+    verified: true
+phases:
+  - id: M5-P1
+    branch: claude/m5-p1-pulse-value-proof
+    intent: >-
+      Deliver value before redesigning the process: run the existing cutover-entry procedure
+      and close the M4 exit test on pulse without changing kernel code.
+    grounding: >-
+      DR-0042 permits read-only observation and says the owner can reboot pulse for the
+      checks. delivery/plan/cutover/entry-trigger.md already defines the executable trigger.
+      M4 closed with this exit test explicitly outstanding.
+    severity: high
+    verified-root-cause: >-
+      The missing outcome is execution, not missing machinery: the trigger, pilot probe,
+      drain, exclusion and retirement checks already ship, while the owner reboot and the
+      pilot's next phase have not happened.
+    steps:
+      - kind: verification-first
+        text: >-
+          Run node scripts/check-cutover-entry.mjs and record all four arm verdicts without
+          treating not-yet, unreachable or refused as success.
+      - text: >-
+          Run the read-only pilot probe to a fresh evidence path and compare the observed
+          heads with the last committed probe.
+      - text: >-
+          Stop for the recorded owner reboot action; after it, run one bounded pulse phase
+          entirely through v1 and verify its pushed evidence, merge and deploy from this
+          repository read-only.
+      - text: >-
+          Record the M4 exit verdict and the exact remaining residue. Do not edit pulse from
+          this repository's orchestrator.
+    files-to-touch:
+      - delivery/verification/pulse-re-probe-m5.md
+      - delivery/verification/m4-exit-test-pulse.md
+      - delivery/STATE.md
+    extras:
+      - delivery/plan/phase-declarations/m5-p1.json
+    acceptance:
+      - id: p1-trigger
+        criterion: >-
+          node scripts/check-cutover-entry.mjs exits 0 with drain, exclusion, retirement and
+          pre-freeze-ruleset each reported satisfied; any other vocabulary is a failure.
+      - id: p1-probe
+        criterion: >-
+          node scripts/probe-pilot-readonly.mjs --out delivery/verification/pulse-re-probe-m5.md
+          exits 0 and the output names every target, observed head, transport and excluded
+          write operation.
+      - id: p1-value
+        criterion: >-
+          delivery/verification/m4-exit-test-pulse.md names one pulse phase, its reviewed head,
+          merged pull request, post-merge push run and deploy verification, with every
+          referenced artifact resolving and every conclusion tied to an exit code or API result.
+      - id: p1-boundary
+        criterion: >-
+          git diff on this phase contains no pulse repository content or ref update and the
+          report states that the owner performed the reboot action.
+    hazard-classes:
+      - id: stale-pilot-evidence
+        statement: A month-old pilot reading is presented as the current product result.
+        addressed-by: criterion p1-probe
+      - id: simulated-owner-action
+        statement: The plan records the reboot as complete without the owner performing it.
+        addressed-by: criterion p1-boundary
+      - id: green-without-delivery
+        statement: Green kernel gates are substituted for a merged and deploy-verified pilot phase.
+        addressed-by: criterion p1-value
+    migrations: None. This phase records an exit result and changes no shipped artifact.
+    conflicts-with: []
+    parallelizable: false
+    citations: [DR-0041, DR-0042, DR-0037, T-009]
+
+  - id: M5-P2
+    branch: claude/m5-p2-intent-to-outcome
+    intent: >-
+      Make value delivery a field the system carries: agents receive the charter's product
+      intent and final reports state whether the phase delivered its intended outcome.
+    grounding: >-
+      Charter product-intent currently has no reader. Phase intent reaches composed briefs
+      but has no corresponding outcome in the final report. The fix is one data path, not a
+      scoring framework.
+    severity: high
+    verified-root-cause: >-
+      The input fields exist, but the brief composer does not read charter product-intent and
+      the final-report schema has no required join from phase intent to delivered outcome.
+    steps:
+      - text: >-
+          Extend brief composition to read the project charter and render product intent next
+          to phase intent, failing closed when a declared charter cannot be read.
+      - text: >-
+          Add one required delivered-outcome object to the final report: the phase intent,
+          delivered boolean, evidence list and explanation. Do not add scores, confidence
+          percentages, cost ratios or risk matrices.
+      - text: >-
+          Update the shipped example, role instructions and tests, including an inverted
+          charter witness and an outcome-without-evidence rejection.
+    files-to-touch:
+      - src/commands/brief.ts
+      - schemas/final-report.schema.json
+      - templates/final-report.example.yaml
+      - roles/implementer.md
+      - roles/clean-room-reviewer.md
+      - test/brief-compose.test.ts
+      - test/report-contract.test.ts
+    extras:
+      - test/behaviors.json
+      - delivery/plan/phase-declarations/m5-p2.json
+    acceptance:
+      - id: p2-charter-reaches-brief
+        criterion: >-
+          A composed implementer brief and a composed reviewer brief each contain the exact
+          charter product-intent and phase intent; replacing product-intent with the inverted
+          fixture changes both outputs and leaves no green output containing the old value.
+      - id: p2-final-report-contract
+        criterion: >-
+          node bin/tiphys.ts validate --type final-report templates/final-report.example.yaml
+          exits 0, while deleting delivered-outcome, deleting its evidence, or setting
+          delivered true with an empty evidence list exits nonzero.
+      - id: p2-no-scoring
+        criterion: >-
+          The changed schema and composer contain none of value-score, confidence-percent,
+          value/token, risk-matrix or equivalent numeric ranking fields; a registered test
+          asserts the closed key set.
+      - id: p2-suite
+        criterion: npm run build and node --test both exit 0 with a nonzero test count.
+    hazard-classes:
+      - id: ceremonial-intent
+        statement: Product intent is printed but no completion artifact answers it.
+        addressed-by: criterion p2-final-report-contract
+      - id: goodhart-score
+        statement: A value field becomes a numeric target agents optimize instead of an outcome.
+        addressed-by: criterion p2-no-scoring
+      - id: stale-charter
+        statement: Brief composition silently falls back to a default when the charter is unreadable.
+        addressed-by: criterion p2-charter-reaches-brief
+    migrations: >-
+      Existing final-report fixtures and examples gain delivered-outcome. Historical markdown
+      reports are records and are not rewritten.
+    conflicts-with: [M5-P3]
+    parallelizable: false
+    citations: [DR-0029, R-018, R-089a]
+
+  - id: M5-P3
+    branch: claude/m5-p3-live-review-evidence
+    intent: >-
+      Make the review already being paid for produce durable evidence and make a shipped-code
+      branch with missing or refusing review evidence fail before merge.
+    grounding: >-
+      Reviewers currently write machine verdicts to temporary storage. The scope gate already
+      authorizes phase-named files directly under delivery/review, so no scope widening is
+      required. The pair checks and ancestry rule already exist.
+    severity: critical
+    verified-root-cause: >-
+      The reviewer contract names findings as its output and the dispatch template tells the
+      reviewer not to commit its report. Consequently CI sees no verdict document and the
+      conditional review gates report not-applicable.
+    steps:
+      - text: >-
+          Change the reviewer role and phase-delivery brief so each contract writes one schema-
+          valid verdict JSON named delivery/review/<phase>-<contract>.json, incrementally, for
+          the exact reviewed head. The orchestrator commits both verdicts on the phase branch.
+      - text: >-
+          Make shipped-tree changes require two approving, decorrelated verdicts admitted by
+          the existing ancestry-plus-paperwork rule. Missing evidence is red, not
+          not-applicable. Keep paperwork-only changes on their declared lower review budget.
+      - text: >-
+          Exercise absent, one-verdict, refusing-pair, correlated-pair and approving-pair arms
+          through the real gate command and runner.
+    files-to-touch:
+      - roles/clean-room-reviewer.md
+      - .claude/skills/phase-delivery/SKILL.md
+      - .claude/skills/phase-delivery/references/clean-room-brief.md
+      - scripts/check-dual-review.mjs
+      - src/gates/merge-preconditions.ts
+      - gate-registry.yaml
+      - gates.manifest.json
+      - test/clean-room-brief.test.ts
+      - test/dual-review.test.ts
+      - test/gate-registry.test.ts
+      - test/merge-preconditions.test.ts
+    extras:
+      - test/behaviors.json
+      - delivery/plan/phase-declarations/m5-p3.json
+    acceptance:
+      - id: p3-output-contract
+        criterion: >-
+          tiphys brief compose for both review contracts names a distinct top-level JSON path
+          under delivery/review, and both produced documents validate as verdicts.
+      - id: p3-missing-is-red
+        criterion: >-
+          The real full-mode gate command against a fixture branch changing src/ with zero or
+          one admitted verdict exits nonzero with status red and names the missing count.
+      - id: p3-pair-arms
+        criterion: >-
+          The same command is red for a FIX-ROUND-NEEDED pair and for a correlated pair, and
+          green only for two APPROVE verdicts with distinct contracts, framings and declared
+          families over the reviewed shipped tree.
+      - id: p3-paperwork-budget
+        criterion: >-
+          A fixture branch changing only delivery/ follows its declared review budget and is
+          not forced through the shipped-code two-verdict rule.
+      - id: p3-scope-unchanged
+        criterion: >-
+          src/gates/scope.ts is byte-identical to the baseline and its existing phase-own-
+          evidence tests accept delivery/review/m5-p3-criteria.json while refusing another
+          phase's filename.
+      - id: p3-suite
+        criterion: npm run build and node --test both exit 0 with a nonzero test count.
+    hazard-classes:
+      - id: review-gate-never-runs
+        statement: The new files exist but the merge path still treats their absence as not-applicable.
+        addressed-by: criterion p3-missing-is-red
+      - id: review-of-old-code
+        statement: Verdicts for an ancestor authorize shipped bytes added after review.
+        addressed-by: criterion p3-pair-arms
+      - id: process-tax-on-paperwork
+        statement: The repair forces full dual review onto changes that ship no product behavior.
+        addressed-by: criterion p3-paperwork-budget
+    migrations: >-
+      New phase reviews carry JSON verdicts. Existing markdown reviews remain historical and
+      are not converted. The plan.yaml and work-history.yaml completeness-check migration is
+      explicitly not part of this phase.
+    conflicts-with: [M5-P2]
+    parallelizable: false
+    citations: [DR-0012, DR-0027, DR-0031, DR-0035, T-040, T-041]
+
+  - id: M5-P4
+    branch: claude/m5-p4-ci-truth
+    intent: >-
+      Preserve and expose facts the repository already computes, without inventing a new
+      telemetry system.
+    grounding: >-
+      authored-bytes runs only in macOS smoke, id-collision is referenced by no workflow,
+      summary.json dies with the runner, full mode omits seven registry gate ids, and the
+      milestone selector still points at completed M4 work.
+    severity: medium
+    verified-root-cause: >-
+      Existing producers are disconnected from the one required gates context or from durable
+      CI output. The mode completeness relation is checked in only one direction.
+    steps:
+      - text: >-
+          Add authored-bytes and id-collision steps to the gates job and upload only the exact
+          summary.json path with a short retention period.
+      - text: >-
+          Add the seven existing full-mode gate ids to assurance-modes.yaml and add the converse
+          completeness test so registry additions cannot be omitted again.
+      - text: >-
+          Change orchestrator-next's terminal action from completed M4 work to this plan's next
+          incomplete phase, derived from the plan rather than a hard-coded branch.
+    files-to-touch:
+      - .github/workflows/gates.yml
+      - assurance-modes.yaml
+      - .claude/orchestrator-next.mjs
+      - test/assurance-modes.test.ts
+      - test/gate-registry.test.ts
+      - test/authored-bytes.test.ts
+      - test/orchestrator-next.test.ts
+    extras:
+      - test/behaviors.json
+      - delivery/plan/phase-declarations/m5-p4.json
+    acceptance:
+      - id: p4-ci-steps
+        criterion: >-
+          A workflow harness executes both scripts, each deliberate violation fails the gates
+          job, and the clean tree passes; text-presence assertions alone do not satisfy this.
+      - id: p4-summary-artifact
+        criterion: >-
+          The workflow uploads exactly summary.json, never its evidence directory, with a
+          declared retention period, and a harness fails if the path is widened.
+      - id: p4-mode-complete
+        criterion: >-
+          A test derives full-mode ids from gate-registry.yaml and asserts set equality with
+          assurance-modes.yaml; removing any of the 21 current ids fails naming that id.
+      - id: p4-next-action
+        criterion: >-
+          node .claude/orchestrator-next.mjs --milestone m5 prints exactly one next action from
+          this plan and never names the completed DR-0047 sweep.
+      - id: p4-suite
+        criterion: npm run build and node --test both exit 0 with a nonzero test count.
+    hazard-classes:
+      - id: workflow-text-guard
+        statement: CI appears wired because a string exists while the step cannot fail the job.
+        addressed-by: criterion p4-ci-steps
+      - id: evidence-leak
+        statement: Uploading the evidence directory publishes captured output or credentials.
+        addressed-by: criterion p4-summary-artifact
+      - id: descriptive-only-fix
+        statement: The mode list is corrected once but can silently drift again.
+        addressed-by: criterion p4-mode-complete
+    migrations: None. Existing gate results keep their schema and summary.json format.
+    conflicts-with: []
+    parallelizable: false
+    citations: [T-008, T-009, T-039, R-094]
+
+  - id: M5-P5
+    branch: claude/m5-p5-context-diet
+    intent: >-
+      Reduce the recurring context tax without weakening a live rule or rewriting delivery
+      history.
+    grounding: >-
+      CLAUDE.md, AGENTS.md and delivery/STATE.md total 287544 bytes and are repeatedly loaded.
+      The retirement inventory's PORT rows prove keyword presence, not preserved force, so
+      deletion requires a stronger per-block disposition.
+    severity: high
+    verified-root-cause: >-
+      The three files accumulated append-only explanations, incident narratives and duplicated
+      generated lists. Their size, not delivery/ on disk, is the recurring inference cost.
+    steps:
+      - text: >-
+          Inventory every removed block as one of exact duplicate with pointer, mechanically
+          enforced with pointer, historical explanation moved to an existing record, or kept.
+          A related keyword is not proof of equivalence.
+      - text: >-
+          Prune CLAUDE.md and AGENTS.md to current rules and compact STATE.md to current standing,
+          active owner actions and links to git history. Do not edit .claude/skills, decision
+          records, work histories, reviews, tuition or witness captures.
+      - text: >-
+          Re-render generated blocks and run the reference, drift, clause-map, citation and full
+          test gates.
+    files-to-touch:
+      - CLAUDE.md
+      - AGENTS.md
+      - delivery/STATE.md
+      - delivery/plan/cutover/retirement-inventory.json
+      - delivery/plan/cutover/retirement-inventory.md
+      - test/retirement-inventory.test.ts
+      - test/implementer-brief.test.ts
+      - test/clean-room-brief.test.ts
+    extras:
+      - test/behaviors.json
+      - delivery/plan/phase-declarations/m5-p5.json
+    acceptance:
+      - id: p5-size
+        criterion: >-
+          The combined byte count of CLAUDE.md, AGENTS.md and delivery/STATE.md is at least 35
+          percent below the 287544-byte baseline, printed by wc -c in the work history.
+      - id: p5-no-weak-port
+        criterion: >-
+          Every removed instruction block has a machine-readable disposition naming an exact
+          equivalent rule or enforcing command; a sibling keyword grep alone is rejected by a
+          test.
+      - id: p5-current-state
+        criterion: >-
+          delivery/STATE.md begins with the current M5 standing, contains no superseded daily
+          status blocks, and links to M4 closure, its deliberate residue and git history.
+      - id: p5-boundary
+        criterion: >-
+          git diff --name-only contains no path under delivery/evidence, delivery/review,
+          delivery/decisions, delivery/tuition or .claude/skills.
+      - id: p5-gates
+        criterion: >-
+          npm run build, node --test, check-agents-references, agent-rules-drift, brief-drift,
+          clause-map and citations all exit 0 with nonzero applicable units where defined.
+    hazard-classes:
+      - id: semantic-rule-loss
+        statement: A keyword match is accepted as proof that a binding rule survived pruning.
+        addressed-by: criterion p5-no-weak-port
+      - id: history-rewrite
+        statement: Context reduction deletes evidence or rewrites the audit record.
+        addressed-by: criterion p5-boundary
+      - id: stale-state-survives
+        statement: Compaction makes the file shorter but leaves an old block looking current.
+        addressed-by: criterion p5-current-state
+    migrations: >-
+      Current instructions and state are compacted in place. Git history remains the archive;
+      no historical evidence file is deleted or rewritten.
+    conflicts-with: []
+    parallelizable: false
+    citations: [DR-0043, T-005, T-039]
+
+  - id: M5-P6
+    branch: claude/m5-p6-scale-out-proof
+    intent: >-
+      Prove the corrected kernel delivers value outside itself by onboarding an existing
+      project from charter alone and safely running two disjoint phases in parallel.
+    grounding: >-
+      The v1 M5 contract requires a second project and real parallel phases. Hemma was the
+      owner's original pilot choice and represents the existing-project adoption case that
+      pulse deliberately did not test.
+    severity: critical
+    verified-root-cause: >-
+      The kernel has only self-hosted evidence plus a greenfield pilot. Existing-project
+      adoption and the planned conflict pre-pass have no end-to-end witness.
+    steps:
+      - kind: verification-first
+        text: >-
+          Read hemma without mutation, establish its current stack, gates, branch protection
+          and suitability, and stop with a finding rather than bending the kernel if the
+          applicability envelope does not fit.
+      - text: >-
+          Ship the conflict pre-pass as a command that computes literal file overlap and prints
+          semantic coupling as an explicit reviewer obligation rather than pretending to solve it.
+      - text: >-
+          Bootstrap hemma from its charter, select two genuinely disjoint small phases, dispatch
+          them concurrently, merge serially, and verify each post-merge push run and delivered
+          outcome. Project changes live in hemma's own plan and declarations, not this repository's.
+      - text: >-
+          Write one exit report that distinguishes kernel defects, project predicate failures
+          and owner actions.
+    files-to-touch:
+      - src/commands/conflicts.ts
+      - src/cli.ts
+      - test/conflicts.test.ts
+      - delivery/verification/m5-hemma-intake.md
+      - delivery/verification/m5-scale-out-exit.md
+      - delivery/STATE.md
+    extras:
+      - test/behaviors.json
+      - delivery/plan/phase-declarations/m5-p6.json
+    acceptance:
+      - id: p6-prepass
+        criterion: >-
+          The conflict command exits nonzero and names every overlapping literal path for an
+          overlapping fixture pair, exits 0 with zero overlaps for a disjoint pair, and always
+          prints that semantic coupling remains a review obligation.
+      - id: p6-charter-only
+        criterion: >-
+          delivery/verification/m5-hemma-intake.md enumerates every bootstrap input and shows
+          that no kernel-specific configuration beyond the project charter and project-owned
+          predicates was hand-added before init.
+      - id: p6-parallel-value
+        criterion: >-
+          delivery/verification/m5-scale-out-exit.md names two concurrently active disjoint
+          phases, their reviewed heads, serial merges, green post-merge push runs and final
+          delivered outcomes, with resolvable evidence for each fact.
+      - id: p6-attribution
+        criterion: >-
+          Every failure in the exit report is classified as kernel, project predicate,
+          environment or owner action with the command or API result that establishes the class.
+      - id: p6-suite
+        criterion: npm run build and node --test both exit 0 with a nonzero test count.
+    hazard-classes:
+      - id: false-disjointness
+        statement: Zero file overlap is reported as proof of zero semantic coupling.
+        addressed-by: criterion p6-prepass
+      - id: hidden-bootstrap-handwork
+        statement: The second project works only because an operator supplied undeclared setup.
+        addressed-by: criterion p6-charter-only
+      - id: self-hosted-success
+        statement: Kernel tests are substituted for delivered outcomes in the external project.
+        addressed-by: criterion p6-parallel-value
+    migrations: >-
+      Hemma receives its own charter, plan and phase declarations in its repository. This
+      repository records only the kernel command and read-only exit evidence.
+    conflicts-with: []
+    parallelizable: false
+    citations: [DR-0029, DR-0030, DR-0034, R-026a, R-072, R-097]
+decisions:
+  - id: D-1
+    statement: >-
+      Prove the current pulse delivery loop before changing architecture; a product result is
+      more valuable than another layer of process analysis.
+  - id: D-2
+    statement: >-
+      Six phases replace the 25-to-32-phase recommendation. Each phase must either deliver an
+      external result, connect intent to outcome, activate an existing control, expose an
+      existing fact, or reduce recurring context cost.
+  - id: D-3
+    statement: >-
+      Structured review evidence and shipped-change enforcement land before instruction
+      pruning. The scope gate is not widened because it already admits phase-owned verdicts.
+  - id: D-4
+    statement: >-
+      Hemma is the M5 existing-project subject because the owner previously selected it and
+      pulse deliberately deferred existing-project adoption to M5.
+  - id: D-5
+    statement: >-
+      The two M3 witness blobs, historical decisions, reviews, tuition and work histories stay
+      intact. Current-tree deletion does not buy clone-size reduction without history rewrite.
+open-questions: []
+parked:
+  - item: Durable token and cost telemetry, per-gate duration history and quarterly effectiveness review.
+    reason: >-
+      They need a plan revision and retained run history; none is required to deliver or
+      verify the six outcomes in this plan.
+  - item: Rule-class enum, assurance policy vocabulary and risk scoring.
+    reason: >-
+      The ownership boundary already puts predicates in projects, and a new vocabulary would
+      add machinery before the live value path is proven.
+  - item: Conversion of historical markdown reviews, decisions and work histories.
+    reason: >-
+      They are audit records, not recurring context. Rewriting them adds risk without changing
+      what agents receive or what CI enforces.
+  - item: Deleting or rewriting the two large M3 witness-record files.
+    reason: >-
+      Deleting current paths does not remove blobs from git history; history rewriting is
+      disproportionate to the checkout-only benefit.
+  - item: Pruning .claude/skills.
+    reason: >-
+      Skills load on demand. Always-loaded CLAUDE.md, AGENTS.md and frequently-read STATE.md
+      have the direct recurring cost and are the bounded target.
+  - item: Making verdict-criteria-complete, verdict-deviations-judged and verdict-hazard-classes-addressed run from the repository root.
+    reason: >-
+      Those checks require plan.yaml and work-history.yaml artifact migration. The shipped-code
+      pair gate can become real without broadening this milestone into a record-format rewrite.

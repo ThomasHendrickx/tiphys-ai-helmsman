@@ -1,0 +1,23 @@
+{
+  "id": "M5-P1",
+  "branch": "claude/m5-p1-pulse-value-proof",
+  "filesToTouch": [
+    "delivery/verification/pulse-re-probe-m5.md",
+    "delivery/verification/m4-exit-test-pulse.md",
+    "delivery/STATE.md"
+  ],
+  "declaredExtras": [
+    "delivery/plan/phase-declarations/m5-p1.json"
+  ],
+  "citations": [
+    "DR-0041",
+    "DR-0042",
+    "DR-0037",
+    "T-009"
+  ],
+  "gateClasses": {
+    "correctness": { "gates": ["suite", "typecheck"] },
+    "scope": { "gates": ["scope"] },
+    "review": { "gates": ["check-dual-review"] }
+  }
+}

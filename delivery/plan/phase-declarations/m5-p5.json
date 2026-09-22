@@ -1,0 +1,28 @@
+{
+  "id": "M5-P5",
+  "branch": "claude/m5-p5-context-diet",
+  "filesToTouch": [
+    "CLAUDE.md",
+    "AGENTS.md",
+    "delivery/STATE.md",
+    "delivery/plan/cutover/retirement-inventory.json",
+    "delivery/plan/cutover/retirement-inventory.md",
+    "test/retirement-inventory.test.ts",
+    "test/implementer-brief.test.ts",
+    "test/clean-room-brief.test.ts"
+  ],
+  "declaredExtras": [
+    "test/behaviors.json",
+    "delivery/plan/phase-declarations/m5-p5.json"
+  ],
+  "citations": [
+    "DR-0043",
+    "T-005",
+    "T-039"
+  ],
+  "gateClasses": {
+    "correctness": { "gates": ["suite", "typecheck"] },
+    "scope": { "gates": ["scope"] },
+    "review": { "gates": ["check-dual-review"] }
+  }
+}
