@@ -1948,6 +1948,45 @@ test("cutover status on a fleet with no cutover.json reports five current switch
   }
 });
 
+/**
+ * A FLEET MADE BY `tiphys init` DRAINS CLEAN, and every fixture above could not
+ * see that it did not. They build the fleet by hand with no `tasks/.gitkeep`,
+ * while init writes one, and the drain loop read every entry under tasks/ as a
+ * task without establishing its type. So the one fleet a real operator has
+ * reported `DRAIN 1 in flight` forever (measured 2026-09-22,
+ * delivery/verification/m5-plan-readiness.md:1).
+ *
+ * Two structurally different stray files, so the fix is by TYPE and not by the
+ * name `.gitkeep`: init's own scaffolding, and an operator's note. A real open
+ * task beside them still counts, so the fix cannot pass by skipping tasks/.
+ */
+test("a fleet made by tiphys init drains clean, and a stray file under tasks/ is not a task", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-cutover-init-"));
+  try {
+    const fleetRoot = join(root, "fleet");
+    const init = runCli(["init", fleetRoot]);
+    assert.equal(init.status, 0, init.stdout + init.stderr);
+    assert.ok(statSync(join(fleetRoot, "tasks", ".gitkeep")).isFile(), "init no longer writes tasks/.gitkeep");
+    writeFileSync(join(fleetRoot, "tasks", "NOTES.txt"), "an operator's note, not a task\n");
+
+    const clean = runCli(["cutover", "status", "--fleet", fleetRoot, "--repo", repoRoot]);
+    assert.equal(clean.status, 3, clean.stdout + clean.stderr);
+    assert.ok(linesOf(clean.stdout).includes("DRAIN clean"), clean.stdout);
+    assert.deepEqual(
+      linesOf(clean.stdout).filter((line) => line.startsWith("IN-FLIGHT ")),
+      [],
+      clean.stdout,
+    );
+
+    mkdirSync(join(fleetRoot, "tasks", "t-0001"));
+    writeFileSync(join(fleetRoot, "tasks", "t-0001", "meta.json"), '{ "status": "open" }\n');
+    const busy = runCli(["cutover", "status", "--fleet", fleetRoot, "--repo", repoRoot]);
+    assert.ok(linesOf(busy.stdout).includes("DRAIN 1 in flight"), busy.stdout);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 /* -------------------------------------------------------------------- */
 /* Criteria 2 and 3: drain is over IN-FLIGHT WORK, and it is a CLASS     */
 /* -------------------------------------------------------------------- */

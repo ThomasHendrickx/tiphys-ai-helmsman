@@ -1260,5 +1260,12 @@
   "schemas-readme-vocabulary-matches-the-validator": "the authoring vocabulary schemas/README.md declares is exactly the one src/validate.ts enforces",
   "doctor-worktrees-reports-an-unlistable-pool": "CHECK worktrees reports an unlistable pool as FAIL instead of letting the run abort",
   "merge-preconditions-selects-by-ancestry": "verdicts naming the commit their own landing produced are selected, where the equality mutant this round replaced finds none",
-  "dual-review-head-awkward-paperwork-name-still-green": "a paperwork-only gap is still paperwork when a filename is not printable ASCII, which the default diff spelling would have called shipped content"
+  "dual-review-head-awkward-paperwork-name-still-green": "a paperwork-only gap is still paperwork when a filename is not printable ASCII, which the default diff spelling would have called shipped content",
+  "cutover-entry-real-drain-fresh-fleet-satisfied": "arm a reads the real cutover status of a freshly initialised fleet as satisfied",
+  "cutover-entry-drain-without-fleet-unreachable": "arm a with no fleet named is unreachable and names the missing flag",
+  "cutover-entry-usage-error-is-unreachable": "a usage error from the cutover command is unreachable, never not-yet",
+  "cutover-entry-real-retirement-satisfied": "arm c reads the real retirement report of this repository as satisfied",
+  "cutover-entry-retirement-summary-must-agree": "a retirement summary that disagrees with its rows makes the report unreadable",
+  "cutover-entry-exclusion-names-resolve-in-real-registry": "every exclusion behavior arm b requires resolves in the real behavior registry",
+  "cutover-drain-init-fleet-clean-stray-file-not-a-task": "a fleet made by tiphys init drains clean, and a stray file under tasks/ is not a task"
 }

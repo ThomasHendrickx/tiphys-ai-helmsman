@@ -76,3 +76,109 @@ Not covered by this check: the pulse probe (M5-P1 step 2, needs the pilot
 reachable), and whether each later phase's file list is complete. Only
 existence of the listed paths was checked; the missing ones are all files a
 phase is meant to create.
+
+## The repair, 2026-09-22 (owner decision DR-0049)
+
+The owner chose a pre-M5 change outside the plan over a new plan phase
+(delivery/decisions/DR-0049-pre-m5-cutover-trigger-repair-outside-the-plan.md:1).
+The repair found a FOURTH defect the first reading did not: once arm a asked
+the question correctly, a fleet made by `tiphys init` reported `DRAIN 1 in
+flight`, because src/cutover.ts:559 read init's own `tasks/.gitkeep` as a task.
+
+### The mechanism, not the findings
+
+Two mechanisms, stated separately because they fix in different places.
+
+1. **The checker was validated against the shape the plan QUOTED, never
+   against the command that SHIPPED.** Every witness in
+   test/cutover-entry.test.ts ran a stub CLI printing the quoted shape. The
+   real command needs `--fleet`, prints BRANCHES, IN-FLIGHT, PRE-FREEZE and
+   CANNOT-SEE rows, adds a reason after each PORT verdict, and ends the
+   retirement report with a RETIREMENT summary. The behavior ids of arm b were
+   guessed before M4-P21 and M4-P22 landed, and the header said so. All four
+   drifts are one mechanism: no test read the real program's output. That is
+   the red-witness rule's "real captured output" clause, broken.
+2. **A reader of `tasks/` treated an entry as a task without establishing its
+   type.** src/liveness.ts states the rule (a task is a DIRECTORY, checked by
+   type, never by name) and every other reader follows it.
+
+### The derivation
+
+Mechanism 1, every place the checker consumes another program's output:
+
+```
+$ grep -n "runCli(root" scripts/check-cutover-entry.mjs
+294:export function runCli(root, cliArgs, options = {}) {
+431:  const run = runCli(root, ["cutover", "status"]);
+700:  const run = runCli(root, ["cutover", "status", "--retirement"]);
+```
+
+Plus arm b's `REQUIRED_EXCLUSION_BEHAVIORS`, which consumes the registry, and
+arm b's `node --test` run, which already parses real TAP output. Arm d consumes
+`git`, whose output it already reads for real in its own witnesses. So the
+sites are: arm a (line 431), arm c (line 700), arm b's name list. All three are
+fixed, and each now has a test that runs the REAL `bin/tiphys.ts` or reads the
+REAL `test/behaviors.json`.
+
+Mechanism 2, every reader of `tasks/`:
+
+```
+$ grep -rn "tasksDir\|join([a-zA-Z.]*, \"tasks\")" src/
+src/fleet.ts:47 and :96    type and constructor, no read
+src/task.ts:341            path builder for one known id, no enumeration
+src/liveness.ts:362        enumerates; skips non-directories by stat (line 379)
+src/cutover.ts:548         enumerates; DID NOT check type (the defect)
+src/pool.ts:791            enumerates; skips names failing TASK_ID_PATTERN
+src/watcher.ts:958         watch registration, no read
+src/commands/next.ts:297   enumerates; skips files by type
+src/commands/doctor.ts:1198 enumerates; skips files by type
+```
+
+One site broken of five that enumerate. Fixed the way src/liveness.ts does it:
+stat the entry, skip a non-directory, report one that cannot be examined.
+
+### What the derivation did NOT cover
+
+- `scripts/probe-pilot-readonly.mjs`, the step-2 probe. It reads the network,
+  not the kernel CLI, and was not re-checked here.
+- Readers of `worktrees/` were not re-derived. The drain loop's worktree half
+  already probes by type (src/cutover.ts:538), and that was read, not searched.
+- Arm b runs only the two cross-environment test files. The doctor, spawn and
+  teardown behaviors it requires are checked BY NAME only; their test files
+  are not run by the arm. On the default node v22.22.2 toolchain doctor's file
+  has a known floor failure (CLAUDE.md standing warning 12), so adding it would
+  make the arm toolchain-dependent. Left as is and stated.
+- `REFUSED` rows from `cutover status` stay unmodelled on purpose, so a report
+  with a switch on `kernel` and no pre-freeze capture still reads `unreachable`.
+
+### Witnesses, red on `main`, green on the fix
+
+Seven new tests, registered in test/behaviors.json. Red run: a worktree at
+`origin/main` with only the two new test files copied in, node v22.22.2,
+`--test-name-pattern` over the seven names: 7 of 7 `not ok`. Same command on
+the fix: 7 of 7 `ok`. With ONLY the checker fixed and src/cutover.ts left at
+`main`, arm a against a fresh fleet read `not-yet -- cutover status reports
+DRAIN 1 in flight`, so the two defects are independent and each has its own
+witness.
+
+The pre-existing checker tests ran the checker without `--fleet`; the harness
+now passes one, and the two stubs printing `DRAIN <n> in flight` now print the
+IN-FLIGHT rows the real command prints.
+
+### Result
+
+```
+$ node scripts/check-cutover-entry.mjs --fleet <a fresh tiphys init fleet>
+ARM a drain satisfied -- cutover status reports DRAIN clean
+ARM b exclusion satisfied -- all 6 required behavior name(s) resolve and 2 exclusion test file(s) pass with a nonzero pass count
+ARM c retirement satisfied -- all 199 retirement row(s) are ported
+ARM d pre-freeze-ruleset satisfied -- ... (1789726959 against 1789717584)
+STEP 1 preconditions: preconditions-satisfied-owner-action-pending
+exit 0
+```
+
+**This is NOT M5-P1's `p1-trigger`.** That criterion now names the kernel's
+fleet home, and a scratch fleet drains clean by construction. M5-P1 runs it
+against the real fleet home, which this container has not cloned. The repair
+makes the check ABLE to report satisfied; whether the kernel fleet IS drained
+is M5-P1's question.

@@ -79,6 +79,8 @@ const checker = (await import(
   };
   overallFor: (arms: ArmRecord[]) => string;
   childEnv: (kind: string) => Record<string, string | undefined>;
+  armDrain: (root: string, fleet?: string) => ArmRecord;
+  armRetirement: (root: string) => ArmRecord;
   EXIT_SATISFIED: number;
 };
 
@@ -208,6 +210,21 @@ const FIVE_SWITCHES =
   "SWITCH gates kernel\n" +
   "SWITCH merge kernel\n";
 
+/**
+ * The IN-FLIGHT rows the real command prints, one per counted item
+ * (src/commands/cutover.ts:234). Added 2026-09-22 when arm a started requiring
+ * the DRAIN number and the IN-FLIGHT rows to agree: a stub printing
+ * `DRAIN 3 in flight` with no rows is no longer a fixture imitating the real
+ * command, so these witnesses print the rows the command would.
+ */
+function inFlightRows(count: number): string {
+  let rows = "";
+  for (let index = 1; index <= count; index += 1) {
+    rows += `IN-FLIGHT task t-${String(index).padStart(4, "0")} status is open\n`;
+  }
+  return rows;
+}
+
 const PASSING_TEST_BODY =
   'import test from "node:test";\n' +
   'test("a cross-environment exclusion witness", () => {});\n';
@@ -311,7 +328,7 @@ interface RunResult {
 function runChecker(root: string, extra: string[] = []): RunResult {
   const result = spawnSync(
     process.execPath,
-    [checkerPath, "--root", root, "--exclusion-test", "test/cross-environment.test.ts", ...extra],
+    [checkerPath, "--root", root, "--fleet", root, "--exclusion-test", "test/cross-environment.test.ts", ...extra],
     { encoding: "utf8", timeout: 300000 },
   );
   return { status: result.status, text: `${result.stdout ?? ""}${result.stderr ?? ""}` };
@@ -354,7 +371,7 @@ test("the drain arm reddens when cutover status does not report DRAIN clean", ()
   // contradiction as unreachable, so the fixture has to imitate the real
   // command rather than a command that cannot exist.
   const root = makeRoot({
-    statusText: `${FIVE_SWITCHES}DRAIN 3 in flight\n`,
+    statusText: `${FIVE_SWITCHES}DRAIN 3 in flight\n${inFlightRows(3)}`,
     statusExit: 1,
   });
   const run = runChecker(root);
@@ -392,7 +409,7 @@ test("every arm is evaluated: four simultaneous failures are all reported", () =
   // three, which is the shape M4-P27 criterion 2 names when it asks for four
   // independently forced-false witnesses rather than two.
   const root = makeRoot({
-    statusText: `${FIVE_SWITCHES}DRAIN 9 in flight\n`,
+    statusText: `${FIVE_SWITCHES}DRAIN 9 in flight\n${inFlightRows(9)}`,
     statusExit: 1,
     behaviors: [],
     retirementText: "PORT claude-md unported\n",
@@ -1152,7 +1169,7 @@ test("a cutover status exiting 0 under a DRAIN line that is not clean is unreach
   // The exit code used in the ONE direction it is decisive in. M4-P25
   // criterion 1 makes exit 0 mean drain is clean, so this input is the command
   // contradicting itself and neither half may be preferred to the other.
-  const root = makeRoot({ statusText: `${FIVE_SWITCHES}DRAIN 3 in flight\n`, statusExit: 0 });
+  const root = makeRoot({ statusText: `${FIVE_SWITCHES}DRAIN 3 in flight\n${inFlightRows(3)}`, statusExit: 0 });
   const run = runChecker(root);
   assert.equal(run.status, 3, run.text);
   assert.match(armOf(run.text, "a"), /^unreachable\|.*exited 0 while reporting DRAIN 3 in flight/);
@@ -1486,7 +1503,7 @@ function runCheckerWithEnv(
 ): RunResult {
   const result = spawnSync(
     process.execPath,
-    [checkerPath, "--root", root, "--exclusion-test", "test/cross-environment.test.ts", ...extra],
+    [checkerPath, "--root", root, "--fleet", root, "--exclusion-test", "test/cross-environment.test.ts", ...extra],
     { encoding: "utf8", timeout: 300000, env: { ...process.env, ...overrides } },
   );
   return { status: result.status, text: `${result.stdout ?? ""}${result.stderr ?? ""}` };
@@ -1822,4 +1839,77 @@ test("a shallow clone cannot date arm d and says so, rather than reporting not-y
   assert.match(armOf(run.text, "d"), /^unreachable\|.*shallow repository/);
   assert.doesNotMatch(run.text, /ARM d pre-freeze-ruleset not-yet/, run.text);
   assert.equal(run.status, 3, run.text);
+});
+
+/* ------------------------------------------------------------------ */
+/* Against the REAL command, not a stub (added 2026-09-22)             */
+/* ------------------------------------------------------------------ */
+
+/*
+ * THE MECHANISM THESE EXIST AGAINST: every witness above runs the checker
+ * against a STUB CLI printing the shape the plan QUOTED. The delivered command
+ * printed a different shape, required `--fleet`, and its behavior ids were
+ * named differently, so on the real tree three of the four arms could never
+ * read satisfied, and no test here could see it because no test ran the real
+ * command. Measured at f7b7d8e in delivery/verification/m5-plan-readiness.md:1.
+ * These run the checker's arms against `bin/tiphys.ts` itself.
+ */
+
+function realFleet(): string {
+  const fleet = join(scratch("tiphys-cutover-entry-fleet-"), "fleet");
+  const init = spawnSync(process.execPath, [join(repoRoot, "bin", "tiphys.ts"), "init", fleet], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  assert.equal(init.status, 0, `tiphys init failed: ${init.stdout}${init.stderr}`);
+  return fleet;
+}
+
+test("arm a reads the real cutover status of a freshly initialised fleet as satisfied", () => {
+  const verdict = checker.armDrain(repoRoot, realFleet());
+  assert.equal(verdict.verdict, "satisfied", verdict.reason);
+});
+
+test("arm a with no fleet named is unreachable and names the missing flag", () => {
+  const verdict = checker.armDrain(repoRoot);
+  assert.equal(verdict.verdict, "unreachable", verdict.reason);
+  assert.match(verdict.reason, /--fleet/);
+});
+
+test("a usage error from the cutover command is unreachable, never not-yet", () => {
+  const root = makeRoot({ statusText: "usage: tiphys cutover status --fleet <dir>\n", statusExit: 64 });
+  const verdict = checker.armDrain(root, root);
+  assert.equal(verdict.verdict, "unreachable", verdict.reason);
+  assert.doesNotMatch(verdict.reason, /not delivered/);
+});
+
+test("arm c reads the real retirement report of this repository as satisfied", () => {
+  const verdict = checker.armRetirement(repoRoot);
+  assert.equal(verdict.verdict, "satisfied", verdict.reason);
+});
+
+test("a retirement summary that disagrees with its rows makes the report unreadable", () => {
+  const complete = checker.countRetirementRows(
+    "PORT a ported reason one\nPORT b unported reason two\nRETIREMENT complete 2 PORT row(s)\n",
+  );
+  assert.equal(complete.unrecognised.length, 1, JSON.stringify(complete));
+  const miscounted = checker.countRetirementRows(
+    "PORT a ported reason one\nRETIREMENT complete 5 PORT row(s)\n",
+  );
+  assert.equal(miscounted.unrecognised.length, 1, JSON.stringify(miscounted));
+  const agreeing = checker.countRetirementRows(
+    "PORT a ported reason one\nPORT b unported reason two\nRETIREMENT 1 of 2 PORT row(s) unported\n",
+  );
+  assert.deepEqual(agreeing.unrecognised, [], JSON.stringify(agreeing));
+  assert.equal(agreeing.unported, 1);
+});
+
+test("every exclusion behavior arm b requires resolves in the real behavior registry", () => {
+  const registry = JSON.parse(
+    readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
+  ) as Record<string, string>;
+  const missing = checker.REQUIRED_EXCLUSION_BEHAVIORS.filter(
+    (name) => !Object.prototype.hasOwnProperty.call(registry, name),
+  );
+  assert.deepEqual(missing, []);
 });

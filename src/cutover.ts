@@ -557,6 +557,20 @@ export function inFlightItems(fleet: Fleet): InFlightItem[] {
     });
   }
   for (const id of tasks.kind === "listed" ? tasks.names : []) {
+    /* A TASK IS A DIRECTORY under tasks/, checked by TYPE and never by name,
+       which is the rule src/liveness.ts states for every task reader. This
+       loop was the one reader that skipped it, so `tiphys init`'s own
+       `tasks/.gitkeep` read as one task in flight and a freshly initialised
+       fleet could never report DRAIN clean. Resolved with stat, as the
+       worktree loop above does, so a symlink to a task directory is a task. */
+    const entry = probeDirectory(join(fleet.tasksDir, id));
+    if (entry.kind === "absent" || entry.kind === "other") {
+      continue;
+    }
+    if (entry.kind === "unexaminable") {
+      items.push({ kind: "unexaminable", id, detail: entry.reason });
+      continue;
+    }
     const metaRead = readRegularFileIfPresent(join(fleet.tasksDir, id, "meta.json"));
     if (metaRead.kind === "refused") {
       /* Present and not readable. A meta.json that is a named pipe, a
