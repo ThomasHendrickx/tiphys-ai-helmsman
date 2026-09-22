@@ -57,8 +57,18 @@ answer is no" any more than it is "yes".
 ## Step 1: compute the preconditions
 
 ```
-node scripts/check-cutover-entry.mjs
+node scripts/check-cutover-entry.mjs --fleet <the kernel's fleet home>
 ```
+
+**`--fleet` is required since 2026-09-22.** The delivered `tiphys cutover
+status` refuses to run without a fleet home, and the checker used to call it
+without one and read the resulting usage error as "not delivered". Arm a is now
+`unreachable` when no fleet is named, and a usage error from the command is
+`unreachable` too, never `not-yet`. Name the KERNEL's fleet home (M4-P30's
+bring-up, remote `tiphys-ai-helmsman-fleet`), not a scratch one: a fresh
+`tiphys init` directory drains clean by construction and answers a different
+question. Full account, including two further drifts between the checker and
+the shipped command, in delivery/verification/m5-plan-readiness.md:1.
 
 Exit 0 only when all four arms are `satisfied`. Every arm is evaluated on every
 run: a checker that returns on its first failure is silent about the other

@@ -62,8 +62,9 @@ phases:
     acceptance:
       - id: p1-trigger
         criterion: >-
-          node scripts/check-cutover-entry.mjs exits 0 with drain, exclusion, retirement and
-          pre-freeze-ruleset each reported satisfied; any other vocabulary is a failure.
+          node scripts/check-cutover-entry.mjs --fleet <the kernel fleet home> exits 0 with
+          drain, exclusion, retirement and pre-freeze-ruleset each reported satisfied; any
+          other vocabulary is a failure. A scratch fleet from tiphys init does not satisfy this.
       - id: p1-probe
         criterion: >-
           node scripts/probe-pilot-readonly.mjs --out delivery/verification/pulse-re-probe-m5.md

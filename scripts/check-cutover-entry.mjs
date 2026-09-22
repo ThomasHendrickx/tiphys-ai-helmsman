@@ -101,13 +101,30 @@ export const OVERALL_VERDICTS = [
   "preconditions-indeterminate",
 ];
 
+/**
+ * RECONCILED 2026-09-22 against the ids M4-P21 and M4-P22 actually registered,
+ * which is the "one edit" the header above promised. The six names that stood
+ * here were derived from acceptance criteria before those phases landed, none
+ * of them was ever registered, and so this arm read not-yet on a tree where
+ * every behavior it meant was present and passing. One-to-one, in order:
+ *
+ *   exclusion-second-clone-refused              -> shared-exclusion-second-environment-refused
+ *   exclusion-unreachable-register-fails-closed -> shared-exclusion-unreachable-register-fails-closed
+ *   exclusion-identity-no-process-probing       -> shared-exclusion-identity-not-the-machine
+ *   doctor-shared-lock-four-statuses            -> shared-lock-doctor-statuses-reproduced
+ *   spawn-refused-under-foreign-shared-lease    -> shared-exclusion-spawn-refuses-another-environment
+ *   teardown-refused-under-foreign-shared-lease -> shared-exclusion-teardown-refuses-another-environment
+ *
+ * A test asserts every name here resolves in the REAL test/behaviors.json, so
+ * a guessed id can no longer sit here unnoticed.
+ */
 export const REQUIRED_EXCLUSION_BEHAVIORS = [
-  "exclusion-second-clone-refused",
-  "exclusion-unreachable-register-fails-closed",
-  "exclusion-identity-no-process-probing",
-  "doctor-shared-lock-four-statuses",
-  "spawn-refused-under-foreign-shared-lease",
-  "teardown-refused-under-foreign-shared-lease",
+  "shared-exclusion-second-environment-refused",
+  "shared-exclusion-unreachable-register-fails-closed",
+  "shared-exclusion-identity-not-the-machine",
+  "shared-lock-doctor-statuses-reproduced",
+  "shared-exclusion-spawn-refuses-another-environment",
+  "shared-exclusion-teardown-refuses-another-environment",
 ];
 
 export const DEFAULT_EXCLUSION_TESTS = [
@@ -326,10 +343,18 @@ function classifyCliFailure(run, what) {
     return { verdict: "unreachable", reason: `${what}: ${run.reason}` };
   }
   const text = run.text;
+  // A USAGE ERROR IS THIS CHECKER ASKING WRONGLY, NOT THE COMMAND ANSWERING NO.
+  // Until 2026-09-22 this branch said "the cutover command is not delivered"
+  // and returned not-yet. That sentence was true before M4-P25 landed and false
+  // after: the delivered command requires `--fleet`, this script never passed
+  // it, and the resulting exit 64 was read as a real negative for a question
+  // that was never asked (delivery/verification/m5-plan-readiness.md:1). A
+  // usage error establishes nothing about drain or retirement, so it is
+  // `unreachable`, and the reason carries the command's own words.
   if (run.status === EXIT_USAGE || /unknown subcommand|usage:/i.test(text)) {
     return {
-      verdict: "not-yet",
-      reason: `${what}: the cutover command is not delivered (exit ${run.status})`,
+      verdict: "unreachable",
+      reason: `${what}: exited ${run.status} with a usage error, so the question was not asked: ${singleLine(text)}`,
     };
   }
   if (/permission denied|EACCES|not authori[sz]ed|refused by/i.test(text)) {
@@ -403,6 +428,29 @@ function classifyCliFailure(run, what) {
 export const SWITCH_ROW = /^[ \t]*SWITCH[ \t]+(\S+)[ \t]+(current|kernel)[ \t]*$/;
 export const DRAIN_ROW = /^[ \t]*DRAIN[ \t]+(clean|\d+ in flight)[ \t]*$/;
 
+/**
+ * THE INFORMATIONAL ROWS THE DELIVERED COMMAND PRINTS, modelled from its real
+ * output rather than from the plan's quotation of it (src/commands/cutover.ts:234).
+ *
+ * The rule above says a report is an answer only if the WHOLE report matches
+ * the shapes its contract fixes. The contract it was written against was
+ * M4-P25 criterion 1 as quoted in the plan, which names SWITCH and DRAIN only.
+ * The command that shipped also prints BRANCHES, IN-FLIGHT, PRE-FREEZE and
+ * CANNOT-SEE on every run, so against the real command this arm could never
+ * read anything but `unreachable`. Its witnesses all ran against stubs that
+ * printed the quoted shape, which is how that stayed invisible.
+ *
+ * Each row is modelled by its exact prefix and its one fixed structure, and
+ * none of them votes on drain except IN-FLIGHT, whose count must equal the
+ * DRAIN line's number. `REFUSED` is deliberately NOT modelled: the command
+ * prints it only when a switch reads kernel without a usable pre-freeze
+ * capture, and that report stays unreadable here.
+ */
+export const BRANCHES_ROW = /^[ \t]*BRANCHES[ \t]+(\d+ pushed and unmerged, informational: .+|unexaminable .+)$/;
+export const IN_FLIGHT_ROW = /^[ \t]*IN-FLIGHT[ \t]+(worktree|task|unexaminable)[ \t]+\S+.*$/;
+export const PRE_FREEZE_ROW = /^[ \t]*PRE-FREEZE[ \t]+(captured|not-required)[ \t]+.+$/;
+export const CANNOT_SEE_ROW = /^[ \t]*CANNOT-SEE[ \t]+.+$/;
+
 /** Criterion 1 fixes the count, so it is a constant rather than a literal. */
 export const EXPECTED_SWITCH_ROWS = 5;
 
@@ -410,6 +458,9 @@ export function readStatusReport(text) {
   const rows = [];
   const switches = [];
   const unmodelled = [];
+  let inFlight = 0;
+  let branches = 0;
+  let cannotSee = 0;
   for (const line of String(text).split(/\r?\n/)) {
     if (line.trim() === "") continue;
     const drain = DRAIN_ROW.exec(line);
@@ -422,13 +473,40 @@ export function readStatusReport(text) {
       switches.push({ name: flip[1], side: flip[2] });
       continue;
     }
+    if (IN_FLIGHT_ROW.test(line)) {
+      inFlight += 1;
+      continue;
+    }
+    if (BRANCHES_ROW.test(line)) {
+      branches += 1;
+      continue;
+    }
+    if (CANNOT_SEE_ROW.test(line)) {
+      cannotSee += 1;
+      continue;
+    }
+    if (PRE_FREEZE_ROW.test(line)) continue;
     unmodelled.push(line.trim());
   }
-  return { rows, switches, unmodelled };
+  return { rows, switches, unmodelled, inFlight, branches, cannotSee };
 }
 
-export function armDrain(root) {
-  const run = runCli(root, ["cutover", "status"]);
+/**
+ * `fleet` is the fleet home whose drain is being asked about. The delivered
+ * command refuses to guess one, and so does this arm: with no fleet named the
+ * arm is `unreachable`, never a default directory, because a drain answer for
+ * the wrong fleet is a confident answer to a different question.
+ */
+export function armDrain(root, fleet) {
+  if (typeof fleet !== "string" || fleet.length === 0) {
+    return arm(
+      "a",
+      "drain",
+      "unreachable",
+      "no fleet home was named, so there is no drain to ask about; pass --fleet <dir>",
+    );
+  }
+  const run = runCli(root, ["cutover", "status", "--fleet", fleet, "--repo", root]);
   const failure = classifyCliFailure(run, "cutover status");
   if (failure) return arm("a", "drain", failure.verdict, failure.reason);
 
@@ -461,6 +539,19 @@ export function armDrain(root) {
     );
   }
   const state = report.rows[0];
+  // THE IN-FLIGHT ROWS AND THE DRAIN NUMBER MUST AGREE. The command prints one
+  // IN-FLIGHT row per item it counted, so `DRAIN clean` over an IN-FLIGHT row,
+  // or `DRAIN 2 in flight` over three, is the report contradicting itself.
+  const declared = state === "clean" ? 0 : Number(state.split(" ")[0]);
+  if (report.inFlight !== declared) {
+    return arm(
+      "a",
+      "drain",
+      "unreachable",
+      `cutover status reported DRAIN ${state} over ${report.inFlight} IN-FLIGHT row(s); ` +
+        "the two disagree",
+    );
+  }
   // THE ONE DIRECTION THE EXIT CODE IS DECISIVE IN. M4-P25 criterion 1: the
   // command "exits 0 only when all five read `kernel` AND drain is clean"
   // (delivery/plan/kernel-plan-m4.md:3291). So exit 0 IMPLIES drain clean, and
@@ -662,7 +753,23 @@ export function armExclusion(root, requiredNames, testPaths) {
  * criterion 6 authorises no header and the exemption was the hole a truncation
  * notice walked through. See `countRetirementRows` below.
  */
-export const RETIREMENT_ROW = /^[ \t]*PORT[ \t]+(\S+)[ \t]+(ported|unported)[ \t]*$/;
+export const RETIREMENT_ROW = /^[ \t]*PORT[ \t]+(\S+)[ \t]+(ported|unported)(?:[ \t]+\S.*)?[ \t]*$/;
+
+/**
+ * THE DELIVERED COMMAND'S REAL SHAPE, 2026-09-22 (src/commands/cutover.ts:182).
+ * Each row is `PORT <id> <verdict> <reason>`, and the report ends with ONE
+ * summary line. The pattern above was written against the plan's quotation
+ * (`PORT <name> ported`) and rejected every real row for its trailing reason,
+ * so against the real command this arm could only read `unreachable`. The
+ * reason is now admitted as free text AFTER the verdict word, which is still
+ * the second field and is still the only thing that votes.
+ *
+ * The summary line is modelled exactly and MUST AGREE with the rows: a summary
+ * that says `complete` over an unported row, or counts a different number of
+ * rows than were printed, is the report contradicting itself. At most one.
+ */
+export const RETIREMENT_SUMMARY_ROW =
+  /^[ \t]*RETIREMENT[ \t]+(?:complete[ \t]+(\d+)|(\d+)[ \t]+of[ \t]+(\d+))[ \t]+PORT row\(s\)(?:[ \t]+unported)?[ \t]*$/;
 
 /**
  * FIX ROUND 2, the arm c half of the same mechanism. The filter here was
@@ -683,6 +790,7 @@ export function countRetirementRows(text) {
   let ported = 0;
   let unported = 0;
   const unrecognised = [];
+  const summaries = [];
   for (const line of String(text).split(/\r?\n/)) {
     if (line.trim() === "") continue;
     const match = RETIREMENT_ROW.exec(line);
@@ -691,9 +799,34 @@ export function countRetirementRows(text) {
       else ported += 1;
       continue;
     }
+    const summary = RETIREMENT_SUMMARY_ROW.exec(line);
+    if (summary !== null) {
+      summaries.push(
+        summary[1] !== undefined
+          ? { unported: 0, rows: Number(summary[1]), complete: /complete/.test(line) && !/unported/.test(line) }
+          : { unported: Number(summary[2]), rows: Number(summary[3]), complete: false },
+      );
+      continue;
+    }
     unrecognised.push(line.trim());
   }
-  return { ported, unported, rows: ported + unported, unrecognised };
+  const rows = ported + unported;
+  if (summaries.length > 1) {
+    unrecognised.push(`${summaries.length} RETIREMENT summary lines where the command prints one`);
+  } else if (summaries.length === 1) {
+    const only = summaries[0];
+    const agrees =
+      only.rows === rows &&
+      only.unported === unported &&
+      (only.complete ? unported === 0 : unported > 0);
+    if (!agrees) {
+      unrecognised.push(
+        `RETIREMENT summary (${only.unported} of ${only.rows} unported) disagrees with the ` +
+          `${rows} PORT row(s) printed (${unported} unported)`,
+      );
+    }
+  }
+  return { ported, unported, rows, unrecognised };
 }
 
 export function armRetirement(root) {
@@ -1022,7 +1155,7 @@ export function exitCodeFor(overall) {
 export function evaluate(options) {
   const root = options.root;
   return [
-    armDrain(root),
+    armDrain(root, options.fleet),
     armExclusion(root, options.requiredBehaviors, options.exclusionTests),
     armRetirement(root),
     armRuleset(root),
@@ -1060,6 +1193,7 @@ export function parseArgs(argv) {
     requiredBehaviors: REQUIRED_EXCLUSION_BEHAVIORS.slice(),
     exclusionTests: DEFAULT_EXCLUSION_TESTS.slice(),
     json: false,
+    fleet: undefined,
   };
   let behaviorsOverridden = false;
   let testsOverridden = false;
@@ -1089,6 +1223,12 @@ export function parseArgs(argv) {
         testsOverridden = true;
       }
       options.exclusionTests = options.exclusionTests.concat([argv[i + 1]]);
+      i += 2;
+    } else if (argument === "--fleet") {
+      if (typeof argv[i + 1] !== "string" || argv[i + 1].length === 0) {
+        return { usage: "--fleet needs a value" };
+      }
+      options.fleet = resolve(process.cwd(), argv[i + 1]);
       i += 2;
     } else if (argument === "--json") {
       options.json = true;
