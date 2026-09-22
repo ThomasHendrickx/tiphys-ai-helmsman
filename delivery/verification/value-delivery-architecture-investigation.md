@@ -1,7 +1,10 @@
 # The value-delivery investigation: findings, corrected estimates, and the pruning-first plan
 
 - subject: the owner's brief "Tiphys: Re-centering the Architecture on Value Delivery"
-- investigated: 2026-09-21, against `main` at `60a87b7`
+- investigated: 2026-09-21; the temporary head recorded then as `60a87b7` is not
+  reachable from the retained repository history
+- reproducible baseline: current-state claims and the dispatch plan were rechecked on
+  2026-09-22 against `main` at `57df640db9b3a08bf5167c6484bd499db39a0bd3`
 - method: nine parallel investigators, one per theme, read-only, every claim required to
   carry a `path:line` citation the agent had actually read
 - status: findings settled. The plan below is a recommendation, not a dispatch.
@@ -46,7 +49,8 @@ The brief assumes Tiphys is over-assured. Measured, the assurance layer it wants
 proportional was substantially NOT RUNNING.
 
 - `check-dual-review` reports zero verdict documents. Today, and across M1, M2, M3 and
-  all thirty phases of M4. Re-measured at `60a87b7`.
+  all thirty phases of M4. The current-tree result is still zero at the reproducible
+  baseline above.
 - `merge-preconditions` inherits that precondition, so DR-0012's six merge conditions
   were never produced for any pull request.
 - `verdict-criteria-complete`, the one check tying a review back to the declared
@@ -197,102 +201,41 @@ NOTHING: no lexical or structural check on acceptance-criterion text exists anyw
 Any deletion plan resting on the inventory must carry this caveat or it will delete live
 rules and report success.
 
-## The plan
+## Dispatch plan
 
-Priced in phase-equivalents, where one phase is the measured about-two-hours.
+The recommendation above has been narrowed into the approved, dispatchable plan at
+`delivery/plan/value-delivery-plan.yaml`. That file is the execution contract; this section
+is background only.
 
-### Wave 0-min: three one-line CI edits, about 1.5 hours
+The executable scope is six phases, in this order:
 
-Not economically ahead of pruning. They come first because they make the pruning safe and
-measurable, and they cost less than the decision about them.
+1. run the already-built cutover trigger and prove the current product loop on `pulse`;
+2. carry charter product intent into agent briefs and require a delivered outcome in the
+   final report;
+3. land structured verdicts with the reviewed branch and make missing review evidence red
+   for shipped-code changes;
+4. expose the CI facts that already exist and repair the stale milestone selector;
+5. prune only the three repeatedly loaded context files, after the review evidence path is
+   live;
+6. prove scale-out on `hemma`, the existing-project adoption case deferred when `pulse`
+   replaced it as the M4 pilot.
 
-| # | Change | Why first |
-|---|---|---|
-| 1 | Wire `scripts/check-authored-bytes.mjs` into the `gates` job | It runs today only in `macos-smoke.yml`, and live branch protection requires exactly one context, `gates`. Makes the ASCII and control-character rule merge-blocking while the rules file is being edited. |
-| 2 | Wire `scripts/check-id-collisions.mjs` into the `gates` job | The script exists, covers both file-per-id schemes, reads all history, and is referenced by nothing. |
-| 3 | Upload `summary.json` as a CI artifact, by exact path only | It is the only file carrying per-gate `units`, `applicable` and `vacuous`, and it dies with the runner. Uploading it is what lets the pruning be measured before and after. Never upload the evidence directory: it can contain captured output. |
+The earlier 25-to-32-phase roadmap is withdrawn. It mixed the value path with telemetry,
+policy vocabulary and record cleanup that are useful but not prerequisites. The dispatch
+plan parks those items explicitly.
 
-### Wave P: pruning. 4 to 6 phases, about 8 to 12 hours. Runs BEFORE the architecture waves
+Two corrections from review are incorporated rather than left as notes:
 
-The owner's economic argument is correct and the arithmetic supports it.
+- `delivery/review/<phase>-<reviewer>.json` already qualifies as phase-owned evidence under
+  the scope gate's existing filename rule, so no scope-gate widening is planned.
+- Landing verdict JSON activates the two pair checks and the six merge-condition rows. It
+  does NOT activate the three cross-document completeness checks, which deliberately read
+  `plan.yaml` and `work-history.yaml`; that artifact migration is parked rather than being
+  misreported as a consequence of verdict landing.
 
-| | Tokens |
-|---|---|
-| Cost of pruning, 4 to 6 phases at full `CLAUDE.md` | about 380k |
-| Saved across the remaining 21 to 26 phases, at 3 dispatches each | about 660k |
-| Saved at 5 dispatches each | about 1.36M |
-
-Net saving roughly 300k to 1M tokens. **The multiplier is a sensitivity, not a measurement:
-dispatches per phase is not recorded anywhere, which is Theme F again.** The direction is
-robust; the magnitude is not.
-
-| # | Change | Phases | Effect |
-|---|---|---|---|
-| P1 | Prune `CLAUDE.md` on a verifiable criterion: the 17 heading rows, the 11 DELETE rows, and prose that restates one of the 11 mechanically-blocking controls, which shrinks to a one-line pointer. The other ~50 PORT rows need per-row judgment and are review work, not a delete. | 1 to 2 | About 19,200 tokens down toward 9,000, on every dispatch |
-| P2 | Same treatment for `.claude/skills`, where 118 of 131 rows are PORT | 1 | Large file-count win |
-| P3 | Compact `delivery/STATE.md`. It is append-only by habit, not by rule. Cut to current standing plus a pointer to git history. | 0.5 to 1 | 2682 lines to a few hundred |
-| P4 | The two 8.3 MB `witness-records.json` files from the closed M3 exit test | 0.25 | Clone and grep speed only |
-| P5 | Decision-record merge and cleanup: 46 records, some superseded | 1 to 2 | Correctness of the record, not size |
-
-Deleting a RULE and deleting EVIDENCE are different acts. P1 and P2 delete rules against a
-stated criterion. P4 and P5 touch the record, have no mechanical check, and run against the
-standing rule never to soften a work history. Keep them behind P1 to P3 and treat them as
-owner judgment.
-
-A cost worth naming: P1 is the largest edit to the rule surface in the project's history,
-and under the sequence above it happens while the review gates are still not running. Moving
-the verdict-to-branch item ahead of Wave P costs one extra phase at full token price, about
-40k tokens, and buys a live review gate while the rules are cut. The orchestrator's
-recommendation is to pay it.
-
-### Wave 0-rest: turn on what already exists. 1 to 2 phases
-
-| # | Change |
-|---|---|
-| 4 | The reviewer writes the verdict JSON to `delivery/review/<phase>-<reviewer>.json` on the phase branch instead of `/tmp`. Add that glob to the scope gate's standing pre-authorized extras. |
-| 5 | Add the 7 missing gate ids to `full`'s `gate-sets` in `assurance-modes.yaml`. The document claims 14 where the registry runs 21. |
-| 6 | Fix `.claude/orchestrator-next.mjs`'s M4 terminal rule. It currently names an action already completed. |
-
-Item 4 is the keystone of the entire plan. On its own it makes `check-dual-review` report a
-real verdict for the first time in four milestones, produces DR-0012's six condition records,
-and makes four dark derived checks reachable.
-
-### Wave 1: make the gap visible before making it blocking. 3 to 4 phases
-
-Print-only DR-0027 path-class classifier; the converse `mode-gate-sets-complete` check;
-per-gate duration on the gate result record; `closedAt` on the task record.
-
-### Wave 2: make it blocking, on the numbers Wave 1 produced. 3 phases
-
-A phase branch touching a shipped tree with fewer than two decorrelated verdicts naming its
-head is RED; `gate-classes` reddens when only a conditional gate satisfies the `review`
-class; close the `not-applicable` escape for that class.
-
-### Wave 3: the brief's actual asks. 5 to 6 phases, plus two decision records
-
-Rule-class enum on gates, wired to nothing in its first slice and guarded by a test
-asserting no reader; assurance policy as validated project-owned data; `intent` resolving to
-acceptance criteria; optional `delivered-outcome` and `assurance-floor` on the final report;
-charter product intent reaching the composed brief.
-
-### Wave 4: telemetry and the reverse gear. 8 to 10 phases, plus one plan revision
-
-Blocked on unparking delivery/plan/kernel-plan-v1.md:422. Durable gate-run ledger; tuition
-lifecycle field; control retirement register with a real non-weakening witness; the periodic
-effectiveness review, which additionally needs roughly three months of retained runs before
-it means anything.
-
-## Totals
-
-| Scope | Phases | Wall clock at the measured pace |
-|---|---|---|
-| Wave 0-min | under 1 | about 1.5 hours |
-| Wave P | 4 to 6 | 8 to 12 hours |
-| Wave 0-rest | 1 to 2 | 2 to 4 hours |
-| Waves 1 and 2 | 6 to 7 | 12 to 18 hours |
-| Wave 3 | 5 to 6 | 12 to 18 hours |
-| Wave 4 | 8 to 10 | 20 to 30 hours |
-| Everything | 25 to 32 | about 55 to 85 hours, or 5 to 8 active days |
+The two large M3 witness files are also left untouched. Deleting their current-tree copies
+would reduce checkout and grep cost but would not reduce a full clone while their blobs
+remain in git history; history rewriting is not justified by this plan.
 
 ## What is NOT recommended
 
