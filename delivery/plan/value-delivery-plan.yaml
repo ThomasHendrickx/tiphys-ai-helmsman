@@ -73,11 +73,15 @@ phases:
         criterion: >-
           delivery/verification/m4-exit-test-pulse.md names one pulse phase, its reviewed head,
           merged pull request, post-merge push run and deploy verification, with every
-          referenced artifact resolving and every conclusion tied to an exit code or API result.
+          referenced artifact resolving and every conclusion tied to an exit code or API result;
+          it also cites the independent owner-action record required by p1-boundary.
       - id: p1-boundary
         criterion: >-
-          git diff on this phase contains no pulse repository content or ref update and the
-          report states that the owner performed the reboot action.
+          git diff on this phase contains no pulse repository content or ref update;
+          delivery/verification/m4-exit-test-pulse.md cites a durable owner-authored reboot-action
+          artifact or API/audit record that the implementer did not author, records its timestamp
+          and identifier, and the before/after probe evidence resolves. If that artifact is absent,
+          this phase stops with an owner-action-open residue and does not claim p1-value.
     hazard-classes:
       - id: stale-pilot-evidence
         statement: A month-old pilot reading is presented as the current product result.
@@ -129,11 +133,18 @@ phases:
       - test/behaviors.json
       - delivery/plan/phase-declarations/m5-p2.json
     acceptance:
-      - id: p2-charter-reaches-brief
+      - id: p2-charter-source
         criterion: >-
-          A composed implementer brief and a composed reviewer brief each contain the exact
-          charter product-intent and phase intent; replacing product-intent with the inverted
-          fixture changes both outputs and leaves no green output containing the old value.
+          tiphys brief compose for the implementer and both clean-room contracts is invoked with
+          the declared project charter source, or a documented cwd charter resolution, and prints
+          that source path in each brief. Changing only that charter's product-intent changes all
+          composed outputs; changing templates/charter.example.yaml or a default fixture does not
+          change outputs while the project charter is present.
+      - id: p2-charter-fail-closed
+        criterion: >-
+          An absent, unreadable, malformed or FIFO charter at the declared source makes brief
+          compose exit nonzero naming the charter path, with no composed brief written and no
+          fallback product-intent emitted.
       - id: p2-final-report-contract
         criterion: >-
           node bin/tiphys.ts validate --type final-report templates/final-report.example.yaml
@@ -155,7 +166,7 @@ phases:
         addressed-by: criterion p2-no-scoring
       - id: stale-charter
         statement: Brief composition silently falls back to a default when the charter is unreadable.
-        addressed-by: criterion p2-charter-reaches-brief
+        addressed-by: criterion p2-charter-fail-closed
     migrations: >-
       Existing final-report fixtures and examples gain delivered-outcome. Historical markdown
       reports are records and are not rewritten.
@@ -414,6 +425,12 @@ phases:
           Ship the conflict pre-pass as a command that computes literal file overlap and prints
           semantic coupling as an explicit reviewer obligation rather than pretending to solve it.
       - text: >-
+          Before concurrent dispatch, run and record a semantic-coupling review for the selected
+          Hemma phase pair using the plan-review hidden-dependency-above-file-overlap probe. Do not
+          dispatch the pair concurrently until every shared concept, registry key, generated
+          artifact, configuration value and ordering assumption is either cleared with evidence or
+          the pair is rejected.
+      - text: >-
           Bootstrap hemma from its charter, select two genuinely disjoint small phases, dispatch
           them concurrently, merge serially, and verify each post-merge push run and delivered
           outcome. Project changes live in hemma's own plan and declarations, not this repository's.
@@ -441,6 +458,13 @@ phases:
           delivery/verification/m5-hemma-intake.md enumerates every bootstrap input and shows
           that no kernel-specific configuration beyond the project charter and project-owned
           predicates was hand-added before init.
+      - id: p6-semantic-clearance
+        criterion: >-
+          delivery/verification/m5-scale-out-exit.md includes the selected pair's semantic-coupling
+          matrix, names at least keys, configs, registries, generated artifacts and ordering
+          dependencies examined, records clean-room reviewer or orchestrator clearance before both
+          dispatch timestamps, and rejects a fixture pair with zero file overlap but a shared
+          config or key dependency.
       - id: p6-parallel-value
         criterion: >-
           delivery/verification/m5-scale-out-exit.md names two concurrently active disjoint
@@ -455,7 +479,7 @@ phases:
     hazard-classes:
       - id: false-disjointness
         statement: Zero file overlap is reported as proof of zero semantic coupling.
-        addressed-by: criterion p6-prepass
+        addressed-by: criterion p6-semantic-clearance
       - id: hidden-bootstrap-handwork
         statement: The second project works only because an operator supplied undeclared setup.
         addressed-by: criterion p6-charter-only
@@ -490,6 +514,11 @@ decisions:
     statement: >-
       The two M3 witness blobs, historical decisions, reviews, tuition and work histories stay
       intact. Current-tree deletion does not buy clone-size reduction without history rewrite.
+  - id: D-6
+    statement: >-
+      Adversarial plan review PR205-P1, PR205-P2 and PR205-P6 is applied before dispatch: owner
+      action needs independent evidence, charter resolution fails closed, and literal disjointness
+      is not enough to authorize parallel work without semantic-coupling clearance.
 open-questions: []
 parked:
   - item: Durable token and cost telemetry, per-gate duration history and quarterly effectiveness review.

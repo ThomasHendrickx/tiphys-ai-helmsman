@@ -1,0 +1,40 @@
+{
+  "kind": "finding",
+  "verdict": "CHANGES_REQUIRED",
+  "produced-by": "gpt-5",
+  "findings": [
+    {
+      "id": "PR205-P1-owner-action-proof",
+      "severity": "high",
+      "evidence": [
+        "delivery/plan/value-delivery-plan.yaml:50-52 makes M5-P1 stop for the owner reboot action before running the pulse phase.",
+        "delivery/plan/value-delivery-plan.yaml:77-80 accepts p1-boundary when the git diff has no pulse content/ref update and the report states that the owner performed the reboot action.",
+        "delivery/plan/value-delivery-plan.yaml:85-87 declares the simulated-owner-action hazard but addresses it with that same statement-only criterion."
+      ],
+      "concrete-edit": "Replace M5-P1 acceptance criterion p1-boundary with an independent owner-authored reboot artifact or API/audit record, its timestamp and identifier, and resolving before/after probe evidence; absent that evidence, stop with owner-action-open residue and do not claim p1-value.",
+      "analysis": "The prior criterion could pass on the report's own assertion that the owner acted. The corrected criterion requires evidence the implementer did not author."
+    },
+    {
+      "id": "PR205-P2-charter-source-and-fail-closed",
+      "severity": "medium",
+      "evidence": [
+        "delivery/plan/value-delivery-plan.yaml:110-112 requires brief composition to read the project charter and fail closed when a declared charter cannot be read.",
+        "delivery/plan/value-delivery-plan.yaml:132-136 did not force the charter source or an unreadable-charter failure arm.",
+        "src/commands/brief.ts:302-318 exposes no charter flag today, and src/commands/brief.ts:359-365 composes from role, plan, phase id, root and cwd only."
+      ],
+      "concrete-edit": "Split the criterion into a source-provenance arm and an absent, unreadable, malformed or FIFO charter fail-closed arm, and point the stale-charter hazard at the latter.",
+      "analysis": "The prior criterion could be met from a default or test fixture while real dispatch silently used stale intent."
+    },
+    {
+      "id": "PR205-P6-semantic-coupling-not-cleared",
+      "severity": "high",
+      "evidence": [
+        "checklists/plan-review.yaml:8-17 requires review above literal file overlap.",
+        "delivery/plan/value-delivery-plan.yaml:414-415 made semantic coupling a reviewer obligation.",
+        "delivery/plan/value-delivery-plan.yaml:434-448 did not require that obligation to be discharged before concurrent dispatch."
+      ],
+      "concrete-edit": "Require and record a semantic-coupling review before concurrent dispatch, including keys, configuration, registries, generated artifacts and ordering, plus a zero-file-overlap but shared-key rejection witness.",
+      "analysis": "Printing the obligation was not evidence that anyone executed it before parallel work began."
+    }
+  ]
+}
