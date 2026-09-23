@@ -63,6 +63,31 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      # THE AUTHORED-BYTES AND ID-COLLISION CHECKS (value-delivery plan M5-P4
+      # step 1; T-010, T-039, T-009).
+      #
+      # Both scripts existed and neither could redden the required context:
+      # check-authored-bytes.mjs ran only in macOS smoke, which is not the
+      # required `gates` context, and check-id-collisions.mjs was referenced by
+      # no workflow at all. A check that exists and cannot fail the job is the
+      # workflow-text-guard hazard, so these are plain steps in this job.
+      #
+      # They run AFTER build and test on purpose: check-authored-bytes refuses
+      # (exit 2) when the tracked working tree differs from the index, and
+      # running it after npm ci and npm run build also proves those two steps
+      # left no tracked file modified.
+      #
+      # NO `if:`, DELIBERATELY. An authored-byte violation or a duplicated id
+      # on `main` is the state that matters, not only one proposed in a pull
+      # request, and T-009 requires both CI arms to carry the check. No
+      # `continue-on-error` either: a nonzero exit must fail the job.
+      #
+      # DR-0017 and DR-0004: STEPS in the one job named `gates`. No job, no
+      # matrix, so the published required status context is still `gates`.
+      - name: Authored bytes are pure ASCII and free of control characters (M5-P4)
+        run: node scripts/check-authored-bytes.mjs
+      - name: Identifier collisions in the tuition and decision schemes (T-039, M5-P4)
+        run: node scripts/check-id-collisions.mjs
       # The M2 exit-test harness (kernel plan M2, M2-P9 step 5, M2R-026). This
       # REPLACES M2-P1's two interim `--only manifest-self-check` bundle steps:
       # the harness is now the SINGLE caller of `gates run`, so the gate set
@@ -239,6 +264,45 @@ jobs:
           --no-build
           --bundle main
           "${{ runner.temp }}/m2-exit-evidence"
+      # THE GATE SUMMARY, PRESERVED (value-delivery plan M5-P4 step 1).
+      #
+      # summary.json is the only record carrying per-gate `units`,
+      # `applicable` and `vacuous`, and until this step it died with the
+      # runner, so a reader had only bundle-level counts in the job log.
+      #
+      # EXACTLY ONE FILE, NEVER THE EVIDENCE DIRECTORY. The directory holds
+      # every gate's captured stdout and stderr, which is the evidence-leak
+      # hazard: captured output can carry credentials. summary.json carries
+      # statuses, counts, short detail strings and the RELATIVE paths of those
+      # captures, not their contents. The path is written out in full, with no
+      # glob and no directory, and a test resolves it against a fixture
+      # evidence tree and reddens if it would upload anything else.
+      #
+      # The path is where scripts/m2-exit-test.sh writes it: the evidence
+      # argument above plus `pr-bundle` or `main-bundle`, one step per arm,
+      # each carrying the same `if:` as the exit-test step that produces it.
+      # `!cancelled()` so a RED bundle is still uploaded, which is when the
+      # summary is most useful. A missing file is a warning, not a failure: the
+      # step before it already failed the job if the bundle never ran.
+      #
+      # Retention is short and declared (7 days): this is a diagnostic aid,
+      # not the durable record, which stays in files and git.
+      - name: Upload the gate summary (pull request, summary.json only)
+        if: ${{ !cancelled() && github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gates-summary-pull-request-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/m2-exit-evidence/pr-bundle/summary.json
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Upload the gate summary (push, summary.json only)
+        if: ${{ !cancelled() && github.event_name != 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gates-summary-push-attempt-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/m2-exit-evidence/main-bundle/summary.json
+          retention-days: 7
+          if-no-files-found: warn
       # The falsifiability guard of M2-P9 criterion 3, run as a gate rather than
       # trusted to a work history (mirrors the M1-P6 pattern, CR-605). The exit
       # test's whole value is that its assertion code REFUSES a vacuous bundle,
