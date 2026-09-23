@@ -1189,3 +1189,45 @@ test("a delivery-only change is not forced through the two-verdict rule and name
     );
   });
 });
+
+test("merge-preconditions, the review gate the pull-request bundle runs, is red through the real runner for zero and one committed review", () => {
+  /* THE SAME TWO ARMS THROUGH THE GATE THAT IS IN gates.manifest.json, because
+     `check-dual-review` is registry-only and CI never runs it through the
+     runner. The fixture repository has NO REMOTE, so a gate that consulted the
+     GitHub API before deciding the review evidence would stop at "no
+     repository could be established" and report error; red with the missing
+     count is the proof the evidence was decided first. */
+  for (const [verdicts, missing] of [
+    [[], 2],
+    [[APPROVING_PAIR[0] as BudgetVerdict], 1],
+  ] as [BudgetVerdict[], number][]) {
+    withBudgetRepo(verdicts, {}, (repo) => {
+      const run = runRegistryGate(repo, "merge-preconditions");
+      assert.equal(run.record.status, "red", run.output);
+      assert.notEqual(run.exit, 0, run.output);
+      assert.match(
+        run.record.detail ?? "",
+        new RegExp(`${String(2 - missing)} of 2 are admitted and ${String(missing)} missing`),
+      );
+      assert.doesNotMatch(run.record.detail ?? "", /no repository could be established/);
+    });
+  }
+});
+
+test("merge-preconditions through the real runner is not-applicable for a delivery-only change, and an approving pair reaches the network conditions", () => {
+  withBudgetRepo([], { shipped: false }, (repo) => {
+    const run = runRegistryGate(repo, "merge-preconditions");
+    assert.equal(run.record.status, "not-applicable", run.output);
+    assert.equal(run.record.precondition?.id, "review-budget-requires-dual-review", run.output);
+    assert.ok((run.record.precondition?.evidence ?? []).includes("tier: none"), JSON.stringify(run.record.precondition));
+  });
+  /* THE CONTROL: the same command over an approving pair is NOT red on the
+     review evidence and goes on to condition 4, which needs a repository this
+     fixture deliberately does not have. Error, never green and never
+     not-applicable, is the correct word for that. */
+  withBudgetRepo(APPROVING_PAIR, {}, (repo) => {
+    const run = runRegistryGate(repo, "merge-preconditions");
+    assert.equal(run.record.status, "error", run.output);
+    assert.match(run.record.detail ?? "", /no repository could be established/);
+  });
+});

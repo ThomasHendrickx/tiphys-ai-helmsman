@@ -1214,3 +1214,188 @@ test("verdicts naming the commit their own landing produced are selected, where 
     cleanup(staged);
   }
 });
+
+/* ------------------------------------------------------------------ */
+/* M5-P3: a run inside the CI it would judge                            */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE SELF-REFERENCE M5-P3 EXPOSED. Before M5-P3 no verdict was ever committed
+ * (T-040), so this gate never ran in CI and condition 4 was only ever asked by a
+ * hand run after CI had concluded. Once a phase branch carries its two verdicts,
+ * the `pull_request` run evaluates this gate INSIDE the `gates` check run for
+ * the very head condition 4 asks about, and that check run is `in_progress`
+ * because it is this run. Judged as before, condition 4 is red on every such
+ * head forever, and a phase that did everything right could never go green.
+ *
+ * THE CAPTURE IS REAL: `GET /repos/{slug}/commits/{sha}/check-runs` taken while
+ * the `gates` run for 5662d740 was in progress, stored unedited at
+ * witness/captures/m5-p3-github-check-runs-in-flight.json. The one declared
+ * substitution is the head sha, re-pointed at the staged commit, exactly as
+ * `checkRunsFor` does for the M4-P12 capture.
+ */
+const IN_FLIGHT_CAPTURE = "m5-p3-github-check-runs-in-flight.json";
+
+const IN_FLIGHT_CAPTURED_HEAD = (() => {
+  const parsed = JSON.parse(capture(IN_FLIGHT_CAPTURE)) as {
+    check_runs: { name: string; head_sha: string; status: string }[];
+  };
+  const gates = parsed.check_runs.find((run) => run.name === "gates");
+  assert.ok(gates !== undefined, "the in-flight capture carries no gates check run");
+  assert.equal(gates.status, "in_progress", "the in-flight capture's gates run is not in progress");
+  assert.match(gates.head_sha, /^[0-9a-f]{40}$/);
+  return gates.head_sha;
+})();
+
+function inFlightApi(head: string | undefined): ApiShape {
+  return {
+    repo: OK_REPO,
+    checkRuns: {
+      status: 200,
+      body:
+        head === undefined
+          ? capture(IN_FLIGHT_CAPTURE)
+          : edited(IN_FLIGHT_CAPTURE, [[IN_FLIGHT_CAPTURED_HEAD, head]]),
+    },
+    rulesets: rulesetsList(),
+    rulesetDetail: rulesetDetail(),
+  };
+}
+
+/**
+ * Stage a git repository in the shape a real phase branch has: a base, a
+ * shipped change under `src/`, and a commit adding verdicts that name the
+ * shipped change. Returns the base and the audited head.
+ */
+function stageShippedBranch(verdicts: Record<string, string>): {
+  staged: { dir: string; evidence: string };
+  base: string;
+  head: string;
+} {
+  const staged = stage({ verdicts, arbitration: goodArbitration(), scopeRecord: scopeRecord("green") });
+  git(staged.dir, ["init", "-q", "."]);
+  git(staged.dir, ["add", "charter.yaml", "assurance-modes.yaml"]);
+  git(staged.dir, ["commit", "-q", "-m", "base"]);
+  const base = git(staged.dir, ["rev-parse", "HEAD"]);
+  mkdirSync(join(staged.dir, "src"), { recursive: true });
+  writeFileSync(join(staged.dir, "src", "feature.ts"), "export const feature = 2;\n");
+  git(staged.dir, ["add", "src"]);
+  git(staged.dir, ["commit", "-q", "-m", "the shipped change under review"]);
+  const reviewed = git(staged.dir, ["rev-parse", "HEAD"]);
+  for (const name of Object.keys(verdicts)) {
+    const path = join(staged.dir, "delivery", "review", name);
+    const body = readFileSync(path, "utf8");
+    const anchored = body.replace(/^head: .*$/m, `head: ${reviewed}`);
+    assert.notEqual(anchored, body, `${name} has no single-line head to rewrite`);
+    writeFileSync(path, anchored);
+  }
+  git(staged.dir, ["add", "delivery"]);
+  git(staged.dir, ["commit", "-q", "--allow-empty", "-m", "the reviews"]);
+  const head = git(staged.dir, ["rev-parse", "HEAD"]);
+  return { staged, base, head };
+}
+
+const APPROVING_VERDICTS = (): Record<string, string> => ({
+  "m3-p9-criteria.yaml": fixture("decorrelated-criteria.yaml"),
+  "m3-p9-hazard.yaml": fixture("decorrelated-hazard.yaml"),
+});
+
+test("an approving pair evaluated inside the unconcluded CI of its own head is not-applicable naming the in-flight run and the rows it established", async () => {
+  const { staged, base, head } = stageShippedBranch(APPROVING_VERDICTS());
+  try {
+    await withApi(inFlightApi(head), async (apiBase) => {
+      const run = await runGate(gateSource, staged, apiBase, ["--base", base], head);
+      assert.equal(run.record["status"], "not-applicable", run.stdout);
+      assert.equal(run.exit, 20, run.stdout);
+      const precondition = run.record["precondition"] as {
+        id: string;
+        met: boolean;
+        reason: string;
+        evidence: string[];
+      };
+      assert.equal(precondition.id, "merge-preconditions-ci-concluded-for-this-head");
+      assert.equal(precondition.met, false);
+      assert.match(precondition.reason, /1 gates check run\(s\) for head [0-9a-f]{40} have not completed/);
+      assert.ok(
+        precondition.evidence.some((line) => /^IN FLIGHT .*in_progress/.test(line)),
+        precondition.evidence.join("\n"),
+      );
+      /* WHAT WAS ESTABLISHED TRAVELS WITH IT: the selection and conditions 1 to
+         3 were evaluated and green, and a not-applicable that dropped them
+         would read exactly like one that never looked at the reviews. */
+      for (const id of ["verdict-selection", "condition-1", "condition-2", "condition-3"]) {
+        assert.ok(
+          precondition.evidence.some((line) => line.startsWith(`ESTABLISHED ${id}`) && /green/.test(line)),
+          `${id}: ${precondition.evidence.join("\n")}`,
+        );
+      }
+    });
+  } finally {
+    cleanup(staged);
+  }
+});
+
+test("a refusing pair inside the unconcluded CI of its own head stays red, so the in-flight rule never softens a refusal", async () => {
+  const verdicts = {
+    "m3-p9-criteria.yaml": fixture("decorrelated-criteria.yaml", [["verdict: APPROVE", "verdict: FIX-ROUND-NEEDED"]]),
+    "m3-p9-hazard.yaml": fixture("decorrelated-hazard.yaml"),
+  };
+  const { staged, base, head } = stageShippedBranch(verdicts);
+  try {
+    await withApi(inFlightApi(head), async (apiBase) => {
+      /* BOTH INVOCATIONS: with `--base` the refusal is decided before the
+         network, and WITHOUT it (the M4-P12 order) the in-flight check runs
+         after the review rows, which is the arm the guard exists for. */
+      for (const extra of [["--base", base], []]) {
+        const run = await runGate(gateSource, staged, apiBase, extra, head);
+        assert.equal(run.record["status"], "red", `${extra.join(" ")}: ${run.stdout}`);
+        assert.notEqual(run.record["status"], "not-applicable");
+        assert.match(String(run.record["detail"]), /condition-2=red/, String(run.record["detail"]));
+      }
+    });
+  } finally {
+    cleanup(staged);
+  }
+});
+
+test("an in-flight gates run for a different head is not counted as this head's CI in flight", async () => {
+  const { staged, base, head } = stageShippedBranch(APPROVING_VERDICTS());
+  try {
+    assert.notEqual(head, IN_FLIGHT_CAPTURED_HEAD);
+    /* THE CAPTURE UNEDITED, so its in-progress `gates` run is about 5662d740
+       and not about the staged head. Reading it as this head's run would make
+       any in-progress run anywhere on the repository a not-applicable here. */
+    await withApi(inFlightApi(undefined), async (apiBase) => {
+      const run = await runGate(gateSource, staged, apiBase, ["--base", base], head);
+      assert.notEqual(run.record["status"], "not-applicable", run.stdout);
+      assert.equal(run.record["status"], "red", run.stdout);
+      assert.equal(status(rows(run.stdout).get("condition-4")), "red", run.stdout);
+    });
+  } finally {
+    cleanup(staged);
+  }
+});
+
+test("with --base, a shipped change with fewer than two committed reviews is red before any network request", async () => {
+  /* THE PORT IS CLOSED, so a gate that asked the API before deciding the
+     review evidence would report `error` for the unreachable API. Red here
+     is the proof that the evidence was decided from the repository alone. */
+  const port = await closedPort();
+  for (const [verdicts, missing] of [
+    [{}, 2],
+    [{ "m3-p9-criteria.yaml": fixture("decorrelated-criteria.yaml") }, 1],
+  ] as [Record<string, string>, number][]) {
+    const { staged, base, head } = stageShippedBranch(verdicts);
+    try {
+      const run = await runGate(gateSource, staged, `http://127.0.0.1:${String(port)}`, ["--base", base], head);
+      assert.equal(run.record["status"], "red", run.stdout);
+      assert.match(
+        String(run.record["detail"]),
+        new RegExp(`${String(2 - missing)} of 2 are admitted and ${String(missing)} missing`),
+      );
+      assert.match(String(run.record["detail"]), /were NOT evaluated/);
+    } finally {
+      cleanup(staged);
+    }
+  }
+});
