@@ -56,7 +56,11 @@ files, so one review never overwrites the other.
 How it is written. Create the file within your first minutes. Rewrite it as you
 work, so its mtime is your beacon and a death leaves a partial result (see the
 incremental-output clause). A partial file may not validate yet. The finished
-file must: `tiphys validate --type verdict <path>` reports no `INVALID` line.
+file must: `tiphys validate --type verdict <path>` reports no `INVALID` line
+and exits 0. Without `--context`, checks that need one print
+`SKIPPED <id> no context`; the command still exits 0 when those are its only
+non-pass lines, and a skipped check is one that did not run, not one that
+passed.
 
 What it is about. `head` is the full forty-character sha of the exact commit
 you reviewed. Not a branch name, not a short sha, not the commit you expect to

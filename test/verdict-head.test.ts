@@ -384,11 +384,10 @@ test("tiphys validate --type verdict prints no INVALID line for a verdict that c
 
 test("the same document carrying a head produces no head diagnostic, and none at all against the schema", () => {
   /* TWO ASSERTIONS BECAUSE THE CLI AND THE SCHEMA ANSWER DIFFERENT QUESTIONS.
-     `validate` with no `--context` exits 1 whatever the document says, because
-     the context-requiring derived checks report `SKIPPED ... no context` and a
-     command that passed by not running would be the vacuous pass. So the CLI
-     arm asserts the ABSENCE of any INVALID line, and the schema arm asserts a
-     genuine empty diagnostic list, which is the exit-0 the criterion means. */
+     `validate` with no `--context` reports the context-requiring derived
+     checks as `SKIPPED ... no context` (and since kernel 0.2.1 exits 0 when
+     those skips are all it has). So the CLI arm asserts the ABSENCE of any
+     INVALID line, and the schema arm asserts a genuine empty diagnostic list. */
   const dir = mkdtempSync(join(tmpdir(), "tiphys-with-head-"));
   try {
     const body = fixture("decorrelated-criteria.yaml");

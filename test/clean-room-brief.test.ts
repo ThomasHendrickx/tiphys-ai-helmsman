@@ -577,9 +577,9 @@ test("each composed review contract names a distinct top-level verdict JSON path
       writeFileSync(target, `${JSON.stringify(verdictFor(contract), null, 2)}\n`);
       const validated = run(cliEntry, ["validate", "--type", "verdict", target], repoRoot);
       const output = `${validated.stdout}${validated.stderr}`;
-      /* NO INVALID LINE. The exit is nonzero for the reason the dual-review
-         fixture test records: checks that need a context report SKIPPED when
-         none is given. Every line present must be one of those skips. */
+      /* NO INVALID LINE. Checks that need a context report SKIPPED when none
+         is given (the dual-review fixture test records it; since kernel 0.2.1
+         such a run exits 0). Every line present must be one of those skips. */
       assert.doesNotMatch(output, /INVALID/, `${contract}: ${output}`);
       for (const line of output.split("\n").filter((entry) => entry.trim() !== "")) {
         assert.match(line, /SKIPPED .* no context|^tiphys validate:|valid/i, `${contract}: ${line}`);

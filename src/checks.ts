@@ -13,10 +13,14 @@
  *   INVALID <json-pointer> <message> (check: <check-id>)
  *
  * A check that needs a CONTEXT it was not given reports
- * `SKIPPED <check-id> no context` and the command exits nonzero. That is the
- * whole point of the mechanism: a cross-document rule must never be able to
- * pass BY NOT RUNNING, which is the vacuous-pass shape SC-011 and M2-C-2 both
- * exist to prevent, one layer up.
+ * `SKIPPED <check-id> no context`. Until kernel 0.2.1 the command then exited
+ * nonzero (M3 criterion 4c, delivery/plan/kernel-plan-m3.md:1809), so a
+ * cross-document rule could not pass BY NOT RUNNING. Since 0.2.1, by the
+ * orchestrator's ruling on the owner's report that consumer history "returns
+ * false", `tiphys validate` exits 0 when SKIPPED lines are the only non-pass
+ * results: the skip is still PRINTED, so a reader can tell "did not run" from
+ * "passed", and `ChecksRun.failed` still reports it, but only
+ * `ChecksRun.violated` decides the exit.
  *
  * DR-0013 clause 8: Kind B rules stay HERE and are never encoded as Ajv
  * extensions. The Kind A / Kind B boundary is binding.
@@ -6107,6 +6111,11 @@ export interface ChecksRun {
   lines: string[];
   /** True when at least one check violated or was skipped for want of context. */
   failed: boolean;
+  /**
+   * True when at least one check VIOLATED. A skip alone leaves it false. This
+   * is what `tiphys validate` exits on (kernel 0.2.1).
+   */
+  violated: boolean;
 }
 
 /**
@@ -6152,5 +6161,6 @@ export function runChecks(
   return {
     lines: [...skippedLines, ...violationLines, ...reportLines],
     failed: violationLines.length > 0 || skippedLines.length > 0,
+    violated: violationLines.length > 0,
   };
 }

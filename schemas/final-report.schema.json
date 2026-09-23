@@ -23,6 +23,11 @@
       "type": "string",
       "const": "final-report"
     },
+    "tiphys-version": {
+      "$comment": "KERNEL 0.2.1 (DR-0055): THE KERNEL VERSION WHOSE RULES THIS REPORT WAS WRITTEN TO. Optional in shape: an unstamped report is pre-stamp history, and `tiphys validate` holds it to the 0.1.0 rules only (RULES_SINCE in src/stamp.ts; `delivered-outcome` is required from 0.2.0). The shipped template carries the package version, so a report written from it is held to every current rule. Same grammar as the verdict's stamp, the one parseKernelVersion in src/stamp.ts reads.",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
+    },
     "subject": {
       "description": "What this report is the final report OF.",
       "type": "string",

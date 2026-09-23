@@ -580,6 +580,184 @@ Commits: 87f9e4c beacon, ffd14f9 reproduction, ec3016c implementation,
 DR-0055 stamp, 8acf44b tolerant stamp writers, 464c825 keyword-keyed gating,
 4ec78dc witness retarget.
 
+## Round after the orchestrator's rulings
+
+The orchestrator accepted DR-0055 deviations 1, 3, 4, 5 and 6 as they stand,
+and ruled differently on two points. Both are done in this round.
+
+Housekeeping first, as instructed: origin/main b16f200 merged with a merge
+commit (1a1f830); then exactly two files taken from
+origin/claude/m5-orchestrator-paperwork-3 at 1770cd5 with
+`git show <ref>:<path> > <path>`: DR-0055 (new) and DR-0053 (its "Owner
+answer, 2026-09-23" section, six lines added). STATE.md was not taken. The
+package version is unchanged at 0.2.0.
+
+### Ruling 1: the final-report `delivered-outcome` rule is gated by stamp
+
+`delivered-outcome` joined `required` in M5-P2 (5662d74, #207), before the
+0.2.0 bump (cb5de0d, #208), so the rule's version is 0.2.0:
+
+```
+git log --oneline -S'"delivered-outcome"' -- schemas/final-report.schema.json
+5662d74 M5-P2: carry charter intent into briefs and require a delivered outcome (#207)
+git log --oneline -S'"version": "0.2.0"' -- package.json
+cb5de0d Bump the kernel to 0.2.0 for release (#208)
+```
+
+The rule is one ENTRY of an array keyword, not a keyword, and lifting all of
+`required` would lift eight rules that existed at 0.1.0. So a table row may
+now name an `entry` beside its `schemaPath` (src/stamp.ts), and
+`withoutKeywords` (src/commands/validate.ts) removes only that entry, and
+throws when it is absent. Row: `final-report-delivered-outcome-required`,
+`schemaPath: "/required"`, `entry: "delivered-outcome"`, since 0.2.0.
+
+For the stamp to exist on a final report at all, schemas/final-report.schema.json
+gains an optional `tiphys-version` property with the verdict's grammar
+(`additionalProperties: false` would otherwise refuse it). New work stays held
+to the rule: the orchestrator writes a final report from
+templates/final-report.example.yaml, and that template now carries
+`tiphys-version: 0.2.0`, with a test that it equals package.json's version,
+so a version bump without a restamp reddens rather than silently exempting
+every report written from the template.
+
+Tests (test/history-compat.test.ts):
+
+- "a final report written before delivered-outcome existed validates as
+  history, and one stamped 0.2.0 or later still needs it". Three arms:
+  unstamped without the field: no INVALID, the HISTORY line printed, exit 0;
+  unstamped without `decisions-owed` as well: INVALID naming it, exit 1 (only
+  the one entry was lifted); stamped 0.2.0 and stamped the package version
+  without the field: INVALID naming `delivered-outcome`, exit 1.
+- "the shipped final-report template is stamped with the running kernel
+  version and validates".
+
+Witness witness/kernel-0-2-1-final-report-delivered-outcome-since.json,
+three members: the row's type renamed so it gates nothing (the old report is
+rejected again), the row's `entry` removed so all of `required` is lifted,
+and `withoutKeywords` emptying the array instead of removing the one entry.
+
+### Ruling 2: `tiphys validate` exits 0 when only SKIPPED checks failed
+
+**This reverses a written plan criterion, and I am recording that rather
+than letting it pass unremarked.** M3's criterion 4c,
+delivery/plan/kernel-plan-m3.md:1809, reads: "A cross-document derived check
+invoked without `--context` prints `SKIPPED <check-id> no context` and the
+command exits nonzero". The plan's rationale at
+delivery/plan/kernel-plan-m3.md:947 is "so a cross-document rule can never
+pass by not being run". The ruling was explicit and the change is
+reversible, so it is implemented. The SKIPPED lines are still printed, by
+check id, so a skipped check is never reported as a pass. Whether this needs
+its own owner decision record, since it amends an owner-approved plan
+criterion, is open question 9.
+
+Derivation, run BEFORE the change, of everything that depends on the old
+exit or on the flag behind it. The src/scripts/roles/workflow half:
+
+```
+grep -rn 'runChecks(\|\.failed\b\|SKIPPED\|no context' src bin scripts roles schemas .github AGENTS.md CLAUDE.md
+```
+
+Its hits that are about the derived-check exit (the others were the
+`no context directory was supplied` messages inside individual checks, the
+test-suite "SKIPPED count" wording in CLAUDE.md and roles/implementer.md,
+and unrelated uses of the word in src/roles.ts, src/commands/doctor.ts and
+scripts/check-retirement-inventory.mjs):
+
+```
+src/checks.ts:16: * `SKIPPED <check-id> no context` and the command exits nonzero. That is the
+src/checks.ts:629: * prints `SKIPPED mode-gate-sets-resolve no context` and exits nonzero. That
+src/checks.ts:2071: * prints `SKIPPED gate-probes-resolve no context` and exits nonzero. A
+src/checks.ts:2566: * running the validator without `--context` prints `SKIPPED
+src/commands/mode.ts:126:  const checks = runChecks(MODES_TYPE, read.raw, dirname(read.path));
+src/commands/mode.ts:127:  if (lines.length > 0 || checks.failed) {
+src/commands/validate.ts:395:  const checks = runChecks("role-brief", decoded.value, context);
+src/commands/validate.ts:399:  return roundTrip.lines.length > 0 || outputContract.length > 0 || checks.failed
+src/commands/validate.ts:491:  const checks = runChecks(resolvedType, decoded.value, context, gatedChecks);
+src/commands/validate.ts:495:  return checks.failed ? 1 : 0;
+src/commands/checklist.ts:113:  const checks = runChecks(CHECKLIST_TYPE, checklist.raw, context);
+src/commands/checklist.ts:114:  return schemaLines.length > 0 || checks.failed ? [...schemaLines, ...checks.lines] : [];
+```
+
+plus two text sites: roles/clean-room-reviewer.md:59 ("reports no `INVALID`
+line", the M5-P3 reviewer contract) and AGENTS.md:527 (`validate --context`,
+which always supplies a context and so is unaffected). The test half:
+
+```
+grep -rn 'SKIPPED\|no context' test --include=*.ts
+```
+
+23 hits before the change, of which these depend on the exit or the flag:
+test/assurance-modes.test.ts:160-169 and :900-905 (asserted exit 1 with no
+context), test/checks.test.ts:175-208, test/checklists.test.ts:593-597 and
+test/verdict-schema.test.ts:557-559 (assert `failed: true` at the registry),
+test/dual-review.test.ts:136-146 and :343-345, test/verdict-head.test.ts:386-391,
+test/clean-room-brief.test.ts:580-585 and test/implementer-brief.test.ts:902-907
+(comments explaining an exit 1). The rest are the word used for skipped
+TESTS (license-gate, model-resolution, gate-registry, cross-environment).
+
+What each site got:
+
+| site | change |
+|---|---|
+| src/checks.ts `ChecksRun` | new `violated` field (a violation, skips excluded); `failed` kept as it was, so the three registry tests asserting `failed: true` on a skip still hold |
+| src/commands/validate.ts:503 (per-type validate) | exits on `checks.violated` |
+| src/commands/validate.ts:399 (role-brief) | UNCHANGED: `role-brief` has no context-requiring check (`grep -rn 'requiresContext: true' -B3 src` lists assurance-modes, checklist, verdict, tuition only), so `failed` equals `violated` there; changing it would also have broken stored witness role-brief-output-contract-refused, whose find text is that line and whose other member is in src/roles.ts, which this branch does not change (rule (d)) |
+| src/commands/mode.ts:126, src/commands/checklist.ts:113 | UNCHANGED: both always pass a context (`dirname(read.path)`, `packageRoot()`), so no check can be skipped there |
+| src/checks.ts:16 header | rewritten to state the 0.2.1 behaviour and cite the plan criterion it amends; the per-check comments (now at src/checks.ts:633, :2075, :2571) still say "exits nonzero" and are stale (not edited, to keep this round's diff to the sites that decide behaviour) |
+| test/assurance-modes.test.ts:904 | now asserts exit 0 and the SKIPPED line |
+| test/dual-review.test.ts:139 | now also asserts exit 0 |
+| test/checks.test.ts | asserts `violated: false` beside `failed: true` |
+| the other test comments | reworded, no assertion change |
+| roles/clean-room-reviewer.md:59 | "reports no INVALID line and exits 0", and what a SKIPPED line means |
+
+Not covered by the derivation: `plugin/` (its own tsconfig; it calls no
+`runChecks`, measured with the same grep over `plugin/src`), and any
+consumer's CI that reads validate's exit code, which this repository cannot
+see.
+
+Tests:
+
+- "a verdict whose only non-pass results are SKIPPED checks exits 0, and
+  each skip is still printed by name": the real pulse m1-p1-hazard verdict,
+  no context: no INVALID, at least one SKIPPED line, exit 0.
+- "a verdict with a real INVALID line still exits 1 without a context,
+  whether the schema or a derived check found it": the same verdict with a
+  hazard class pointed at a missing finding (CR-007 to CR-999), which the
+  context-free check `verdict-finding-references-resolve` refuses, among
+  SKIPPED lines: exit 1; and with `review-contract: improvised`: schema
+  INVALID, exit 1.
+
+Witnesses: witness/kernel-0-2-1-validate-skipped-only-exits-0.json (exit on
+`failed` again; exit 1 whenever a SKIPPED line is present) and
+witness/kernel-0-2-1-validate-invalid-still-exits-1.json (always exit 0;
+a violation masked when skips are present). All members are in
+src/commands/validate.ts, which spawns nothing, so rule (f) does not ask for
+a capture and none is claimed.
+
+### Every member tried by hand before the gate
+
+Scratch try-members2.py applies each member alone, runs the named test with
+`--test-name-pattern`, and restores the file. Output (exit, pass, fail):
+
+```
+final-report-delivered-outcome-since HEAD      (0, 1, 0)
+  member 0 (1, 0, 1)   member 1 (1, 0, 1)   member 2 (1, 0, 1)
+validate-skipped-only-exits-0 HEAD             (0, 1, 0)
+  member 0 (1, 0, 1)   member 1 (1, 0, 1)
+validate-invalid-still-exits-1 HEAD            (0, 1, 0)
+  member 0 (1, 0, 1)   member 1 (1, 0, 1)
+stamp-gates-one-keyword HEAD                   (0, 1, 0)
+  member 0 (1, 0, 1)   member 1 (1, 0, 1)
+```
+
+`git status` afterwards showed only this round's intended edits. A scan of
+every witness spec's mutation `find` text against the tree
+(scratch check-finds.py) prints six specs whose find matches more than
+once; the same six are stored witnesses untouched by this branch, and none
+of them is in a file this round changes except src/checks.ts
+(checklist-duplicate-probe-id-guard, dual-review-absent-dimension-refuses),
+whose matched text this round did not edit.
+
 ## Open questions
 
 1. **`headGroupFor` is unchanged.** In the derived checks, a same-phase
@@ -597,12 +775,12 @@ DR-0055 stamp, 8acf44b tolerant stamp writers, 464c825 keyword-keyed gating,
    this is the `dual-review-decorrelation` deviation above: gating its head
    clause by stamp needs the check to read the stamp itself, and the table
    gates whole checks only.
-4. **`tiphys validate` without `--context` exits 1 on every verdict**
+4. **RESOLVED in the round after the rulings.** Was: `tiphys validate` without `--context` exits 1 on every verdict
    (SKIPPED counts as failure, src/commands/validate.ts:480), on v0.1.0 and
    on main. After this change pulse's history prints no INVALID line and
    the command still exits 1. If the owner's "validation returns false" meant
    the exit code, this change alone does not turn it true.
-5. **`final-report.schema.json` requires `delivered-outcome` (M5-P2).**
+5. **RESOLVED in the round after the rulings (gated by stamp).** Was: `final-report.schema.json` requires `delivered-outcome` (M5-P2).
    Same mechanism, but it is an explicit acceptance criterion of M5-P2
    (p2-final-report-contract), so it is a plan decision and not mine to
    reverse. Pulse has no final reports, so it does not affect the pulse case.
@@ -614,6 +792,12 @@ DR-0055 stamp, 8acf44b tolerant stamp writers, 464c825 keyword-keyed gating,
    admission floor excludes them and their tests redden until restamped.
    Deriving the stamp at test time for these files was not attempted; they
    are static YAML fixtures and I left them static.
+9. **Criterion 4c is amended by an orchestrator ruling, not by an owner
+   record.** delivery/plan/kernel-plan-m3.md:1809 requires a nonzero exit for
+   a skipped cross-document check; 0.2.1 exits 0. Whether that needs a
+   decision record (DR-0016: it is reversible) is the orchestrator's call.
+10. **Stale per-check comments** at src/checks.ts:633, :2075 and :2571 still
+   say a skipped check "exits nonzero".
 6. **Unexaminable files.** A file under `delivery/review/` that cannot be
    decoded still makes merge-preconditions error, whatever its age. That
    also judges history; not changed.
@@ -626,27 +810,35 @@ DR-0055 stamp, 8acf44b tolerant stamp writers, 464c825 keyword-keyed gating,
 grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/kernel-0-2-1-history-compat.md
 ```
 
-Re-run at 4ec78dc, after the DR-0055 sections, before this paragraph was
-rewritten. Hits by line, and what settles each:
+Re-run after the rulings round, before this list was rewritten. Hits by
+line, and what settles each:
 
 - 6: the owner's rule, quoted.
 - 213 and 262: `never counts it`, a test title (quoted, and in the captured
   summary). The test is the settlement: green on the branch, red on main.
 - 219, 308, 309: `never-admitted`, a witness file name.
-- 221: `always false`, describes a mutation; the witness run settles it.
+- 221, 384, 731, 732: describe mutations (`always false`, "never fires",
+  "exit 1 whenever", "always exit 0"); the red-witness run settles each.
 - 369: HISTORY lines are "never dropped silently": the stamp-rule test
   asserts the HISTORY line is printed for both unstamped and 0.1.0 stamps.
 - 370: "Admission never relaxed": the two stamp-exclusion tests stage an
   approving pair stamped 0.1.0 and unstamped and require red, by name, at
   both gates; their witnesses redden when the stamp check is skipped.
-- 384: "never fires", describes a mutation (the old-minor comparison made
-  false); the witness run settles it.
-- 617: "cannot be decoded" describes an input (an undecodable file), not a
+- 646: the plan's own rationale, quoted.
+- 649: "a skipped check is never reported as a pass": the skipped-only test
+  asserts at least one `SKIPPED <id> no context` line and no INVALID line.
+- 683: AGENTS.md:527's command is `tiphys validate --type verdict --context
+  <project> <verdict>`; the `--context` is in the text itself.
+- 705: mode.ts and checklist.ts "always pass a context": src/commands/mode.ts:126
+  passes `dirname(read.path)`, and src/commands/checklist.ts:142-149 assigns
+  `context = packageRoot()` before either `invalidityLines` call.
+- 797: "needs a", inside open question 9, which is a question.
+- 801: "cannot be decoded" describes an input (an undecodable file), not a
   claim about the code.
-- 626: the grep command itself.
+- 810: the grep command itself.
 
 Occurrences, counted the same way in both forms after this section was
-written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 29, and the
-wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 29.
-Equal, so no hit was missed by wrapping. The hits after line 626 are this
+written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 41, and the
+wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 41.
+Equal, so no hit was missed by wrapping. The hits after line 810 are this
 section quoting the ones above it.

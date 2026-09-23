@@ -602,6 +602,128 @@ test("a rule not in force for a document's stamp is removed alone: every other r
   );
 });
 
+/** Run `tiphys validate --type <type>` on one file: its exit and its printed lines. */
+function validateRun(type: string, file: string): { status: number | null; lines: string[]; output: string } {
+  const run = spawnSync(process.execPath, [cliEntry, "validate", "--type", type, file], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  const output = `${run.stdout ?? ""}${run.stderr ?? ""}`;
+  return { status: run.status, lines: output.split("\n").filter((line) => line.trim() !== ""), output };
+}
+
+/** The shipped final-report template as an object, with `edit` applied, written as JSON. */
+function finalReportVariant(edit: (report: Record<string, unknown>) => void): string {
+  const template = yamlModule.parse(
+    readFileSync(join(repoRoot, "templates", "final-report.example.yaml"), "utf8"),
+  ) as Record<string, unknown>;
+  edit(template);
+  const path = join(scratch("tiphys-history-compat-final-report-"), "final-report.json");
+  writeFileSync(path, `${JSON.stringify(template, null, 2)}\n`);
+  return path;
+}
+
+test("a final report written before delivered-outcome existed validates as history, and one stamped 0.2.0 or later still needs it", () => {
+  /* M5-P2's `delivered-outcome` joined `required` before the 0.2.0 bump, so a
+     report with no stamp is pre-stamp history and is not held to it. */
+  const unstamped = validateRun(
+    "final-report",
+    finalReportVariant((report) => {
+      delete report["tiphys-version"];
+      delete report["delivered-outcome"];
+    }),
+  );
+  assert.ok(!unstamped.lines.some((line) => line.startsWith("INVALID")), unstamped.output);
+  assert.ok(
+    unstamped.lines.some((line) =>
+      line.startsWith("HISTORY final-report-delivered-outcome-required applies from tiphys-version 0.2.0"),
+    ),
+    `the rule not applied is not named:\n${unstamped.output}`,
+  );
+  assert.equal(unstamped.status, 0, unstamped.output);
+
+  /* ONLY that entry of `required` is lifted: a rule that existed at 0.1.0,
+     `decisions-owed` required, still holds for the same unstamped history. */
+  const withoutOlderField = validateRun(
+    "final-report",
+    finalReportVariant((report) => {
+      delete report["tiphys-version"];
+      delete report["delivered-outcome"];
+      delete report["decisions-owed"];
+    }),
+  );
+  assert.ok(
+    withoutOlderField.lines.some((line) => line.startsWith("INVALID") && line.includes("decisions-owed")),
+    `a 0.1.0 rule was lifted with the 0.2.0 one:\n${withoutOlderField.output}`,
+  );
+  assert.equal(withoutOlderField.status, 1, withoutOlderField.output);
+
+  /* NEW WORK: stamped at the rule's version or later, the answer is required. */
+  for (const stamp of ["0.2.0", KERNEL_VERSION]) {
+    const stamped = validateRun(
+      "final-report",
+      finalReportVariant((report) => {
+        report["tiphys-version"] = stamp;
+        delete report["delivered-outcome"];
+      }),
+    );
+    assert.ok(
+      stamped.lines.some((line) => line.startsWith("INVALID") && line.includes("delivered-outcome")),
+      `${stamp}: the 0.2.0 rule did not apply:\n${stamped.output}`,
+    );
+    assert.equal(stamped.status, 1, stamped.output);
+  }
+});
+
+test("the shipped final-report template is stamped with the running kernel version and validates", () => {
+  const path = join(repoRoot, "templates", "final-report.example.yaml");
+  const template = yamlModule.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+  assert.equal(template["tiphys-version"], KERNEL_VERSION, "the template's stamp is not the package version");
+  const run = validateRun("final-report", path);
+  assert.ok(!run.lines.some((line) => line.startsWith("INVALID") || line.startsWith("HISTORY")), run.output);
+});
+
+test("a verdict whose only non-pass results are SKIPPED checks exits 0, and each skip is still printed by name", () => {
+  /* The owner's report: pulse's history "returns false". A real pulse
+     verdict, validated with no --context, is exit 0 and says which checks it
+     did not run. */
+  const run = validateRun("verdict", join(pulseDir, "m1-p1-hazard.yaml"));
+  assert.ok(!run.lines.some((line) => line.startsWith("INVALID")), run.output);
+  const skipped = run.lines.filter((line) => /^SKIPPED [a-z-]+ no context$/.test(line));
+  assert.ok(skipped.length > 0, `no check was skipped, so this does not exercise a skip:\n${run.output}`);
+  assert.equal(run.status, 0, run.output);
+});
+
+test("a verdict with a real INVALID line still exits 1 without a context, whether the schema or a derived check found it", () => {
+  const dir = scratch("tiphys-history-compat-invalid-");
+  const source = readFileSync(join(pulseDir, "m1-p1-hazard.yaml"), "utf8");
+
+  /* A DERIVED CHECK that runs without a context
+     (verdict-finding-references-resolve): a hazard class names a finding id
+     no findings[] entry declares. The same run also carries SKIPPED lines,
+     so a violation among skips is what is asserted. */
+  const dangling = source.replace(/^    finding: CR-007$/m, "    finding: CR-999");
+  assert.notEqual(dangling, source, "the fixture no longer names CR-007");
+  const danglingPath = join(dir, "dangling.yaml");
+  writeFileSync(danglingPath, dangling);
+  const derived = validateRun("verdict", danglingPath);
+  assert.ok(
+    derived.lines.some((line) => line.startsWith("INVALID") && line.includes("(check: verdict-finding-references-resolve)")),
+    derived.output,
+  );
+  assert.ok(derived.lines.some((line) => line.startsWith("SKIPPED ")), derived.output);
+  assert.equal(derived.status, 1, derived.output);
+
+  /* THE SCHEMA: a review-contract outside the closed vocabulary. */
+  const broken = source.replace(/^review-contract: hazard$/m, "review-contract: improvised");
+  assert.notEqual(broken, source, "the fixture no longer declares review-contract: hazard");
+  const brokenPath = join(dir, "broken.yaml");
+  writeFileSync(brokenPath, broken);
+  const schema = validateRun("verdict", brokenPath);
+  assert.ok(schema.lines.some((line) => line.startsWith("INVALID #/review-contract")), schema.output);
+  assert.equal(schema.status, 1, schema.output);
+});
+
 /** The approving, anchored, decorrelated pair with each document's stamp replaced. */
 function stampedPair(stamp: string | null): { from: string; as: string; stamp: string | null }[] {
   return ANCHORED_APPROVING_PAIR.map((entry) => ({ ...entry, stamp }));

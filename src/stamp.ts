@@ -130,10 +130,6 @@ export function readStamp(record: unknown): StampReading {
  *   fields added since 0.1.0 are not listed; only their constraints are.
  * - `verdict.head` REQUIRED and the MEDIUM escalation are not rules any more
  *   (0.2.1 moved them to the merge gates), so they have no shape row.
- * - `final-report.delivered-outcome` (M5-P2) is not gated: a final report has
- *   no admission gate behind it, so an unstamped report would escape the rule
- *   with nothing to catch it. Kept as a plan decision; see the 0.2.1 work
- *   history's open questions.
  * - `dual-review-decorrelation` existed in 0.1.0 and is not gated as a whole.
  */
 export interface RuleSince {
@@ -148,6 +144,12 @@ export interface RuleSince {
    * silently.
    */
   schemaPath?: string;
+  /**
+   * When `schemaPath` names an ARRAY keyword (`required`), the one entry of it
+   * that is the rule. Only that entry is removed; the rest of the array, which
+   * holds rules that existed at 0.1.0, stays in force.
+   */
+  entry?: string;
   /** A derived check, by registered id. */
   check?: string;
   statement: string;
@@ -167,6 +169,19 @@ export const RULES_SINCE: readonly RuleSince[] = [
     since: "0.2.0",
     check: "verdict-pair-approves",
     statement: "the committed pair for the head both approve with no blocking finding (M4-P10)",
+  },
+  {
+    /* M5-P2 (#207) landed before the 0.2.0 bump (#208), so the rule is 0.2.0's.
+       A final report is read by no admission gate, so gating it by stamp lets
+       no old stamp buy a merge; the orchestrator's ruling on the 0.2.1 round.
+       New work is still held to it: the shipped template is stamped with the
+       package version (templates/final-report.example.yaml). */
+    id: "final-report-delivered-outcome-required",
+    type: "final-report",
+    since: "0.2.0",
+    schemaPath: "/required",
+    entry: "delivered-outcome",
+    statement: "a final report carries a delivered-outcome answering the phase intent (M5-P2)",
   },
 ];
 

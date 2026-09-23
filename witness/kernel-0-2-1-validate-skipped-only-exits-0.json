@@ -1,0 +1,24 @@
+{
+  "id": "kernel-0-2-1-validate-skipped-only-exits-0",
+  "behavior": "validate-skipped-only-exits-0",
+  "tests": [
+    "a verdict whose only non-pass results are SKIPPED checks exits 0, and each skip is still printed by name"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  return checks.violated ? 1 : 0;",
+      "replace": "  return checks.failed ? 1 : 0;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "     work history records. A real violation still exits 1. */\n  return checks.violated ? 1 : 0;",
+      "replace": "     work history records. A real violation still exits 1. */\n  return checks.violated || checks.lines.some((line) => line.startsWith(\"SKIPPED\")) ? 1 : 0;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1325,5 +1325,9 @@
   "stamp-old-excluded-at-check-dual-review": "an old-stamped or unstamped verdict is excluded by name at check-dual-review, and a current stamp is admitted",
   "stamp-old-excluded-at-merge-preconditions": "an old-stamped verdict is excluded by name at merge-preconditions and never counts toward the two reviews",
   "stamp-written-by-brief-and-summary": "a composed clean-room-reviewer brief and a gate bundle's summary.json are stamped with the running kernel version",
-  "stamp-gates-one-keyword": "a rule not in force for a document's stamp is removed alone: every other rule at the same place still applies to history"
+  "stamp-gates-one-keyword": "a rule not in force for a document's stamp is removed alone: every other rule at the same place still applies to history",
+  "final-report-delivered-outcome-since": "a final report written before delivered-outcome existed validates as history, and one stamped 0.2.0 or later still needs it",
+  "final-report-template-stamped": "the shipped final-report template is stamped with the running kernel version and validates",
+  "validate-skipped-only-exits-0": "a verdict whose only non-pass results are SKIPPED checks exits 0, and each skip is still printed by name",
+  "validate-invalid-still-exits-1": "a verdict with a real INVALID line still exits 1 without a context, whether the schema or a derived check found it"
 }
