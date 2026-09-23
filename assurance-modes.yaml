@@ -35,6 +35,17 @@
 #                      registry still declares `modes: [full]` for it validates
 #                      at exit 0 with no diagnostic, and so does adding a mode
 #                      to a registry gate without adding the gate here.
+#                    CLOSED FOR `full` ONLY, by M5-P4: the converse is now a
+#                      test, not a check. test/gate-registry.test.ts derives
+#                      full's id set from the registry and asserts set equality
+#                      with `full`'s list below, so the omission reddens `npm
+#                      test` naming the id. `mode-gate-sets-resolve` itself is
+#                      unchanged and still checks one direction. `direct-pr` and
+#                      `local-only` are NOT covered by that test and their lists
+#                      below still under-report (the M3 and M4 additions were
+#                      copied into neither); M5-P4's plan entry names `full`
+#                      only, so this is carried as an open item rather than
+#                      fixed outside the plan's letter.
 #                    CONSEQUENCE, stated so nobody has to re-derive it: this
 #                      document can UNDER-report which gates a mode runs. That
 #                      is a false description rather than a false assurance
@@ -132,7 +143,14 @@ modes:
       - final-report
     skips: []
     # Every gate in gate-registry.yaml whose `modes` list contains `full`,
-    # which today is all of them.
+    # which today is all of them, in registry order. This list said the same
+    # thing while it carried 14 of the registry's 21 full-mode ids (M5-P4):
+    # seven gates added by M3 and M4 were never copied here. Since M5-P4 the
+    # relation is checked in BOTH directions for `full` by
+    # test/gate-registry.test.ts, which derives the full-mode id set from the
+    # registry at run time and requires set equality with this list, so a
+    # registry addition that is not copied here reddens the suite naming the
+    # missing id.
     gate-sets:
       - manifest-self-check
       - coverage
@@ -146,6 +164,13 @@ modes:
       - clause-map
       - red-witness
       - agent-rules-drift
+      - brief-drift
+      - check-agents-references
+      - check-dual-review
+      - license
+      - typecheck
+      - gate-classes
+      - merge-preconditions
       - unit-tests-for-changed-service-methods
       - fixtures-for-changed-component-states
     # T-007, D-M3-32. Two CONTRACTS, not two reviewers. The decorrelation that
@@ -244,8 +269,9 @@ modes:
       - fix-round-verification
       - deploy-verify
       - migration-verify
-    # Every gate whose `modes` list contains `direct-pr`: all of them except
-    # `deploy` and `migrations`, which are the two full-only entries.
+    # INTENDED to be every gate whose `modes` list contains `direct-pr`: all
+    # of them except `deploy` and `migrations`, the two full-only entries. It
+    # is NOT that today; it under-reports, see the header's gate-sets note.
     gate-sets:
       - manifest-self-check
       - coverage
@@ -285,7 +311,8 @@ modes:
       - deploy-verify
       - migration-verify
       - final-report
-    # Every gate whose `modes` list contains `local-only`.
+    # INTENDED to be every gate whose `modes` list contains `local-only`. It
+    # under-reports today; see the header's gate-sets note.
     gate-sets:
       - manifest-self-check
       - credential-scrub

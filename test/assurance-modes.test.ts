@@ -848,6 +848,11 @@ test("a mode naming a gate set the registry does not declare is rejected, and th
     /* MEMBER 1: a reference to a gate id that is in no registry at all. */
     const invented = loadModes();
     const inventedMode = modeNamed(invented, "full");
+    /* The pushed entry's index is DERIVED, not pinned. It read `/14` until
+       M5-P4 added seven full-mode ids to the list, and a pinned index over an
+       appended list is a count claim about every future phase (CLAUDE.md
+       convention 5). */
+    const inventedIndex = (inventedMode["gate-sets"] as string[]).length;
     (inventedMode["gate-sets"] as string[]).push("performance-budget");
     const inventedPath = writeDocument(dir, invented, "gate-set-invented.yaml");
     const inventedRun = runCli([
@@ -861,7 +866,10 @@ test("a mode naming a gate set the registry does not declare is rejected, and th
     assert.equal(inventedRun.status, 1, inventedRun.stdout + inventedRun.stderr);
     assert.match(
       inventedRun.stdout,
-      /^INVALID #\/modes\/0\/gate-sets\/14 gate set performance-budget is not declared in .*gate-registry\.yaml \(check: mode-gate-sets-resolve\)$/m,
+      new RegExp(
+        `^INVALID #/modes/0/gate-sets/${String(inventedIndex)} gate set performance-budget is not declared in .*gate-registry\\.yaml \\(check: mode-gate-sets-resolve\\)$`,
+        "m",
+      ),
       inventedRun.stdout,
     );
 
