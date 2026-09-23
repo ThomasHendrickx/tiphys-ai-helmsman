@@ -1314,5 +1314,11 @@
   "m5-p3-merge-preconditions-token-env": "--token-env sends the named variable's value as a bearer token on every API request and writes it nowhere, and without the flag no credential is sent",
   "m5-p3-token-env-declared-in-registry-manifest-and-workflow": "the registry and the manifest both declare the token variable in merge-preconditions' command, and the pull-request step sets it",
   "m5-p3-symbolic-head-resolved": "a symbolic --head reaches merge-preconditions resolved to the staged repository's forty-character sha",
-  "m5-p3-dual-review-symbolic-head-resolved": "check-dual-review through the real runner resolves --head HEAD to the staged commit"
+  "m5-p3-dual-review-symbolic-head-resolved": "check-dual-review through the real runner resolves --head HEAD to the staged commit",
+  "headless-verdict-excluded-at-merge-preconditions": "merge-preconditions excludes a verdict that declares no head by name and never counts it toward the two reviews",
+  "pulse-0-1-0-verdicts-well-formed": "every representative 0.1.0-era pulse verdict validates with no INVALID line against the shipped schema",
+  "pulse-0-1-0-non-verdict-stays-invalid": "a 0.1.0-era document that is not a verdict stays invalid, for the reasons it was invalid under 0.1.0",
+  "review-families-history-not-read": "committed history naming several families before review-families was declared does not contradict the declaration",
+  "review-families-later-family-red": "a second family committed after review-families was declared still contradicts it",
+  "review-families-edited-history-read": "a history verdict edited after review-families was declared is current work and is read again"
 }
