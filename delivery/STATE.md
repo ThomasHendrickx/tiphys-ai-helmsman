@@ -5,7 +5,7 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-## M5 standing at 2026-09-23, 17:10 UTC, `main` at 6dc5b06
+## M5 standing at 2026-09-23, 17:40 UTC, `main` at 6dc5b06
 
 M5 runs in waves under DR-0050 (delivery/plan/m5-conflict-pre-pass.md:1). The
 approved plan is delivery/plan/value-delivery-plan.yaml:1.
@@ -17,7 +17,7 @@ approved plan is delivery/plan/value-delivery-plan.yaml:1.
 | M5-P4, CI tells the truth about what it ran | #209 | 8558dca | gates 35847665771 success |
 | release verification waits for the registry | #211 | ac98d3c | gates 35858746022 success |
 | M5-P2, charter intent into briefs, delivered outcome in reports | #207 | 5662d74 | gates 35862907311 success on attempt 2 |
-| M5-P3, a missing review verdict is red, not not-applicable | #213 | 6dc5b06 | gates 35890128107 success |
+| M5-P3, live review evidence | #213 | 6dc5b06 | gates 35890128107 success |
 
 The M5-P2 push run went red once on attempt 1 in a test M5-P2 does not touch,
 and was green on the one allowed re-run. Recorded, with the #211 instance, in
@@ -33,22 +33,28 @@ the merge gate rather than not-applicable.
 
 ### In flight
 
-- M5-P5, context diet (wave C): `claude/m5-p5-context-diet`, cut from 6dc5b06.
+- M5-P5, context diet (wave C): implementer dispatched 17:00 UTC on
+  `claude/m5-p5-context-diet`.
+- Kernel 0.2.1, old history validates again (DR-0053, DR-0054): implementer
+  dispatched 17:00 UTC on `claude/kernel-0-2-1-history-compat`.
 - M5-P1, pulse value proof: `claude/m5-p1-pulse-value-proof`, waiting on A-14.
-- M5-P6, scale-out proof: `claude/m5-p6-scale-out-proof`. The kernel half is
-  wave A; the hemma half is wave D, after M5-P5 merges and hemma access is
-  granted.
+- M5-P6, scale-out proof: `claude/m5-p6-scale-out-proof`, wave D.
+
+### Owner decisions open
+
+- Publish kernel 0.2.1 to npm once its PR is merged under DR-0012 (DR-0053).
+  Asked 2026-09-23. The owner asked for the 0.2.0 publish by name, so this one
+  waits for a go-ahead too.
 
 ### Owner actions open
 
 - A-14: restart pulse and bump pulse-fleet to kernel 0.2.0. Its register
   entry was allocated on the M5-P1 branch and reaches this register when that
-  phase merges; it is not yet on `main`.
-- A-15: tag and release v0.2.0. The tag was still absent at 17:10 UTC
-  (`git ls-remote origin` lists `refs/tags/v0.1.0` only).
+  phase merges; it is not yet on `main`. Pulse reports its pin is done.
+- A-15: tag and release v0.2.0. The tag was still absent at 17:03 UTC.
 - A-10: fleet default branch and six probe branches.
-- A-9 and A-8: scratch and superseded branches on this repository, still
-  present at 17:10 UTC by `git ls-remote origin`.
+- A-9 and A-8: scratch and superseded branches on this repository. Both were
+  still present at 17:10 UTC by `git ls-remote origin`.
 
 The full runnable text of every open action is in the register below.
 
@@ -249,10 +255,11 @@ and `A-3` meant three, one of them a literal string inside
 
 The register is `delivery/decisions/` itself, one file per record. Measured
 2026-09-23 on `main` at 6dc5b06, by reading each record's status line: every
-record there is decided. DR-0014 and DR-0015 read "decided in principle", and
+record there was decided. DR-0014 and DR-0015 read "decided in principle", and
 DR-0010, which the old table here still listed as open, reads "DECIDED BY THE
-ORCHESTRATOR, 2026-09-15". Records allocated on unmerged branches are not on
-`main` and are not listed here.
+ORCHESTRATOR, 2026-09-15". A record raised after that measurement carries its
+own status line, and any decision still open is listed in the standing section
+at the top of this file, so this section does not restate either.
 
 ## Standing reminders
 
