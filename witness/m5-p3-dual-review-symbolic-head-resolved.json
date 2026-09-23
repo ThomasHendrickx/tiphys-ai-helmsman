@@ -1,0 +1,24 @@
+{
+  "id": "m5-p3-dual-review-symbolic-head-resolved",
+  "behavior": "m5-p3-dual-review-symbolic-head-resolved",
+  "tests": [
+    "check-dual-review through the real runner resolves --head HEAD to the staged commit"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "scripts/check-dual-review.mjs",
+      "find": "      options.head = value;",
+      "replace": "      options.head = value.toLowerCase();"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/check-dual-review.mjs",
+      "find": "classifyReviewBudget(directory, options.base, requestedHead ?? \"HEAD\");",
+      "replace": "classifyReviewBudget(directory, options.base, (requestedHead ?? \"HEAD\").toLowerCase());"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

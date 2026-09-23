@@ -1041,7 +1041,7 @@ interface RunnerOutcome {
 }
 
 /** Run ONE registry gate through the real runner, full mode, as CI would. */
-function runRegistryGate(repo: BudgetRepo, gate: string): RunnerOutcome {
+function runRegistryGate(repo: BudgetRepo, gate: string, head?: string): RunnerOutcome {
   const evidence = join(repo.dir, "evidence", gate);
   const run = spawnSync(
     process.execPath,
@@ -1058,7 +1058,7 @@ function runRegistryGate(repo: BudgetRepo, gate: string): RunnerOutcome {
       "--base",
       repo.base,
       "--head",
-      repo.head,
+      head ?? repo.head,
       "--phase",
       "m3-p9",
       "--evidence",
@@ -1097,6 +1097,22 @@ test("a shipped change with no committed review is red through the real runner, 
     assert.match(run.record.detail ?? "", /0 of 2 are admitted and 2 missing/);
     assert.match(run.record.detail ?? "", /A missing review is RED, never not-applicable/);
     assert.match(run.record.detail ?? "", /src\/feature\.ts/);
+  });
+});
+
+test("check-dual-review through the real runner resolves --head HEAD to the staged commit", () => {
+  /* FIX ROUND 1, the derivation's second entry point. The runner is invoked
+     with `--head HEAD` exactly as scripts/m2-exit-test.sh invokes it, and the
+     gate must reach the same verdict it reaches for the explicit sha: green,
+     with the admitted pair named against the resolved commit. A gate that
+     lowercased the value before resolving it would be judging `head`, which
+     names no commit, and reports error. */
+  withBudgetRepo(APPROVING_PAIR, {}, (repo) => {
+    const run = runRegistryGate(repo, "check-dual-review", "HEAD");
+    assert.equal(run.record.status, "green", run.output);
+    assert.equal(run.exit, 0, run.output);
+    assert.ok(run.record.units >= 2, run.output);
+    assert.ok((run.record.detail ?? "").includes(repo.head), `${repo.head} is not named: ${run.record.detail ?? ""}`);
   });
 });
 

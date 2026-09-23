@@ -1401,6 +1401,57 @@ test("with --base, a shipped change with fewer than two committed reviews is red
   }
 });
 
+const REV_PARSE_CAPTURE = join(repoRoot, "witness", "captures", "m5-p3-git-rev-parse-symbolic-head.json");
+
+test("a symbolic --head reaches merge-preconditions resolved to the staged repository's forty-character sha", async () => {
+  /* FIX ROUND 1, hazard CR-002. THE MECHANISM is a symbolic ref reaching the
+     gate unresolved. The runner's own invocation passes `--head HEAD`, and the
+     code before resolveHeadFlag lowercased it into `head`, which names no
+     commit. Two spellings, because they fail differently: `HEAD` is the
+     runner's, and a mixed-case branch name is the one lowercasing destroys even
+     where a case-folding filesystem would forgive `head`. The expected sha is
+     the STAGED repository's, so a resolution run in the wrong directory (the
+     kernel checkout) is red too. The port is closed, so the red below is
+     decided before any network request. */
+  const port = await closedPort();
+  const { staged, base, head } = stageShippedBranch({});
+  try {
+    git(staged.dir, ["branch", "Review-Head", head]);
+    assert.match(head, /^[0-9a-f]{40}$/);
+    /* THE GATE CONSUMES git's OUTPUT, so the red-witness rule's stronger form
+       applies. witness/captures/m5-p3-git-rev-parse-symbolic-head.json is the
+       real output of the command resolveHeadFlag runs, for both spellings and
+       for their lowercased forms. Each is re-run here, in the staged
+       repository, and must agree on exit code and on stdout shape before the
+       gate is trusted with it. */
+    const recorded = JSON.parse(readFileSync(REV_PARSE_CAPTURE, "utf8")) as {
+      commands: { argv: string[]; exit: number; stdout: string }[];
+    };
+    assert.equal(recorded.commands.length, 4);
+    for (const command of recorded.commands) {
+      const live = spawnSync("git", command.argv.slice(1), { cwd: staged.dir, encoding: "utf8" });
+      assert.equal(live.status, command.exit, command.argv.join(" "));
+      if (command.exit === 0) {
+        assert.match(command.stdout, /^[0-9a-f]{40}\n$/);
+        assert.equal(live.stdout, `${head}\n`, command.argv.join(" "));
+      } else {
+        assert.equal(command.stdout, "");
+        assert.equal(live.stdout, "", command.argv.join(" "));
+      }
+    }
+    for (const symbolic of ["HEAD", "Review-Head"]) {
+      const run = await runGate(gateSource, staged, `http://127.0.0.1:${String(port)}`, ["--base", base], symbolic);
+      const detail = String(run.record["detail"]);
+      assert.equal(run.record["status"], "red", `${symbolic}: ${run.stdout}${run.stderr}`);
+      assert.ok(detail.includes(`at head ${head}`), `${symbolic}: the emitted head is not ${head}: ${detail}`);
+      assert.ok(detail.includes(`${base}...${head}`), `${symbolic}: the budget diff is not about ${head}: ${detail}`);
+      assert.equal(detail.includes(`at head ${symbolic.toLowerCase()}`), false, detail);
+    }
+  } finally {
+    cleanup(staged);
+  }
+});
+
 test("--token-env sends the named variable's value as a bearer token on every API request and writes it nowhere, and without the flag no credential is sent", async () => {
   /* THE CREDENTIAL IS DECLARED, NOT AMBIENT: the registry command names the
      variable, and a run without the flag sends no header even when the same

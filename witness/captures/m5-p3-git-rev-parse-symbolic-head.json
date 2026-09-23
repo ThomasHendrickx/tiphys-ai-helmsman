@@ -1,0 +1,64 @@
+{
+  "provenance": "Real output of the git command resolveHeadFlag in src/gates/merge-preconditions.ts runs, captured 2026-09-23 by the M5-P3 fix-round-1 implementer in a scratch repository with one commit and a branch named Review-Head at it. Stored unedited: the sha in stdout is that scratch commit, recorded in staging.head. The two lowercased spellings are what the pre-M5-P3 code handed git; they name no commit, exit 1 and print nothing. test/merge-preconditions.test.ts re-runs all four in a staged repository and requires the same exit codes and the same stdout shape before trusting the gate.",
+  "git": "git version 2.43.0",
+  "staging": {
+    "head": "a7f5becbd0a2e4e8be4c51b0140cb99153264256",
+    "branches": [
+      "Review-Head"
+    ]
+  },
+  "commands": [
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "--end-of-options",
+        "HEAD^{commit}"
+      ],
+      "exit": 0,
+      "stdout": "a7f5becbd0a2e4e8be4c51b0140cb99153264256\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "--end-of-options",
+        "Review-Head^{commit}"
+      ],
+      "exit": 0,
+      "stdout": "a7f5becbd0a2e4e8be4c51b0140cb99153264256\n",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "--end-of-options",
+        "head^{commit}"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "--verify",
+        "--quiet",
+        "--end-of-options",
+        "review-head^{commit}"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stderr": ""
+    }
+  ]
+}
