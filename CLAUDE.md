@@ -1054,7 +1054,7 @@ Each of these bit someone once. Forward them to every implementer.
     **AND SINCE 2026-08-20 THE DEFAULT TOOLCHAIN DOES NOT MERELY SKIP, IT
     FAILS.** The numbers above are historical and correct for the head they
     name; do not read them as today's expectation. At `1945d69`,
-    test/doctor.test.ts:934 is floor-DEPENDENT without being floor-GATED, so
+    test/doctor.test.ts:1086 is floor-DEPENDENT without being floor-GATED, so
     the container default reports `846 pass, 1 fail, 2 skipped` at a head whose
     CI is green. Two interpreters, one head, one test: fail on v22.22.2, pass on
     v26.6.0. **A red on the default toolchain is therefore no longer proof of a
