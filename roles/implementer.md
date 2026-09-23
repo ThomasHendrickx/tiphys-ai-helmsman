@@ -450,6 +450,17 @@ mechanism lookups the clause above owes; the suite result on all three axes with
 the skipped count; the gate results with their exit codes; what you did NOT
 cover; and every open question you are handing on.
 
+Your brief carries two intents under its Intent heading: the project's product
+intent, read from the charter, and your phase's intent. Your report ANSWERS the
+phase intent. Say plainly whether the phase delivered the outcome its intent
+names, yes or no, with the evidence and a short explanation. This is the
+`delivered-outcome` object the final report requires (schemas/final-report.schema.json):
+the phase intent, a delivered boolean, an evidence list and an explanation, and
+nothing else. Do not add a score, a confidence percentage, a ratio or a risk
+rating: an outcome is reported, not graded. A delivered answer with no evidence
+is refused by the schema. A phase that did not deliver says so; that is a
+valid report, and a claimed delivery it cannot show is not.
+
 NEVER SOFTEN A WORK HISTORY. It is the artifact a later reviewer trusts, and an
 overstated claim in one is how a real defect stayed hidden here once already. If
 something is unresolved, say it is unresolved. An honest failure recorded

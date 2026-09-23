@@ -1267,5 +1267,11 @@
   "cutover-entry-real-retirement-satisfied": "arm c reads the real retirement report of this repository as satisfied",
   "cutover-entry-retirement-summary-must-agree": "a retirement summary that disagrees with its rows makes the report unreadable",
   "cutover-entry-exclusion-names-resolve-in-real-registry": "every exclusion behavior arm b requires resolves in the real behavior registry",
-  "cutover-drain-init-fleet-clean-stray-file-not-a-task": "a fleet made by tiphys init drains clean, and a stray file under tasks/ is not a task"
+  "cutover-drain-init-fleet-clean-stray-file-not-a-task": "a fleet made by tiphys init drains clean, and a stray file under tasks/ is not a task",
+  "p2-charter-reaches-brief": "a composed implementer brief and a composed reviewer brief each carry the charter's exact product intent and the phase intent, and an inverted charter changes both with no trace of the old value",
+  "p2-charter-fails-closed": "brief compose fails closed when a declared charter cannot be read or declares no product intent, and composes again once it is repaired",
+  "p2-charter-undeclared-stated": "brief compose with no charter declared says so in the intent section rather than omitting it",
+  "p2-intent-section-closed-set": "the composed intent section has a closed heading and field set",
+  "p2-final-report-contract": "a final report without delivered-outcome, without its evidence, or claiming delivery on empty evidence is refused by tiphys validate",
+  "p2-no-scoring": "delivered-outcome is a closed four-key object with no numeric field anywhere in the final report"
 }

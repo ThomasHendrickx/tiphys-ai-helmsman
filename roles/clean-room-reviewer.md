@@ -51,6 +51,16 @@ It is named here by type name deliberately and is NOT declared in this brief's
 whose contract cannot be read is exactly the defect the output-contract check
 exists to refuse.
 
+The delivered outcome. Your brief carries the project's product intent, from
+the charter, next to the phase's intent. The final report answers the phase
+intent in one `delivered-outcome` object: the phase intent, a delivered
+boolean, an evidence list and an explanation. Check that answer against the
+artifact. A `delivered: true` whose evidence does not show the intended outcome
+is a finding, even when every acceptance criterion is met, because criteria can
+pass while the intent is missed. The schema refuses a delivered answer with an
+empty evidence list; it does not check that the evidence is true, and that part
+is yours. Judge the outcome as delivered or not. Do not score it.
+
 ## clause review-contract-criteria: walk every criterion, and do not call it completeness
 
 You are running the CRITERIA contract.
