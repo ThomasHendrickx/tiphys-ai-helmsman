@@ -1,0 +1,32 @@
+{
+  "id": "release-verify-served-means-the-exact-version",
+  "behavior": "release-verify-served-means-the-exact-version",
+  "tests": [
+    "release-verify does not count npm view exiting 0 with a different or empty version as served"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "    if [ \"$code\" -eq 0 ] && [ \"$observed\" = \"$VERSION\" ]; then",
+      "replace": "    if [ \"$code\" -eq 0 ]; then"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "    if [ \"$code\" -eq 0 ] && [ \"$observed\" = \"$VERSION\" ]; then",
+      "replace": "    if [ \"$code\" -eq 0 ] && [[ \"$VERSION\" == \"$observed\"* ]]; then"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "npm cache add, npm view and npm install against the public registry, spawned by scripts/release-verify.sh",
+    "captures": [
+      "witness/captures/release-verify-registry-not-served.txt",
+      "witness/captures/release-verify-cache-add-not-served.txt"
+    ],
+    "provenance": "Both captures are real output from npm 11.18.0 on node v26.6.0, 2026-09-23, against registry.npmjs.org with a fresh cache per command; the tests' stub npm replays their exit codes and stderr rather than typed strings. rule (f)'s shell arm binds scripts/release-verify.sh because it is a *.sh that spawns npm and node. The named test's stub answers npm view with exit 0 and the wrong stdout for its first views, in two arms: a different version, and empty stdout. TWO MEMBERS (Opus CR-002): member 0 counts exit 0 alone as served; member 1 keeps a comparison and loosens it to a prefix match, which the empty-stdout arm reddens and the different-version arm does not."
+  }
+}
