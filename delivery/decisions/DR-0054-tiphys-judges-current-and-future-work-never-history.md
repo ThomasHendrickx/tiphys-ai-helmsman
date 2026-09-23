@@ -21,7 +21,7 @@ judge the work in front of them and the work that follows.
 1. **Verdict schema (DR-0053).** Already consistent: 0.2.1 makes the schema
    describe documents, and the gates judge admission of current work only.
 2. **review-families falsifiers (DR-0038).** Their scope was the whole
-   committed corpus, on purpose (src/checks.ts:4924). That is withdrawn. The
+   committed corpus, on purpose (src/checks.ts:4926). That is withdrawn. The
    falsifiers now read only verdicts committed AT OR AFTER the commit that
    first added the `review-families` declaration to `charter.yaml`. Before
    that commit a project had made no claim, so nothing it did then can
