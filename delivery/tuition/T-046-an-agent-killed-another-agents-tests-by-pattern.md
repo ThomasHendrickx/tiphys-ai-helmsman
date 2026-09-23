@@ -15,10 +15,10 @@ neither passed nor failed. A rerun with nothing changed was green. The M5-P2
 implementer could not explain it and recorded it as an open intermittent. The
 cause surfaced only because the other implementer reported its own `pkill`.
 
-The implementer's own report is the evidence, in
-`delivery/work-history/release-verify-waits-for-registry.md` on the branch
-`claude/release-verify-waits-for-registry` (quoted, because it is not on this
-branch). Constraint C-2 is in the rules file's Never list, CLAUDE.md:1.
+The implementer's own report is the evidence, at
+delivery/work-history/release-verify-waits-for-registry.md:833, which landed
+on `main` with PR #211. Constraint C-2 is in the rules file's Never list,
+CLAUDE.md:1343.
 
 ## The mechanism
 

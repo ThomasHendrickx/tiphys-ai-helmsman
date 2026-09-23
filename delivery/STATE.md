@@ -2729,6 +2729,8 @@ delivery/verification/cutover-status-tree-digest-intermittent.md:1.
 
 ### Owner actions open
 
-- A-14: restart pulse and bump pulse-fleet to kernel 0.2.0.
+- A-14: restart pulse and bump pulse-fleet to kernel 0.2.0. Its register
+  entry was allocated on the M5-P1 branch and reaches this register when that
+  phase merges; it is not yet on `main`.
 - A-15: tag and release v0.2.0. The tag was still absent at 12:56 UTC.
 - A-10: fleet default branch and six probe branches.
