@@ -72,7 +72,7 @@ The full runnable text of every open action is in the register below.
 
 - **A-9: DELETE THE SCRATCH BRANCHES I PUSHED BY MISTAKE.** Only the owner can;
   this container cannot delete a remote ref, which standing warning 14 at
-  CLAUDE.md:1089 records with the measurement, and a `--dry-run` reports success
+  CLAUDE.md:1101 records with the measurement, and a `--dry-run` reports success
   either way so there is no non-destructive way to confirm it in advance.
 
   On 2026-09-16 at about 04:38 I pushed every M4 branch after a session-limit
