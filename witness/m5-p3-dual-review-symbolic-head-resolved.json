@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "scripts/check-dual-review.mjs",
-      "find": "      options.head = value;",
-      "replace": "      options.head = value.toLowerCase();"
+      "find": "  const run = evaluate(options.directory, options.head, { base: options.base });",
+      "replace": "  const run = evaluate(options.directory, options.head?.toLowerCase(), { base: options.base });"
     },
     {
       "kind": "mutation",
