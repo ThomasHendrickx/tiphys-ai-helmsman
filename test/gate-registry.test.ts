@@ -1077,8 +1077,12 @@ const REGISTRY_ONLY_SCRIPT_GATES: ReadonlyMap<
         "M3-P9 step 3b declares it per D-M3-34, with `events: [pull_request]` " +
         "and a command-exit-zero precondition, because a merged head has no " +
         "pair of verdicts to compare. It is executed by a step in " +
-        ".github/workflows/gates.yml whose `if:` matches those declared events " +
-        "and which evaluates the same precondition the registry entry names.",
+        ".github/workflows/gates.yml whose `if:` matches those declared events. " +
+        "Since M5-P3 that step and the registry entry ask DIFFERENT precondition " +
+        "questions: the step runs the M3-P9 verdict-present arm with no --base, " +
+        "and the registry runs the review-budget arm with base and head, which " +
+        "makes a missing review red. The review gate CI enforces with the " +
+        "budget is merge-preconditions, which IS in gates.manifest.json.",
       coveredBy: /check-dual-review\.mjs/,
     },
   ],

@@ -84,6 +84,34 @@ Dispatch a fresh agent that has not seen the implementation session, using
 `references/clean-room-brief.md`. Its contract is the plan's acceptance
 criteria, not the implementer's account of them.
 
+**THE REVIEW PRODUCES COMMITTED VERDICTS (M5-P3), and the merge gate reads
+them.** For a change that touches `src/`, `bin/`, `schemas/`, `roles/` or
+`tuition/` (DR-0027's dual tier; `delivery/`, `CLAUDE.md` and `.claude/` owe no
+verdict, and `scripts/`, `test/`, `.github/` and the two gate registries are
+below the dual tier):
+
+1. Record the reviewed head as a full forty-character sha, H.
+2. Dispatch TWO reviewers on H, one per contract (`--review-contract criteria`
+   and `--review-contract hazard`), on different model families and different
+   framings. Each writes `delivery/review/<phase-id>-<contract>.json` in its
+   own detached scratch worktree. Arm the watchdog on those two files.
+3. Validate each: `node bin/tiphys.ts validate --type verdict <file>` prints no
+   `INVALID` line, and `head` equals H.
+4. Copy both into the phase worktree and commit them together in ONE commit
+   that touches only `delivery/review/`. Push once. Call that commit V. The
+   ancestry rule admits a verdict for H at V only because the whole gap H..V is
+   under `delivery/`.
+5. What CI shows, so nobody reads it as a defect: on H, before the reviews,
+   the pull-request bundle is RED on `merge-preconditions` with "0 of 2 are
+   admitted and 2 missing". On V it is NOT-APPLICABLE with precondition
+   `merge-preconditions-ci-concluded-for-this-head`, because that run sits
+   inside the CI it would judge; its evidence lists the review rows as
+   `ESTABLISHED ... green`. Read that row from `summary.json`.
+6. A later commit that touches anything outside `delivery/` makes both
+   verdicts stale: the gate excludes them and names the exclusion. A fix round
+   therefore owes two new verdicts on its new head, written to the same two
+   paths, replacing the old ones.
+
 Always instruct it to execute rather than admire: re-run the criteria, and
 mutation-test the tests by breaking the behavior and confirming the named
 test goes red. A review that only reads is worth much less than one that
@@ -146,6 +174,23 @@ Merge authority is the owner's. Merge only when: CI is green on the final
 head, the clean-room verdict is APPROVE with findings closed or explicitly
 accepted, any fix round has been verified, and the owner has approved (a
 recorded approval on the PR counts).
+
+**THE PRE-MERGE RUN OF `merge-preconditions` IS THE ORCHESTRATOR'S (M5-P3).**
+CI cannot decide condition 4 about its own run, so it reports not-applicable
+there. After the `gates` run on V has COMPLETED green, run the gate by hand
+from the phase worktree, with `--base` so the review budget is decided:
+
+```
+node src/gates/merge-preconditions.ts --base origin/main --head <V> \
+  --phase <phase-id> --context . --result <scratch>/mp/result.json \
+  --evidence <scratch>/mp --scope-record <scope result.json from a local run> \
+  --arbitrations <scratch>/arbitration
+```
+
+It must report `green`. Condition 6 reads `arbitration-<phase-id>.md` from
+`--arbitrations`; that document names both verdict files and V. It lives
+OUTSIDE the tree because a document cannot name the commit that contains it.
+A red or error here blocks the merge whatever CI said.
 
 Squash merge, with a commit message that tells the story: what the phase
 delivered, the decisions it realized, and the evidence that it works.
