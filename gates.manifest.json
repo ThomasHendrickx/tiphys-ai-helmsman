@@ -233,16 +233,18 @@
       "unitLabel": "merge preconditions evaluated",
       "applicability": "conditional",
       "parameters": [
+        "base",
         "head",
         "phase"
       ],
       "precondition": {
-        "id": "merge-preconditions-verdicts-present",
+        "id": "merge-preconditions-review-budget-decidable",
         "kind": "command-exit-zero",
         "command": [
           "node",
           "scripts/check-dual-review.mjs",
           "--precondition",
+          "--review-budget",
           "."
         ]
       }
