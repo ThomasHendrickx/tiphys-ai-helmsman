@@ -76,20 +76,11 @@ owner about the approach.
 Publishing 0.2.1 is an outward action. The owner asked for the 0.2.0 publish
 by name, so the 0.2.1 publish waits for a go-ahead.
 
-## Not part of 0.2.1: the review-families declaration
+## Also in 0.2.1: the review-families declaration
 
-Pulse also reported that it cannot add a `review-families` declaration,
-because its committed verdicts name several `produced-by` values
-(claude-opus, claude-sonnet-5, claude-fable and others). This is NOT the same
-defect and 0.2.1 does not change it.
-
-The whole-corpus scope is deliberate (DR-0038, recorded at
-src/checks.ts:4924). The declaration claims the project has only one review
-family. Pulse's own record shows Opus and Sonnet reviews, which DR-0012 counts
-as two families. So the check refusing the declaration is correct: the
-declaration would be false.
-
-Pulse does not need the exception. It already produces cross-model reviews,
-which is the normal DR-0012 path. The advice to pulse: do not declare
-`review-families`, do not edit past records, and keep writing the real model
-name in `produced-by`.
+Pulse also cannot add a `review-families` declaration, because its past
+verdicts name several `produced-by` values. The check read the whole history
+on purpose (DR-0038). The owner has decided that Tiphys judges current and
+future work, never history (DR-0054). So 0.2.1 also limits that check to
+verdicts committed from the declaration onward. Pulse keeps its records
+unedited.
