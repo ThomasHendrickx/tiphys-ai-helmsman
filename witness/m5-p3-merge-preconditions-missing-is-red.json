@@ -1,6 +1,6 @@
 {
   "id": "m5-p3-merge-preconditions-missing-is-red",
-  "behavior": "m5-p3-merge-preconditions-missing-is-red",
+  "behavior": "m5-p3-merge-preconditions-missing-review-is-red",
   "tests": [
     "merge-preconditions, the review gate the pull-request bundle runs, is red through the real runner for zero and one committed review",
     "with --base, a shipped change with fewer than two committed reviews is red before any network request"

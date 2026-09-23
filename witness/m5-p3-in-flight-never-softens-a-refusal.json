@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    if (inFlight.length > 0 && gateStatusForRows(rows) === \"green\") {",
-      "replace": "    if (inFlight.length > 0 && gateStatusForRows(rows) !== \"error\") {"
+      "find": "    const inFlight = inFlightCheckRuns(head, runs, REQUIRED_CHECK_CONTEXT);",
+      "replace": "    const inFlight = inFlightCheckRuns(head, runs, REQUIRED_CHECK_CONTEXT);\n    rows.splice(0, rows.length, ...rows.filter((row) => row.status !== \"red\"));"
     }
   ],
   "deterministic": true,

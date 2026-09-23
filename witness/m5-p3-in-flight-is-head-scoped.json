@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "        String(run.head_sha ?? \"\").toLowerCase() === head.toLowerCase() &&\n        String(run.status ?? \"\") !== \"completed\",",
-      "replace": "        String(run.head_sha ?? \"\") !== \"\" &&\n        String(run.status ?? \"\") !== \"completed\","
+      "find": "    const inFlight = inFlightCheckRuns(head, runs, REQUIRED_CHECK_CONTEXT);",
+      "replace": "    const inFlight = inFlightCheckRuns(String(runs[0]?.head_sha ?? head), runs, REQUIRED_CHECK_CONTEXT);"
     }
   ],
   "deterministic": true,
