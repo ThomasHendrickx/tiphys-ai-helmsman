@@ -286,3 +286,98 @@ AssertionError [ERR_ASSERTION]: m1-p1-criteria.yaml is not well formed
 The control test fails on main only because main also prints
 `INVALID #/head required property head is missing` for it, which the test
 refuses. Its other INVALID lines are the same on both sides.
+
+Branch, same file, same toolchain, at b69f438: 7 tests, 7 pass, 0 fail,
+0 skipped, exit 0.
+
+## Red witnesses
+
+Five specs, one per group of tests, because the gate requires EVERY named
+test to redden under EVERY member. The first attempt (three specs, b69f438)
+was red for exactly that: a member that admits head-less verdicts in
+checks.ts leaves the merge-preconditions test green, which is correct
+behaviour of the test and a wrong grouping of the spec. It was also red on
+rule (d) for the schema: re-adding `"head"` to `required` restores a line the
+branch DELETED, and a pure deletion leaves no line in a changed hunk for a
+mutation to match, so that member is a patch
+(witness/patches/kernel-0-2-1-verdict-head-required-again.patch).
+
+| spec | tests | members |
+|---|---|---|
+| kernel-0-2-1-headless-verdict-never-admitted | check-dual-review head-less test | admit in partitionByAuditedHead; `declaresNoHead` returns false |
+| kernel-0-2-1-headless-verdict-never-admitted-merge-preconditions | merge-preconditions head-less test | admit in readReviewCorpus; `declaresNoHead` returns false |
+| kernel-0-2-1-review-families-scoped-to-declaration | history-not-read test | falsifiers read the whole corpus; every verdict with a blob id treated as history |
+| kernel-0-2-1-review-families-later-verdicts-read | later-family and edited-history tests | every verdict with a blob id treated as history; the "before" tree read at the audited commit instead of the parent |
+| kernel-0-2-1-history-well-formed | pulse well-formed test | head re-required (patch); medium re-added to the escalation enum |
+
+The members that touch src/checks.ts and src/gates/merge-preconditions.ts
+(both spawn git) carry consumesExternalOutput with
+witness/captures/kernel-0-2-1-history-git.json. That capture's commands are
+re-run by the named tests on the staged repositories, and git's live output
+must equal it before the gate's verdict is asserted.
+
+## Deviations
+
+- **Three behavior rows repointed, not appended.** `verdict-head-required`,
+  `verdict-approve-with-medium-finding-rejected` and
+  `verdict-pair-blocking-finding-refused` named tests whose assertion was the
+  0.2.0 rule this change withdraws. The ids are kept (they are cited by
+  test/verdict-head.test.ts's by-name registration test) and point at the
+  test that now carries the property: the head clause at the gate, the medium
+  refusal at the gate, the pair predicate as the only medium refusal. This
+  edits existing rows of an append-only registry; it is declared here so a
+  reviewer can refuse it. The alternative, new ids plus rows pointing at
+  deleted titles, would leave three rows that resolve to nothing.
+- **Test titles changed** in test/verdict-head.test.ts for the same reason
+  (a title stating "head is required" would be false).
+- **Staging change in test/single-family-exception.test.ts** (`addHead`):
+  the two real-corpus arms read this repository's own M3 verdicts, which
+  predate `head`. Under 0.2.1 those are excluded as history, so the arms now
+  stage them as CURRENT reviews of the staged commit by inserting a head
+  line. The produced-by strings compared are still the real ones.
+- **Commit messages** carry no attribution trailer naming a model, because
+  CLAUDE.md rule 7 forbids model or tool names in commit messages and the
+  project rules take precedence over the session's default trailer.
+
+## Open questions
+
+1. **`headGroupFor` is unchanged.** In the derived checks, a same-phase
+   sibling with no usable head still reddens the group. A consumer that
+   REVIEWS AGAIN a phase whose old verdicts lack a head will see that red.
+   Kept fail-closed; not measured against pulse, because pulse has no such
+   case today.
+2. **No `--base` arm is weaker than 0.2.0.** The bare `check-dual-review`
+   workflow step, without `--base`, reads a corpus of ONLY head-less verdicts
+   as not-applicable, each named. 0.2.0 read it as red. With `--base` (which
+   the gate runner supplies) a dual-tier change is red, as the tests show.
+3. **`validate --context` with the merge checks** still refuses a head-less
+   verdict through the derived checks (checks.ts:5506, 5763). That is a merge
+   question asked of history by an explicit command; I left it.
+4. **`tiphys validate` without `--context` exits 1 on every verdict**
+   (SKIPPED counts as failure, src/commands/validate.ts:480), on v0.1.0 and
+   on main. After this change pulse's history prints no INVALID line and
+   the command still exits 1. If the owner's "validation returns false" meant
+   the exit code, this change alone does not turn it true.
+5. **`final-report.schema.json` requires `delivered-outcome` (M5-P2).**
+   Same mechanism, but it is an explicit acceptance criterion of M5-P2
+   (p2-final-report-contract), so it is a plan decision and not mine to
+   reverse. Pulse has no final reports, so it does not affect the pulse case.
+6. **Unexaminable files.** A file under `delivery/review/` that cannot be
+   decoded still makes merge-preconditions error, whatever its age. That
+   also judges history; not changed.
+7. **Only pulse was examined.** Seven of its 49 verdicts are fixtures; no
+   other consumer's history was read.
+
+## Claim grep
+
+```
+grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/kernel-0-2-1-history-compat.md
+```
+
+Run before this section was written, five hits: line 6 is the owner's rule
+quoted; the two `never counts it` hits are a test title (quoted and in the
+captured summary); `never-admitted` is a witness file name; `always false`
+describes a mutation (`declaresNoHead` returning false), which the witness
+run settles. The wrap-insensitive form found the same five (1 `always`,
+4 `never`), so no hit was missed by wrapping. The sentences added after it
+were written to avoid the listed words.
