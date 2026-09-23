@@ -379,7 +379,7 @@ can.
 
 - phase: M5-P5, 2026-09-23, diet baseline `6dc5b06`
 - the register: the `diet` array in the JSON, beside `rows` and `retired`
-- the guard: the diet tests in test/retirement-inventory.test.ts:882, not the
+- the guard: the diet tests in test/retirement-inventory.test.ts:999, not the
   checker script
 
 The numbers in the sections above are as of M4-P23 and are left as that
@@ -402,32 +402,48 @@ The kinds, and what each must carry:
 
 | disposition | evidence the test checks |
 |---|---|
-| `exact-duplicate` | the WHOLE removed block, normalised, is in the named file |
-| `mechanically-enforced` | the enforcing script exists (or the gate is in the manifest), a test of that title exists, and a quote of the kept rule is in the current file |
-| `history-moved` | a quote of at least 8 words AT a named line range of a `delivery/` file that existed at the baseline and is not a pruned file, plus a quote of at least 6 words of the kept rule |
-| `corrected` | a quote AT the authority's line range, and the replacement text in the current file |
-| `superseded-status` | `delivery/STATE.md` only: a reason and the text that supersedes it |
-| `archived` | `delivery/STATE.md` only: a reason and the pointer left in the file |
+| `exact-duplicate` | the WHOLE removed block, normalised, is in the BINDING text of the named file |
+| `mechanically-enforced` | the enforcing script exists and a workflow or the manifest runs it (or the gate is in the manifest); the test title is defined exactly once, its FILE names the script, and a declared `asserts` fragment is in that test's OWN body; a quote of the kept rule is in the binding text of the current file |
+| `history-moved` | a quote of at least 8 words AT a named line range of a `delivery/` file that existed at the baseline and is not a pruned file, plus a quote of at least 6 words of the kept rule in the binding text of the current file |
+| `corrected` | a quote AT the authority's line range, in binding text there, and the replacement in the binding text of the current file |
+| `superseded-status` | `delivery/STATE.md` only: a reason and a quote of at least 6 words of the binding text that supersedes it |
+| `archived` | `delivery/STATE.md` only: a reason and a quote of at least 6 words of the pointer left in the file |
 
 The refusal of a keyword is the word floor. An entry that carries
 `verified-by`, `probe` or `negative-witness` is refused outright, at
-test/retirement-inventory.test.ts:920. Two members of the dangerous class are
+test/retirement-inventory.test.ts:1043. Two members of the dangerous class are
 witnessed, and each was shown red by disabling its own arm and nothing else:
 setting the floor to one word turns the one-keyword history test red, and
 emptying the probe-key list turns the keyword-grep test red. Both are green on
 the real register. The captured runs are in the work history.
+
+**Binding text, since fix round 1.** Both reviews of the first head found the
+same mechanism: the guards tested that a string or a named thing EXISTS, not
+that the property holds. A rule moved byte for byte into an HTML comment
+marked "no longer binding" still counted as surviving, and any real script and
+test discharged `mechanically-enforced`. So every "this text is here" check now
+reads BINDING text, which is the file with three kinds of line removed (see
+test/retirement-inventory.test.ts:870): anything inside an HTML comment,
+anything under a heading labelled superseded, retired, archived, historical,
+history or non-binding, and any paragraph that calls itself non-binding. A
+moved-history pointer is exempt, because history is its job. Each arm has its
+own red witness, and the class has two structurally different members (a
+comment and a labelled heading), each red with only its own arm disabled.
 
 **Completeness, which the register alone does not give.** A register can be
 fully evidenced and still omit a block. So a second test takes every run of
 baseline lines of `CLAUDE.md` and `AGENTS.md` that no diet range covers, split
 at blank lines, and requires it to be in the current file. Whitespace is
 collapsed, and citation line numbers are masked so that a repointed citation
-does not count as a removal. See test/retirement-inventory.test.ts:1009.
+does not count as a removal. A run that was binding at the baseline must be in
+the BINDING text now. See test/retirement-inventory.test.ts:1147.
 `delivery/STATE.md` is not under this check, because its point is to be
-rebuilt. It has its own shape check at test/retirement-inventory.test.ts:1034:
+rebuilt. It has its own shape check at test/retirement-inventory.test.ts:1236:
 the current standing comes first, no dated daily block survives, the M4
 closure and its residue and the history pointers are present, and every A-n id
-in the baseline is still present.
+in the baseline is still present. Every id in the standing "Owner actions open"
+list also needs a register item of at least 25 words with a code span, so the
+runnable text is kept and not only the id (test/retirement-inventory.test.ts:1194).
 
 This phase's register: eleven `CLAUDE.md` entries (seven `history-moved`,
 three `corrected`, one `mechanically-enforced`) and fifteen `delivery/STATE.md`
@@ -438,7 +454,12 @@ their destination, so thinning it is a brief change and not a diet.
 **What this does NOT reach.** The quote check shows the text is AT the named
 place. It does not show that the place is the right home, or that a history
 quote carries everything the block said. That is a reading, and it stays with
-the reviewer. The completeness test needs the baseline commit, so a shallow
+the reviewer. The binding-text labels are a closed list, so a paragraph that
+disclaims itself in other words ("kept for reference", "obsolete") is still
+read as binding. The `enforced-by` checks show the named test runs the named
+script and makes the declared assertion. They do not show the assertion is
+the rule's property: the entry declares that, and a reviewer reads it. The
+completeness test needs the baseline commit, so a shallow
 clone fails it rather than skipping it. The two `corrected` entries for
 DR-0044 retire five rows, and the test checks both directions of that link.
 It does not check that a replacement is true. For the DR-0044 rule the

@@ -781,10 +781,19 @@ test("retirement inventory deletes nothing from the three roots in this phase", 
  * line range of a file that existed at the diet baseline, plus the quote of the
  * rule that stayed. And it must not carry a probe command at all.
  *
- * Two structurally different members of the class are witnessed below:
- *   A. a history-moved entry whose quote is one shared keyword
- *   B. an entry whose evidence is a keyword grep command instead of a quote
- * plus a third, orthogonal failure: a block removed with no entry at all.
+ * FIX ROUND 1 names the mechanism both reviews found: every guard here tested
+ * that a string or a named thing EXISTS, not that the property it stands for
+ * holds. Three properties are now tested instead of presence:
+ *
+ *   - a surviving quote must sit in BINDING text: not inside an HTML comment,
+ *     not under a heading labelled superseded, retired, archived, historical,
+ *     history or non-binding, and not in a paragraph that calls itself non-
+ *     binding (bindingMask below);
+ *   - a mechanically-enforced disposition must name a script that CI runs, a
+ *     test whose FILE runs that script, and an assertion fragment that is in
+ *     that test's OWN body, so an unrelated script or test does not discharge it;
+ *   - every open owner action keeps a register item with its runnable text,
+ *     not only its id.
  * ------------------------------------------------------------------------ */
 
 const DIET_FILES = ["CLAUDE.md", "AGENTS.md", "delivery/STATE.md"];
@@ -797,9 +806,24 @@ const DIET_KINDS = [
   "corrected",
   ...STATE_ONLY,
 ];
+/** A moved-history quote: long enough to be a sentence, not a phrase. */
 const MIN_RECORD_WORDS = 8;
+/**
+ * Every other "this text is here" quote. Six is the floor the kept-rule quote
+ * already used. It is applied to status quotes too since fix round 1: below
+ * it, three of the register's own quotes were headings ("## M4 closure" is three
+ * words), and a heading names a section rather than showing its content.
+ */
 const MIN_RULE_WORDS = 6;
+/**
+ * An open owner action's register item. Every bold lead line in the register
+ * is under 15 words and the shortest open item at the diet head is 39 words
+ * (A-10), so 25 refuses an item cut back to its lead and passes every real one.
+ */
+const MIN_ACTION_WORDS = 25;
 const DIET_BASELINE = "6dc5b06";
+const NON_BINDING_HEADING = /\b(superseded|retired|archived|historical|history|non-binding|not binding|no longer binding)\b/i;
+const NON_BINDING_PARAGRAPH = /\b(non-binding|not binding|no longer binding)\b/i;
 
 interface Quote {
   at?: string;
@@ -823,7 +847,7 @@ interface DietEntry {
   "superseded-by"?: Quote;
   "pointer-in-file"?: Quote;
   "duplicate-of"?: Quote;
-  "enforced-by"?: { script?: string; gate?: string; test?: string };
+  "enforced-by"?: { script?: string; gate?: string; test?: string; asserts?: string };
   [k: string]: unknown;
 }
 interface DietDoc {
@@ -835,6 +859,68 @@ interface DietDoc {
 const normalise = (s: string) => s.replace(/\s+/g, " ").trim();
 const withoutLineNumbers = (s: string) => s.replace(/(\.[A-Za-z0-9]+:)\d+(?:-\d+)?/g, "$1N");
 const wordCount = (s: string) => normalise(s).split(" ").filter((w) => w !== "").length;
+
+/**
+ * One flag per line: true where the line is NOT binding text. A line is masked
+ * when any part of it is inside an HTML comment, when it sits under a heading
+ * whose text carries a non-binding label (until the next heading of the same or
+ * a higher level), or when its paragraph calls itself non-binding. Headings
+ * inside fenced blocks are not headings.
+ */
+function bindingMask(text: string): boolean[] {
+  const lines = text.split("\n");
+  const mask = lines.map(() => false);
+  let inComment = false;
+  let fence = false;
+  let labelled = 0; // heading level of the open non-binding section, 0 for none
+  for (let i = 0; i < lines.length; i++) {
+    const l = lines[i];
+    let touched = inComment;
+    let rest = l;
+    for (;;) {
+      if (inComment) {
+        const end = rest.indexOf("-->");
+        if (end < 0) break;
+        inComment = false;
+        rest = rest.slice(end + 3);
+      } else {
+        const start = rest.indexOf("<!--");
+        if (start < 0) break;
+        touched = true;
+        inComment = true;
+        rest = rest.slice(start + 4);
+      }
+    }
+    if (/^\s*```/.test(l)) fence = !fence;
+    const h = fence ? null : /^(#{1,6}) (.*)$/.exec(l);
+    if (h !== null) {
+      const level = h[1].length;
+      if (labelled !== 0 && level <= labelled) labelled = 0;
+      if (labelled === 0 && NON_BINDING_HEADING.test(h[2])) labelled = level;
+    }
+    mask[i] = touched || labelled !== 0;
+  }
+  // Paragraphs that label themselves non-binding.
+  let start = 0;
+  for (let i = 0; i <= lines.length; i++) {
+    if (i === lines.length || lines[i].trim() === "") {
+      if (i > start && NON_BINDING_PARAGRAPH.test(lines.slice(start, i).join(" "))) {
+        for (let k = start; k < i; k++) mask[k] = true;
+      }
+      start = i + 1;
+    }
+  }
+  return mask;
+}
+
+/** The binding text of a document: every unmasked line, in order. */
+function bindingText(text: string): string {
+  const mask = bindingMask(text);
+  return text
+    .split("\n")
+    .filter((_, i) => !mask[i])
+    .join("\n");
+}
 
 const revCache = new Map<string, string | null>();
 function atRevision(rev: string, path: string): string | null {
@@ -851,31 +937,62 @@ function currentText(path: string): string | null {
   return existsSync(full) ? readFileSync(full, "utf8") : null;
 }
 
-/** The text at `path:a` or `path:a-b` in the working tree, or null. */
-function textAt(pointer: string): string | null {
+/**
+ * The text at `path:a` or `path:a-b`, or null when it does not resolve. With
+ * `binding`, only its binding lines: an authority must be binding where it is
+ * quoted, while a moved-history pointer is history by design.
+ */
+function textAt(pointer: string, current: (path: string) => string | null, binding: boolean): string | null {
   const m = /^(.+?):(\d+)(?:-(\d+))?$/.exec(pointer);
   if (m === null) return null;
-  const body = currentText(m[1]);
+  const body = current(m[1]);
   if (body === null) return null;
   const lines = body.split("\n");
+  const mask = bindingMask(body);
   const a = Number(m[2]);
   const b = m[3] === undefined ? a : Number(m[3]);
   if (a < 1 || b < a || b > lines.length) return null;
-  return lines.slice(a - 1, b).join("\n");
+  return lines
+    .slice(a - 1, b)
+    .filter((_, i) => !binding || !mask[a - 1 + i])
+    .join("\n");
 }
 
-let titleCache: Set<string> | null = null;
-function allTestTitles(): Set<string> {
-  if (titleCache !== null) return titleCache;
-  const titles = new Set<string>();
+interface TestSite {
+  file: string;
+  body: string;
+}
+let testCache: Map<string, TestSite[]> | null = null;
+/** Every `test("title", ...)` in test/*.test.ts, with the file and its own body. */
+function allTests(): Map<string, TestSite[]> {
+  if (testCache !== null) return testCache;
+  const tests = new Map<string, TestSite[]>();
   const dir = join(repo, "test");
   for (const f of readdirSync(dir)) {
     if (!f.endsWith(".test.ts")) continue;
     const src = readFileSync(join(dir, f), "utf8");
-    for (const m of src.matchAll(/\btest\(\s*"((?:[^"\\]|\\.)*)"/g)) titles.add(m[1]);
+    const starts = [...src.matchAll(/^test\(\s*"((?:[^"\\]|\\.)*)"/gm)];
+    starts.forEach((m, k) => {
+      const end = k + 1 < starts.length ? starts[k + 1].index : src.length;
+      const site = { file: `test/${f}`, body: src.slice(m.index, end) };
+      tests.set(m[1], [...(tests.get(m[1]) ?? []), site]);
+    });
   }
-  titleCache = titles;
-  return titles;
+  testCache = tests;
+  return tests;
+}
+
+let ciCache: string | null = null;
+/** Everything CI is told to run: the workflows plus the gate manifest. */
+function ciText(): string {
+  if (ciCache !== null) return ciCache;
+  const wf = join(repo, ".github", "workflows");
+  const parts = readdirSync(wf)
+    .filter((f) => f.endsWith(".yml") || f.endsWith(".yaml"))
+    .map((f) => readFileSync(join(wf, f), "utf8"));
+  parts.push(readFileSync(join(repo, "gates.manifest.json"), "utf8"));
+  ciCache = parts.join("\n");
+  return ciCache;
 }
 
 /** Every reason a diet register is not evidenced. Empty means it is. */
@@ -892,15 +1009,21 @@ function checkDiet(doc: DietDoc, current: (path: string) => string | null = curr
     if (wordCount(q.quote) < min) fail(`${what} quote is under ${min} words, which a keyword can satisfy`);
     const body = current(q.file);
     if (body === null) fail(`${what} file ${q.file} is absent`);
-    else if (!normalise(body).includes(normalise(q.quote))) fail(`${what} quote is not in ${q.file}`);
+    else if (!normalise(bindingText(body)).includes(normalise(q.quote))) {
+      fail(
+        normalise(body).includes(normalise(q.quote))
+          ? `${what} quote is in ${q.file} only as non-binding text (a comment or a section labelled as history)`
+          : `${what} quote is not in ${q.file}`,
+      );
+    }
   };
-  const atPointer = (q: Quote | undefined, min: number, what: string, fail: (m: string) => void) => {
+  const atPointer = (q: Quote | undefined, min: number, what: string, fail: (m: string) => void, binding: boolean) => {
     if (q === undefined || typeof q.at !== "string" || typeof q.quote !== "string") {
       fail(`has no ${what} {at, quote}`);
       return null;
     }
     if (wordCount(q.quote) < min) fail(`${what} quote is under ${min} words, which a keyword can satisfy`);
-    const text = textAt(q.at);
+    const text = textAt(q.at, current, binding);
     if (text === null) fail(`${what} pointer ${q.at} does not resolve`);
     else if (!normalise(text).includes(normalise(q.quote))) fail(`${what} quote is not at ${q.at}`);
     return q.at.replace(/:\d+(?:-\d+)?$/, "");
@@ -949,8 +1072,8 @@ function checkDiet(doc: DietDoc, current: (path: string) => string | null = curr
       if (body === null) fail("duplicate-of file is absent");
       else if (Number.isInteger(a) && Number.isInteger(b) && a >= 1 && b <= L.length) {
         const block = withoutLineNumbers(normalise(L.slice(a - 1, b).join("\n")));
-        if (!withoutLineNumbers(normalise(body)).includes(block)) {
-          fail(`the whole removed block is not in ${d?.file}; a shared keyword is not a duplicate`);
+        if (!withoutLineNumbers(normalise(bindingText(body))).includes(block)) {
+          fail(`the whole removed block is not in the binding text of ${d?.file}; a shared keyword is not a duplicate`);
         }
       }
     }
@@ -959,16 +1082,29 @@ function checkDiet(doc: DietDoc, current: (path: string) => string | null = curr
       const gates = (JSON.parse(readFileSync(join(repo, "gates.manifest.json"), "utf8")) as {
         gates: { id: string }[];
       }).gates.map((g) => g.id);
-      const scriptOk = typeof by?.script === "string" && existsSync(join(repo, by.script));
+      const script = typeof by?.script === "string" ? by.script : "";
+      const scriptOk = script !== "" && existsSync(join(repo, script));
       const gateOk = typeof by?.gate === "string" && gates.includes(by.gate);
       if (!scriptOk && !gateOk) fail("enforced-by names no existing script and no manifest gate");
-      if (typeof by?.test !== "string" || !allTestTitles().has(by.test)) {
-        fail("enforced-by names no existing test title");
+      const base = script.split("/").pop() ?? "";
+      if (scriptOk && !ciText().includes(base)) fail(`enforced-by script ${script} is not run by any workflow or manifest gate`);
+      const sites = typeof by?.test === "string" ? (allTests().get(by.test) ?? []) : [];
+      if (sites.length !== 1) {
+        fail(sites.length === 0 ? "enforced-by names no existing test title" : "enforced-by names a test title defined more than once");
+      } else {
+        const site = sites[0];
+        const fileSrc = readFileSync(join(repo, site.file), "utf8");
+        if (scriptOk && !fileSrc.includes(base)) fail(`enforced-by test's file ${site.file} does not run ${script}`);
+        if (typeof by?.asserts !== "string" || by.asserts.trim().length < 8) {
+          fail("enforced-by declares no asserts fragment naming what the test checks");
+        } else if (!site.body.includes(by.asserts)) {
+          fail(`enforced-by asserts fragment is not in the body of the named test`);
+        }
       }
       inCurrent(e["rule-kept"], MIN_RULE_WORDS, "rule-kept", fail);
     }
     if (kind === "history-moved") {
-      const target = atPointer(e.history, MIN_RECORD_WORDS, "history", fail);
+      const target = atPointer(e.history, MIN_RECORD_WORDS, "history", fail, false);
       if (target !== null) {
         if (!target.startsWith("delivery/")) fail("history is not under delivery/");
         if (DIET_FILES.includes(target)) fail("history points into a file this diet prunes");
@@ -977,12 +1113,12 @@ function checkDiet(doc: DietDoc, current: (path: string) => string | null = curr
       inCurrent(e["rule-kept"], MIN_RULE_WORDS, "rule-kept", fail);
     }
     if (kind === "corrected") {
-      atPointer(e.authority, MIN_RULE_WORDS, "authority", fail);
+      atPointer(e.authority, MIN_RULE_WORDS, "authority", fail, true);
       inCurrent(e.replacement, MIN_RULE_WORDS, "replacement", fail);
     }
     if (STATE_ONLY.includes(kind)) {
       if (typeof e.reason !== "string" || e.reason === "") fail("has no reason");
-      if (kind === "superseded-status") inCurrent(e["superseded-by"], 1, "superseded-by", fail);
+      if (kind === "superseded-status") inCurrent(e["superseded-by"], MIN_RULE_WORDS, "superseded-by", fail);
       if (kind === "archived") inCurrent(e["pointer-in-file"], MIN_RULE_WORDS, "pointer-in-file", fail);
     }
     for (const r of e.retires ?? []) {
@@ -1004,22 +1140,29 @@ function checkDiet(doc: DietDoc, current: (path: string) => string | null = curr
 /**
  * Every run of baseline lines NOT inside a diet range, split at blank lines,
  * must still be in the current file (whitespace collapsed, citation line
- * numbers masked, so a repointed citation is not a removal).
+ * numbers masked, so a repointed citation is not a removal). A run that was
+ * BINDING at the baseline must be in the current file's BINDING text: moving it
+ * into a comment or under a history heading is a removal.
  */
 function uncoveredRemovals(doc: DietDoc, file: string, baseText: string, nowText: string): string[] {
   const L = baseText.split("\n");
+  const baseMask = bindingMask(baseText);
   const covered = new Array<boolean>(L.length + 1).fill(false);
   for (const e of doc.diet) {
     if (e.file !== file || !Array.isArray(e.lines)) continue;
     for (let i = e.lines[0]; i <= e.lines[1]; i++) covered[i] = true;
   }
-  const now = withoutLineNumbers(normalise(nowText));
+  const nowAll = withoutLineNumbers(normalise(nowText));
+  const nowBinding = withoutLineNumbers(normalise(bindingText(nowText)));
   const missing: string[] = [];
   let seg: number[] = [];
   const flush = () => {
     if (seg.length === 0) return;
     const text = withoutLineNumbers(normalise(seg.map((n) => L[n - 1]).join("\n")));
-    if (text !== "" && !now.includes(text)) missing.push(`${file}@${DIET_BASELINE} lines ${seg[0]}-${seg[seg.length - 1]}`);
+    const wasBinding = seg.every((n) => !baseMask[n - 1]);
+    if (text !== "" && !(wasBinding ? nowBinding : nowAll).includes(text)) {
+      missing.push(`${file}@${DIET_BASELINE} lines ${seg[0]}-${seg[seg.length - 1]}`);
+    }
     seg = [];
   };
   for (let n = 1; n <= L.length; n++) {
@@ -1028,6 +1171,65 @@ function uncoveredRemovals(doc: DietDoc, file: string, baseText: string, nowText
   }
   flush();
   return missing;
+}
+
+/** The lines of a `## ` section by its exact heading line, or null. */
+function section(text: string, heading: RegExp): string[] | null {
+  const lines = text.split("\n");
+  const a = lines.findIndex((l) => heading.test(l));
+  if (a < 0) return null;
+  const level = (/^#+/.exec(lines[a]) ?? [""])[0].length;
+  let b = lines.findIndex((l, i) => i > a && /^#+ /.test(l) && (/^#+/.exec(l) ?? [""])[0].length <= level);
+  if (b < 0) b = lines.length;
+  return lines.slice(a + 1, b);
+}
+
+/**
+ * Why the open owner actions have lost their runnable text. Each id named in
+ * the standing section's "Owner actions open" list must have a register item
+ * (a bullet or numbered item whose bold lead begins with that id) of at least
+ * MIN_ACTION_WORDS words carrying at least one code span. An open bullet that
+ * says its entry is "not yet on `main`" is exempt, which is A-14's case.
+ */
+function openActionFindings(text: string): string[] {
+  const f: string[] = [];
+  const standing = section(text, /^## M\d+ standing at /);
+  const open = standing === null ? null : section(standing.join("\n"), /^### Owner actions open\s*$/);
+  if (open === null) return ["the standing section has no 'Owner actions open' list"];
+  const bullets: string[] = [];
+  for (const l of open) {
+    if (l.startsWith("- ")) bullets.push(l);
+    else if (bullets.length > 0 && l.startsWith("  ")) bullets[bullets.length - 1] += ` ${l.trim()}`;
+  }
+  const ids: string[] = [];
+  for (const bl of bullets) {
+    if (normalise(bl).includes("not yet on `main`")) continue;
+    const lead = bl.slice(2).split(":")[0];
+    ids.push(...[...lead.matchAll(/\bA-\d+\b/g)].map((m) => m[0]));
+  }
+  const register = section(text, /^## Owner action items\s*$/);
+  if (register === null) return ["there is no '## Owner action items' register"];
+  const items = new Map<string, string>();
+  let cur: string | null = null;
+  for (const l of register) {
+    const m = /^(?:\d+[a-z]?\.|-) \*\*(A-\d+)\b/.exec(l);
+    if (m !== null) {
+      cur = m[1];
+      items.set(cur, l);
+      continue;
+    }
+    if (/^(?:\d+[a-z]?\.|-) |^#|^<!--|^\*\*/.test(l)) cur = null;
+    else if (cur !== null) items.set(cur, `${items.get(cur)} ${l}`);
+  }
+  for (const id of ids) {
+    const item = items.get(id);
+    if (item === undefined) f.push(`open owner action ${id} has no register item`);
+    else {
+      if (wordCount(item) < MIN_ACTION_WORDS) f.push(`open owner action ${id}'s register item is under ${MIN_ACTION_WORDS} words`);
+      if (!/`[^`]+`/.test(item)) f.push(`open owner action ${id}'s register item carries no runnable text (no code span)`);
+    }
+  }
+  return f;
 }
 
 /** Why a STATE.md is not a current-standing document. Empty means it is. */
@@ -1053,6 +1255,7 @@ function checkState(text: string, baselineText: string): string[] {
   const ids = (s: string) => new Set([...s.matchAll(/\bA-(\d+)\b/g)].map((m) => `A-${m[1]}`));
   const now = ids(text);
   for (const a of ids(baselineText)) if (!now.has(a)) f.push(`owner action ${a} is lost`);
+  f.push(...openActionFindings(text));
   return f;
 }
 
@@ -1060,6 +1263,8 @@ function dietDoc(): DietDoc {
   return JSON.parse(readFileSync(inventoryPath, "utf8")) as DietDoc;
 }
 const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
+/** A current-file reader with one file replaced, for fixtures. */
+const withFile = (path: string, text: string) => (p: string) => (p === path ? text : currentText(p));
 
 test("every diet disposition carries evidence a keyword cannot give, and the live inventory passes", () => {
   const doc = dietDoc();
@@ -1085,7 +1290,7 @@ test("an exact-duplicate disposition pointing at a shared keyword is refused", (
   e["duplicate-of"] = { file: "AGENTS.md" }; // AGENTS.md shares words, not the block
   doc.diet.push(e);
   const f = checkDiet(doc);
-  assert.ok(f.some((m) => m.startsWith("diet-fixture-duplicate: the whole removed block is not in AGENTS.md")), f.join("\n"));
+  assert.ok(f.some((m) => m.startsWith("diet-fixture-duplicate: the whole removed block is not in the binding text of AGENTS.md")), f.join("\n"));
 });
 
 test("a diet entry whose evidence is a sibling keyword grep is refused", () => {
@@ -1133,6 +1338,102 @@ test("a block removed from CLAUDE.md with no disposition reddens the completenes
   assert.ok(uncoveredRemovals(without, "CLAUDE.md", base, now).length > 0);
 });
 
+test("a binding rule moved into an HTML comment or under a history heading is a removal, not a survival", () => {
+  const doc = dietDoc();
+  const base = atRevision(DIET_BASELINE, "CLAUDE.md");
+  assert.ok(base !== null);
+  const now = currentText("CLAUDE.md") ?? "";
+  const at = now.indexOf("\n## Never\n");
+  assert.ok(at >= 0 && now.indexOf("\n## ", at + 1) < 0, "CLAUDE.md ends with its ## Never section");
+  const never = [now.slice(at + 1)];
+  const without = `${now.slice(0, at + 1)}## Never\n`;
+  // Member A, the hazard review's: the words kept byte for byte, inside a comment.
+  const commented = `${without}\n<!-- superseded, retained only as a literal quote for search, no longer binding\n${never[0]}\n-->\n`;
+  const a = uncoveredRemovals(doc, "CLAUDE.md", base, commented);
+  assert.ok(a.length > 0, "a Never list inside an HTML comment is reported as removed");
+  // Member B: the words kept outside any comment, under a heading labelled as history.
+  const historical = `${without}\n## Historical notes\n\n${never[0].replace(/^## Never\n/, "")}\n`;
+  const b = uncoveredRemovals(doc, "CLAUDE.md", base, historical);
+  assert.ok(b.length > 0, "a Never list under a history heading is reported as removed");
+  // Control: the same text left where it is binding is not a removal.
+  assert.deepEqual(uncoveredRemovals(doc, "CLAUDE.md", base, now), []);
+});
+
+test("a kept-rule quote that survives only as non-binding text is refused", () => {
+  const doc = dietDoc();
+  const e = doc.diet.find((d) => d.file === "CLAUDE.md" && d.disposition === "history-moved")!;
+  const quote = e["rule-kept"]!.quote!;
+  const now = currentText("CLAUDE.md") ?? "";
+  assert.ok(normalise(now).includes(normalise(quote)));
+  // Replace every binding occurrence: a whitespace-flexible pattern for the quote.
+  const pattern = new RegExp(
+    quote
+      .trim()
+      .split(/\s+/)
+      .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+      .join("\\s+"),
+    "g",
+  );
+  const stripped = now.replace(pattern, "(moved)");
+  assert.ok(!normalise(stripped).includes(normalise(quote)), "the fixture removed every binding copy");
+  const inComment = `${stripped}\n<!-- ${quote} -->\n`;
+  const fA = checkDiet(doc, withFile("CLAUDE.md", inComment));
+  assert.ok(fA.some((m) => m.startsWith(`${e.id}: rule-kept quote is in CLAUDE.md only as non-binding text`)), fA.join("\n"));
+  const underHistory = `${stripped}\n## Superseded rules\n\n${quote}\n`;
+  const fB = checkDiet(doc, withFile("CLAUDE.md", underHistory));
+  assert.ok(fB.some((m) => m.startsWith(`${e.id}: rule-kept quote is in CLAUDE.md only as non-binding text`)), fB.join("\n"));
+});
+
+test("a mechanically-enforced disposition naming an unrelated script or test is refused", () => {
+  const doc = dietDoc();
+  const e = doc.diet.find((d) => d.disposition === "mechanically-enforced");
+  assert.ok(e !== undefined && e["enforced-by"] !== undefined);
+  assert.deepEqual(checkDiet(clone(doc)).filter((m) => m.startsWith(`${e.id}:`)), []);
+  // Member A, the hazard review's swap: a real but unrelated script and test.
+  const swapped = clone(doc);
+  const ea = swapped.diet.find((d) => d.id === e.id)!;
+  ea["enforced-by"] = {
+    ...ea["enforced-by"],
+    // Built, not written, so this file does not itself name the unrelated script.
+    script: ["scripts/check-id", "collisions.mjs"].join("-"),
+    test: "a diet entry naming a block that is not at its baseline range is refused",
+  };
+  const fA = checkDiet(swapped);
+  assert.ok(fA.some((m) => m.startsWith(`${e.id}: enforced-by test's file test/retirement-inventory.test.ts does not run`)), fA.join("\n"));
+  assert.ok(fA.some((m) => m.startsWith(`${e.id}: enforced-by asserts fragment is not in the body`)), fA.join("\n"));
+  // Member B: the right script and the right test FILE, but a test that does not make the assertion.
+  const sibling = clone(doc);
+  const eb = sibling.diet.find((d) => d.id === e.id)!;
+  eb["enforced-by"] = { ...eb["enforced-by"], test: "authored-byte checker accepts ordinary tracked ASCII" };
+  const fB = checkDiet(sibling);
+  assert.ok(fB.some((m) => m.startsWith(`${e.id}: enforced-by asserts fragment is not in the body`)), fB.join("\n"));
+  assert.ok(!fB.some((m) => m.includes("does not run")), fB.join("\n"));
+});
+
+test("a status disposition is refused on a rule file, and its supersede quote needs the rule floor", () => {
+  const doc = dietDoc();
+  // A CLAUDE.md rule disposed as a STATE-style status block with a one-word quote.
+  const rule = clone(doc);
+  const e = rule.diet.find((d) => d.file === "CLAUDE.md" && d.disposition === "history-moved")!;
+  e.disposition = "superseded-status";
+  e.reason = "stale";
+  e["superseded-by"] = { file: "CLAUDE.md", quote: "binding" };
+  const e2 = clone(e);
+  e2.id = "diet-fixture-archived";
+  e2.disposition = "archived";
+  e2["pointer-in-file"] = { file: "CLAUDE.md", quote: "binding" };
+  rule.diet.push(e2);
+  const f = checkDiet(rule);
+  assert.ok(f.includes(`${e.id}: superseded-status is a status disposition and is allowed only for delivery/STATE.md`), f.join("\n"));
+  assert.ok(f.includes("diet-fixture-archived: archived is a status disposition and is allowed only for delivery/STATE.md"), f.join("\n"));
+  // A real STATE.md status entry whose supersede quote is cut to one word.
+  const state = clone(doc);
+  const s = state.diet.find((d) => d.disposition === "superseded-status")!;
+  s["superseded-by"] = { file: s["superseded-by"]!.file, quote: normalise(s["superseded-by"]!.quote!).split(" ")[1] };
+  const g = checkDiet(state);
+  assert.ok(g.some((m) => m.startsWith(`${s.id}: superseded-by quote is under ${MIN_RULE_WORDS} words`)), g.join("\n"));
+});
+
 test("STATE.md begins with the current standing, carries no superseded daily block, and keeps every owner-action id", () => {
   const base = atRevision(DIET_BASELINE, "delivery/STATE.md");
   assert.ok(base !== null);
@@ -1150,4 +1451,25 @@ test("a STATE.md with a surviving daily block or a lost owner action is refused"
   const now = currentText("delivery/STATE.md") ?? "";
   const lost = checkState(now.replace(/\bA-7\b/g, "an action"), base);
   assert.ok(lost.includes("owner action A-7 is lost"), lost.join("\n"));
+});
+
+test("an open owner action whose register text is deleted or cut to its lead is refused", () => {
+  const base = atRevision(DIET_BASELINE, "delivery/STATE.md");
+  assert.ok(base !== null);
+  const now = currentText("delivery/STATE.md") ?? "";
+  assert.deepEqual(openActionFindings(now), []);
+  const lines = now.split("\n");
+  const a = lines.findIndex((l) => /^- \*\*A-15\b/.test(l));
+  assert.ok(a >= 0, "the register carries an A-15 item");
+  let b = a + 1;
+  while (b < lines.length && !/^(?:\d+[a-z]?\.|-) |^#|^<!--|^\*\*/.test(lines[b])) b++;
+  // Member A, the criteria review's: the whole A-15 item deleted. Its id survives in the standing list.
+  const deleted = [...lines.slice(0, a), ...lines.slice(b)].join("\n");
+  assert.ok(/\bA-15\b/.test(deleted));
+  assert.ok(checkState(deleted, base).includes("open owner action A-15 has no register item"));
+  // Member B: the item kept, cut back to its lead line, so the runnable commands are gone.
+  const cut = [...lines.slice(0, a + 1), ...lines.slice(b)].join("\n");
+  const f = checkState(cut, base);
+  assert.ok(f.includes(`open owner action A-15's register item is under ${MIN_ACTION_WORDS} words`), f.join("\n"));
+  assert.ok(f.includes("open owner action A-15's register item carries no runnable text (no code span)"), f.join("\n"));
 });

@@ -485,6 +485,13 @@ Answer these three IN WRITING in the dispatch turn, before arming anything:
    One that cannot tell them apart must SAY so rather than print a number
    implying it can.
 
+The two rules below come from one measured incident, 2026-09-15: one of six
+implementers was dispatched without worktree isolation, because its
+files-to-touch list read as documents only, and it checked out its own branch
+IN THE ORCHESTRATOR'S CLONE. Nothing was lost, only because the orchestrator's
+work was already pushed. The account is
+delivery/tuition/T-026-worktree-isolation-needs-a-git-cwd-and-fails-instantly-without-one.md:45.
+
 Two rules follow, both cheap:
 
 1. **Isolate EVERY dispatched implementer, including the ones that only write
@@ -578,6 +585,10 @@ The procedure below still applies when there is no artifact to read: a run
 older than seven days, a run cancelled before its upload step, or a head from
 before M5-P4. The upload steps and their exactly-one-file property are
 guarded by test/gate-registry.test.ts:2090.
+
+Without an artifact to read, a reviewer asking whether gate X asserted
+anything on a head has the JOB LOG, and the log prints bundle-level counts, not
+per-gate rows.
 
 So quoting `declared N applicable N verdict N green N` as evidence about one
 gate is a bundle-level green being passed off as a gate-level one. That is the
@@ -1061,6 +1072,7 @@ Each of these bit someone once. Forward them to every implementer.
     red branch**, which is a worse position than skipping, because it trains a
     reader to wave a failure through. Establish the base's result before
     attributing a failure to your change, and quote the interpreter with it.
+    The citation above is where that test sits now; at `1945d69` it was line 934.
 
 13. **`git diff main..branch` IS NOT A MERGE PREVIEW, and on a branch that has
     fallen behind it reads as though the branch DELETES things.** Measured
@@ -1187,11 +1199,17 @@ The dispatch script pattern stays, so it survives a busy session:
    ```
 
 2. Launch it inline the first time. The tool result returns a `scriptPath`.
+
 **Before dispatching, state in writing: how many agents, in how many
 workflows, therefore how many run at once.** If that third number is more
 than 2, the dispatch is wrong. This is the same discipline T-008 requires for
 watchdogs, one level up: the number you intended is not the number the tool
 used, so read the number the tool reports rather than the one you passed.
+
+Add a token estimate to that statement, as T-028 asks: the agent count says
+nothing about the session quota. Measured here, a clean-room review costs
+150,000 to 490,000 subagent tokens and a fix round 115,000 to 400,000
+(delivery/decisions/DR-0044-two-agents-in-parallel-is-enough.md:65-66).
 
 **Model choice is per agent and costs nothing to set.** `agent(prompt, {model:
 'fable'})` overrides for that call. Review and judgment stages benefit from a

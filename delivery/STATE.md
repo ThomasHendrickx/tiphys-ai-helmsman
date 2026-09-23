@@ -444,7 +444,7 @@ expectation row (present at scripts/m2-exit-test.sh:221).
   same reviewer while checking twenty-two citations by hand, hit rate 21 of 22.
   The wave-1b row naming M4-P23 is four lines further down. It is IN RANGE, so
   the citations gate stays green and the citation points at nothing, which is
-  the silent-resolution trap CLAUDE.md:155 describes: the citation that reddens
+  the silent-resolution trap CLAUDE.md:188 describes: the citation that reddens
   is not the dangerous one.
 
 - **A witness can stop witnessing while every gate stays green (T-011).** Two

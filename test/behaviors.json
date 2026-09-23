@@ -1323,5 +1323,10 @@
   "m5-p5-diet-every-removal-disposed": "every line removed from CLAUDE.md or AGENTS.md since the diet baseline has a disposition",
   "m5-p5-diet-undisposed-removal-refused": "a block removed from CLAUDE.md with no disposition reddens the completeness check",
   "m5-p5-state-current-standing-first": "STATE.md begins with the current standing, carries no superseded daily block, and keeps every owner-action id",
-  "m5-p5-state-daily-block-or-lost-action-refused": "a STATE.md with a surviving daily block or a lost owner action is refused"
+  "m5-p5-state-daily-block-or-lost-action-refused": "a STATE.md with a surviving daily block or a lost owner action is refused",
+  "m5-p5-diet-non-binding-relocation-is-removal": "a binding rule moved into an HTML comment or under a history heading is a removal, not a survival",
+  "m5-p5-diet-non-binding-rule-kept-refused": "a kept-rule quote that survives only as non-binding text is refused",
+  "m5-p5-diet-unrelated-enforcer-refused": "a mechanically-enforced disposition naming an unrelated script or test is refused",
+  "m5-p5-diet-status-disposition-state-only-and-floored": "a status disposition is refused on a rule file, and its supersede quote needs the rule floor",
+  "m5-p5-state-open-action-runnable-text-kept": "an open owner action whose register text is deleted or cut to its lead is refused"
 }
