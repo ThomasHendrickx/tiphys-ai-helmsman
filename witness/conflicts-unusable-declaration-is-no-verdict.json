@@ -1,0 +1,33 @@
+{
+  "id": "conflicts-unusable-declaration-is-no-verdict",
+  "behavior": "conflicts-missing-declaration-no-verdict",
+  "tests": [
+    "a missing declaration exits 2 with no verdict and still prints the obligation",
+    "a directory given as a declaration exits 2 with no verdict",
+    "a declaration that is not JSON exits 2 with no verdict",
+    "a wrongly shaped declaration exits 2 with no verdict rather than reading as an empty edit list"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "      problems.push(read.reason);\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "    return finish(EXIT_INPUT);",
+      "replace": "    return finish(0);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "    return finish(EXIT_INPUT);\n  }",
+      "replace": "    return EXIT_INPUT;\n  }"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,18 @@
+{
+  "id": "conflicts-duplicate-phase-id-refused",
+  "behavior": "conflicts-duplicate-phase-id-refused",
+  "tests": [
+    "two declarations carrying the same phase id exit 2 rather than overlapping with themselves"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "    if (clash !== undefined) {",
+      "replace": "    if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -7,7 +7,16 @@
     "test/conflicts.test.ts",
     "delivery/verification/m5-hemma-intake.md",
     "delivery/verification/m5-scale-out-exit.md",
-    "delivery/STATE.md"
+    "delivery/STATE.md",
+    "witness/conflicts-overlap-named-and-nonzero.json",
+    "witness/conflicts-disjoint-still-prints-obligation.json",
+    "witness/conflicts-unusable-declaration-is-no-verdict.json",
+    "witness/conflicts-usage-error-prints-obligation.json",
+    "witness/conflicts-append-only-rule-is-explicit.json",
+    "witness/conflicts-append-only-override.json",
+    "witness/conflicts-duplicate-phase-id-refused.json",
+    "witness/conflicts-command-registered.json",
+    "witness/conflicts-real-m5-declarations-overlap.json"
   ],
   "declaredExtras": [
     "test/behaviors.json",

@@ -1267,5 +1267,17 @@
   "cutover-entry-real-retirement-satisfied": "arm c reads the real retirement report of this repository as satisfied",
   "cutover-entry-retirement-summary-must-agree": "a retirement summary that disagrees with its rows makes the report unreadable",
   "cutover-entry-exclusion-names-resolve-in-real-registry": "every exclusion behavior arm b requires resolves in the real behavior registry",
-  "cutover-drain-init-fleet-clean-stray-file-not-a-task": "a fleet made by tiphys init drains clean, and a stray file under tasks/ is not a task"
+  "cutover-drain-init-fleet-clean-stray-file-not-a-task": "a fleet made by tiphys init drains clean, and a stray file under tasks/ is not a task",
+  "conflicts-overlap-named-and-nonzero": "conflicts exits 1 and names every overlapping path for an overlapping pair",
+  "conflicts-disjoint-exit-zero-with-obligation": "conflicts exits 0 with zero overlaps for a disjoint pair and still prints the semantic coupling obligation",
+  "conflicts-append-only-reported-not-counted": "a shared append-only registry is reported on its own line and does not make a pair overlap",
+  "conflicts-append-only-override-replaces-default": "--append-only replaces the default registry list, so an unlisted shared registry is an overlap",
+  "conflicts-missing-declaration-no-verdict": "a missing declaration exits 2 with no verdict and still prints the obligation",
+  "conflicts-directory-declaration-no-verdict": "a directory given as a declaration exits 2 with no verdict",
+  "conflicts-non-json-declaration-no-verdict": "a declaration that is not JSON exits 2 with no verdict",
+  "conflicts-wrong-shape-declaration-no-verdict": "a wrongly shaped declaration exits 2 with no verdict rather than reading as an empty edit list",
+  "conflicts-duplicate-phase-id-refused": "two declarations carrying the same phase id exit 2 rather than overlapping with themselves",
+  "conflicts-usage-error-exit-64-with-obligation": "conflicts with fewer than two declarations exits 64 and still prints the obligation",
+  "conflicts-command-registered": "conflicts is registered in the CLI and its usage line names it",
+  "conflicts-real-m5-declarations-overlap": "conflicts names roles/clean-room-reviewer.md for the real m5-p2 and m5-p3 declarations"
 }
