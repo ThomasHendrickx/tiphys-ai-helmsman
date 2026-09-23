@@ -1286,5 +1286,14 @@
   "full-mode-gate-sets-equal-registry-both-directions": "full mode's gate-sets equal the full-mode gate ids derived from gate-registry.yaml in both directions, and removing any one id fails naming it",
   "orchestrator-next-action-derived-from-value-plan-order": "orchestrator-next derives its next action from the value-delivery plan's first unmerged phase in plan order, and the answer follows merges and pushes",
   "orchestrator-next-finished-m4-hands-over-to-value-plan": "a finished M4 hands over to the value-delivery plan's next incomplete phase and never names the closed DR-0047 sweep",
-  "orchestrator-next-unplanned-started-milestone-exits-7": "a started milestone named by neither a markdown plan nor the value-delivery plan still exits 7 naming both sources rather than reporting nothing left"
+  "orchestrator-next-unplanned-started-milestone-exits-7": "a started milestone named by neither a markdown plan nor the value-delivery plan still exits 7 naming both sources rather than reporting nothing left",
+  "release-verify-waits-for-the-registry-to-serve-the-version": "release-verify in registry mode waits until the registry serves the version, then verifies it",
+  "release-verify-not-served-times-out-distinctly": "release-verify in registry mode times out with NOT SERVED and exit 75 when the registry never serves the version",
+  "release-verify-served-but-broken-fails-at-its-steps": "release-verify in registry mode fails a served but broken version at its steps without waiting out the deadline",
+  "release-verify-tarball-mode-makes-no-registry-poll": "release-verify in tarball mode makes no registry poll",
+  "release-verify-wait-flags-override-env-and-reject-malformed": "release-verify's wait flags override the environment and a malformed bound is a usage error",
+  "release-verify-bounds-each-registry-poll": "release-verify bounds each registry poll, so a registry that never answers still ends within the deadline",
+  "release-verify-polls-the-install-path": "release-verify polls the install path, so a version npm view shows before npm install can fetch it is still waited for",
+  "release-verify-served-means-the-exact-version": "release-verify does not count npm view exiting 0 with a different or empty version as served",
+  "release-verify-rejects-bounds-above-a-day": "release-verify rejects a wait or poll bound above 86400 seconds, by flag and by environment"
 }
