@@ -346,9 +346,18 @@ what was built:
 
 1. **Verdicts gain optional `tiphys-version`** (schemas/verdict.schema.json,
    semver with no leading zeros, the grammar src/stamp.ts parses). Writers
-   stamped: the composed brief (a `tiphys-version:` header line, from
-   `readOwnVersion`) and the gate bundle's `summary.json` (both summary
-   constructors in src/gates/run.ts). roles/clean-room-reviewer.md tells the
+   stamped: the composed brief (a `tiphys-version:` header line) and the
+   gate bundle's `summary.json` (both summary constructors in
+   src/gates/run.ts). Both read the version through `ownVersionForStamp`
+   (src/stamp.ts), which returns nothing when no package.json is found above
+   the running module; the writer then omits the field rather than invent a
+   value. That arm exists because the first full run after the stamp landed
+   had 13 failures, most of them tests that stage a partial kernel with no
+   package.json (brief-compose, clean-room-brief, implementer-brief, two
+   summary tests in test/gates.test.ts), where the strict reader threw. An
+   omitted stamp reads as history at every reader, which is the safe side.
+   Admission keeps the strict reader (`runningKernelVersion`), so a gate that
+   cannot read its own version errors rather than admits. roles/clean-room-reviewer.md tells the
    reviewer to copy the brief's line into the verdict.
 2. **One `since` source**: `RULES_SINCE` in src/stamp.ts, a table in src/
    rather than a schema annotation, because the schema vocabulary is closed
@@ -372,6 +381,80 @@ what was built:
    force), witness/kernel-0-2-1-stamp-old-excluded-at-check-dual-review.json
    and ...-at-merge-preconditions.json (members: the gate skips the stamp
    check; the old-minor comparison never fires).
+
+### Fix round inside the scope addition: a pointer is a place, not a rule
+
+Found by the red-witness gate at 8acf44b (local run, evidence in the
+session scratch, ev-rw3):
+
+```
+gates: red-witness: red: 99 witness(es) evaluated (8 own, 91 stored re-evaluated in 983076ms); witness kernel-0-2-1-history-well-formed: red: member 0 (patch witness/patches/kernel-0-2-1-verdict-head-required-again.patch): red in 0 of 2 repetitions where deterministic true requires every repetition red
+```
+
+**Finding:** re-adding `head` to `required` no longer reddens the pulse
+well-formed test. **Mechanism:** the first since-table named a schema rule by
+the INSTANCE pointer its diagnostics carry (`#/head`) and dropped every
+diagnostic at or below it. An instance pointer names a place in the document,
+and several rules can report at one place (`required`, `type`, `pattern`,
+`additionalProperties` all report `#/head`). So gating one rule gated every
+rule at that place, and history escaped rules nobody had listed.
+
+**Fix:** a schema row now names the rule by the SCHEMA location of its one
+keyword (`schemaPath: "/properties/head/pattern"`, src/stamp.ts), and
+`tiphys validate` validates against a copy of the schema with exactly that
+keyword removed (`withoutKeywords`, src/commands/validate.ts). A path that
+does not resolve throws, so a stale row fails loudly instead of gating
+nothing. The compile cache is keyed by schema object identity with a fresh
+Ajv per compile (src/validate.ts:615), so the copy compiles without
+colliding with the full schema.
+
+**Derivation** (every consumer of the since-table, which is where a rule is
+identified; the `error.schemaPath` and `containsConst` hits in
+src/validate.ts are Ajv's own field and are filtered out):
+
+```
+grep -rn 'RULES_SINCE\|rulesNotYetInForce\|ruleApplies\|schemaPath' src bin scripts --include=*.ts --include=*.mjs | grep -v 'error.schemaPath\|\.schemaPath\.endsWith\|containsConst'
+src/stamp.ts:14: *    is what the owner asked for. `RULES_SINCE` below is the only place a
+src/stamp.ts:28: * release ever does add a rule, its `RULES_SINCE` entry still gates SHAPE by the
+src/stamp.ts:116: * (`schemaPath`, a JSON pointer into the schema document); a derived check by
+src/stamp.ts:150:  schemaPath?: string;
+src/stamp.ts:156:export const RULES_SINCE: readonly RuleSince[] = [
+src/stamp.ts:161:    schemaPath: "/properties/head/pattern",
+src/stamp.ts:174:export function ruleApplies(rule: RuleSince, stamp: StampReading): boolean {
+src/stamp.ts:186:export function rulesNotYetInForce(type: string, stamp: StampReading): RuleSince[] {
+src/stamp.ts:187:  return RULES_SINCE.filter((rule) => rule.type === type && !ruleApplies(rule, stamp));
+src/validate.ts:770:     subschema's own schemaPath, which is the subsidiary's path minus the
+src/checks.ts:6127:   * decided by src/stamp.ts's RULES_SINCE. They are not run and not counted
+src/commands/validate.ts:30:import { describeRuleNotInForce, readStamp, rulesNotYetInForce } from "../stamp.ts";
+src/commands/validate.ts:467:     src/stamp.ts's RULES_SINCE are in force for it; an unstamped document is
+src/commands/validate.ts:472:  const notInForce = rulesNotYetInForce(resolvedType, stamp);
+src/commands/validate.ts:474:  const gatedSchemaPaths = notInForce.flatMap((rule) => (rule.schemaPath === undefined ? [] : [rule.schemaPath]));
+src/commands/validate.ts:502: * resolve to a keyword is an internal defect and throws: RULES_SINCE naming a
+src/commands/validate.ts:505:function withoutKeywords(schema: SchemaDocument, schemaPaths: readonly string[]): SchemaDocument {
+src/commands/validate.ts:506:  if (schemaPaths.length === 0) {
+src/commands/validate.ts:510:  for (const schemaPath of schemaPaths) {
+src/commands/validate.ts:511:    const segments = schemaPath
+src/commands/validate.ts:527:      throw new Error(`internal defect: RULES_SINCE names schema keyword ${schemaPath}, which this schema does not hold`);
+```
+
+One consumer lifts rules: src/commands/validate.ts. The check-id rows go to
+`runChecks` (src/checks.ts:6127), and a registered id names one check, so
+that half does not have this over-reach. Not covered: `test/`, which uses
+the table only through the CLI, and the admission path, which reads the
+stamp for the whole document and gates no individual rule.
+
+**Test:** "a rule not in force for a document's stamp is removed alone:
+every other rule at the same place still applies to history". An unstamped
+verdict whose head is the number 12345 must print the HISTORY line AND an
+`INVALID #/head` line (the `type` rule). Red against 8acf44b's pointer-keyed
+code (a scratch worktree at 8acf44b with only this test file copied in,
+`node --test --test-name-pattern='removed alone' test/history-compat.test.ts`,
+exit 1, 1 test, 0 pass, 1 fail, 0 skipped), failing on its second assertion:
+`the type rule at #/head was lifted with the pattern rule:` followed by only
+the two HISTORY lines. Green on the branch. Witness:
+witness/kernel-0-2-1-stamp-gates-one-keyword.json, two members: the old
+place-keyed filter put back after validation, and `withoutKeywords` removing
+every keyword at the node instead of the one named.
 
 ### Rules the table holds, and the ones it deliberately does not
 
@@ -450,7 +533,10 @@ it is every file write in src/, locks and barriers included). Classified:
    the gate runner supplies) a dual-tier change is red, as the tests show.
 3. **`validate --context` with the merge checks** still refuses a head-less
    verdict through the derived checks (checks.ts:5506, 5763). That is a merge
-   question asked of history by an explicit command; I left it.
+   question asked of history by an explicit command; I left it. Under DR-0055
+   this is the `dual-review-decorrelation` deviation above: gating its head
+   clause by stamp needs the check to read the stamp itself, and the table
+   gates whole checks only.
 4. **`tiphys validate` without `--context` exits 1 on every verdict**
    (SKIPPED counts as failure, src/commands/validate.ts:480), on v0.1.0 and
    on main. After this change pulse's history prints no INVALID line and
@@ -460,6 +546,14 @@ it is every file write in src/, locks and barriers included). Classified:
    Same mechanism, but it is an explicit acceptance criterion of M5-P2
    (p2-final-report-contract), so it is a plan decision and not mine to
    reverse. Pulse has no final reports, so it does not affect the pulse case.
+   DR-0055 point 2 would gate it by `since`; I did not, for the reason given
+   under the DR-0055 deviations (no admission gate stands behind a final
+   report). The orchestrator decides.
+8. **Old fixtures break at the next minor.** The stamped fixtures under
+   witness/fixtures/dual-review/ carry `0.2.0` literally. At 0.3.0 the
+   admission floor excludes them and their tests redden until restamped.
+   Deriving the stamp at test time for these files was not attempted; they
+   are static YAML fixtures and I left them static.
 6. **Unexaminable files.** A file under `delivery/review/` that cannot be
    decoded still makes merge-preconditions error, whatever its age. That
    also judges history; not changed.

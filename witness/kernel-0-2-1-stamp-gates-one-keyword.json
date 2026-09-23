@@ -1,0 +1,24 @@
+{
+  "id": "kernel-0-2-1-stamp-gates-one-keyword",
+  "behavior": "stamp-gates-one-keyword",
+  "tests": [
+    "a rule not in force for a document's stamp is removed alone: every other rule at the same place still applies to history"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "    companionsFor(resolvedType),\n  );",
+      "replace": "    companionsFor(resolvedType),\n  ).filter((diagnostic) => !(gatedSchemaPaths.length > 0 && diagnostic.pointer === \"#/head\"));"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "    delete (node as Record<string, unknown>)[keyword];",
+      "replace": "    for (const key of Object.keys(node as object)) {\n      delete (node as Record<string, unknown>)[key];\n    }"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

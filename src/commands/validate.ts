@@ -471,17 +471,12 @@ export function cmdValidate(argv: string[]): number {
   const stamp = readStamp(decoded.value);
   const notInForce = rulesNotYetInForce(resolvedType, stamp);
   const historyLines = notInForce.map((rule) => describeRuleNotInForce(rule, stamp));
-  const gatedPointers = notInForce.flatMap((rule) => (rule.pointer === undefined ? [] : [rule.pointer]));
+  const gatedSchemaPaths = notInForce.flatMap((rule) => (rule.schemaPath === undefined ? [] : [rule.schemaPath]));
   const gatedChecks = new Set(notInForce.flatMap((rule) => (rule.check === undefined ? [] : [rule.check])));
   const diagnostics = validateInstance(
-    schema,
+    withoutKeywords(schema, gatedSchemaPaths),
     decoded.value,
     companionsFor(resolvedType),
-  ).filter(
-    (diagnostic) =>
-      !gatedPointers.some(
-        (pointer) => diagnostic.pointer === pointer || diagnostic.pointer.startsWith(`${pointer}/`),
-      ),
   );
   for (const line of historyLines) {
     process.stdout.write(`${line}\n`);
@@ -498,4 +493,40 @@ export function cmdValidate(argv: string[]): number {
     process.stdout.write(`${line}\n`);
   }
   return checks.failed ? 1 : 0;
+}
+
+/**
+ * A copy of `schema` with exactly the keyword at each JSON pointer removed
+ * (DR-0055: a rule not in force for a document's stamp). The original is not
+ * touched, so the compile cache keeps its full form. A pointer that does not
+ * resolve to a keyword is an internal defect and throws: RULES_SINCE naming a
+ * rule the schema no longer holds must fail loudly, not gate nothing.
+ */
+function withoutKeywords(schema: SchemaDocument, schemaPaths: readonly string[]): SchemaDocument {
+  if (schemaPaths.length === 0) {
+    return schema;
+  }
+  const copy = structuredClone(schema) as Record<string, unknown>;
+  for (const schemaPath of schemaPaths) {
+    const segments = schemaPath
+      .split("/")
+      .slice(1)
+      .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
+    const keyword = segments.pop();
+    let node: unknown = copy;
+    for (const segment of segments) {
+      node =
+        typeof node === "object" && node !== null ? (node as Record<string, unknown>)[segment] : undefined;
+    }
+    if (
+      keyword === undefined ||
+      typeof node !== "object" ||
+      node === null ||
+      !Object.prototype.hasOwnProperty.call(node, keyword)
+    ) {
+      throw new Error(`internal defect: RULES_SINCE names schema keyword ${schemaPath}, which this schema does not hold`);
+    }
+    delete (node as Record<string, unknown>)[keyword];
+  }
+  return copy as SchemaDocument;
 }

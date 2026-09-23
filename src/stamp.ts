@@ -112,8 +112,18 @@ export function readStamp(record: unknown): StampReading {
 
 /**
  * ONE ROW PER RULE ADDED AFTER 0.1.0 THAT A DOCUMENT OF AN EARLIER VERSION
- * COULD FAIL. A schema rule is named by the instance pointer its diagnostics
- * carry; a derived check by its registered id.
+ * COULD FAIL. A schema rule is named by the SCHEMA location of its keyword
+ * (`schemaPath`, a JSON pointer into the schema document); a derived check by
+ * its registered id.
+ *
+ * WHY THE SCHEMA LOCATION AND NOT THE INSTANCE POINTER. A first version named
+ * a schema rule by the instance pointer its diagnostics carry (`#/head`) and
+ * dropped every diagnostic there. A pointer names a PLACE in the document, not
+ * a rule, so that dropped every rule at the place: re-adding `head` to
+ * `required` produced `#/head required property head is missing`, and history
+ * swallowed it. The red-witness gate found it (the head-required patch stopped
+ * reddening the pulse test). A keyword's schema location names exactly one
+ * rule, and removing exactly that keyword leaves every other rule in force.
  *
  * WHAT IS DELIBERATELY NOT HERE, so an absence is not read as an oversight:
  * - A NEW OPTIONAL FIELD is not a rule an older document can fail, so the
@@ -130,8 +140,14 @@ export interface RuleSince {
   id: string;
   type: string;
   since: string;
-  /** A schema rule: diagnostics at this pointer, or below it. */
-  pointer?: string;
+  /**
+   * A schema rule: the JSON pointer, into the schema document, of the ONE
+   * keyword that is the rule. `tiphys validate` removes exactly that keyword
+   * for a document the rule does not apply to, and refuses to run when the
+   * pointer does not resolve, so the table cannot drift from the schema
+   * silently.
+   */
+  schemaPath?: string;
   /** A derived check, by registered id. */
   check?: string;
   statement: string;
@@ -142,7 +158,7 @@ export const RULES_SINCE: readonly RuleSince[] = [
     id: "verdict-head-full-sha",
     type: "verdict",
     since: "0.2.0",
-    pointer: "#/head",
+    schemaPath: "/properties/head/pattern",
     statement: "a present head is the full forty-character lowercase sha (M4-P10)",
   },
   {

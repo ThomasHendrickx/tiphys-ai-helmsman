@@ -576,6 +576,32 @@ test("a rule applies from the version that introduced it: an abbreviated head is
   assert.ok(malformed.some((line) => line.startsWith("INVALID #/tiphys-version")), malformed.join("\n"));
 });
 
+test("a rule not in force for a document's stamp is removed alone: every other rule at the same place still applies to history", () => {
+  /* THE MECHANISM, not one instance of it. RULES_SINCE names the 0.2.0 head
+     rule by its keyword (`pattern`), and only that keyword is lifted for an
+     unstamped document. A head that is not a string at all breaks the `type`
+     rule at the SAME place, and history must still be refused for it. A gate
+     keyed on the instance location `#/head` would read both as the one rule
+     and pass this document. */
+  const dir = scratch("tiphys-history-compat-keyword-");
+  const body = readFileSync(join(dualFixtures, "decorrelated-criteria.yaml"), "utf8")
+    .replace(/^head: [0-9a-f]{40}$/m, "head: 12345")
+    .replace(/^tiphys-version: .*\n/m, "");
+  assert.match(body, /^head: 12345$/m, "the fixture has no forty-hex head to replace");
+  assert.doesNotMatch(body, /^tiphys-version:/m, "the fixture is still stamped");
+  const path = join(dir, "verdict.yaml");
+  writeFileSync(path, body);
+  const lines = validateOutput(path);
+  assert.ok(
+    lines.some((line) => line.startsWith("HISTORY verdict-head-full-sha applies from tiphys-version 0.2.0")),
+    `the document is not read as history:\n${lines.join("\n")}`,
+  );
+  assert.ok(
+    lines.some((line) => line.startsWith("INVALID #/head")),
+    `the type rule at #/head was lifted with the pattern rule:\n${lines.join("\n")}`,
+  );
+});
+
 /** The approving, anchored, decorrelated pair with each document's stamp replaced. */
 function stampedPair(stamp: string | null): { from: string; as: string; stamp: string | null }[] {
   return ANCHORED_APPROVING_PAIR.map((entry) => ({ ...entry, stamp }));
