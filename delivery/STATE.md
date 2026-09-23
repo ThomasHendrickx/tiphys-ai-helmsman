@@ -2701,3 +2701,36 @@ The terminal action for M4 is data rather than a hard-coded branch since #202,
 so `.claude/orchestrator-next.mjs` names the DR-0047 sweep for this milestone.
 M5 entry, and whether the M4 exit test is discharged before it, is the
 cutover-entry question above and it is the owner's to trigger.
+
+## M5 standing at 2026-09-23, 13:40 UTC, `main` at 5662d74
+
+M5 runs in waves under DR-0050 (delivery/plan/m5-conflict-pre-pass.md:1).
+
+### Merged, with the post-merge `push` run observed green
+
+| what | PR | main head | push run |
+|---|---|---|---|
+| M5-P4, CI tells the truth about what it ran | #209 | 8558dca | gates 35847665771 success |
+| release verification waits for the registry | #211 | ac98d3c | gates 35858746022 success |
+| M5-P2, charter intent into briefs, delivered outcome in reports | #207 | 5662d74 | gates 35862907311 success on attempt 2 |
+
+The M5-P2 push run went red once on attempt 1 in a test M5-P2 does not touch,
+and was green on the one allowed re-run. Recorded, with the #211 instance, in
+delivery/verification/cutover-status-tree-digest-intermittent.md:1.
+
+### In flight
+
+- M5-P3, live review evidence (wave B): implementer dispatched 12:50 UTC on
+  `claude/m5-p3-live-review-evidence` from 5662d74.
+- M5-P1, pulse value proof: `claude/m5-p1-pulse-value-proof`, waiting on A-14.
+- M5-P6, scale-out proof: `claude/m5-p6-scale-out-proof`, wave D.
+- M5-P5: wave C, after M5-P3. It must keep the delivered-outcome paragraph
+  M5-P2 added to `roles/clean-room-reviewer.md` and `roles/implementer.md`.
+
+### Owner actions open
+
+- A-14: restart pulse and bump pulse-fleet to kernel 0.2.0. Its register
+  entry was allocated on the M5-P1 branch and reaches this register when that
+  phase merges; it is not yet on `main`.
+- A-15: tag and release v0.2.0. The tag was still absent at 12:56 UTC.
+- A-10: fleet default branch and six probe branches.
