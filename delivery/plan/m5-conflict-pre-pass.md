@@ -22,7 +22,24 @@ P3 P5 test/clean-room-brief.test.ts
 P5 P6 delivery/STATE.md
 ```
 
-Every other pair is literally disjoint.
+Every other pair was literally disjoint at dispatch.
+
+### Amendment after dispatch, 2026-09-23
+
+Found by the pre-pass review (delivery/review/clean-room-m5-pre-pass-sonnet.md:1).
+M5-P4 added `delivery/plan/cutover/retirement-inventory.json` to its own
+declaration mid-phase, as an additive grant, because every new top-level
+declaration in `.claude/orchestrator-next.mjs` needs an inventory row. M5-P5
+also declares that file. So one more overlap exists on the live branches:
+
+```
+P4 P5 delivery/plan/cutover/retirement-inventory.json
+```
+
+It does not change the waves. P4 merges in wave A and P5 starts in wave C, cut
+from a `main` that already carries P4's rows. The file is not one of the
+append-only registries, so P5 edits it on top of P4's rows and its reviewers
+check that P4's rows survive.
 
 ## Semantic coupling a file diff cannot see
 
@@ -73,3 +90,9 @@ append-only, so the resolution is by hand and is reviewed.
   visible here. Each phase runs the full suite on a `main`-merged tree before
   its pull request, which is where that shows up.
 - Anything under hemma. Its files are in hemma's own repository.
+- Declarations as they change after dispatch. The derivation reads each
+  declaration once, before dispatch. A phase that adds a file to its own
+  declaration later (allowed, since grants are additive) can create an overlap
+  this table does not show. The amendment above is the one found so far.
+  Before each wave starts, the orchestrator re-derives the overlap from the live
+  branches with `git diff --name-only origin/main...origin/<branch>`.
