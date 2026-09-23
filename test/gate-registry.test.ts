@@ -2063,6 +2063,16 @@ function summaryUploadDefects(workflowText: string, harnessText: string, runnerT
         defects.push(`${event}: ${String(upload.name)} has no path input`);
         continue;
       }
+      /* A GLOB IS REFUSED, not resolved (fix round 1, CR-002): its resolved
+         set is a property of today's runner.temp, and the upload must be
+         exactly one file on every future layout too. A leading `!` is an
+         exclusion pattern and is refused for the same reason. */
+      for (const rawLine of inputs["path"].split("\n")) {
+        const line = rawLine.trim();
+        if (line !== "" && /[*?[\]{}!]/.test(line.replace(/\$\{\{\s*runner\.temp\s*\}\}/g, ""))) {
+          defects.push(`${event}: ${String(upload.name)} path line ${JSON.stringify(line)} carries a glob character, and only a literal file path is allowed`);
+        }
+      }
       for (const file of resolveUploadPath(inputs["path"], runnerTemp)) uploaded.add(file);
     }
     const resolved = [...uploaded].sort();
@@ -2121,6 +2131,53 @@ test("the gates workflow uploads exactly the bundle's summary.json on each CI ev
     );
     assert.notEqual(noPushUpload, workflow);
     assert.match(summaryUploadDefects(noPushUpload, harness, dir).join("\n"), /push: no upload-artifact step/);
+
+    /* GLOBS THAT MATCH ONLY summary.json TODAY (fix round 1, CR-002). The
+       resolved-set comparison above is against a SNAPSHOT of runner.temp, so a
+       glob that happens to resolve to exactly the one file on this fixture is
+       green here and widens the day the harness writes a second matching file.
+       So a glob character in any upload path line is refused outright, and
+       each arm has its own witness, with two different glob shapes. */
+    const pushPath = `path: \${{ runner.temp }}/${evidenceName}/main-bundle/summary.json`;
+    assert.ok(workflow.includes(pushPath), `the workflow no longer carries ${pushPath}`);
+    const globbed: { label: string; event: string; text: string }[] = [
+      {
+        label: "push main-bundle/*.json",
+        event: "push",
+        text: workflow.replace(pushPath, `path: \${{ runner.temp }}/${evidenceName}/main-bundle/*.json`),
+      },
+      {
+        label: "push summary.json*",
+        event: "push",
+        text: workflow.replace(pushPath, `${pushPath}*`),
+      },
+      {
+        label: "pull_request pr-bundle/*.json",
+        event: "pull_request",
+        text: workflow.replace(prPath, `path: \${{ runner.temp }}/${evidenceName}/pr-bundle/*.json`),
+      },
+      {
+        label: "pull_request summ?ry.json",
+        event: "pull_request",
+        text: workflow.replace(prPath, `path: \${{ runner.temp }}/${evidenceName}/pr-bundle/summ?ry.json`),
+      },
+      {
+        label: "pull_request negation line",
+        event: "pull_request",
+        text: workflow.replace(
+          prPath,
+          `path: |\n            \${{ runner.temp }}/${evidenceName}/pr-bundle/summary.json\n            !\${{ runner.temp }}/${evidenceName}/output`,
+        ),
+      },
+    ];
+    for (const { label, event, text } of globbed) {
+      assert.notEqual(text, workflow, `the ${label} glob did not apply`);
+      assert.match(
+        summaryUploadDefects(text, harness, dir).join("\n"),
+        new RegExp(`${event}: .* carries a glob character`),
+        `the ${label} glob was not refused`,
+      );
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
