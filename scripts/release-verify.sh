@@ -346,13 +346,16 @@ record clean-environment 0 "resolution probe for $NAME from $WORKDIR"
 # WHAT "SERVED" MEANS HERE, and fix round 1 changed it (Opus CR-001, CR-002).
 # Two conditions, asked in this order, each with a fresh cache:
 #
-#   1. `npm cache add <name>@<version>` exits 0. This is INSTALL'S OWN FETCH
-#      PATH: the abbreviated packument and then the tarball. The first version
-#      of this wait asked only `npm view`, which reads the FULL packument, a
-#      different document that the registry can serve before the other two.
-#      Polling a document install does not read made the wait's "served" a
-#      claim about the wrong thing. The not-yet-served answer is ETARGET,
-#      captured in witness/captures/release-verify-cache-add-not-served.txt.
+#   1. `npm cache add <name>@<version>` exits 0. It fetches the abbreviated
+#      packument, the tarball and the full packument, which covers everything
+#      `npm install` fetches for this package: measured on npm 11.18.0 through
+#      a logging proxy, install reads the FULL packument and the tarball
+#      (arborist sets fullMetadata). The first version of this wait asked only
+#      `npm view`, which never fetches the tarball, so its "served" said
+#      nothing about the one document install cannot do without (delta
+#      verification DV-001 corrected this comment). The not-yet-served answer
+#      is ETARGET, captured in
+#      witness/captures/release-verify-cache-add-not-served.txt.
 #   2. `npm view <name>@<version> version` exits 0 AND prints exactly
 #      <version>. Exit 0 alone is not "this version" (an older npm printed an
 #      empty stdout for an unpublished version of an existing package), and
