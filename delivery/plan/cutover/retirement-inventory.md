@@ -379,7 +379,7 @@ can.
 
 - phase: M5-P5, 2026-09-23, diet baseline `6dc5b06`
 - the register: the `diet` array in the JSON, beside `rows` and `retired`
-- the guard: the diet tests in test/retirement-inventory.test.ts:1231, not the
+- the guard: the diet tests in test/retirement-inventory.test.ts:1243, not the
   checker script
 
 The numbers in the sections above are as of M4-P23 and are left as that
@@ -411,25 +411,25 @@ The kinds, and what each must carry:
 
 The refusal of a keyword is the word floor. An entry that carries
 `verified-by`, `probe` or `negative-witness` is refused outright, at
-test/retirement-inventory.test.ts:1328.
+test/retirement-inventory.test.ts:1340.
 
 **Binding text is an allowlist, since the fresh-implementer round.** Two
 earlier rounds defined NON-binding text by a list of labels (an HTML comment, a
 heading with certain words, a paragraph calling itself non-binding), and every
 phrasing not on the list passed: `## Archive`, `## Deprecated rules`, a fenced
 block, `<details>`, a Setext heading, a disclaimer in its own paragraph. So the
-two rule files are now parsed (test/retirement-inventory.test.ts:927), and a
+two rule files are now parsed (test/retirement-inventory.test.ts:936), and a
 line is binding only when it is a paragraph, list item, table row, heading or
 registered-binding frontmatter line outside every fence, HTML comment,
 `<details>` block, other HTML block, blockquote and indented code block, AND
-every heading above it is registered `binding` (test/retirement-inventory.test.ts:1041).
+every heading above it is registered `binding` (test/retirement-inventory.test.ts:1050).
 Text before the first heading is not binding.
 
 **The heading register** is `binding-headings` in the JSON: every heading of
 `CLAUDE.md` (24) and `AGENTS.md` (35), keyed by level and text, each `binding`,
 plus `AGENTS.md`'s frontmatter. A heading in either file that is not
 registered is a finding, and so is a registered heading that is gone
-(test/retirement-inventory.test.ts:1081). So a new `## Archive` fails loudly
+(test/retirement-inventory.test.ts:1090). So a new `## Archive` fails loudly
 and needs a reviewer to register it, `binding` or `non-binding`. A later phase
 that adds a heading to either file registers it in the same change.
 
@@ -439,7 +439,7 @@ non-binding, for reference, historical, superseded, archived, retired, kept
 for, legacy, withdrawn, outdated, and forms of them) in binding text is a
 finding of its own unless it sits inside a quote in `disclaimers-acknowledged`,
 and each acknowledged quote must occur exactly once in binding text
-(test/retirement-inventory.test.ts:1107). Twelve are acknowledged today, ten in
+(test/retirement-inventory.test.ts:1116). Twelve are acknowledged today, ten in
 `CLAUDE.md` and two in `AGENTS.md`, each with its reason. The acknowledgement is
 the human decision.
 
@@ -449,7 +449,7 @@ baseline lines of `CLAUDE.md` and `AGENTS.md` that no diet range covers, split
 at blank lines, and requires it to be in the current file. Whitespace is
 collapsed, and citation line numbers are masked so that a repointed citation
 does not count as a removal. A run that was live at the baseline must be in the
-BINDING text now (test/retirement-inventory.test.ts:1463). The baseline is read
+BINDING text now (test/retirement-inventory.test.ts:1475). The baseline is read
 generously, every live line counting as binding, which is the strict direction.
 
 **`delivery/STATE.md` is status, and status is rewritten.** It is not under the
@@ -461,12 +461,12 @@ one of the five sections registered in `state-stable-sections` (How to resume
 cold, Owner decisions, M4 closure, Earlier milestones, History of this file).
 A simulated standing update, with a new date and head, a changed count, a
 rewritten re-verification paragraph and a new table row, keeps every diet and
-STATE check green. Its shape check (test/retirement-inventory.test.ts:1544)
+STATE check green. Its shape check (test/retirement-inventory.test.ts:1556)
 still requires the current standing first, no dated daily block, the M4 closure
 and its residue and the history pointers, and every A-n id of the baseline.
 Every id in the standing "Owner actions open" list needs a register item of at
-least 25 words with a code span (test/retirement-inventory.test.ts:1503); the
-only exemption is the explicit id list at test/retirement-inventory.test.ts:846,
+least 25 words with a code span (test/retirement-inventory.test.ts:1515); the
+only exemption is the explicit id list at test/retirement-inventory.test.ts:848,
 which holds `A-14` until M5-P1 lands its register item.
 
 This phase's register: eleven `CLAUDE.md` entries (eight `history-moved`, three
@@ -489,8 +489,14 @@ section's content is true. Tables inherit their section's class, because a
 table cannot be told from a table of history by syntax; a disclaimer before
 one is caught by the tripwire, a table of history under a binding heading with
 no such word is not. The parser follows CommonMark closely enough for these two
-files and is not a CommonMark implementation; where it is unsure it reads NOT
-binding, which turns a relocation into a loud removal. A pinned status quote
+files and is not a CommonMark implementation, and it does NOT always err toward
+not-binding: a rule in a table row, in a `- > ` bullet, or in an inline code
+span still reads as binding. Inline markup is not parsed; instead any line of
+binding text carrying `~~`, `<s>`, `<del>` or `<strike>` is a finding of its
+own, a tripwire like the disclaimer one. A `>` or an HTML tag at the start of a
+line is a container at any indent. The completeness sweep protects the text
+that existed at `6dc5b06`; text added to a rule file later is protected by
+review of the diff only. A pinned status quote
 shows what the file said at `6dc5b06`, not what STATE.md says now: currency is
 still the orchestrator's. The `enforced-by` checks show the named test names
 the script and makes the declared assertion; they do not show the assertion is

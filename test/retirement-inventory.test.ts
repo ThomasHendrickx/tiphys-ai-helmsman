@@ -795,8 +795,10 @@ test("retirement inventory deletes nothing from the three roots in this phase", 
  * Every heading in those files, ATX or Setext, must be in the register, so a
  * new `## Archive` is a finding rather than a silent pass. Text before the
  * first heading is not binding. Anything the parser does not recognise as a
- * paragraph or list item is not binding, which is the safe direction: a rule
- * moved there reads as REMOVED.
+ * paragraph or list item is not binding, so a rule moved there reads as
+ * REMOVED. The parser is not CommonMark and misreads some shapes as binding
+ * (a table row, a `- > ` bullet, an inline code span); inline strike markup is
+ * not parsed but tripped on, and text added after the baseline is not swept.
  *
  * WHAT A TEST CANNOT CLASSIFY, stated rather than hidden: a disclaimer written
  * in prose inside a binding section ("the list below no longer applies"). So
@@ -851,6 +853,11 @@ const OPEN_ACTION_EXEMPT = ["A-14"];
  */
 const DISCLAIMER =
   /\b(obsolete|deprecated|no longer|not binding|non-binding|for reference|historical|superseded|supersedes|superseding|archived|retired|kept for|legacy|withdrawn|withdrew|outdated)\b/gi;
+/**
+ * The strike tripwire, the same shape: inline markup is not parsed, so a line
+ * of binding text carrying any strike markup is a finding on its own.
+ */
+const STRIKE = /~~|<(s|del|strike)\b/i;
 
 interface Quote {
   at?: string;
@@ -922,7 +929,9 @@ interface Parsed {
 
 /**
  * Classify every line by Markdown block structure. The rules follow CommonMark
- * closely enough for these files and err toward NOT-binding when unsure.
+ * closely enough for these files. A `>` or an HTML tag at the start of a line
+ * opens a container at ANY indent, and a fence closes only on a bare run of its
+ * marker. Where it still disagrees with a reader it can err either way.
  */
 function parseMarkdown(text: string): Parsed {
   const lines = text.split("\n");
@@ -947,7 +956,7 @@ function parseMarkdown(text: string): Parsed {
     let kind: LineKind;
     if (fence !== "") {
       kind = "fence";
-      if (new RegExp(`^\\s*${fence}`).test(l)) fence = "";
+      if (new RegExp(`^\\s*${fence}+\\s*$`).test(l)) fence = "";
     } else if (comment) {
       kind = "comment";
       if (l.includes("-->")) comment = false;
@@ -970,10 +979,10 @@ function parseMarkdown(text: string): Parsed {
     } else if (/^\s*<details\b/i.test(l)) {
       kind = "details";
       details = !/<\/details>/i.test(l);
-    } else if (/^ {0,3}<\/?[A-Za-z][A-Za-z0-9-]*(\s|>|\/|$)/.test(l)) {
+    } else if (/^\s*<\/?[A-Za-z][A-Za-z0-9-]*(\s|>|\/|$)/.test(l)) {
       kind = "html";
       html = true;
-    } else if (/^ {0,3}>/.test(l) || (prev === "quote" && !/^ {0,3}(#|[-*+] |\d+[.)] |\|)/.test(l))) {
+    } else if (/^\s*>/.test(l) || (prev === "quote" && !/^ {0,3}(#|[-*+] |\d+[.)] |\|)/.test(l))) {
       kind = "quote";
     } else if (/^ {0,3}(#{1,6})(\s|$)/.test(l)) {
       kind = "heading";
@@ -1114,6 +1123,9 @@ function disclaimerFindings(doc: DietDoc, file: string, text: string): string[] 
     found.set(a.quote, 0);
   }
   for (const [line, raw] of blocks(text, bindingMask(doc, file, text))) {
+    raw.split("\n").forEach((l, k) => {
+      if (STRIKE.test(l)) f.push(`${file}: binding text at line ${line + k} carries strike markup`);
+    });
     const t = withoutLineNumbers(normalise(raw));
     const covered: [number, number][] = [];
     for (const a of acks) {
@@ -1662,6 +1674,8 @@ test("a block removed from CLAUDE.md with no disposition reddens the completenes
 const NEVER_KEPT = "Never soften a work history.";
 /** The Red-witness rule's first paragraph, a prose rule rather than a list. */
 const RED_WITNESS = "A test only counts as guarding a behavior if it has been demonstrated red\nwithout the behavior and green with it.";
+/** The first line of a four-space paragraph inside standing warning 12. */
+const FOUR_SPACE = "This is why two honest agents reported different totals for the same commit";
 const RELOCATIONS: {
   name: string;
   arm: "removal" | "heading" | "disclaimer";
@@ -1678,6 +1692,13 @@ const RELOCATIONS: {
   { name: "under an unregistered ATX heading", arm: "heading", build: (s) => `${s.before}## Never\n\n## Archive\n\n${s.body}` },
   { name: "under an unregistered Setext heading", arm: "heading", build: (s) => `${s.before}## Never\n\nHistory\n=======\n\n${s.body}` },
   { name: "after a disclaimer in its own paragraph", arm: "disclaimer", build: (s) => `${s.before}## Never\n\nThe list below is no longer binding.\n\n${s.body}` },
+  { name: "struck through with ~~", arm: "disclaimer", kept: normalise(RED_WITNESS), build: (_, now) => now.replace(RED_WITNESS, `~~${RED_WITNESS}~~`) },
+  { name: "struck through with an inline <del>", arm: "disclaimer", kept: normalise(RED_WITNESS), build: (_, now) => now.replace(RED_WITNESS, `Old text: <del>${RED_WITNESS}</del>`) },
+  // A container marker at the four-space column of a list item (standing warning 12).
+  { name: "in a blockquote at four spaces of indent", arm: "removal", kept: FOUR_SPACE, build: (_, now) => now.replace(`    ${FOUR_SPACE}`, `    > ${FOUR_SPACE}`) },
+  { name: "in an HTML block at four spaces of indent", arm: "removal", kept: FOUR_SPACE, build: (_, now) => now.replace(`    ${FOUR_SPACE}`, `    <s>${FOUR_SPACE}`) },
+  // A fence whose inner line carries an info string does not close it.
+  { name: "inside a fence past an info-string line", arm: "removal", build: (s) => `${s.before}## Never\n\nExample:\n\n\`\`\`\n\`\`\`md\n${s.body}\n\`\`\`\n` },
   { name: "after a disclaimer in other words", arm: "disclaimer", build: (s) => `${s.before}## Never\n\nThis text is obsolete and kept for reference only.\n\n${s.body}` },
 ];
 
