@@ -221,10 +221,11 @@ interface ReviewedRepo {
  * A dual-tier change (one `src/` file) whose reviews are the given documents.
  * `stripHead` removes the `head:` line from a document that has one; any
  * document still carrying a head is pointed at the reviewed commit, so the
- * control arm is an ordinary current review.
+ * control arm is an ordinary current review. `stamp` rewrites the document's
+ * `tiphys-version` line to the given value, or removes it when null.
  */
 function stageReviewedChange(
-  verdicts: { from: string; as: string; stripHead?: boolean }[],
+  verdicts: { from: string; as: string; stripHead?: boolean; stamp?: string | null }[],
 ): ReviewedRepo {
   const dir = scratch("tiphys-history-compat-gate-");
   copyFileSync(join(repoRoot, "assurance-modes.yaml"), join(dir, "assurance-modes.yaml"));
@@ -246,6 +247,14 @@ function stageReviewedChange(
       body = stripped;
     } else {
       body = body.replace(/^head: .*$/m, `head: ${reviewed}`);
+    }
+    if (entry.stamp !== undefined) {
+      const restamped =
+        entry.stamp === null
+          ? body.replace(/^tiphys-version: .*\n/m, "")
+          : body.replace(/^tiphys-version: .*$/m, `tiphys-version: ${entry.stamp}`);
+      assert.match(body, /^tiphys-version: .*$/m, `${entry.from} has no single-line tiphys-version to rewrite`);
+      body = restamped;
     }
     writeFileSync(join(dir, "delivery", "review", entry.as), body);
   }
@@ -509,4 +518,127 @@ test("a history verdict edited after review-families was declared is current wor
   assert.equal(run.exit, 1, run.stdout);
   assert.ok(run.stdout.includes("delivery/review/m3-p18-hazard-round2.yaml carries produced-by claude-fable"), run.stdout);
   assert.ok(run.stdout.includes("2 committed before it are history and were not read"), run.stdout);
+});
+
+/* ------------------------------------------------------------------ */
+/* DR-0055: the stamp gates SHAPE by version and never relaxes ADMISSION */
+/* ------------------------------------------------------------------ */
+
+const KERNEL_VERSION = (JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as { version: string }).version;
+
+/** The shipped fixture with its head abbreviated and its stamp set (or removed, for null). */
+function abbreviatedHeadDocument(stamp: string | null): string {
+  const dir = scratch("tiphys-history-compat-stamp-");
+  let body = readFileSync(join(dualFixtures, "decorrelated-criteria.yaml"), "utf8");
+  const abbreviated = body.replace(/^head: ([0-9a-f]{7})[0-9a-f]{33}$/m, "head: $1");
+  assert.notEqual(abbreviated, body, "the fixture has no forty-hex head to abbreviate");
+  body = abbreviated;
+  const restamped =
+    stamp === null
+      ? body.replace(/^tiphys-version: .*\n/m, "")
+      : body.replace(/^tiphys-version: .*$/m, `tiphys-version: ${stamp}`);
+  assert.match(body, /^tiphys-version: .*$/m, "the fixture has no tiphys-version line");
+  const path = join(dir, "verdict.yaml");
+  writeFileSync(path, restamped);
+  return path;
+}
+
+function validateOutput(file: string): string[] {
+  const run = spawnSync(process.execPath, [cliEntry, "validate", "--type", "verdict", file], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  return `${run.stdout ?? ""}${run.stderr ?? ""}`.split("\n").filter((line) => line !== "");
+}
+
+test("a rule applies from the version that introduced it: an abbreviated head is history when unstamped or stamped 0.1.0, and INVALID when stamped 0.2.0", () => {
+  /* THE ONE RULE IN RULES_SINCE THAT A SHAPE CHECK CAN SHOW: M4-P10's
+     forty-hex head, since 0.2.0. The same bytes, three stamps. */
+  for (const stamp of [null, "0.1.0"]) {
+    const lines = validateOutput(abbreviatedHeadDocument(stamp));
+    assert.ok(!lines.some((line) => line.startsWith("INVALID")), `${String(stamp)}:\n${lines.join("\n")}`);
+    assert.ok(
+      lines.some((line) => line.startsWith("HISTORY verdict-head-full-sha applies from tiphys-version 0.2.0")),
+      `${String(stamp)}: the rule not applied is not named:\n${lines.join("\n")}`,
+    );
+  }
+  for (const stamp of ["0.2.0", KERNEL_VERSION]) {
+    const lines = validateOutput(abbreviatedHeadDocument(stamp));
+    assert.ok(
+      lines.some((line) => line.startsWith("INVALID #/head") && line.includes("does not match")),
+      `${stamp}: the 0.2.0 rule did not apply:\n${lines.join("\n")}`,
+    );
+    assert.ok(!lines.some((line) => line.startsWith("HISTORY verdict-head-full-sha")), lines.join("\n"));
+  }
+  /* A stamp that is not a version is refused by the schema, so it cannot be
+     used to be read as history. */
+  const malformed = validateOutput(abbreviatedHeadDocument("0.2"));
+  assert.ok(malformed.some((line) => line.startsWith("INVALID #/tiphys-version")), malformed.join("\n"));
+});
+
+/** The approving, anchored, decorrelated pair with each document's stamp replaced. */
+function stampedPair(stamp: string | null): { from: string; as: string; stamp: string | null }[] {
+  return ANCHORED_APPROVING_PAIR.map((entry) => ({ ...entry, stamp }));
+}
+
+test("an old-stamped or unstamped verdict is excluded by name at check-dual-review, and a current stamp is admitted", () => {
+  /* THE CONTROL: stamped with the running version, the pair is green. */
+  const control = stageReviewedChange(stampedPair(KERNEL_VERSION));
+  assertGitMatchesCapture(control.dir, "budget-name-list", { base: control.base, head: control.head });
+  const green = runGate(control, "check-dual-review");
+  assert.equal(green.record.status, "green", green.output);
+
+  for (const [stamp, reason] of [
+    ["0.1.0", "is stamped tiphys-version 0.1.0, older than"],
+    [null, "carries no tiphys-version"],
+  ] as const) {
+    const repo = stageReviewedChange(stampedPair(stamp));
+    assertGitMatchesCapture(repo.dir, "budget-name-list", { base: repo.base, head: repo.head });
+    const run = runGate(repo, "check-dual-review");
+    const detail = run.record.detail ?? "";
+    assert.equal(run.record.status, "red", `${String(stamp)}: ${run.output}`);
+    assert.match(detail, /0 of 2 are admitted and 2 missing/, detail);
+    for (const entry of ANCHORED_APPROVING_PAIR) {
+      assert.ok(detail.includes(`delivery/review/${entry.as} ${reason}`), `${String(stamp)} ${entry.as}:\n${detail}`);
+    }
+  }
+});
+
+test("an old-stamped verdict is excluded by name at merge-preconditions and never counts toward the two reviews", () => {
+  const control = stageReviewedChange(stampedPair(KERNEL_VERSION));
+  const reached = runGate(control, "merge-preconditions");
+  assert.equal(reached.record.status, "error", reached.output);
+  assert.match(reached.record.detail ?? "", /no repository could be established/);
+
+  const repo = stageReviewedChange(stampedPair("0.1.0"));
+  assertGitMatchesCapture(repo.dir, "budget-name-list", { base: repo.base, head: repo.head });
+  const run = runGate(repo, "merge-preconditions");
+  assert.equal(run.record.status, "red", run.output);
+  assert.match(run.record.detail ?? "", /0 of 2 are admitted and 2 missing/);
+  const selection = run.gateStdout.split("\n").filter((line) => line.includes("verdict-selection"));
+  assert.equal(selection.length, 1, run.gateStdout);
+  for (const entry of ANCHORED_APPROVING_PAIR) {
+    assert.ok(
+      (selection[0] as string).includes(`delivery/review/${entry.as} is stamped tiphys-version 0.1.0, older than`),
+      `${entry.as}:\n${selection[0] as string}`,
+    );
+  }
+});
+
+test("a composed clean-room-reviewer brief and a gate bundle's summary.json are stamped with the running kernel version", () => {
+  /* THE WRITERS THE KERNEL OWNS carry the stamp, and the brief's line is the
+     value the shipped reviewer brief tells the reviewer to copy. */
+  const composed = spawnSync(
+    process.execPath,
+    [cliEntry, "brief", "compose", "--role", "clean-room-reviewer", "--phase", "templates/plan.example.yaml", "--phase-id", "M9-P1"],
+    { cwd: repoRoot, encoding: "utf8" },
+  );
+  assert.equal(composed.status, 0, composed.stderr);
+  assert.match(composed.stdout, new RegExp(`^tiphys-version: ${KERNEL_VERSION.replace(/\./g, "\\.")}$`, "m"));
+  assert.match(composed.stdout, /`tiphys-version` is the kernel version on the `tiphys-version:` line/);
+
+  const repo = stageReviewedChange(stampedPair(KERNEL_VERSION));
+  runGate(repo, "check-dual-review");
+  const summary = JSON.parse(readFileSync(join(repo.dir, "evidence", "check-dual-review", "summary.json"), "utf8")) as Record<string, unknown>;
+  assert.equal(summary["tiphys-version"], KERNEL_VERSION);
 });

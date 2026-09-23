@@ -4,6 +4,7 @@ import { basename, dirname, isAbsolute, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { pathsIdentifySameObject } from "../path-identity.ts";
+import { admissionStampProblem, runningKernelVersion } from "../stamp.ts";
 import {
   declaresNoHead,
   describeAdmittedVerdicts,
@@ -1227,6 +1228,7 @@ function readReviewCorpus(contextDirectory: string, head: string): ReviewCorpus 
   const admitted: AdmittedVerdict[] = [];
   const excluded: OffHeadVerdict[] = [];
   const forHead: VerdictForHead[] = [];
+  const running = runningKernelVersion();
   for (const entry of corpus.verdicts) {
     /* KERNEL 0.2.1 (DR-0053, DR-0054). A verdict with NO head key is excluded
        BY NAME before any relation is computed. Until 0.2.1 it reached
@@ -1238,6 +1240,18 @@ function readReviewCorpus(contextDirectory: string, head: string): ReviewCorpus 
        change it cannot count toward the two reviews condition 1 needs. */
     if (declaresNoHead(entry.record)) {
       excluded.push({ path: entry.path, declared: "", relation: { kind: "no-head" } });
+      continue;
+    }
+    /* KERNEL 0.2.1 (DR-0055): the same stamp rule `partitionByAuditedHead`
+       applies, from the same function, so the two gates cannot disagree about
+       which verdicts a stamp admits. The stamp never relaxes admission. */
+    const stampProblem = admissionStampProblem(entry.record, running);
+    if (stampProblem !== undefined) {
+      excluded.push({
+        path: entry.path,
+        declared: "",
+        relation: { kind: "stamp-not-admissible", reason: stampProblem },
+      });
       continue;
     }
     const declared = String(entry.record["head"] ?? "").toLowerCase();

@@ -414,8 +414,16 @@ test("a head-less document validates clean against the pre-M4-P10 schema AND the
      on a gate's path validates committed siblings against the schema (recorded
      at `dualReviewDecorrelation`). The protection is the gate-side exclusion,
      witnessed in test/history-compat.test.ts. */
-  const instance = parsed(fixture("decorrelated-criteria.yaml", [[`head: ${FIXTURE_HEAD}\n`, ""]]));
+  /* A 0.1.0-era document carries neither `head` nor the 0.2.1 stamp, so both
+     lines come out: the pre-M4-P10 schema has no `tiphys-version` property. */
+  const instance = parsed(
+    fixture("decorrelated-criteria.yaml", [
+      [`head: ${FIXTURE_HEAD}\n`, ""],
+      ["tiphys-version: 0.2.0\n", ""],
+    ]),
+  );
   assert.ok(!Object.hasOwn(instance, "head"), "the edit did not remove head");
+  assert.ok(!Object.hasOwn(instance, "tiphys-version"), "the edit did not remove the stamp");
 
   const before = validateModule.validateToLines(reconstructedPreHeadSchema(), instance);
   assert.deepEqual(before, [], "the pre-change schema was expected to accept a head-less verdict");

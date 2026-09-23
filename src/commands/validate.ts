@@ -27,6 +27,7 @@ import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { runChecks } from "../checks.ts";
+import { describeRuleNotInForce, readStamp, rulesNotYetInForce } from "../stamp.ts";
 import { outputContractDiagnostics, splitFrontmatter } from "../roles.ts";
 import { roleBriefBodyDiagnostics } from "./brief.ts";
 import {
@@ -461,11 +462,30 @@ export function cmdValidate(argv: string[]): number {
   }
 
   const schema = loadTypeSchema(resolvedType);
+  /* KERNEL 0.2.1 (DR-0055): A RULE APPLIES FROM THE VERSION THAT INTRODUCED
+     IT. The document's own `tiphys-version` decides which of the rules in
+     src/stamp.ts's RULES_SINCE are in force for it; an unstamped document is
+     pre-stamp history held to the 0.1.0 rules. A rule not applied is PRINTED,
+     never dropped silently, and this is shape only: the merge gates admit a
+     verdict on its stamp separately and never relax on it. */
+  const stamp = readStamp(decoded.value);
+  const notInForce = rulesNotYetInForce(resolvedType, stamp);
+  const historyLines = notInForce.map((rule) => describeRuleNotInForce(rule, stamp));
+  const gatedPointers = notInForce.flatMap((rule) => (rule.pointer === undefined ? [] : [rule.pointer]));
+  const gatedChecks = new Set(notInForce.flatMap((rule) => (rule.check === undefined ? [] : [rule.check])));
   const diagnostics = validateInstance(
     schema,
     decoded.value,
     companionsFor(resolvedType),
+  ).filter(
+    (diagnostic) =>
+      !gatedPointers.some(
+        (pointer) => diagnostic.pointer === pointer || diagnostic.pointer.startsWith(`${pointer}/`),
+      ),
   );
+  for (const line of historyLines) {
+    process.stdout.write(`${line}\n`);
+  }
   if (diagnostics.length > 0) {
     for (const line of formatDiagnostics(diagnostics)) {
       process.stdout.write(`${line}\n`);
@@ -473,7 +493,7 @@ export function cmdValidate(argv: string[]): number {
     return 1;
   }
 
-  const checks = runChecks(resolvedType, decoded.value, context);
+  const checks = runChecks(resolvedType, decoded.value, context, gatedChecks);
   for (const line of checks.lines) {
     process.stdout.write(`${line}\n`);
   }

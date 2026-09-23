@@ -37,6 +37,7 @@ import type { Diagnostic } from "./validate.ts";
    than opening it (D-M3-27, the mechanism index's row
    `reading-a-path-whose-type-is-not-established`). */
 import { classifyEntry } from "./task.ts";
+import { admissionStampProblem, runningKernelVersion } from "./stamp.ts";
 
 /** What one derived check produced. */
 export interface CheckOutcome {
@@ -4169,7 +4170,14 @@ export type HeadRelation =
    * consumer wrote before the field existed, so absence is now a well-formed
    * document and the ADMISSION rule lives here. Never admitted.
    */
-  | { kind: "no-head" };
+  | { kind: "no-head" }
+  /**
+   * The verdict's `tiphys-version` is absent, malformed, or older than the
+   * running kernel's major.minor. KERNEL 0.2.1 (DR-0055): the stamp decides
+   * which SHAPE rules apply and never relaxes ADMISSION, so such a verdict is
+   * history and never admitted. `reason` is src/stamp.ts's sentence.
+   */
+  | { kind: "stamp-not-admissible"; reason: string };
 
 /**
  * Does this verdict declare no head AT ALL?
@@ -4402,6 +4410,7 @@ export function partitionByAuditedHead(
   const offHead: OffHeadVerdict[] = [];
   const unkeyed: Diagnostic[] = [];
   const unkeyedVerdicts: LoadedVerdict[] = [];
+  const running = runningKernelVersion();
   for (const candidate of verdicts) {
     /* KERNEL 0.2.1 (DR-0053, DR-0054). A verdict with NO head key is EXCLUDED
        BY NAME, never kept to be refused. Until 0.2.1 it was kept in the corpus
@@ -4420,6 +4429,18 @@ export function partitionByAuditedHead(
        through `headGroupFor`, which is deliberately unchanged. */
     if (declaresNoHead(candidate.record)) {
       offHead.push({ path: candidate.path, declared: "", relation: { kind: "no-head" } });
+      continue;
+    }
+    /* KERNEL 0.2.1 (DR-0055): ADMISSION NEEDS A CURRENT STAMP. Decided before
+       the head is related, because a verdict written to an older kernel's
+       rules is not evidence under this kernel's, whichever commit it names. */
+    const stampProblem = admissionStampProblem(candidate.record, running);
+    if (stampProblem !== undefined) {
+      offHead.push({
+        path: candidate.path,
+        declared: "",
+        relation: { kind: "stamp-not-admissible", reason: stampProblem },
+      });
       continue;
     }
     const key = headKeyOf(candidate.record, candidate.path);
@@ -4451,6 +4472,9 @@ export function describeOffHeadVerdicts(
     .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
     .map((entry) => {
       const tail = `it is not evidence about the commit under audit ${auditedHead}`;
+      if (entry.relation.kind === "stamp-not-admissible") {
+        return `${entry.path} ${entry.relation.reason}; ${tail}`;
+      }
       if (entry.relation.kind === "no-head") {
         return (
           `${entry.path} declares no head, so it does not say which commit it reviewed and is never admitted ` +
@@ -6098,11 +6122,20 @@ export function runChecks(
   type: string,
   instance: unknown,
   contextDirectory: string | undefined,
+  /**
+   * KERNEL 0.2.1 (DR-0055): checks not in force for this document's stamp,
+   * decided by src/stamp.ts's RULES_SINCE. They are not run and not counted
+   * as skipped; the caller prints why.
+   */
+  notInForce: ReadonlySet<string> = new Set<string>(),
 ): ChecksRun {
   const violationLines: string[] = [];
   const reportLines: string[] = [];
   const skippedLines: string[] = [];
   for (const check of checksFor(type)) {
+    if (notInForce.has(check.id)) {
+      continue;
+    }
     if (check.requiresContext && contextDirectory === undefined) {
       skippedLines.push(`SKIPPED ${check.id} no context`);
       continue;

@@ -1320,5 +1320,9 @@
   "pulse-0-1-0-non-verdict-stays-invalid": "a 0.1.0-era document that is not a verdict stays invalid, for the reasons it was invalid under 0.1.0",
   "review-families-history-not-read": "committed history naming several families before review-families was declared does not contradict the declaration",
   "review-families-later-family-red": "a second family committed after review-families was declared still contradicts it",
-  "review-families-edited-history-read": "a history verdict edited after review-families was declared is current work and is read again"
+  "review-families-edited-history-read": "a history verdict edited after review-families was declared is current work and is read again",
+  "stamp-rule-applies-from-its-version": "a rule applies from the version that introduced it: an abbreviated head is history when unstamped or stamped 0.1.0, and INVALID when stamped 0.2.0",
+  "stamp-old-excluded-at-check-dual-review": "an old-stamped or unstamped verdict is excluded by name at check-dual-review, and a current stamp is admitted",
+  "stamp-old-excluded-at-merge-preconditions": "an old-stamped verdict is excluded by name at merge-preconditions and never counts toward the two reviews",
+  "stamp-written-by-brief-and-summary": "a composed clean-room-reviewer brief and a gate bundle's summary.json are stamped with the running kernel version"
 }

@@ -1,3 +1,4 @@
+import { readOwnVersion } from "../version.ts";
 import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
@@ -207,6 +208,11 @@ export interface GateSummaryRow {
 export interface RunSummary {
   /** Identity of THIS run. A bundle nobody can attribute is not evidence. */
   runId: string;
+  /**
+   * KERNEL 0.2.1 (DR-0055): the kernel version that produced this summary,
+   * so a bundle read later says which kernel's gates it is evidence about.
+   */
+  "tiphys-version": string;
   manifest: string;
   /** M3-P2: true when `manifest` above named a gate registry, not a manifest. */
   registry?: boolean;
@@ -2077,6 +2083,7 @@ function writeAbortedSummary(
   }
   const summary: RunSummary = {
     runId,
+    "tiphys-version": readOwnVersion(),
     manifest: options.manifestPath,
     manifestSha256: "",
     startedAt: now(),
@@ -2288,6 +2295,7 @@ function runClaimedBundle(
 
   const summary: RunSummary = {
     runId,
+    "tiphys-version": readOwnVersion(),
     manifest: options.manifestPath,
     ...(options.registry === true
       ? {

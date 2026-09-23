@@ -34,6 +34,11 @@
       "type": "string",
       "pattern": "^[0-9a-f]{40}$"
     },
+    "tiphys-version": {
+      "$comment": "KERNEL 0.2.1 (DR-0055): THE KERNEL VERSION WHOSE RULES THIS VERDICT WAS WRITTEN TO. Optional in shape: a verdict without it is pre-stamp history and `tiphys validate` holds it to the 0.1.0 rules only, applying a rule introduced later only to a document stamped at or after that rule's version (the one table of those versions is RULES_SINCE in src/stamp.ts). REQUIRED FOR ADMISSION, and the stamp never relaxes admission: the merge gates admit a verdict only when it is stamped the running kernel's major.minor or newer, so an old stamp cannot buy a lighter check and a merge. The composed clean-room-reviewer brief states the value to write. The grammar is the one parseKernelVersion in src/stamp.ts reads, so a value this pattern accepts is always a version that code can order: no leading zeros.",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
+    },
     "verdict": {
       "$comment": "R-060's closed vocabulary, exactly two values. A third value such as 'approve with comments' is the shape that lets a fix round be skipped by wording, so the enum is the whole point of the field.",
       "type": "string",

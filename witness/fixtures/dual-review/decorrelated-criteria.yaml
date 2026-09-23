@@ -2,6 +2,7 @@
 kind: verdict
 phase: M3-P9
 head: dcbe6704813e861736c8d394dca35f7dc31b4f93
+tiphys-version: 0.2.0
 verdict: APPROVE
 produced-by: family-a
 framing: criteria-contract

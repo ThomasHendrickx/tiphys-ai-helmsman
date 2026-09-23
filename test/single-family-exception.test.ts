@@ -74,6 +74,7 @@ const fixturesDir = join(repoRoot, "witness", "fixtures", "dual-review");
  * (delivery/verification/m4-prototype-probes.md:132).
  */
 const realVerdictDir = join(repoRoot, "delivery", "evidence", "m3-exit-test", "e1", "e1-7");
+const KERNEL_VERSION = (JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as { version: string }).version;
 const REAL_VERDICTS = ["verdict-criteria.yaml", "verdict-hazard.yaml"];
 
 /**
@@ -370,7 +371,13 @@ function stage(options: StageOptions): string {
     if (/^head: .*$/m.test(body)) {
       body = body.replace(/^head: .*$/m, `head: ${reviewedHead}`);
     } else if (verdict.addHead === true) {
-      const rewritten = body.replace(/^(phase: .*)$/m, `$1\nhead: ${reviewedHead}`);
+      /* AND THE STAMP (DR-0055): a current review is admitted only when it is
+         stamped the running kernel's version, read from package.json so a
+         release bump does not strand this staging. */
+      const rewritten = body.replace(
+        /^(phase: .*)$/m,
+        `$1\nhead: ${reviewedHead}\ntiphys-version: ${KERNEL_VERSION}`,
+      );
       assert.notEqual(rewritten, body, `${verdict.file} has no single-line phase to put a head after`);
       body = rewritten;
     }

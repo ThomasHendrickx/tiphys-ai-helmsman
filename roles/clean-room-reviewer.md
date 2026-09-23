@@ -61,7 +61,11 @@ file must: `tiphys validate --type verdict <path>` reports no `INVALID` line.
 What it is about. `head` is the full forty-character sha of the exact commit
 you reviewed. Not a branch name, not a short sha, not the commit you expect to
 be merged. A verdict whose head is not the reviewed commit is not evidence
-about it, and the merge gate excludes it and names the exclusion. `produced-by`
+about it, and the merge gate excludes it and names the exclusion.
+`tiphys-version` is the kernel version on the `tiphys-version:` line at the top
+of your composed brief; copy it exactly. A verdict without it, or with a version
+older than the running kernel's major.minor, is history: it may still validate,
+and the merge gate excludes it and names the exclusion. `produced-by`
 names your model family, `framing` names your entry point, and
 `review-contract` names the contract stated at the top of your brief.
 
