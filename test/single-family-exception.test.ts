@@ -226,6 +226,15 @@ interface StagedVerdict {
   directory?: string;
   /** Write it under a different name than the fixture it was copied from. */
   as?: string;
+  /**
+   * Give a document that carries NO `head:` line one naming the reviewed
+   * commit, inserted after its `phase:` line. KERNEL 0.2.1 (DR-0053): a
+   * head-less verdict is now history and is EXCLUDED from the merge corpus
+   * rather than kept to be refused, so the two real-corpus arms, whose
+   * documents predate the field, stage them as CURRENT reviews of the staged
+   * commit. The produced-by strings compared are still the real ones.
+   */
+  addHead?: boolean;
 }
 
 interface StageOptions {
@@ -360,6 +369,10 @@ function stage(options: StageOptions): string {
        check refuses. */
     if (/^head: .*$/m.test(body)) {
       body = body.replace(/^head: .*$/m, `head: ${reviewedHead}`);
+    } else if (verdict.addHead === true) {
+      const rewritten = body.replace(/^(phase: .*)$/m, `$1\nhead: ${reviewedHead}`);
+      assert.notEqual(rewritten, body, `${verdict.file} has no single-line phase to put a head after`);
+      body = rewritten;
     }
     writeFileSync(to, body);
   };
@@ -493,7 +506,7 @@ const ARMS: { name: string; subject: "real" | "fixture"; stage: () => string }[]
       stage({
         real: true,
         declare: [realProducedBy("verdict-hazard.yaml")],
-        verdicts: REAL_VERDICTS.map((file) => ({ file })),
+        verdicts: REAL_VERDICTS.map((file) => ({ file, addHead: true })),
       }),
   },
   {
@@ -503,7 +516,7 @@ const ARMS: { name: string; subject: "real" | "fixture"; stage: () => string }[]
       stage({
         real: true,
         declare: ["A Family Nothing Here Was Produced By"],
-        verdicts: REAL_VERDICTS.map((file) => ({ file })),
+        verdicts: REAL_VERDICTS.map((file) => ({ file, addHead: true })),
       }),
   },
   {

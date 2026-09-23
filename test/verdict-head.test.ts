@@ -219,8 +219,14 @@ function preHeadCommit(): string | undefined {
       continue;
     }
     const parsed = JSON.parse(shown.stdout) as Record<string, unknown>;
-    const required = (parsed["required"] ?? []) as string[];
-    if (!required.includes("head")) {
+    /* THE PROPERTY, NOT THE REQUIRED LIST, SINCE KERNEL 0.2.1. DR-0053 made
+       `head` optional again, so "does not require head" is now also true of
+       the tip of this branch, and a walk keyed on `required` returned the
+       CURRENT tree as the "old state", which the staging assertions below then
+       caught. What identifies the pre-M4-P10 state is that the schema does not
+       DECLARE the field at all. */
+    const properties = (parsed["properties"] ?? {}) as Record<string, unknown>;
+    if (!Object.hasOwn(properties, "head")) {
       const script = git(["cat-file", "-e", `${sha}:scripts/check-dual-review.mjs`]);
       return script.status === 0 ? sha : undefined;
     }
@@ -274,8 +280,8 @@ function preHeadTree(): string | undefined {
     readFileSync(join(dir, "schemas", "verdict.schema.json"), "utf8"),
   ) as Record<string, unknown>;
   assert.ok(
-    !((oldSchema["required"] ?? []) as string[]).includes("head"),
-    "the staged pre-change schema already requires head",
+    !Object.hasOwn((oldSchema["properties"] ?? {}) as Record<string, unknown>, "head"),
+    "the staged pre-change schema already declares head",
   );
 
   stagedPreHeadTree = dir;
@@ -328,9 +334,14 @@ function runGate(dir: string, tree = repoRoot): { status: number; output: string
 /* Criterion 2: head is required, and a document without one is refused */
 /* ------------------------------------------------------------------ */
 
-test("the shipped schema requires head as forty lowercase hexadecimal digits", () => {
+test("the shipped schema declares head as optional and as forty lowercase hexadecimal digits when present", () => {
+  /* KERNEL 0.2.1 (DR-0053). M4-P10 made `head` REQUIRED here, which also
+     judged every verdict written before the field existed. The requirement is
+     now an ADMISSION rule enforced by the merge gates (the gate-side tests in
+     test/history-compat.test.ts), and the schema keeps only the SHAPE: a head
+     that is present must be the full forty-character form. */
   const schema = shippedSchema();
-  assert.ok((schema["required"] as string[]).includes("head"), "head is not required");
+  assert.ok(!(schema["required"] as string[]).includes("head"), "head is still required by the schema");
   const head = (schema["properties"] as Record<string, unknown>)["head"] as Record<
     string,
     unknown
@@ -339,7 +350,11 @@ test("the shipped schema requires head as forty lowercase hexadecimal digits", (
   assert.equal(head["pattern"], "^[0-9a-f]{40}$");
 });
 
-test("tiphys validate --type verdict exits nonzero naming head for a verdict that carries none", () => {
+test("tiphys validate --type verdict prints no INVALID line for a verdict that carries no head, and refuses an abbreviated one naming head", () => {
+  /* BOTH ARMS, because the change is a narrowing and not a removal. ABSENT is
+     a well-formed document (every verdict written before M4-P10 has that
+     shape); PRESENT AND ABBREVIATED is a document that tried to state its head
+     and stated it wrongly, and that is still refused at the boundary. */
   const dir = mkdtempSync(join(tmpdir(), "tiphys-no-head-"));
   try {
     const path = join(dir, "no-head.yaml");
@@ -349,8 +364,19 @@ test("tiphys validate --type verdict exits nonzero naming head for a verdict tha
       encoding: "utf8",
     });
     const output = `${run.stdout}${run.stderr}`;
-    assert.notEqual(run.status, 0, output);
-    assert.match(output, /^INVALID #\/head required property head is missing$/m, output);
+    assert.doesNotMatch(output, /INVALID/, output);
+    const short = join(dir, "short-head.yaml");
+    writeFileSync(
+      short,
+      fixture("decorrelated-criteria.yaml", [[`head: ${FIXTURE_HEAD}`, `head: ${FIXTURE_HEAD.slice(0, 7)}`]]),
+    );
+    const shortRun = spawnSync(process.execPath, [cliEntry, "validate", "--type", "verdict", short], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const shortOutput = `${shortRun.stdout}${shortRun.stderr}`;
+    assert.notEqual(shortRun.status, 0, shortOutput);
+    assert.match(shortOutput, /^INVALID #\/head /m, shortOutput);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -380,12 +406,14 @@ test("the same document carrying a head produces no head diagnostic, and none at
   }
 });
 
-test("RED WITNESS, criterion 2: the same head-less document validates clean against the PRE-CHANGE schema", () => {
-  /* THE DANGEROUS STATE, NOT THE ABSENT FEATURE. What made the directory
-     convention survivable was that a head-less verdict was a VALID verdict, so
-     nothing anywhere refused it. Against the reconstructed pre-change schema
-     this document produces zero diagnostics, which is the exit 0 the criterion
-     names; against the shipped one it produces exactly the head diagnostic. */
+test("a head-less document validates clean against the pre-M4-P10 schema AND the shipped one, so 0.1.0-era history is well formed again", () => {
+  /* KERNEL 0.2.1 (DR-0053). Until 0.2.1 the shipped arm of this test asserted
+     exactly one diagnostic, `#/head required property head is missing`, and
+     that assertion is what judged every consumer's history. What protects a
+     merge from a head-less verdict was never this document boundary: nothing
+     on a gate's path validates committed siblings against the schema (recorded
+     at `dualReviewDecorrelation`). The protection is the gate-side exclusion,
+     witnessed in test/history-compat.test.ts. */
   const instance = parsed(fixture("decorrelated-criteria.yaml", [[`head: ${FIXTURE_HEAD}\n`, ""]]));
   assert.ok(!Object.hasOwn(instance, "head"), "the edit did not remove head");
 
@@ -393,7 +421,7 @@ test("RED WITNESS, criterion 2: the same head-less document validates clean agai
   assert.deepEqual(before, [], "the pre-change schema was expected to accept a head-less verdict");
 
   const after = validateModule.validateToLines(shippedSchema(), instance);
-  assert.deepEqual(after, ["INVALID #/head required property head is missing"]);
+  assert.deepEqual(after, [], "the shipped schema refuses a head-less verdict, which judges history (DR-0054)");
 });
 
 test("the reconstructed pre-change schema agrees with the one in git, so the reconstruction is not a convenience", () => {
@@ -453,13 +481,14 @@ function mediumFindingBody(severity = "medium"): string {
   ]);
 }
 
-test("APPROVE beside a medium finding is refused, and the diagnostic names the verdict field", () => {
-  const lines = validateModule.validateToLines(shippedSchema(), parsed(mediumFindingBody()));
-  assert.ok(lines.length > 0, "a medium finding beside APPROVE was accepted");
-  assert.ok(
-    lines.some((line) => line.startsWith("INVALID #/verdict")),
-    `no diagnostic named the verdict field: ${lines.join("; ")}`,
-  );
+test("APPROVE beside a medium finding is well formed to the schema, and the merge gate is what refuses it", () => {
+  /* KERNEL 0.2.1 (DR-0053). The medium half of the escalation rule is DR-0012
+     condition 2, a MERGE rule, and it is enforced by `verdict-pair-approves`
+     (the test "a verdict carrying a blocking finding reddens the pair
+     predicate" below). In the schema it rejected ten of pulse's committed
+     0.1.0-era verdicts that no author could have written differently. */
+  assert.deepEqual(validateModule.validateToLines(shippedSchema(), parsed(mediumFindingBody())), []);
+  assert.ok(checksModule.BLOCKING_SEVERITIES.includes("medium"), "the gate no longer blocks on medium");
 });
 
 test("RED WITNESS, criterion 4: that exact document validates clean against the PRE-CHANGE schema", () => {
@@ -478,44 +507,47 @@ test("RED WITNESS, criterion 4: that exact document validates clean against the 
     [],
     "the pre-change escalation rule was expected to accept APPROVE beside a medium finding",
   );
-  /* THE CONTROL. Reintroduce only the severity change and the shipped schema
-     refuses it, so the green above is the old RULE and not the edit that
-     removed the field. */
+  /* THE CONTROL, since kernel 0.2.1 aimed one severity up. The shipped schema
+     no longer refuses this document (DR-0053), so the control that the green
+     above is the old RULE rather than the edit that removed the field is the
+     shipped schema refusing the SAME document with the severity raised to
+     high, which it has refused since M3-P7. */
   assert.ok(
     validateModule
-      .validateToLines(shippedSchema(), parsed(mediumFindingBody()))
+      .validateToLines(shippedSchema(), parsed(mediumFindingBody("high")))
       .some((line) => line.startsWith("INVALID #/verdict")),
   );
 });
 
-test("the widening is a class, not one severity: high and critical still redden and low still does not", () => {
-  /* ONE WITNESS IS NOT A CLASS. The rule under test is "a finding the review
-     ranked at or above the blocking floor forces FIX-ROUND-NEEDED", and
-     `medium` is only its new member. The two old members must still redden,
-     because a widening written as a REPLACEMENT rather than an extension would
-     leave them out and this test is what refuses that. `low` is the control:
-     DR-0012 permits merging with a low finding, so a rule that reddened on it
-     would be a different and wrong rule. */
-  for (const severity of ["medium", "high", "critical"]) {
+test("the schema's escalation rule is the M3-P7 shape rule: high and critical redden, medium and low do not", () => {
+  /* ONE WITNESS IS NOT A CLASS. KERNEL 0.2.1 (DR-0053) narrowed the schema
+     back to the rule v0.1.0 shipped, and a narrowing written as a DELETION of
+     the whole rule would leave high and critical accepted, so both are
+     asserted. medium is the member that MOVED to the gate, and low is the
+     control DR-0012 permits. */
+  for (const severity of ["medium", "low"]) {
+    assert.deepEqual(
+      validateModule.validateToLines(shippedSchema(), parsed(mediumFindingBody(severity))),
+      [],
+      `the schema refused APPROVE beside a ${severity} finding, which is the merge gate's rule`,
+    );
+  }
+  for (const severity of ["high", "critical"]) {
     const lines = validateModule.validateToLines(shippedSchema(), parsed(mediumFindingBody(severity)));
     assert.ok(
       lines.some((line) => line.startsWith("INVALID #/verdict")),
       `severity ${severity} did not force FIX-ROUND-NEEDED: ${lines.join("; ")}`,
     );
   }
-  assert.deepEqual(
-    validateModule.validateToLines(shippedSchema(), parsed(mediumFindingBody("low"))),
-    [],
-    "a low finding beside APPROVE was refused, which DR-0012 permits",
-  );
 });
 
-test("the check's blocking severities and the schema's escalation enum are the same three words", () => {
-  /* THE HAZARD ROW "the medium widening in the schema only" AND ITS MIRROR, in
-     one assertion. The schema decides what one document may say; the check
-     decides what a committed PAIR may say; a run where they disagree is a
-     merge precondition that is one severity wider in one place than the other,
-     which is precisely the state this phase found and repaired. */
+test("the schema's escalation enum is the gate's blocking severities minus medium, and never wider", () => {
+  /* KERNEL 0.2.1 (DR-0053). Until 0.2.1 these were asserted EQUAL. They now
+     differ by exactly one word, on purpose: the schema says what one document
+     may say about itself (APPROVE beside a high or critical finding is
+     self-contradictory), and the gate says what a committed PAIR may merge
+     with (DR-0012 condition 2, medium and above). What must never happen is
+     the schema being WIDER than the gate, or the gate losing medium. */
   const schema = shippedSchema();
   const enumerated = (
     (
@@ -524,10 +556,12 @@ test("the check's blocking severities and the schema's escalation enum are the s
       ] as Record<string, unknown>)["contains"] as Record<string, unknown>
     )["properties"] as Record<string, unknown>
   )["severity"] as Record<string, unknown>;
+  assert.deepEqual([...(enumerated["enum"] as string[])].sort(), ["critical", "high"]);
   assert.deepEqual(
+    [...checksModule.BLOCKING_SEVERITIES].filter((severity) => severity !== "medium").sort(),
     [...(enumerated["enum"] as string[])].sort(),
-    [...checksModule.BLOCKING_SEVERITIES].sort(),
   );
+  assert.ok(checksModule.BLOCKING_SEVERITIES.includes("medium"));
 });
 
 /* ------------------------------------------------------------------ */
@@ -773,10 +807,11 @@ test("the SHIPPED gate reddens that same both-refusing pair, which is what the p
   });
 });
 
-test("a verdict carrying a blocking finding reddens the pair predicate even though the schema also refuses it", () => {
-  /* TWO LAYERS, DELIBERATELY, AND THIS IS THE SECOND STRUCTURALLY DIFFERENT
-     MEMBER OF "the pair is not clean". The schema refuses APPROVE beside a
-     medium finding INSIDE ONE DOCUMENT. Nothing on the gate's path validates
+test("a verdict carrying a blocking finding reddens the pair predicate, which since 0.2.1 is the only layer that refuses medium", () => {
+  /* SINCE KERNEL 0.2.1 (DR-0053) THIS IS THE ONLY GUARD FOR MEDIUM: the schema
+     accepts APPROVE beside a medium finding and this check refuses the MERGE.
+     It was already the guard that mattered, for the reason that follows.
+     Nothing on the gate's path validates
      the committed siblings, which is recorded at `dualReviewDecorrelation`, so
      a document that never went through `tiphys validate` reaches the gate
      unrefused. The check therefore establishes the severity itself rather than
