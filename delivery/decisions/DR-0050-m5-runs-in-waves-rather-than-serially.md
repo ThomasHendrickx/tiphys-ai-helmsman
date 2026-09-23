@@ -10,7 +10,7 @@
 ## The decision
 
 Every phase of the M5 plan carries `parallelizable: false`
-(delivery/plan/value-delivery-plan.yaml:125). The owner instructed, on
+(delivery/plan/value-delivery-plan.yaml:94). The owner instructed, on
 2026-09-23: "do execute parts in parallel as much as possible". That overrides
 the flag for M5.
 
