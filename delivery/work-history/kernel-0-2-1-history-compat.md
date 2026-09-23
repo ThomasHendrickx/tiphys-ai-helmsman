@@ -54,8 +54,13 @@ A pre-existing fact that is NOT this defect and is recorded so the owner's
 "validation returns false" is not over-read: `tiphys validate --type verdict`
 with no `--context` exits 1 on EVERY verdict, on v0.1.0 and on main alike,
 because the context-requiring derived checks print `SKIPPED ... no context`
-and a skipped check is a failure by design (src/commands/validate.ts:479).
+and a skipped check is a failure by design (src/commands/validate.ts:480).
 Measured on main with a head added to a pulse verdict: no INVALID line,
 five SKIPPED lines, rc=1. So after this change the pulse history carries no
 INVALID line, and the command still exits 1 without a context. See open
 questions.
+
+Severities in the ten (grep of `severity:` per file): every one reads
+`verdict: APPROVE` beside at least one `medium` finding and no `high` or
+`critical` finding. So all ten satisfied v0.1.0's escalation rule
+([high, critical]) and are rejected only by M4-P10's widening to medium.

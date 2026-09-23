@@ -9,7 +9,6 @@
   "required": [
     "kind",
     "phase",
-    "head",
     "verdict",
     "produced-by",
     "framing",
@@ -31,7 +30,7 @@
       "pattern": "\\S"
     },
     "head": {
-      "$comment": "M4-P10, discharging DR-0012 condition 1's head clause (delivery/decisions/DR-0012-delegated-merge-authority.md:22): two independent clean-room reviews exist FOR THE CURRENT HEAD. WHY IT IS REQUIRED RATHER THAN OPTIONAL, decided here because the plan left the choice open and the migration cost is not zero. Before this field the only thing scoping a set of verdicts to one head was the DIRECTORY the operator pointed the gate at, a convention recorded as a declared reading in delivery/work-history/m3-p9.md and enforced by nothing. An OPTIONAL head leaves that convention in place for every document that omits it, which is the whole existing population, so the gate would keep grouping by directory and the clause would stay asserted by a human while reading as checked. Required is the only spelling that removes the convention. WHY FORTY LOWERCASE HEX AND NOT AN ABBREVIATION. A short sha and a full sha are two spellings of ONE fact, and no canonical form reconciles them: nothing here can know that a seven-character value is a prefix of a forty-character sibling without resolving both against a repository this schema is never given. Two spellings of one head would then form two groups of one, which is the fail-open direction, because a group of one is never compared to anything. The pattern refuses the abbreviation at the document boundary instead. Case is refused here and ALSO folded downstream by the derived check's `establishField`, so the two layers agree rather than one relying on the other. WHAT IT DOES NOT BUY, stated rather than left to be found. Nothing here checks that the value names a commit that exists, or that it is the commit the reviewer actually read; the field makes the CLAIM explicit and comparable between two documents, it does not make it true. And a verdict cannot carry the sha of the commit that CONTAINS it, because committing the verdict changes the tree and therefore the sha. `head` names the commit that was REVIEWED, which is an ancestor of the commit carrying the verdict.",
+      "$comment": "KERNEL 0.2.1 (DR-0053, DR-0054): OPTIONAL, AND PATTERN-CONSTRAINED WHEN PRESENT. This schema describes whether a document is WELL FORMED; whether a document is ADMISSIBLE EVIDENCE FOR A MERGE NOW is the gates' question, and M4-P10 had put the second kind of rule here, where it also judged every verdict a consumer wrote before the field existed (all 49 of pulse's committed verdicts at d4e491b, none of which could ever carry it). A historical document cannot satisfy a rule its author was never told about. THE STRICTNESS MOVED, IT WAS NOT DROPPED. DR-0012 condition 1's head clause (delivery/decisions/DR-0012-delegated-merge-authority.md:22) is enforced where the merge is decided: `partitionByAuditedHead` and the `merge-preconditions` corpus reader EXCLUDE a verdict that declares no head, by name, so it is never admitted toward a merge, and `headGroupFor` still refuses a same-phase sibling with no usable head. WHY FORTY LOWERCASE HEX AND NOT AN ABBREVIATION, unchanged from M4-P10: a short sha and a full sha are two spellings of ONE fact, no canonical form reconciles them without resolving both against a repository this schema is never given, and two spellings of one head would form two groups of one, which is the fail-open direction. So a PRESENT head is still refused here unless it is the full form: a document that stated its head wrongly is malformed, where a document that predates the field is not. WHAT IT DOES NOT BUY: nothing here checks that the value names a commit that exists, or the commit the reviewer read. A verdict cannot carry the sha of the commit that CONTAINS it, so `head` names the commit that was REVIEWED, an ancestor of the commit carrying the verdict.",
       "type": "string",
       "pattern": "^[0-9a-f]{40}$"
     },
@@ -88,7 +87,7 @@
     }
   },
   "if": {
-    "$comment": "WIDENED TO `medium` BY M4-P10, AND THAT WIDENING IS THE POINT OF THE FIELD LIST BELOW. As shipped by M3-P7 this enum read [high, critical] while DR-0012 condition 2 (delivery/decisions/DR-0012-delegated-merge-authority.md:23) bars an unresolved finding at high OR MEDIUM. So a verdict reading APPROVE beside a finding the review itself ranked `medium` validated at exit 0, and the merge precondition the schema exists to carry was one severity wider than the schema. `low` is deliberately still mergeable, which is what that same line of DR-0012 says. THE DANGEROUS INSTANCE, criterion 4(a), inverted into the closed vocabulary's reach. The rule wanted is APPROVE implies no high finding, and the direct spelling needs `not`, which schemas/README.md does not permit. `contains` matches the NON-empty case, which is the polarity that works here: a set that CONTAINS a finding the review itself ranked high or critical is a set whose verdict must be FIX-ROUND-NEEDED. `type: array` is restated inside because ajv 8.20.0 under `strict: true` refuses `contains` in a subschema that has not declared its type at the same level.",
+    "$comment": "KERNEL 0.2.1 (DR-0053, DR-0054): NARROWED BACK TO [high, critical], THE M3-P7 SHAPE RULE, AND THE MEDIUM HALF MOVED TO THE GATE. Two rules had been written as one. (1) The SHAPE rule M3-P7 shipped and v0.1.0 carried: a document reading APPROVE beside a finding the review itself ranked high or critical says yes while recording a reason to say no, and is self-contradictory whatever it is used for. That stays here. (2) M4-P10 widened the enum to medium for a different reason, stated in its own comment: so the schema would carry DR-0012 condition 2 (delivery/decisions/DR-0012-delegated-merge-authority.md:23), which bars a MERGE while a review carries an unresolved finding at high or medium. That is an admission rule: DR-0012 permits an APPROVE to record findings, and it is the merge it bars. Written here it rejected ten of pulse's committed 0.1.0-era verdicts, each an APPROVE beside a medium finding, which no author could have written differently at the time. So condition 2 lives where the merge is decided, `verdict-pair-approves` in src/checks.ts, whose `BLOCKING_SEVERITIES` is still [medium, high, critical] and refuses the merge exactly as strictly as before. THE DANGEROUS INSTANCE of rule (1), criterion 4(a), inverted into the closed vocabulary's reach: the direct spelling needs `not`, which schemas/README.md does not permit, so `contains` matches the non-empty case and a set that CONTAINS such a finding must carry FIX-ROUND-NEEDED. `type: array` is restated inside because ajv 8.20.0 under `strict: true` refuses `contains` in a subschema that has not declared its type at the same level.",
     "properties": {
       "findings": {
         "type": "array",
@@ -98,7 +97,7 @@
           "properties": {
             "severity": {
               "type": "string",
-              "enum": ["medium", "high", "critical"]
+              "enum": ["high", "critical"]
             }
           }
         }
@@ -106,7 +105,7 @@
     }
   },
   "then": {
-    "$comment": "So APPROVE beside a medium, high or critical finding fails HERE, naming the verdict field (widened from high by M4-P10). Restated in `properties` at this level because a bare `enum` under a name ajv cannot see declared is a compilation error under strictTypes.",
+    "$comment": "So APPROVE beside a high or critical finding fails HERE, naming the verdict field. Medium is the merge gate's, see the `if` comment (kernel 0.2.1). Restated in `properties` at this level because a bare `enum` under a name ajv cannot see declared is a compilation error under strictTypes.",
     "properties": {
       "verdict": {
         "type": "string",

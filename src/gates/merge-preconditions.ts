@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { pathsIdentifySameObject } from "../path-identity.ts";
 import {
+  declaresNoHead,
   describeAdmittedVerdicts,
   describeOffHeadVerdicts,
   loadCommittedVerdicts,
@@ -1227,6 +1228,18 @@ function readReviewCorpus(contextDirectory: string, head: string): ReviewCorpus 
   const excluded: OffHeadVerdict[] = [];
   const forHead: VerdictForHead[] = [];
   for (const entry of corpus.verdicts) {
+    /* KERNEL 0.2.1 (DR-0053, DR-0054). A verdict with NO head key is excluded
+       BY NAME before any relation is computed. Until 0.2.1 it reached
+       `relateDeclaredHead` with the empty string, failed to resolve, and was
+       excluded with the sentence "declares head , which does not resolve",
+       which named the wrong fact. The schema no longer requires the field, so
+       absence is now a well-formed document written before the field existed
+       and the ADMISSION rule is here: it is never admitted, so on a dual-tier
+       change it cannot count toward the two reviews condition 1 needs. */
+    if (declaresNoHead(entry.record)) {
+      excluded.push({ path: entry.path, declared: "", relation: { kind: "no-head" } });
+      continue;
+    }
     const declared = String(entry.record["head"] ?? "").toLowerCase();
     const relation = relateDeclaredHead(contextDirectory, declared, head);
     if (relation.kind === "same" || relation.kind === "evidence-only-ancestor") {

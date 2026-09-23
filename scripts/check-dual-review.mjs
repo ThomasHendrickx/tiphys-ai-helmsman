@@ -251,9 +251,14 @@ function parseArgs(argv) {
  * verdict that names a different head, or a head that is not a commit here at
  * all, is EXCLUDED and NAMED. See `resolveAuditedHead` in `src/checks.ts` for
  * the mechanism and for the two arms that were reproduced green before it.
- * `unkeyed` verdicts, the ones that do not say what they reviewed, are kept in
+ * `unkeyed` verdicts, the ones whose head is PRESENT and unusable, are kept in
  * the set on purpose: dropping them would turn today's red into a quiet
  * not-applicable, and the derived check is the thing that refuses them.
+ * KERNEL 0.2.1 (DR-0053, DR-0054) NARROWED THAT TO PRESENT-AND-UNUSABLE. A
+ * verdict with NO head key is the shape of every verdict written before the
+ * field existed, and keeping it to be refused made every run red on history a
+ * consumer cannot change, so `partitionByAuditedHead` now EXCLUDES it by name
+ * as `no-head` and it arrives here in `offHead`, never admitted.
  *
  * `unexaminable` IS THE HALF THIS LOOP USED TO THROW AWAY, AND THROWING IT AWAY
  * HERE COSTS MORE THAN IT DOES IN THE CHECK. This function decides both which
@@ -789,7 +794,7 @@ function main(argv) {
       `${GATE_ID}: ${String(found.paths.length)} verdict document(s) ${describeVerdictCorpusSource(found.source)}` +
         describeAnchor(found.anchor) +
         (found.offHead.length > 0
-          ? `, and ${String(found.offHead.length)} verdict document(s) about another commit, which are not evidence about this one`
+          ? `, and ${String(found.offHead.length)} verdict document(s) about another commit or declaring no head, which are not evidence about this one`
           : "") +
         (unexaminable > 0 ? `, and ${String(unexaminable)} candidate(s) that could not be examined` : "") +
         "\n",

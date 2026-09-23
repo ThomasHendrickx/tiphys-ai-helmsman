@@ -4162,7 +4162,30 @@ export type HeadRelation =
   /** Forty hex digits naming no commit in this repository. */
   | { kind: "unresolvable"; reason: string }
   /** git could not answer, so the relation is not known. Never admitted. */
-  | { kind: "undetermined"; reason: string };
+  | { kind: "undetermined"; reason: string }
+  /**
+   * The verdict carries no `head` key at all. KERNEL 0.2.1 (DR-0053): the
+   * schema no longer requires the field, because it judged every verdict a
+   * consumer wrote before the field existed, so absence is now a well-formed
+   * document and the ADMISSION rule lives here. Never admitted.
+   */
+  | { kind: "no-head" };
+
+/**
+ * Does this verdict declare no head AT ALL?
+ *
+ * KERNEL 0.2.1 (DR-0053, DR-0054). ABSENCE ONLY, and the narrowness is the
+ * point. A document with no `head` key is the shape every verdict written
+ * before M4-P10 has, so it is HISTORY: it is excluded from every merge corpus
+ * by name and is never admitted, and it no longer reddens a gate by merely
+ * existing. A document whose `head` is PRESENT and unusable (null, empty, an
+ * abbreviation, a list) is a document that tried to state its head and stated
+ * it wrongly, which the schema still refuses, so it keeps the M4-P10 treatment
+ * in `partitionByAuditedHead` and `headGroupFor`: kept, refused, red.
+ */
+export function declaresNoHead(record: Record<string, unknown> | undefined): boolean {
+  return record === undefined || !("head" in record);
+}
 
 /**
  * Ask git whether `candidate` is an ancestor of `descendant`.
@@ -4380,6 +4403,25 @@ export function partitionByAuditedHead(
   const unkeyed: Diagnostic[] = [];
   const unkeyedVerdicts: LoadedVerdict[] = [];
   for (const candidate of verdicts) {
+    /* KERNEL 0.2.1 (DR-0053, DR-0054). A verdict with NO head key is EXCLUDED
+       BY NAME, never kept to be refused. Until 0.2.1 it was kept in the corpus
+       so the derived check would redden on it, which was right while the schema
+       required the field and wrong once measured against a real consumer: all
+       49 of pulse's committed verdicts predate the field, so every later run of
+       this gate would have been red on history it cannot change. Excluded is
+       still never admitted: under a review budget (`--base`, which the gate
+       runner always supplies) a dual-tier change whose reviews carry no head
+       has fewer than two admitted verdicts and is red, and the exclusion line
+       names each document. Without `--base` (the bare workflow step) a corpus
+       holding ONLY head-less verdicts is not-applicable with each one named,
+       which is the treatment a corpus of reviews of other commits already
+       gets (CR-VS-001); that arm is weaker than 0.2.0 and is stated, not
+       hidden. A same-phase sibling with no head still reddens the group
+       through `headGroupFor`, which is deliberately unchanged. */
+    if (declaresNoHead(candidate.record)) {
+      offHead.push({ path: candidate.path, declared: "", relation: { kind: "no-head" } });
+      continue;
+    }
     const key = headKeyOf(candidate.record, candidate.path);
     if (!key.ok) {
       unkeyed.push({ pointer: "#/head", message: key.message });
@@ -4408,8 +4450,14 @@ export function describeOffHeadVerdicts(
   return [...offHead]
     .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
     .map((entry) => {
-      const head = `${entry.path} declares head ${entry.declared}, which`;
       const tail = `it is not evidence about the commit under audit ${auditedHead}`;
+      if (entry.relation.kind === "no-head") {
+        return (
+          `${entry.path} declares no head, so it does not say which commit it reviewed and is never admitted ` +
+          `toward a merge; a verdict written before the field existed is history (DR-0054) and ${tail}`
+        );
+      }
+      const head = `${entry.path} declares head ${entry.declared}, which`;
       if (entry.relation.kind === "unresolvable") {
         return `${head} does not resolve to a commit in this repository at all, so it is evidence about an object nobody can produce and ${tail}`;
       }
@@ -4891,6 +4939,179 @@ export function reviewFamiliesProvenanceLine(provenance: ReviewFamiliesProvenanc
   );
 }
 
+/**
+ * The commit that FIRST added `review-families` to the charter, in the history
+ * of `refSha`, with its parents.
+ *
+ * KERNEL 0.2.1 (DR-0054). "First" is the earliest commit, in topological order
+ * over the FULL history of `./charter.yaml`, whose charter carries the key. A
+ * declaration that was added, removed and added again is therefore dated from
+ * its FIRST appearance, which is the WIDER scope and so the stricter one: more
+ * verdicts are read, never fewer. The key is detected by DECODING each blob,
+ * never by a textual search, because a comment or a quoted string mentioning
+ * the word is not a declaration.
+ *
+ * A SHALLOW HISTORY IS THE FAIL-CLOSED DIRECTION, and it is stated because it
+ * is the case a CI checkout produces. At a shallow boundary git reports no
+ * parents, so the boundary commit reads as the declaration's origin with
+ * nothing before it, and EVERY verdict in the tree is read, which is 0.2.0's
+ * whole-corpus behaviour. A shallow clone can make this check stricter than
+ * DR-0054 asks; it cannot make it more permissive.
+ */
+function firstDeclarationCommit(
+  contextDirectory: string,
+  refSha: string,
+): { ok: true; sha: string; parents: string[] } | { ok: false; reason: string } {
+  const logged = gitIn(
+    [
+      "log",
+      "--reverse",
+      "--topo-order",
+      "--full-history",
+      "--format=%H %P",
+      refSha,
+      "--",
+      `./${CHARTER_DOCUMENT}`,
+    ],
+    contextDirectory,
+  );
+  if (!logged.ok) {
+    return {
+      ok: false,
+      reason:
+        `the history of ${CHARTER_DOCUMENT} in ${refSha} could not be read, so the commit that first declared ` +
+        `${REVIEW_FAMILIES_FIELD} is unknown and which verdicts the declaration can be held to cannot be decided: ${logged.reason}`,
+    };
+  }
+  for (const line of logged.stdout.split("\n")) {
+    const [sha, ...parents] = line.trim().split(/\s+/).filter((word) => word !== "");
+    if (sha === undefined) {
+      continue;
+    }
+    const shown = gitIn(["show", `${sha}:./${CHARTER_DOCUMENT}`], contextDirectory);
+    if (!shown.ok) {
+      /* The commit that DELETED the charter is in this log too, and it carries
+         no charter to read. That is an answer about that commit, not a failure
+         to read the history. */
+      continue;
+    }
+    const decoded = decodeDocument(shown.stdout, join(contextDirectory, CHARTER_DOCUMENT));
+    if (!decoded.ok) {
+      continue;
+    }
+    const record = asRecord(decoded.value);
+    if (record !== undefined && REVIEW_FAMILIES_FIELD in record) {
+      return { ok: true, sha, parents };
+    }
+  }
+  return {
+    ok: false,
+    reason:
+      `${CHARTER_DOCUMENT} declares ${REVIEW_FAMILIES_FIELD} at ${refSha} and no commit in its history was found ` +
+      `whose ${CHARTER_DOCUMENT} carries it, so the declaration cannot be dated and which verdicts it can be held ` +
+      `to cannot be decided`,
+  };
+}
+
+/** Every blob id committed under `delivery/` at one commit, keyed by context-relative path. */
+function paperworkBlobIds(
+  contextDirectory: string,
+  sha: string,
+): { ok: true; ids: Map<string, string> } | { ok: false; reason: string } {
+  const ids = new Map<string, string>();
+  const typed = gitIn(["cat-file", "-t", `${sha}:./${PAPERWORK_ROOT}`], contextDirectory);
+  if (!typed.ok) {
+    /* Absent, or could not look: the same two answers `listCommittedTree`
+       separates, separated the same way. */
+    const readable = gitIn(["cat-file", "-t", sha], contextDirectory);
+    return readable.ok
+      ? { ok: true, ids }
+      : { ok: false, reason: `${sha} could not be read in ${contextDirectory}: ${readable.reason}` };
+  }
+  const listed = gitIn(["ls-tree", "-r", "-z", sha, "--", `./${PAPERWORK_ROOT}/`], contextDirectory);
+  if (!listed.ok) {
+    return { ok: false, reason: `${sha}:./${PAPERWORK_ROOT} could not be listed: ${listed.reason}` };
+  }
+  for (const entry of listed.stdout.split("\0")) {
+    /* `<mode> SP <type> SP <object> TAB <path>`, and the path is relative to
+       the directory git ran in, which is the context directory, exactly as
+       `listCommittedTree` relies on. */
+    const tab = entry.indexOf("\t");
+    if (tab < 0) {
+      continue;
+    }
+    const [, type, object] = entry.slice(0, tab).split(" ");
+    if (type === "blob" && object !== undefined) {
+      ids.set(join(contextDirectory, entry.slice(tab + 1)), object);
+    }
+  }
+  return { ok: true, ids };
+}
+
+/**
+ * Keep only the verdicts committed AT OR AFTER the commit that first declared
+ * `review-families` (DR-0054).
+ *
+ * "COMMITTED BEFORE" IS DECIDED BY CONTENT, NOT BY PATH OR DATE. A verdict is
+ * history exactly when its blob, byte for byte, was already committed under
+ * `delivery/` in a parent of the declaration commit. So a document edited after
+ * the declaration is read (its bytes are new), a document renamed without an
+ * edit is not (its bytes are old), and a document added IN the declaration
+ * commit is read, because "at or after" includes the commit itself. Dates are
+ * not used at all: author and committer dates are writable by the author and a
+ * scope decided by them would be decided by the party being checked.
+ */
+function scopeToDeclaration(
+  contextDirectory: string,
+  refSha: string,
+  verdicts: readonly LoadedVerdict[],
+): { ok: true; verdicts: LoadedVerdict[]; sentence: string } | { ok: false; reason: string } {
+  const declaration = firstDeclarationCommit(contextDirectory, refSha);
+  if (!declaration.ok) {
+    return declaration;
+  }
+  const current = paperworkBlobIds(contextDirectory, refSha);
+  if (!current.ok) {
+    return { ok: false, reason: current.reason };
+  }
+  const history = new Set<string>();
+  for (const parent of declaration.parents) {
+    const before = paperworkBlobIds(contextDirectory, parent);
+    if (!before.ok) {
+      return {
+        ok: false,
+        reason:
+          `the tree before the declaration (${parent}, parent of ${declaration.sha}) could not be read, so which ` +
+          `verdicts are history cannot be decided: ${before.reason}`,
+      };
+    }
+    for (const id of before.ids.values()) {
+      history.add(id);
+    }
+  }
+  const kept: LoadedVerdict[] = [];
+  let historical = 0;
+  for (const candidate of verdicts) {
+    const id = current.ids.get(candidate.path);
+    /* An id this listing cannot produce for a document the same commit's
+       loader just read is kept, not dropped: dropping is the fail-open
+       direction for a falsifier. */
+    if (id !== undefined && history.has(id)) {
+      historical += 1;
+      continue;
+    }
+    kept.push(candidate);
+  }
+  return {
+    ok: true,
+    verdicts: kept,
+    sentence:
+      `(scope, DR-0054: the ${String(kept.length)} verdict document(s) committed at or after ${declaration.sha}, ` +
+      `the commit that first declared ${REVIEW_FAMILIES_FIELD}; ${String(historical)} committed before it are ` +
+      `history and were not read)`,
+  };
+}
+
 /** What the single-family arm concluded about one committed corpus. */
 export type SingleFamilyOutcome =
   | { kind: "not-declared" }
@@ -4923,12 +5144,20 @@ export type SingleFamilyOutcome =
  * declaration could name a family nothing in the record uses and still buy the
  * relaxation.
  *
- * THE SCOPE IS THE WHOLE COMMITTED CORPUS, NOT THE ONE (phase, head) GROUP,
- * and that is deliberate. "This project has one family available" is a claim
- * about the project, so the widest set of its own verdicts is what can refute
- * it. Scoping the falsifiers to the group under review would let a project
- * whose history carries three families declare one, provided the two reviews
- * in front of the check happened to agree.
+ * THE SCOPE IS THE COMMITTED CORPUS FROM THE DECLARATION ONWARD, NOT THE ONE
+ * (phase, head) GROUP. "This project has one family available" is a claim
+ * about the project, so the widest set of its own verdicts the claim can
+ * honestly be held to is what can refute it. Scoping the falsifiers to the
+ * group under review would let a project declare one family while its current
+ * work used three, provided the two reviews in front of the check agreed.
+ *
+ * KERNEL 0.2.1 WITHDREW THE WHOLE-HISTORY HALF OF THAT SCOPE (DR-0054, owner
+ * decision): "Tiphys judges current and future work, never history." A verdict
+ * committed before the commit that first added the declaration was written
+ * when no claim existed, so it cannot contradict one, and a project whose past
+ * shows two families may now declare one. `scopeToDeclaration` is the whole
+ * change. What DR-0054 keeps: any verdict committed at or after that commit and
+ * naming a second family still reddens.
  *
  * WHAT IT DOES NOT CATCH, said here and not only in the plan: a project with a
  * second family AVAILABLE that has simply never used it. Nothing in a record of
@@ -4995,8 +5224,22 @@ export function singleFamilyException(
   if (!paperwork.ok) {
     return { kind: "error", reason: paperwork.reason };
   }
-  const corpus = paperwork.verdicts;
-  const corpusScope = describeVerdictCorpusSource(paperwork.source);
+  /* KERNEL 0.2.1 (DR-0054): THE FALSIFIERS READ ONLY WHAT WAS COMMITTED AT OR
+     AFTER THE DECLARATION. Before the commit that first added the declaration
+     the project had made no claim, so nothing it did then can contradict one;
+     the owner's rule is that Tiphys judges current and future work and never
+     history. What stays: once declared, any LATER verdict naming a second
+     family, or naming none, still reddens. `paperwork.source.kind` is always
+     "commit" here, for the reason the unreachable arm above states. */
+  const scoped =
+    paperwork.source.kind === "commit"
+      ? scopeToDeclaration(contextDirectory, paperwork.source.refSha, paperwork.verdicts)
+      : ({ ok: false, reason: "the falsifiers' corpus was not read from a commit" } as const);
+  if (!scoped.ok) {
+    return { kind: "error", reason: scoped.reason };
+  }
+  const corpus = scoped.verdicts;
+  const corpusScope = `${describeVerdictCorpusSource(paperwork.source)} ${scoped.sentence}`;
   const declared = reading.families[0] as string;
   const provenance = reviewFamiliesProvenanceLine(reading.provenance);
   const violations: Diagnostic[] = [];
