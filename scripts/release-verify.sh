@@ -66,6 +66,16 @@ usage: scripts/release-verify.sh <name> <version> [--tarball <path>]
   --records    where to write the JSON evidence records
                (default <workdir>/release-verify-records.json)
   --workdir    install here instead of the current directory
+  --wait-seconds <n>
+               registry mode only: how long to wait for the registry to
+               SERVE <name>@<version> before running any step (default 900,
+               or RELEASE_VERIFY_WAIT_SECONDS). 0 means poll exactly once.
+  --poll-seconds <n>
+               registry mode only: the pause between polls (default 15, or
+               RELEASE_VERIFY_POLL_SECONDS); at least 1
+
+  exit 0 verified; 1 a step failed or the run was refused; 64 usage;
+  75 the registry did not serve the version within the wait (no step ran)
 USAGE
 }
 
@@ -74,12 +84,16 @@ VERSION=""
 TARBALL=""
 RECORDS=""
 WORKDIR=""
+WAIT_SECONDS="${RELEASE_VERIFY_WAIT_SECONDS:-900}"
+POLL_SECONDS="${RELEASE_VERIFY_POLL_SECONDS:-15}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --tarball) TARBALL="${2:?--tarball needs a value}"; shift 2 ;;
     --records) RECORDS="${2:?--records needs a value}"; shift 2 ;;
     --workdir) WORKDIR="${2:?--workdir needs a value}"; shift 2 ;;
+    --wait-seconds) WAIT_SECONDS="${2:?--wait-seconds needs a value}"; shift 2 ;;
+    --poll-seconds) POLL_SECONDS="${2:?--poll-seconds needs a value}"; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     --*) echo "release-verify: unrecognised option $1" >&2; usage; exit 64 ;;
     *)
@@ -94,6 +108,12 @@ done
 if [ -z "$NAME" ] || [ -z "$VERSION" ]; then
   usage; exit 64
 fi
+case "$WAIT_SECONDS" in
+  ''|*[!0-9]*) echo "release-verify: --wait-seconds must be a whole number of seconds, got '$WAIT_SECONDS'" >&2; usage; exit 64 ;;
+esac
+case "$POLL_SECONDS" in
+  ''|*[!0-9]*|0) echo "release-verify: --poll-seconds must be a whole number of seconds, at least 1, got '$POLL_SECONDS'" >&2; usage; exit 64 ;;
+esac
 
 # `pwd -P` AND NOT `pwd`. bash's default pwd is the LOGICAL path, so a workdir
 # reached through a symlink into a checkout reports the symlink's own ancestry
@@ -287,6 +307,110 @@ if [ -n "$CONTAMINATION" ]; then
   exit 1
 fi
 record clean-environment 0 "resolution probe for $NAME from $WORKDIR"
+
+# ---------------------------------------------------------------------------
+# REGISTRY MODE WAITS UNTIL THE REGISTRY SERVES THE VERSION, and only then runs
+# the steps below, unchanged.
+#
+# THE MECHANISM THIS CLOSES: a post-publish verification that treats "not yet
+# served" the same as "served and broken". Measured on release run
+# 35839356656: `npm publish` printed "Your package is being processed and may
+# take a few minutes to become available", this script ran one second later,
+# `npm install` could not resolve the version, and all five steps failed. The
+# registry's own publish time for that version was about five minutes after
+# the publish step, and the same command run by hand at that point exited 0.
+#
+# WHAT "SERVED" MEANS HERE: `npm view <name>@<version> version`, with a fresh
+# cache and --prefer-online, exits 0 AND prints exactly <version>. Both halves,
+# because the real not-yet-served answer (witness/captures/
+# release-verify-registry-not-served.txt) is an E404 on stderr with an empty
+# stdout, and a network failure is also a nonzero exit. Neither is "served",
+# and neither is final, so both are polled again until the deadline.
+#
+# BOUNDED, AND THE BOUND IS DISTINCT FROM A STEP FAILURE. Default 900s: npm
+# says "a few minutes" and the one measurement is about five, so fifteen is
+# three times what was observed and still far inside any job timeout. On
+# expiry the script exits 75 with "NOT SERVED" and runs NO step, so a
+# never-served version cannot be mistaken for a served and broken one. A
+# served and broken version passes this wait on its first poll and fails at
+# its step exactly as before.
+#
+# TARBALL MODE DOES NOT WAIT: it installs a local file and asks the registry
+# nothing, so there is nothing to wait for.
+# ---------------------------------------------------------------------------
+wait_for_registry() {
+  local wait_cache="$WORKDIR/.release-verify-wait-cache"
+  local err_file; err_file="$(mktemp)"
+  local started; started="$(date +%s)"
+  local deadline=$((started + WAIT_SECONDS))
+  local first_at; first_at="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+  local attempts=0 code=0 observed="" last_at="" now=0 served=no
+  while :; do
+    attempts=$((attempts + 1))
+    rm -rf "$wait_cache"
+    code=0
+    observed="$(npm view "$NAME@$VERSION" version --cache "$wait_cache" --prefer-online 2>"$err_file")" || code=$?
+    last_at="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+    if [ "$code" -eq 0 ] && [ "$observed" = "$VERSION" ]; then
+      served=yes
+      break
+    fi
+    now="$(date +%s)"
+    if [ $((now + POLL_SECONDS)) -gt "$deadline" ]; then
+      break
+    fi
+    echo "release-verify: $NAME@$VERSION not served yet (poll $attempts, npm view exited $code); polling again in ${POLL_SECONDS}s" >&2
+    sleep "$POLL_SECONDS"
+  done
+  rm -rf "$wait_cache"
+  local elapsed=$(( $(date +%s) - started ))
+  local exit_code=0
+  [ "$served" = yes ] || exit_code=75
+  node -e '
+    const [records, name, version, workdir, exitCode, attempts, deadline, poll,
+      firstAt, lastAt, elapsed, npmExit, observed, errFile] = process.argv.slice(1);
+    const fs = require("node:fs");
+    const stderr = fs.readFileSync(errFile, "utf8").split("\n")
+      .filter((line) => line.startsWith("npm error") && !line.includes("complete log"))
+      .slice(0, 3);
+    fs.appendFileSync(records, JSON.stringify({
+      step: "registry-served",
+      package: name,
+      version,
+      artifact: "registry",
+      command: "npm view " + name + "@" + version + " version --prefer-online (fresh cache per poll)",
+      exitCode: Number(exitCode),
+      served: Number(exitCode) === 0,
+      attempts: Number(attempts),
+      deadlineSeconds: Number(deadline),
+      pollSeconds: Number(poll),
+      firstPollAt: firstAt,
+      lastPollAt: lastAt,
+      elapsedSeconds: Number(elapsed),
+      lastNpmExitCode: Number(npmExit),
+      lastStdout: observed,
+      lastStderr: stderr,
+      resolvedPackagePath: null,
+      sourceTreeOnResolutionPath: null,
+      workdir,
+      at: new Date().toISOString(),
+    }) + "\n");
+  ' "$RECORDS" "$NAME" "$VERSION" "$WORKDIR" "$exit_code" "$attempts" \
+    "$WAIT_SECONDS" "$POLL_SECONDS" "$first_at" "$last_at" "$elapsed" \
+    "$code" "$observed" "$err_file"
+  rm -f "$err_file"
+  if [ "$served" != yes ]; then
+    echo "release-verify: NOT SERVED. The registry did not serve $NAME@$VERSION within $WAIT_SECONDS seconds ($attempts poll(s), last npm view exit $code)." >&2
+    echo "release-verify: no step was run, so this says nothing about whether the package works. Re-run once the registry serves the version." >&2
+    echo "release-verify: records in $RECORDS" >&2
+    exit 75
+  fi
+  echo "release-verify: the registry serves $NAME@$VERSION (poll $attempts, after ${elapsed}s)"
+}
+
+if [ -z "$TARBALL" ]; then
+  wait_for_registry
+fi
 
 # ---------------------------------------------------------------------------
 # E4.3's four witnesses.
