@@ -1692,7 +1692,7 @@ test("a binding rule relocated out of binding force is caught, in every containe
     const text = r.build(s, now);
     assert.notEqual(text, now, `${r.name}: the fixture changed the file`);
     assert.ok(normalise(text).includes(r.kept ?? NEVER_KEPT), `${r.name}: the words are kept`);
-    const got =
+    const got: string[] =
       r.arm === "removal"
         ? uncoveredRemovals(doc, "CLAUDE.md", base, text)
         : r.arm === "heading"
