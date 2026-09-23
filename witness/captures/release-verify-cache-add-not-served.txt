@@ -1,0 +1,33 @@
+REAL CAPTURED OUTPUT of npm cache add against the public registry. This is
+the request path scripts/release-verify.sh polls first (fix round 1, Opus
+CR-001): npm cache add fetches the abbreviated packument and the tarball, the
+same path npm install uses. Produced by a capture script on 2026-09-23 with
+node v26.6.0 and npm 11.18.0, from an empty scratch directory, fresh cache per
+command. 9.9.9 was never published; 0.2.0 is published.
+
+NO ALTERATION. Everything below this header is the capture byte for byte. The
+*** in the debug-log path is npm's own redaction of the session id, as in
+witness/captures/release-verify-registry-not-served.txt.
+captured 2026-09-23T10:20:51Z, node v26.6.0, npm 11.18.0
+=== npm cache add @tiphys/kernel@9.9.9 --fetch-retries=0 (fresh cache)
+exit=1
+--- stdout:
+--- stderr:
+npm error code ETARGET
+npm error notarget No matching version found for @tiphys/kernel@9.9.9.
+npm error notarget In most cases you or one of your dependencies are requesting a package version that doesn't exist.
+npm notice
+npm notice New major version of npm available! 11.18.0 -> 12.1.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0
+npm notice To update run: npm install -g npm@12.1.0
+npm notice
+npm error A complete log of this run can be found in: /tmp/claude-0/-home-user/***/scratchpad/rvw/cap2/c/_logs/2026-09-23T10_20_51_566Z-debug-0.log
+=== npm cache add @tiphys/kernel@0.2.0 --fetch-retries=0 (fresh cache)
+exit=0
+--- stdout:
+--- stderr:
+npm notice
+npm notice New major version of npm available! 11.18.0 -> 12.1.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0
+npm notice To update run: npm install -g npm@12.1.0
+npm notice

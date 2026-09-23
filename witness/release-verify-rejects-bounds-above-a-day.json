@@ -1,0 +1,32 @@
+{
+  "id": "release-verify-rejects-bounds-above-a-day",
+  "behavior": "release-verify-rejects-bounds-above-a-day",
+  "tests": [
+    "release-verify rejects a wait or poll bound above 86400 seconds, by flag and by environment"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "MAX_SECONDS=86400",
+      "replace": "MAX_SECONDS=999999999999999999"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "  if [ \"${#digits}\" -gt \"${#MAX_SECONDS}\" ] || [ \"$digits\" -gt \"$MAX_SECONDS\" ]",
+      "replace": "  if [ \"$digits\" -gt \"$MAX_SECONDS\" ]"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "npm cache add, npm view and npm install against the public registry, spawned by scripts/release-verify.sh",
+    "captures": [
+      "witness/captures/release-verify-registry-not-served.txt",
+      "witness/captures/release-verify-cache-add-not-served.txt"
+    ],
+    "provenance": "Both captures are real output from npm 11.18.0 on node v26.6.0, 2026-09-23, against registry.npmjs.org with a fresh cache per command; the tests' stub npm replays their exit codes and stderr rather than typed strings. rule (f)'s shell arm binds scripts/release-verify.sh because it is a *.sh that spawns npm and node. TWO MEMBERS (Sonnet CR-002): member 0 raises the ceiling, so 86401 is accepted; member 1 keeps the ceiling and drops the length check that runs before the comparison, so a 19-digit value reaches an integer comparison bash cannot make."
+  }
+}
