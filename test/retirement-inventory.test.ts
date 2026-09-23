@@ -1663,11 +1663,21 @@ test("a block removed from CLAUDE.md with no disposition reddens the completenes
  * only its own members. Two reviews built these; every one of their bypasses
  * is a row here.
  */
-const RELOCATIONS: { name: string; arm: "removal" | "heading" | "disclaimer"; build: (s: ReturnType<typeof neverSplit>) => string }[] = [
+const NEVER_KEPT = "Never soften a work history.";
+/** The Red-witness rule's first paragraph, a prose rule rather than a list. */
+const RED_WITNESS = "A test only counts as guarding a behavior if it has been demonstrated red\nwithout the behavior and green with it.";
+const RELOCATIONS: {
+  name: string;
+  arm: "removal" | "heading" | "disclaimer";
+  kept?: string;
+  build: (s: ReturnType<typeof neverSplit>, now: string) => string;
+}[] = [
   { name: "inside an HTML comment", arm: "removal", build: (s) => `${s.before}## Never\n\n<!-- kept for search\n${s.body}\n-->\n` },
   { name: "inside a fenced block", arm: "removal", build: (s) => `${s.before}## Never\n\nThe former list, for search:\n\n\`\`\`\n${s.body}\n\`\`\`\n` },
   { name: "inside a details block", arm: "removal", build: (s) => `${s.before}## Never\n\n<details><summary>The list</summary>\n\n${s.body}\n</details>\n` },
-  { name: "inside a blockquote", arm: "removal", build: (s) => `${s.before}## Never\n\n${s.body.split("\n").map((l) => (l === "" ? ">" : `> ${l}`)).join("\n")}\n` },
+  // A blockquote whose continuation line is lazy, so the words survive unprefixed:
+  // only the blockquote arm can refuse it (a fully prefixed quote also changes the text).
+  { name: "inside a blockquote", arm: "removal", kept: normalise(RED_WITNESS), build: (_, now) => now.replace(RED_WITNESS, `> ${RED_WITNESS}`) },
   { name: "as an indented code block", arm: "removal", build: (s) => `${s.before}## Never\n\nThe list:\n\n${s.body.split("\n").map((l) => (l === "" ? "" : `    ${l}`)).join("\n")}\n` },
   { name: "under an unregistered ATX heading", arm: "heading", build: (s) => `${s.before}## Never\n\n## Archive\n\n${s.body}` },
   { name: "under an unregistered Setext heading", arm: "heading", build: (s) => `${s.before}## Never\n\nHistory\n=======\n\n${s.body}` },
@@ -1683,8 +1693,9 @@ test("a binding rule relocated out of binding force is caught, in every containe
   assert.deepEqual(ruleFileFindings(doc, "CLAUDE.md", base, now), [], "control: the live file is clean");
   const s = neverSplit(now);
   for (const r of RELOCATIONS) {
-    const text = r.build(s);
-    assert.ok(normalise(text).includes("Never soften a work history."), `${r.name}: the words are kept`);
+    const text = r.build(s, now);
+    assert.notEqual(text, now, `${r.name}: the fixture changed the file`);
+    assert.ok(normalise(text).includes(r.kept ?? NEVER_KEPT), `${r.name}: the words are kept`);
     const got =
       r.arm === "removal"
         ? uncoveredRemovals(doc, "CLAUDE.md", base, text)
