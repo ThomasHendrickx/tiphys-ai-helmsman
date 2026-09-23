@@ -1033,7 +1033,13 @@ the sibling for both checks; merge-preconditions reaches its repository
 condition with no `condition-1=red` or `condition-2=red`. Arm 2, the control:
 the same sibling with a present, abbreviated head reddens both gates with
 `INVALID #/head ... declares head <7 hex>, which is not forty lowercase
-hexadecimal digits`. Both arms compare git's live name list with a new real
+hexadecimal digits`. The abbreviated head is written QUOTED: the full
+suite on the merged tree failed this test once, because that run's reviewed
+sha began `0259038`, which YAML reads as a number, so the gate refused it
+with `declares head as a number` instead (still a refusal, a different
+message). Unquoted, the arm fails whenever the seven characters parse as a
+number, about one run in 27 for all-decimal alone. After quoting, the test
+passed three consecutive runs. Both arms compare git's live name list with a new real
 capture, `budget-name-list-m3-p3-sibling` in
 witness/captures/kernel-0-2-1-history-git.json (git 2.43.0).
 
@@ -1264,17 +1270,20 @@ and what settles each:
   naming the sibling, and merge-preconditions with no condition-1 or
   condition-2 red.
 - 997: a line of the derivation's captured output.
-- 1044: captured gate output (the red before the fix).
-- 1075: describes a mutation; the hand trial on the same row settles it.
-- 1138: "an unstamped document never reached the comparison" at b57bd7c: the
+- 1040: "whenever", in the flake note: the arm fails when the seven
+  characters parse as a number; measured once (the `0259038` run), and the
+  rate is arithmetic, (10/16)^7 for all-decimal.
+- 1050: captured gate output (the red before the fix).
+- 1081: describes a mutation; the hand trial on the same row settles it.
+- 1144: "an unstamped document never reached the comparison" at b57bd7c: the
   new test is red there with `Missing expected exception: {}`, the `{}` being
   the unstamped record (captured above).
-- 1214: "needs a", inside open question 9, which is a question.
-- 1226: "cannot be decoded" describes an input (an undecodable file), not a
+- 1220: "needs a", inside open question 9, which is a question.
+- 1232: "cannot be decoded" describes an input (an undecodable file), not a
   claim about the code.
-- 1235: the grep command itself.
+- 1241: the grep command itself.
 
 Occurrences, counted the same way in both forms after this section was
-written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 53, and the
-wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 53.
-Equal, so no hit was missed by wrapping. The hits after line 1235 are this section quoting the ones above it.
+written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 55, and the
+wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 55.
+Equal, so no hit was missed by wrapping. The hits after line 1241 are this section quoting the ones above it.

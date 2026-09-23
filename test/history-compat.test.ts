@@ -264,7 +264,12 @@ function stageReviewedChange(
     }
     if (entry.abbreviatedHead === true) {
       assert.doesNotMatch(body, /^head:/m, `${entry.from} already carries a head`);
-      body = body.replace(/^(phase: .*)$/m, `$1\nhead: ${reviewed.slice(0, 7)}`);
+      /* QUOTED, because the reviewed sha changes with every staging and an
+         abbreviation that YAML reads as a number (all decimal digits, about
+         1 run in 27, or a form such as 12e4567) is not a string at all. That is refused too, with a different
+         message ("declares head as a number"), so unquoted the assertion on
+         the pattern message below was flaky; measured once in the full suite. */
+      body = body.replace(/^(phase: .*)$/m, `$1\nhead: "${reviewed.slice(0, 7)}"`);
       writeFileSync(join(dir, "delivery", "review", entry.as), body);
       continue;
     }
