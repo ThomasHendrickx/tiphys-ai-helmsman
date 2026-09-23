@@ -256,9 +256,72 @@ shortened with `...`, the three `i` summary lines are joined with ` / `, and
 the parenthesised assertion message is the first `AssertionError` line for
 that test. The per-test verdicts and exit codes are as printed.
 
+### Re-run at the final script (head `319b55c`), all three witnesses
+
+After the record-field edit in `319b55c`, the same scratch script was run
+again over ALL THREE witness specs that touch scripts/release-verify.sh,
+including the pre-existing
+witness/release-verify-refuses-contaminated-resolution-path.json. Every find
+string matched exactly once (the script prints `find occurs N times` and
+skips the member otherwise; no such line appeared). Result, one line per
+member, same PASS/FAIL/i substitution as above:
+
+| witness | member | named tests red | exit |
+|---|---|---|---|
+| refuses-contaminated-resolution-path | 0, 1, 2 | 1 of 1 each | 1 |
+| waits-for-the-registry-to-serve-the-version | 0 | 3 of 3 | 1 |
+| waits-for-the-registry-to-serve-the-version | 1 | 2 of 3 (served-but-broken stays green) | 1 |
+| waits-for-the-registry-to-serve-the-version | 2 | 2 of 3 (never-served stays green) | 1 |
+| tarball-mode-makes-no-registry-poll | 0, 1 | 1 of 1 each | 1 |
+
+The script ended `restored, tree clean`.
+
+**This is a HAND run, not the gate.** The `red-witness` gate is
+not-applicable on this branch (its precondition needs a changed path under
+`src/`, `bin/` or `plugin/`; see the bundle below), so no gate evaluated these
+specs. They will be evaluated as STORED witnesses by the first later phase
+whose diff touches scripts/release-verify.sh AND src/, bin/ or plugin/. The
+harness's own `repeats: 2` and head-green control were not exercised here.
+
 ## Green
 
-(Filled in below as the runs complete.)
+All on node v26.6.0, npm 11.18.0, in this worktree, `dist/` built.
+
+- `npm ci` exit 0. `npm run build` exit 0 (after one type fix, `c777611`);
+  `git status --porcelain` empty afterwards.
+- `npm test` (the package script, `node --test "test/**/*.test.ts"`), at
+  `319b55c`: **1399 tests, 1399 pass, 0 fail, 0 skipped**, 0 cancelled, 0
+  todo, exit 0, duration 966s.
+- The eight release-verify tests alone, same toolchain, dist built: 8 tests, 8
+  pass, 0 fail, 0 skipped (the dist-gated clean-directory tarball test ran).
+- Local PR bundle,
+  `./scripts/m2-exit-test.sh --no-build --bundle pr --base origin/main --head HEAD --phase claude/release-verify-waits-for-registry <scratch>`,
+  exit 0:
+
+  ```
+  gates: declared 15 applicable 7 verdict 7 green 7 red 0 not-applicable 8 error 0 vacuous 0
+  gates: suite: green: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 1399 test(s) from 68 file(s) (pass 1399, fail 0, skipped 0, todo 0, did-not-run 0); discovered 68 file(s) walking test for .test.ts; 1274 behavior(s) resolve; merge base cb5de0d29061
+  gates: citations: not-applicable: precondition citations-diff-touches-documents evaluated and unmet: no changed path under delivery/plan/, delivery/verification/, delivery/decisions/, delivery/tuition/, delivery/requirements/, delivery/STATE.md
+  gates: scope: not-applicable: precondition scope-branch-is-a-phase-branch evaluated and unmet: branch claude/release-verify-waits-for-registry does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
+  gates: red-witness: not-applicable: precondition red-witness-diff evaluated and unmet: no changed path under src/, bin/, plugin/
+  gates: required gate(s) not applicable: citations, scope, red-witness, gate-classes
+  m2-assert (PR bundle): OK. 15 gate record(s) match section 1.4; ...
+  m2-green: OK. 3 diff-scoped gate(s) demonstrated green on a triggering state.
+  ```
+
+  The seven green: manifest-self-check, coverage, credential-scrub, suite,
+  clause-map, brief-drift, typecheck. Four REQUIRED gates are not applicable
+  on this branch by their own preconditions (quoted above), so this bundle is
+  NOT evidence that citations, scope, red-witness or gate-classes asserted
+  anything about this change.
+- `node scripts/check-authored-bytes.mjs` exit 0 (clean index, `319b55c`).
+- Against the REAL registry, from an empty scratch directory, at 09:23Z:
+  `release-verify.sh @tiphys/kernel 0.2.0` exit 0, `registry-served` record
+  `attempts 1`, `elapsedSeconds 1`, `lastStdout "0.2.0"`; and
+  `release-verify.sh @tiphys/kernel 9.9.9 --wait-seconds 20 --poll-seconds 5`
+  exit 75, `NOT SERVED ... within 20 seconds (4 poll(s), last npm view exit 1)`,
+  records exactly `clean-environment` and `registry-served` with
+  `lastStderr ["npm error code E404","npm error 404 No match found for version 9.9.9","npm error 404"]`.
 
 ## Derivation: every place that reads the registry right after a publish
 
@@ -337,4 +400,45 @@ it is the one fixed.
 
 ## Claim grep
 
-(Filled in below after the final edit.)
+Line-based form (the binding command), run on this file before the final
+section was added:
+
+```
+30:answer is yes; only then are the unchanged steps run. A version that is never
+118:   the registry never serves the version` (never, wait 3, poll 1): exit 75,
+127:4. `release-verify in tarball mode makes no registry poll` (registry never
+154:no witness is REQUIRED by coverage. Two are added anyway, because the
+197:x release-verify in registry mode times out with NOT SERVED and exit 75 when the registry never serves the version (3473.401672ms)
+234:FAIL ... times out with NOT SERVED and exit 75 when the registry never serves the version
+269:scripts/license-gate.mjs:453: ... the production set cannot be READ; ...
+332:- The capture is of a version that is NEVER served (9.9.9), not of a version
+```
+
+(Line 269 shortened here with `...`; it is the pasted derivation output.)
+Wrap-insensitive form: `never` 6, `NEVER` 1, `anyway` 1, `cannot be` 1, which
+is 9, the same 9 occurrences the line-based form shows. Zero missed by wrap.
+
+Each hit settled:
+
+- `never` / `NEVER` (30, 118, 127, 197, 234, 332): every one names a test
+  scenario (the stub's `"never"` mode, which answers not-served to every
+  request) or the 9.9.9 fixture version, not a claim about the world. The
+  9.9.9 half is settled by the capture (exit 1, E404) and by the real-registry
+  run in "Green" (exit 75 after 4 polls).
+- `anyway` (154): "Two are added anyway" is settled by the adjacent citation
+  of the coverage list at src/gates/red-witness.ts:164 and the bundle's
+  `red-witness: not-applicable` line.
+- `cannot be` (269): inside pasted grep output from scripts/license-gate.mjs,
+  not a claim made here.
+
+Re-run of both forms on the FINAL file, after the last three sections were
+added. The line-based form adds two NEW lines outside this section: 274
+(`never-served`, a test label in the witness table) and 280 (`needs a`, "its
+precondition needs a changed path under src/, bin/ or plugin/", settled by the
+quoted bundle line `red-witness: not-applicable: precondition
+red-witness-diff evaluated and unmet: no changed path under src/, bin/,
+plugin/`). Every other new hit is inside this section, quoting the hits above.
+On the final file the wrap-insensitive form and `grep -oEi` over the lines
+report IDENTICAL per-phrase occurrence counts, so no hit was split by a wrap.
+The counts themselves are not quoted here, because this section quotes the
+phrases and every quotation changes them.
