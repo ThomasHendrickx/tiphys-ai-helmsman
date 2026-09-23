@@ -1554,9 +1554,11 @@ test("release-verify's wait flags override the environment and a malformed bound
 
 test("release-verify bounds each registry poll, so a registry that never answers still ends within the deadline", () => {
   /* Sonnet CR-001. The pre-fix loop checked its deadline only BETWEEN polls, so
-     one poll that never returned (a stalled connection, measured by the review
-     against a black-holed registry) outlived --wait-seconds without limit. The
-     stub's every registry request sleeps in a child and never answers. The
+     one poll that did not return outlived --wait-seconds without limit. The
+     review measured 60s and more for one poll against a refused port, which
+     fix round 1 traced to npm's default retry backoff; a connection that never
+     answers at all is the harder case and the one modelled here: the stub's
+     every registry request sleeps in a child and never answers. The
      deadline is 3s and the script's per-poll floor is 10s, so a bounded run
      ends in about 13s; 25s is the assertion's margin. The spawn timeout (40s)
      is only there so the pre-fix red arrives in finite time. */
@@ -2960,7 +2962,7 @@ test("the publishing job READS the registry after publishing, under the same gua
      ONE release-verification interface (DR-0014, scripts/release-verify.sh) and
      its two arms differ by one flag: with `--tarball` it installs a local
      artifact, without it it installs `$NAME@$VERSION` from the registry
-     (scripts/release-verify.sh:421, after the registry wait). So "reads the registry" is "invokes that
+     (scripts/release-verify.sh:556, after the registry wait). So "reads the registry" is "invokes that
      script with no --tarball", which is a property of the invocation rather
      than a word in a step name.
 

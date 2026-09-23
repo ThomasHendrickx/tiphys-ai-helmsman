@@ -34,11 +34,11 @@ at its steps exactly as before.
 
 ## What was built
 
-- scripts/release-verify.sh:341 `wait_for_registry`, called only when no
-  `--tarball` was given (scripts/release-verify.sh:409). Each poll is
+- (Round 0; these line numbers are at `319b55c` and are quoted, not cited, because fix round 1 moved them.) `scripts/release-verify.sh:341` `wait_for_registry`, called only when no
+  `--tarball` was given (`scripts/release-verify.sh:409`). Each poll is
   `npm view <name>@<version> version --cache <fresh> --prefer-online`
-  (scripts/release-verify.sh:352), and "served" is exit 0 AND stdout exactly
-  equal to the version (scripts/release-verify.sh:354). Both halves are
+  (`scripts/release-verify.sh:352`), and "served" is exit 0 AND stdout exactly
+  equal to the version (`scripts/release-verify.sh:354`). Both halves are
   needed because the real not-served answer (captured below) is exit 1 with an
   EMPTY stdout, and a network failure is also a nonzero exit; neither is final,
   so both are polled again until the deadline.
@@ -137,8 +137,8 @@ The two existing refusal tests now spawn with `RELEASE_VERIFY_WAIT_SECONDS=0`
 nothing; it bounds a MUTATED run (the red-witness harness removes the refusal)
 to one poll instead of up to 900s if the runner cannot reach the registry.
 
-The comment at test/license-gate.test.ts:2788 cited the registry install at
-the old line 299; it now cites scripts/release-verify.sh:421.
+The comment at `test/license-gate.test.ts:2788` (round 0) cited the registry install at
+the old line 299; it cited `scripts/release-verify.sh:421` at `319b55c`, and cites the moved line after fix round 1.
 
 Behaviours registered in test/behaviors.json, by name:
 `release-verify-waits-for-the-registry-to-serve-the-version`,

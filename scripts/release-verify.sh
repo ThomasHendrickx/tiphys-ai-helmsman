@@ -372,14 +372,19 @@ record clean-environment 0 "resolution probe for $NAME from $WORKDIR"
 #
 # THE BOUND COVERS A POLL THAT NEVER RETURNS (fix round 1, Sonnet CR-001). The
 # first version checked its deadline only BETWEEN polls, so one `npm view`
-# stalled on a connection that never answered outlived --wait-seconds without
-# limit. Each poll now runs under bounded_run with the time left on the
-# deadline, floored at POLL_FLOOR_SECONDS so the last poll is not given a
-# window too short to answer in. A whole run therefore ends by the deadline
-# plus at most the floor. npm also gets --fetch-retries=0 and a matching
-# --fetch-timeout, so that in the ordinary case npm gives up by itself with its
-# own error; bounded_run is the backstop for the case npm's timeout does not
-# reach (it bounds one fetch's idle time, not the whole command).
+# that did not return outlived --wait-seconds without limit. The review
+# measured 60s and more for one poll against a refused port; this round traced
+# that to npm's own retry backoff (70s with npm's default retries, 1s with
+# --fetch-retries=0, npm 11.18.0), and a connection that truly never answers
+# is the same shape with no retry count to cap it. Each poll now runs under
+# bounded_run with the time left on the deadline, floored at
+# POLL_FLOOR_SECONDS so the last poll is not given a window too short to
+# answer in. A whole run therefore ends by the deadline plus at most the
+# floor. npm also gets --fetch-retries=0 and a matching --fetch-timeout, so
+# that in the ordinary case npm gives up by itself with its own error, which
+# the NOT SERVED line then quotes. Whether npm's own timeout alone bounds the
+# WHOLE command is not established here, which is why bounded_run is kept as
+# the backstop rather than trusted away.
 #
 # TARBALL MODE DOES NOT WAIT: it installs a local file and asks the registry
 # nothing, so there is nothing to wait for.
@@ -391,8 +396,10 @@ POLL_FLOOR_SECONDS=10
 # Runs the command with a hard wall-clock bound and exits with its status, or
 # 124 if the bound expired, in which case <stderr-file>.timed-out is created.
 #
-# WHY NODE AND NOT timeout(1): this script runs on the macOS smoke job too, and
-# macOS ships no GNU `timeout`. A bash background job plus a watchdog `sleep`
+# WHY NODE AND NOT timeout(1): macOS ships no GNU `timeout`, and this
+# repository treats macOS as a platform it supports (it has a macOS smoke
+# workflow, though that workflow does not run this script), so a maintainer
+# running this by hand on a Mac must get the same bound. A bash background job plus a watchdog `sleep`
 # is portable but leaves the watchdog and any grandchild behind on the normal
 # path. Node is already a hard dependency of this script (every record is
 # written by it) and of the package under test, so it adds nothing. The
