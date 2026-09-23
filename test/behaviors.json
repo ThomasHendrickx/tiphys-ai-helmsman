@@ -1267,5 +1267,10 @@
   "cutover-entry-real-retirement-satisfied": "arm c reads the real retirement report of this repository as satisfied",
   "cutover-entry-retirement-summary-must-agree": "a retirement summary that disagrees with its rows makes the report unreadable",
   "cutover-entry-exclusion-names-resolve-in-real-registry": "every exclusion behavior arm b requires resolves in the real behavior registry",
-  "cutover-drain-init-fleet-clean-stray-file-not-a-task": "a fleet made by tiphys init drains clean, and a stray file under tasks/ is not a task"
+  "cutover-drain-init-fleet-clean-stray-file-not-a-task": "a fleet made by tiphys init drains clean, and a stray file under tasks/ is not a task",
+  "release-verify-waits-for-the-registry-to-serve-the-version": "release-verify in registry mode waits until the registry serves the version, then verifies it",
+  "release-verify-not-served-times-out-distinctly": "release-verify in registry mode times out with NOT SERVED and exit 75 when the registry never serves the version",
+  "release-verify-served-but-broken-fails-at-its-steps": "release-verify in registry mode fails a served but broken version at its steps without waiting out the deadline",
+  "release-verify-tarball-mode-makes-no-registry-poll": "release-verify in tarball mode makes no registry poll",
+  "release-verify-wait-flags-override-env-and-reject-malformed": "release-verify's wait flags override the environment and a malformed bound is a usage error"
 }

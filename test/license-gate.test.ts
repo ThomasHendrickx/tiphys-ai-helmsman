@@ -1379,7 +1379,7 @@ test("release-verify in registry mode waits until the registry serves the versio
   const root = mkdtempSync(join(tmpdir(), "tiphys-rv-wait-"));
   try {
     const stub = registryStub(root, 2, false);
-    const run = runStubbedReleaseVerify(root, stub, [], { wait: 60, poll: 1 });
+    const run = runStubbedReleaseVerify(root, stub, [], { wait: 30, poll: 1 });
     /* The pre-fix script fails here with five step failures, which is the
        incident: its first registry request is the install, and it is answered
        with the captured ETARGET. */
@@ -1433,7 +1433,7 @@ test("release-verify in registry mode fails a served but broken version at its s
   const root = mkdtempSync(join(tmpdir(), "tiphys-rv-broken-"));
   try {
     const stub = registryStub(root, 0, true);
-    const run = runStubbedReleaseVerify(root, stub, [], { wait: 60, poll: 1 });
+    const run = runStubbedReleaseVerify(root, stub, [], { wait: 20, poll: 1 });
     assert.equal(run.status, 1, `expected a step failure; stderr:\n${run.stderr}`);
     assert.doesNotMatch(run.stderr, /NOT SERVED/);
     assert.match(run.stderr, /step bin-version exited/);
@@ -1443,7 +1443,9 @@ test("release-verify in registry mode fails a served but broken version at its s
     assert.ok(wait !== undefined, "no registry-served record");
     assert.equal(wait["exitCode"], 0);
     assert.equal(wait["attempts"], 1, "a served version is recognised on the first poll");
-    assert.ok(run.seconds < 30, `took ${String(run.seconds)}s against a 60s deadline, so it waited on a served version`);
+    /* 15 of the 20s: a run that waited the deadline out on a served version
+       takes at least 20s; a healthy run here measured about 2s. */
+    assert.ok(run.seconds < 15, `took ${String(run.seconds)}s against a 20s deadline, so it waited on a served version`);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
@@ -2783,7 +2785,7 @@ test("the publishing job READS the registry after publishing, under the same gua
      ONE release-verification interface (DR-0014, scripts/release-verify.sh) and
      its two arms differ by one flag: with `--tarball` it installs a local
      artifact, without it it installs `$NAME@$VERSION` from the registry
-     (scripts/release-verify.sh:299). So "reads the registry" is "invokes that
+     (scripts/release-verify.sh:423, after the registry wait). So "reads the registry" is "invokes that
      script with no --tarball", which is a property of the invocation rather
      than a word in a step name.
 

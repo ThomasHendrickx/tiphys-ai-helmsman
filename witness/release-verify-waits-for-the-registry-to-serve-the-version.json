@@ -1,0 +1,39 @@
+{
+  "id": "release-verify-waits-for-the-registry-to-serve-the-version",
+  "behavior": "release-verify-waits-for-the-registry-to-serve-the-version",
+  "tests": [
+    "release-verify in registry mode waits until the registry serves the version, then verifies it",
+    "release-verify in registry mode times out with NOT SERVED and exit 75 when the registry never serves the version",
+    "release-verify in registry mode fails a served but broken version at its steps without waiting out the deadline"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "if [ -z \"$TARBALL\" ]; then\n  wait_for_registry\nfi",
+      "replace": "if [ -z \"$TARBALL\" ]; then\n  :\nfi"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "    if [ $((now + POLL_SECONDS)) -gt \"$deadline\" ]; then\n      break\n    fi",
+      "replace": "    if true; then\n      break\n    fi"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "    if [ \"$code\" -eq 0 ] && [ \"$observed\" = \"$VERSION\" ]; then",
+      "replace": "    if [ \"$code\" -eq 0 ] && [ \"$observed\" = \"v$VERSION\" ]; then"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "npm view and npm install against the public registry, spawned by scripts/release-verify.sh",
+    "captures": [
+      "witness/captures/release-verify-registry-not-served.txt"
+    ],
+    "provenance": "scripts/release-verify.sh is a *.sh that spawns npm and node and classifies npm view's answer as served or not served, so rule (f)'s shell arm binds it. The capture is real output from npm 11.18.0 on node v26.6.0, 2026-09-23, against registry.npmjs.org, with a fresh cache per command: npm view and npm install of @tiphys/kernel@9.9.9 (never published, standing in for a version not yet served), npm view of 0.2.0 and 0.1.0 (served), and npm view of a package that does not exist. The tests' stub npm replays the not-served exit code and stderr from this file rather than from a typed string. RESIDUE: the capture is of a version that is NEVER served, not of a version during its propagation window; that the propagating version answers the same way is inferred from the incident (release run 35839356656's install failed exactly as the pre-fix red of the first test fails, exit codes 1, 1, 127, 1, 127) and has not been captured during a real propagation. THREE MEMBERS at three points of one pipeline: member 0 removes the wait (the incident); member 1 keeps the wait and gives up after one poll, so it runs and answers too early; member 2 keeps both and misclassifies a served version as not served, so a served-but-broken version would time out instead of failing at its step."
+  }
+}
