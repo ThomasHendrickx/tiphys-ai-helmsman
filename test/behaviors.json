@@ -1273,5 +1273,9 @@
   "p2-charter-undeclared-stated": "brief compose with no charter declared says so in the intent section rather than omitting it",
   "p2-intent-section-closed-set": "the composed intent section has a closed heading and field set",
   "p2-final-report-contract": "a final report without delivered-outcome, without its evidence, or claiming delivery on empty evidence is refused by tiphys validate",
-  "p2-no-scoring": "delivered-outcome is a closed four-key object with no numeric field anywhere in the final report"
+  "p2-no-scoring": "delivered-outcome is a closed four-key object with no numeric field anywhere in the final report",
+  "p2-charter-fleet-init": "brief compose in a tiphys init fleet reads the charter from charter/, the same document doctor reads",
+  "p2-charter-fleet-ambiguous": "brief compose in a fleet refuses several charters until --charter picks one, and refuses YAML in charter/ that is not a charter",
+  "p2-evidence-distinct": "a delivered claim whose evidence repeats one entry or is only punctuation is refused by tiphys validate",
+  "p2-evidence-pattern-linear": "the evidence content pattern is linear on a long punctuation near-miss"
 }

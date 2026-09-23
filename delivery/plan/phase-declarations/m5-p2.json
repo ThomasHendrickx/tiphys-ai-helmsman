@@ -8,7 +8,12 @@
     "roles/implementer.md",
     "roles/clean-room-reviewer.md",
     "test/brief-compose.test.ts",
-    "test/report-contract.test.ts"
+    "test/report-contract.test.ts",
+    "src/charter.ts",
+    "src/commands/doctor.ts",
+    "roles/README.md",
+    "AGENTS.md",
+    "witness/"
   ],
   "declaredExtras": [
     "test/behaviors.json",
