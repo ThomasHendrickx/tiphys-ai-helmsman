@@ -1,0 +1,24 @@
+{
+  "id": "m5-p3-review-output-contract",
+  "behavior": "m5-p3-review-output-contract",
+  "tests": [
+    "each composed review contract names a distinct top-level verdict JSON path under delivery/review, and the document written there validates as a verdict"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "roles/clean-room-reviewer.md",
+      "find": "Your verdict file is `delivery/review/<phase-id>-criteria.json`, and it says",
+      "replace": "Your verdict file is `delivery/review/<phase-id>-hazard.json`, and it says"
+    },
+    {
+      "kind": "mutation",
+      "file": "roles/clean-room-reviewer.md",
+      "find": "Your verdict file is `delivery/review/<phase-id>-hazard.json`, and it says",
+      "replace": "Your verdict file is `delivery/review/<phase-id>/hazard.json`, and it says"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

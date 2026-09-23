@@ -1,0 +1,33 @@
+{
+  "id": "m5-p3-missing-review-is-red",
+  "behavior": "m5-p3-missing-review-is-red",
+  "tests": [
+    "a shipped change with no committed review is red through the real runner, naming two missing",
+    "a shipped change with one committed review is red through the real runner, naming one missing",
+    "merge-preconditions, the review gate the pull-request bundle runs, is red through the real runner for zero and one committed review",
+    "with --base, a shipped change with fewer than two committed reviews is red before any network request"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "scripts/check-dual-review.mjs",
+      "find": "    if (found.admittedCount < REQUIRED_VERDICTS) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    tier: \"dual\",\n    source: \"DR-0027 row 1",
+      "replace": "    tier: \"none\",\n    source: \"DR-0027 row 1"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  const short = budget !== undefined && budget.tier === \"dual\" && review.forHead.length < REQUIRED_VERDICTS;",
+      "replace": "  const short = false;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

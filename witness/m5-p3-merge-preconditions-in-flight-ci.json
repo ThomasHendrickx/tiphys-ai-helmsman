@@ -1,0 +1,41 @@
+{
+  "id": "m5-p3-merge-preconditions-in-flight-ci",
+  "behavior": "m5-p3-merge-preconditions-in-flight-ci",
+  "tests": [
+    "an approving pair evaluated inside the unconcluded CI of its own head is not-applicable naming the in-flight run and the rows it established",
+    "a refusing pair inside the unconcluded CI of its own head stays red, so the in-flight rule never softens a refusal",
+    "an in-flight gates run for a different head is not counted as this head's CI in flight"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "        String(run.status ?? \"\") !== \"completed\",",
+      "replace": "        false,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    if (inFlight.length > 0 && gateStatusForRows(rows) === \"green\") {",
+      "replace": "    if (inFlight.length > 0) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "        String(run.head_sha ?? \"\").toLowerCase() === head.toLowerCase() &&\n        String(run.status ?? \"\") !== \"completed\",",
+      "replace": "        String(run.status ?? \"\") !== \"completed\","
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "GitHub REST API (api.github.com)",
+    "captures": [
+      "witness/captures/m5-p3-github-check-runs-in-flight.json",
+      "witness/captures/m4-p12-github-rulesets-list.json",
+      "witness/captures/m4-p12-github-ruleset-detail.json"
+    ],
+    "provenance": "Captured 2026-09-23 from the live GitHub REST API with curl through this container's agent proxy, against ThomasHendrickx/tiphys-ai-helmsman: GET /repos/{slug}/commits/5662d740aae8feaa3bb79beafd7abd31a4ed5b51/check-runs (HTTP 200) while the gates run for that head was in progress, so its gates check run reads status in_progress and conclusion null and its macos-smoke check run reads completed and success. Stored unedited; the tests substitute only the head sha. The two ruleset captures are M4-P12's, provenance in witness/merge-preconditions-no-verdict-at-head-is-not-applicable.json."
+  }
+}
