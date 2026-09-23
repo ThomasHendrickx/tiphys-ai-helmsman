@@ -46,6 +46,25 @@ input-findings:
       returns nothing at exit 1, and the derivation is stated in the true
       form rather than as an impossibility.
 
+# THE JOIN FROM PHASE INTENT TO OUTCOME (M5-P2). One object, four fields, no
+# score. The intent is M3-P3's own, verbatim from
+# delivery/plan/kernel-plan-m3.md:2321. `delivered` is a yes or no, and
+# `delivered: true` with an empty evidence list is rejected by the schema.
+delivered-outcome:
+  phase-intent: >-
+    Define the three assurance modes as validated data (pipeline stages, gate
+    sets by reference, merge authority), define `full` as the current proven
+    process's sequence (R-096), gate the adversarial plan review on mode
+    declaration (R-024), and ship the kernel's role-to-model defaults (R-075).
+  delivered: true
+  evidence:
+    - delivery/review/verification-m3-p3-round-8.md:766
+    - assurance-modes.yaml and role-model-config.yaml, both shipped at the repository root
+  explanation: >-
+    The modes and the role-to-model defaults shipped. Five of the six
+    verification findings above closed with reproduced evidence. V-5 was put
+    out of scope by the orchestrator and is not claimed as delivered here.
+
 decisions-owed:
   none: false
   entries:
