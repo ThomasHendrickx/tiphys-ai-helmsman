@@ -40,3 +40,15 @@ as history, never as current evidence.
 
 The merge conditions it protects are DR-0012's, at
 delivery/decisions/DR-0012-delegated-merge-authority.md:22.
+
+## Correction to point 3, 2026-09-23 (orchestrator design, not the owner's decision)
+
+Point 3 as first written required a current stamp for admission. That would
+exclude reviews written under 0.2.0, which carry `head` and no stamp. The
+owner reported that pulse is writing exactly such reviews now. Requiring the
+stamp would break in-flight work on upgrade, which DR-0054 forbids.
+
+Corrected: admission does not read the stamp. It applies every current rule
+to every verdict, stamped or not. So a false old stamp still cannot help a
+verdict count toward a merge, and an unstamped current review still counts.
+The stamp decides only which rules `validate` applies to history.
