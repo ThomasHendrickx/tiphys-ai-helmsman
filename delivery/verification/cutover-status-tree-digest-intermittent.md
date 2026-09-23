@@ -46,3 +46,29 @@ test/cutover.test.ts:1767 hashes every file under the scratch fleet root,
 Make the helper report the changed paths (a per-file digest map compared on
 failure) rather than one hash. That turns the next occurrence into a
 diagnosis instead of a second copy of this note.
+
+## A second intermittent the same day, in a different test
+
+The `push` run 35862907311 on `main` at 5662d74 (the M5-P2 merge) went red
+on its first attempt. The `M2 exit test (push)` step's `suite` gate reported
+one failing test: "a corpus-scoped refusal names the source that corpus was
+read from, on both arms" (test/single-family-exception.test.ts:1224).
+
+- The same test PASSED earlier in the same job, in the plain suite step, on
+  the same tree. Only the gate's own re-run of the suite failed it.
+- Isolated on 5662d74 with node v26.6.0, it passed 5 of 5 runs.
+- The re-run of the failed job (attempt 2) was green, so `main` at 5662d74
+  is green on the push arm.
+- The uploaded `gates-summary-push-attempt-1` artifact is 1442 bytes and
+  carries no per-test detail, so which of the test's two arms failed is
+  unknown.
+
+What was checked and found nothing: no test writes into the real
+repository's `assurance-modes.yaml` or `templates/charter.example.yaml`,
+which this test copies from the repository root; the suite gate's child
+environment differs from the plain step only in `NODE_OPTIONS` (its reporter)
+and dropped `NODE_TEST_*` variables, and the test's child is plain `node`.
+
+The two failures share no file. Both tests stage scratch git repositories
+under the OS temporary directory and assert on what a command reports about
+them. That is a common shape, not an established cause.
