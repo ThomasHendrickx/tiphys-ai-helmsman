@@ -899,3 +899,21 @@ Each hit settled:
   script's own usage message).
 
 This subsection itself adds hits by quoting the phrases above.
+
+### Merge of main before the push
+
+`origin/main` moved to `8558dca` (M5-P4, PR 209) during the round.
+`git merge-tree --write-tree origin/main HEAD` exited 1 with one conflict,
+test/behaviors.json, both sides appending at the end of the registry. It was
+resolved as the append-only union: merge base 1269 keys, this branch's 9,
+main's 6, merged 1284, parsed as JSON. Merge commit `90e7b7e`. The local PR
+bundle was then re-run at `90e7b7e` with the tree untouched, node v26.6.0,
+`dist/` built, `npm ci` and `npm run build` exit 0 and a clean status after:
+
+    gates: declared 15 applicable 8 verdict 8 green 8 red 0 not-applicable 7 error 0 vacuous 0
+    gates: suite: green: ... reported 1409 test(s) from 69 file(s) (pass 1409, fail 0, skipped 0, todo 0, did-not-run 0); ... 1284 behavior(s) resolve; merge base 8558dca9e8d2
+    gates: citations: green: linted 3 changed document(s) at 90e7b7e...: 3 citation(s) resolved, 0 self-citation(s), 0 unverifiable-external
+    m2-assert (PR bundle): OK. 15 gate record(s) match section 1.4; ... zero red; zero error; zero vacuous.
+    bundle exit=0
+
+The commit after `90e7b7e` adds only this subsection.
