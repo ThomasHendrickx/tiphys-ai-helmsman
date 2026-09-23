@@ -1225,6 +1225,24 @@
       }
     },
     {
+      "id": "claude-md:updated-by-m5-p4-summary-json-is-now-uploaded-so",
+      "root": "CLAUDE.md",
+      "rule": "CLAUDE.md:628",
+      "kind": "bold-lead",
+      "text": "**UPDATED BY M5-P4: `summary.json` IS NOW UPLOADED, so read it first.** The",
+      "group": "four-printed-facts",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "where this repository's gates workflow uploads summary.json, and under which artifact names and retention, is a property of this repository's CI, not of the kernel; the kernel's own answer is summary.json itself, which a consumer reads wherever its own CI keeps it",
+      "dr0029-side": "predicate",
+      "note": "Added by M5-P4 fix round 1 (CR-003), when the gates workflow gained the summary upload the section below it was written around. Same disposition as the four printed facts it supersedes.",
+      "verified-by": {
+        "command": "grep -c 'IS NOW UPLOADED' AGENTS.md roles/implementer.md checklists/clean-room.yaml",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / checklists/clean-room.yaml:0"
+      }
+    },
+    {
       "id": "claude-md:the-gate-id-is-in-the-gates-manifest-json-on-tha",
       "root": "CLAUDE.md",
       "rule": "CLAUDE.md:608",
