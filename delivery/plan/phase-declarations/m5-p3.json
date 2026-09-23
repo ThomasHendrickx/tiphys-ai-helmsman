@@ -12,7 +12,17 @@
     "test/clean-room-brief.test.ts",
     "test/dual-review.test.ts",
     "test/gate-registry.test.ts",
-    "test/merge-preconditions.test.ts"
+    "test/merge-preconditions.test.ts",
+    "test/dual-review-head-anchor.test.ts",
+    "test/gates.test.ts",
+    "witness/merge-preconditions-no-verdict-at-head-is-not-applicable.json",
+    "witness/m5-p3-review-output-contract.json",
+    "witness/m5-p3-missing-review-is-red.json",
+    "witness/m5-p3-review-pair-arms.json",
+    "witness/m5-p3-paperwork-review-budget.json",
+    "witness/m5-p3-merge-preconditions-missing-is-red.json",
+    "witness/m5-p3-merge-preconditions-in-flight-ci.json",
+    "witness/captures/m5-p3-github-check-runs-in-flight.json"
   ],
   "declaredExtras": [
     "test/behaviors.json",
