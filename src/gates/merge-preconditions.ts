@@ -1307,12 +1307,38 @@ function reviewRows(
  */
 export const CI_CONCLUDED_PRECONDITION_ID = "merge-preconditions-ci-concluded-for-this-head";
 
+/** `--head` as a full lowercase sha when it names a commit here, else as given. */
+function resolveHeadFlag(contextDirectory: string, value: string): string {
+  if (/^[0-9a-fA-F]{40}$/.test(value)) {
+    return value.toLowerCase();
+  }
+  const resolved = spawnSync("git", ["rev-parse", "--verify", "--quiet", "--end-of-options", `${value}^{commit}`], {
+    cwd: contextDirectory,
+    encoding: "utf8",
+  });
+  if (resolved.error === undefined && resolved.status === 0) {
+    const sha = (resolved.stdout ?? "").trim().toLowerCase();
+    if (/^[0-9a-f]{40}$/.test(sha)) {
+      return sha;
+    }
+  }
+  return value.toLowerCase();
+}
+
 export async function runGate(flags: Flags): Promise<number> {
   const startedAt = now();
   const resultPath = flags.result as string;
-  const head = (flags.head as string).toLowerCase();
-  const phase = (flags.phase as string).toLowerCase();
   const contextDirectory = absolute(flags.context ?? process.cwd());
+  /* M5-P3: A SYMBOLIC --head IS RESOLVED BEFORE IT IS LOWERCASED. The M4-P12
+     line lowercased the flag outright, which is right for the forty-hex sha CI
+     passes and wrong for `HEAD`, which became `head` and named nothing, so the
+     runner's own documented invocation (`--head HEAD`) reported the diff as a
+     bad revision. A value that resolves to a commit here is replaced by that
+     commit's full sha; one that does not is kept as given, because the M4-P12
+     comment below is still true that `--head` need not be an object in this
+     checkout. */
+  const head = resolveHeadFlag(contextDirectory, flags.head as string);
+  const phase = (flags.phase as string).toLowerCase();
   const apiBase = (flags["api-base"] ?? DEFAULT_API_BASE).replace(/\/+$/, "");
   const shared = { gate: GATE_ID, unitLabel: UNIT_LABEL, startedAt };
 
