@@ -130,8 +130,14 @@ test("authored-byte checker refuses tracked worktree bytes that differ from the 
  * carrying the deliberate violation, and the job-level properties that decide
  * whether a nonzero exit reddens the job are evaluated per CI event.
  *
- * The shell is the one GitHub Actions uses for a `run:` step on an Ubuntu
- * runner when no `shell:` is given: `bash --noprofile --norc -eo pipefail`.
+ * The shell is DERIVED from the step, never assumed (fix round 1, CR-001).
+ * A `run:` step with no `shell:` on an Ubuntu runner, and no `defaults.run.shell`
+ * on its job or workflow, runs as `bash -e {0}`: errexit, NO pipefail. Run
+ * 35834743824 logs `shell: /usr/bin/bash -e {0}` for exactly these steps. Only
+ * an explicit `shell: bash` gets `bash --noprofile --norc -eo pipefail {0}`.
+ * The first version of this harness used the second for the first, so a
+ * `| cat` defang stayed green here and would pass a real violation in CI.
+ * Any other shell, and any non-Ubuntu runner, is REFUSED rather than guessed.
  */
 
 const gatesWorkflowPath = fileURLToPath(new URL("../.github/workflows/gates.yml", import.meta.url));
@@ -148,7 +154,13 @@ interface CiStep {
   "continue-on-error"?: unknown;
 }
 
+interface CiDefaults {
+  run?: { shell?: string };
+}
+
 interface CiJob {
+  "runs-on"?: unknown;
+  defaults?: CiDefaults;
   steps?: CiStep[];
   "continue-on-error"?: unknown;
   strategy?: { matrix?: unknown };
@@ -180,9 +192,17 @@ function continueOnError(value: unknown): boolean {
   return value !== undefined && value !== false && value !== "false";
 }
 
+interface CiWorkflow {
+  defaults?: CiDefaults;
+  jobs: Record<string, CiJob>;
+}
+
 /** The one step in the `gates` job whose `run:` invokes `script`. */
-function gatesJobStep(workflowText: string, script: string): { job: CiJob; step: CiStep } {
-  const document = workflowYaml.parse(workflowText) as { jobs: Record<string, CiJob> };
+function gatesJobStep(
+  workflowText: string,
+  script: string,
+): { workflow: CiWorkflow; job: CiJob; step: CiStep } {
+  const document = workflowYaml.parse(workflowText) as CiWorkflow;
   const job = document.jobs["gates"];
   assert.ok(job !== undefined, "the workflow has no job named `gates`, the required status context");
   const matching = (job.steps ?? []).filter(
@@ -193,21 +213,39 @@ function gatesJobStep(workflowText: string, script: string): { job: CiJob; step:
     1,
     `expected exactly one step in the \`gates\` job running ${script}, found ${String(matching.length)}`,
   );
-  return { job, step: matching[0] as CiStep };
+  return { workflow: document, job, step: matching[0] as CiStep };
 }
 
-/** Execute a step's extracted `run:` text the way the runner does. */
-function executeStep(step: CiStep, cwd: string): number | null {
-  assert.equal(step.shell, undefined, "the step declares a shell, which this harness does not emulate");
-  const result = spawnSync(
-    "bash",
-    ["--noprofile", "--norc", "-eo", "pipefail", "-c", step.run as string],
-    {
-      cwd,
-      encoding: "utf8",
-      env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env["PATH"] ?? ""}` },
-    },
-  );
+/**
+ * The argv the runner uses for a step, with the script file appended, derived
+ * from the step's own `shell:`, else its job's `defaults.run.shell`, else the
+ * workflow's, else the runner default. The GitHub Actions table for Linux:
+ * unspecified is `bash -e {0}`, `bash` is `bash --noprofile --norc -eo pipefail
+ * {0}`. Every other value (sh, pwsh, python, a custom template) THROWS, as does
+ * a runner that is not Ubuntu, because the default differs there and a guess
+ * here is the defect this function exists to remove.
+ */
+function runnerShell(workflow: CiWorkflow, job: CiJob, step: CiStep): string[] {
+  const runsOn = job["runs-on"];
+  if (typeof runsOn !== "string" || !runsOn.startsWith("ubuntu-")) {
+    throw new Error(`runs-on ${JSON.stringify(runsOn)} is not an Ubuntu runner this harness models`);
+  }
+  const shell = step.shell ?? job.defaults?.run?.shell ?? workflow.defaults?.run?.shell;
+  if (shell === undefined) return ["bash", "-e"];
+  if (shell === "bash") return ["bash", "--noprofile", "--norc", "-eo", "pipefail"];
+  throw new Error(`the step shell ${JSON.stringify(shell)} is not one this harness models`);
+}
+
+/** Execute a step's extracted `run:` text the way the runner does: as a script FILE under the derived shell. */
+function executeStep(workflow: CiWorkflow, job: CiJob, step: CiStep, cwd: string): number | null {
+  const [command, ...flags] = runnerShell(workflow, job, step);
+  const scriptFile = join(mkdtempSync(join(tmpdir(), "tiphys-ci-step-")), "step.sh");
+  writeFileSync(scriptFile, step.run as string);
+  const result = spawnSync(command as string, [...flags, scriptFile], {
+    cwd,
+    encoding: "utf8",
+    env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env["PATH"] ?? ""}` },
+  });
   return result.status;
 }
 
@@ -222,7 +260,7 @@ function ciStepDefects(
   clean: string,
   violating: string,
 ): string[] {
-  const { job, step } = gatesJobStep(workflowText, script);
+  const { workflow, job, step } = gatesJobStep(workflowText, script);
   const defects: string[] = [];
   if (job.strategy?.matrix !== undefined) {
     defects.push("the gates job has a matrix, which renames the required context");
@@ -232,9 +270,9 @@ function ciStepDefects(
   for (const event of CI_EVENTS) {
     if (!stepRunsOn(step.if, event)) defects.push(`the ${script} step does not run on ${event}`);
   }
-  const cleanExit = executeStep(step, clean);
+  const cleanExit = executeStep(workflow, job, step, clean);
   if (cleanExit !== 0) defects.push(`the ${script} step exited ${String(cleanExit)} on the clean tree`);
-  const violatingExit = executeStep(step, violating);
+  const violatingExit = executeStep(workflow, job, step, violating);
   if (violatingExit === 0) defects.push(`the ${script} step exited 0 on the deliberate violation`);
   return defects;
 }
@@ -292,8 +330,9 @@ test("the authored-bytes and id-collision steps extracted from the gates job fai
        fixture that happens to break both. */
     for (const other of CI_STEP_CASES) {
       if (other.script === script) continue;
+      const located = gatesJobStep(workflow, other.script);
       assert.equal(
-        executeStep(gatesJobStep(workflow, other.script).step, violating),
+        executeStep(located.workflow, located.job, located.step, violating),
         0,
         `${other.script} on the ${script} violation`,
       );
@@ -324,5 +363,36 @@ test("the authored-bytes and id-collision steps extracted from the gates job fai
     );
     assert.notEqual(oneArm, workflow);
     assert.match(ciStepDefects(oneArm, script, clean, violating).join("\n"), /does not run on push/);
+
+    /* FOURTH, fix round 1 (CR-001): the exit is swallowed BY THE SHELL, not
+       by the command. Under the runner's default `bash -e {0}` there is no
+       pipefail, so a pipeline's status is its last command's and `| cat`
+       turns a failing check green. A harness that ran the step under a shell
+       carrying pipefail stayed empty here, which is the defect this arm
+       witnesses. */
+    const piped = workflow.replace(runLine, `${runLine} | cat`);
+    assert.notEqual(piped, workflow);
+    assert.match(
+      ciStepDefects(piped, script, clean, violating).join("\n"),
+      /exited 0 on the deliberate violation/,
+    );
+
+    /* THE SHELL IS DERIVED, NOT FIXED: the same `| cat` step under an
+       explicit `shell: bash`, and under a job-level `defaults.run.shell: bash`,
+       DOES carry pipefail, so the harness must find the step wired in both.
+       A harness pinned to either shell fails one side of this pair. */
+    const pipedStepBash = workflow.replace(runLine, `shell: bash\n${stepIndent}${runLine} | cat`);
+    assert.notEqual(pipedStepBash, workflow);
+    assert.deepEqual(ciStepDefects(pipedStepBash, script, clean, violating), [], "step shell: bash");
+    const jobRunsOn = "    runs-on: ubuntu-latest\n";
+    assert.ok(piped.includes(jobRunsOn), "the gates job no longer runs on ubuntu-latest");
+    const pipedJobBash = piped.replace(jobRunsOn, `${jobRunsOn}    defaults:\n      run:\n        shell: bash\n`);
+    assert.deepEqual(ciStepDefects(pipedJobBash, script, clean, violating), [], "job defaults shell: bash");
+
+    /* A SHELL OR RUNNER IT DOES NOT MODEL IS REFUSED, never guessed. */
+    const otherShell = workflow.replace(runLine, `shell: sh\n${stepIndent}${runLine}`);
+    assert.throws(() => ciStepDefects(otherShell, script, clean, violating), /shell "sh" is not one this harness models/);
+    const otherRunner = workflow.replace(jobRunsOn, "    runs-on: macos-latest\n");
+    assert.throws(() => ciStepDefects(otherRunner, script, clean, violating), /not an Ubuntu runner/);
   }
 });
