@@ -7274,13 +7274,8 @@
       ],
       "first": "**The `-a` is LOAD-BEARING and its absence is why the second check was",
       "last": "not by running the check.",
-      "disposition": "mechanically-enforced",
+      "disposition": "history-moved",
       "summary": "The grep -a history and the first ASCII check's blindness to control characters, with the fixture table.",
-      "enforced-by": {
-        "script": "scripts/check-authored-bytes.mjs",
-        "test": "authored-byte checker rejects NUL SOH and non-ASCII tracked bytes",
-        "asserts": "control byte 0x00"
-      },
       "history": {
         "at": "delivery/tuition/T-010-the-control-character-check-could-not-see-nul.md:34-36",
         "quote": "Without `-a`, GNU grep detects a file containing NUL as binary and stops reporting matches from it."
@@ -7289,7 +7284,7 @@
         "file": "CLAUDE.md",
         "quote": "Authored files must be pure ASCII **and free of control characters**"
       },
-      "note": "The grep the paragraph explained is no longer the check: the rule now runs through the script, which rejects NUL, and a CI step runs it on both events. A pointer to T-010 was added in its place."
+      "note": "The grep the paragraph explained is no longer the check: the rule now runs through scripts/check-authored-bytes.mjs, which rejects NUL, and a CI step runs it on both events. Recorded as history-moved rather than mechanically-enforced since the fresh-implementer round: no test names that script inside its own body, so the enforced-by check cannot be discharged honestly. A pointer to T-010 was added in its place."
     },
     {
       "id": "diet-claude-md-03",
@@ -7581,10 +7576,7 @@
       "disposition": "archived",
       "summary": "The M1 to M3 carried-forward backlog, 22 items, not re-verified.",
       "reason": "Untouched since M3. Not called false: the pointer names it as unverified and says to re-verify against src/ before use.",
-      "pointer-in-file": {
-        "file": "delivery/STATE.md",
-        "quote": "at `git show 6dc5b06:delivery/STATE.md` lines 1307 to 1551."
-      }
+      "note": "The pointer is derived from this entry's own lines: STATE.md must carry a paragraph naming `git show 6dc5b06:delivery/STATE.md` and `lines 1307 to 1551`."
     },
     {
       "id": "diet-state-06",
@@ -7636,8 +7628,9 @@
       "summary": "A-7, the npm scope and trusted-publisher action.",
       "reason": "Done: 0.1.0 and 0.2.0 were published over OIDC.",
       "superseded-by": {
-        "file": "delivery/STATE.md",
-        "quote": "6. **A-7: DONE.** Both parts are closed"
+        "rev": "6dc5b06",
+        "at": "delivery/STATE.md:161-162",
+        "quote": "**A-7 IS COMPLETE (owner, 2026-08-14).** The trusted publisher is configured for `@tiphys/kernel`"
       }
     },
     {
@@ -7654,8 +7647,9 @@
       "summary": "The process.exit truncation obligation.",
       "reason": "Fixed by M4-P29: the three sites use process.exitCode.",
       "superseded-by": {
-        "file": "delivery/STATE.md",
-        "quote": "were written and left this list: the `process.exit()` truncation (M4-P29, src/gates/suite.ts:1166)"
+        "rev": "6dc5b06",
+        "at": "src/gates/suite.ts:1166-1167",
+        "quote": "`process.exitCode`, NEVER `process.exit(runSuiteGate(...))` (M4-P29). // This gate runs as a SUBPROCESS"
       }
     },
     {
@@ -7672,8 +7666,9 @@
       "summary": "DR-0022 decided, M3-P3 round 6 executing it.",
       "reason": "M3-P3 merged.",
       "superseded-by": {
-        "file": "delivery/STATE.md",
-        "quote": "the DR-0022 parser decision (M3-P3 merged)"
+        "rev": "6dc5b06",
+        "at": "delivery/STATE.md:982",
+        "quote": "**M3-P3 IS MERGED AND CLOSED (2026-08-10), after TEN rounds.**"
       }
     },
     {
@@ -7688,10 +7683,11 @@
       "last": "than resolving it because neither side is on its declaration.",
       "disposition": "superseded-status",
       "summary": "package.json must reach 0.1.0.",
-      "reason": "package.json reads 0.2.0.",
+      "reason": "package.json read 0.2.0 at the baseline, and 0.2.0 was published from it.",
       "superseded-by": {
-        "file": "delivery/STATE.md",
-        "quote": "the `package.json` 0.1.0 bump (it reads 0.2.0)"
+        "rev": "6dc5b06",
+        "at": "delivery/STATE.md:1613",
+        "quote": "OPEN. `@tiphys/kernel@0.2.0` is published, and the release workflow skipped"
       }
     },
     {
@@ -7708,8 +7704,9 @@
       "summary": "The clause-map gate has no expectation row.",
       "reason": "The row is present in scripts/m2-exit-test.sh.",
       "superseded-by": {
-        "file": "delivery/STATE.md",
-        "quote": "the missing `clause-map` expectation row (present at scripts/m2-exit-test.sh:221)"
+        "rev": "6dc5b06",
+        "at": "scripts/m2-exit-test.sh:221",
+        "quote": "{\"id\": \"clause-map\", \"expect\": \"green\", \"required\": true},"
       }
     },
     {
@@ -7724,10 +7721,10 @@
       "last": "delivery/verification/a-suite-number-needs-a-fourth-qualifier.md:1.",
       "disposition": "superseded-status",
       "summary": "The DR-0044 reminder and the three queued CLAUDE.md amendments.",
-      "reason": "M5-P5 applied DR-0044 to CLAUDE.md; the two amendments still queued are restated.",
+      "reason": "M5-P5 applied DR-0044 to CLAUDE.md, which the superseded-by quote shows. The two amendments still queued are restated in the Standing reminders; that restatement is current status and is not checked by the diet test.",
       "superseded-by": {
-        "file": "delivery/STATE.md",
-        "quote": "**TWO CLAUDE.md AMENDMENTS ARE STILL QUEUED.** A third, DR-0044's concurrency"
+        "file": "CLAUDE.md",
+        "quote": "Do not open a second workflow to get around the cap"
       }
     },
     {
@@ -7765,6 +7762,322 @@
         "file": "delivery/STATE.md",
         "quote": "Pick up from the \"In flight\" section above, using the `phase-delivery` skill."
       }
+    }
+  ],
+  "binding-headings": {
+    "CLAUDE.md": {
+      "headings": [
+        {
+          "heading": "# Tiphys kernel: repository rules",
+          "class": "binding"
+        },
+        {
+          "heading": "## What this repository is",
+          "class": "binding"
+        },
+        {
+          "heading": "## Durability rule (why this file exists)",
+          "class": "binding"
+        },
+        {
+          "heading": "## Where things live",
+          "class": "binding"
+        },
+        {
+          "heading": "## Binding conventions",
+          "class": "binding"
+        },
+        {
+          "heading": "## Gates",
+          "class": "binding"
+        },
+        {
+          "heading": "## Red-witness rule",
+          "class": "binding"
+        },
+        {
+          "heading": "## Fix-round contract (measured, 2026-08-05)",
+          "class": "binding"
+        },
+        {
+          "heading": "### The claim grep, also binding",
+          "class": "binding"
+        },
+        {
+          "heading": "### One witness is not a class",
+          "class": "binding"
+        },
+        {
+          "heading": "## Dispatch contract: no agent without a beacon and a guard (T-008, binding)",
+          "class": "binding"
+        },
+        {
+          "heading": "## Green is scoped to the run that produced it (T-009, binding)",
+          "class": "binding"
+        },
+        {
+          "heading": "### A green BUNDLE is not evidence that a PARTICULAR gate asserted anything",
+          "class": "binding"
+        },
+        {
+          "heading": "## Branch names are load-bearing, not labels (binding)",
+          "class": "binding"
+        },
+        {
+          "heading": "## Identifier schemes",
+          "class": "binding"
+        },
+        {
+          "heading": "## Delivery protocol",
+          "class": "binding"
+        },
+        {
+          "heading": "## A commit, a pull request and a CI run are three different things (DR-0031, binding)",
+          "class": "binding"
+        },
+        {
+          "heading": "### The mirror of T-019, and neither the gate nor any review caught it",
+          "class": "binding"
+        },
+        {
+          "heading": "### Local green before opening, and it is STRONGER than the CI run",
+          "class": "binding"
+        },
+        {
+          "heading": "## Standing environment warnings",
+          "class": "binding"
+        },
+        {
+          "heading": "## The orchestrator does not decide when it is finished (binding)",
+          "class": "binding"
+        },
+        {
+          "heading": "## Agent concurrency: ONE workflow at a time, two agents (DR-0044, binding)",
+          "class": "binding"
+        },
+        {
+          "heading": "## Reporting to the owner (binding, 2026-09-15)",
+          "class": "binding"
+        },
+        {
+          "heading": "## Never",
+          "class": "binding"
+        }
+      ]
+    },
+    "AGENTS.md": {
+      "frontmatter": "binding",
+      "headings": [
+        {
+          "heading": "# Orchestrator",
+          "class": "binding"
+        },
+        {
+          "heading": "## The eleven policy rows",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-001b: you do not write feature code in a project, and the carve-out is named",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-002: a review is never skipped, and the structural half is the declared mode",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-013: a genuine unknown gets its own investigator, dispatched alongside the planning",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-030: every plan-review finding is applied to the plan BEFORE execution starts",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-061: the fix round goes back to the SAME implementer, resumed",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-062: a dispute is allowed WITH EVIDENCE, and you arbitrate",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-065b: the merge commit message tells the story",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-067: three consecutive reds from one flake means stop re-kicking and fix the flake",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-073: consolidate small, low-risk, disjoint phases into one pull request",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-076: end a recurring flake early, and count what one costs",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-077: re-kick only when there is nothing pending to batch it with",
+          "class": "binding"
+        },
+        {
+          "heading": "## The four duties this document was assigned by name",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause fleet-state-commit-discipline: which fleet state is committed and pushed, and when",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause merge-authority: the declared mode says who signs, and for a delegated grant the signature is dual clean review",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause projects-read-only: project repositories are read-only to you, except as release manager",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause fleet-resume-specification: what survives reclamation, what is rebuilt, and what doctor reports",
+          "class": "binding"
+        },
+        {
+          "heading": "## When the owner is involved, and what happens at a bound",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause escalation-threshold: escalate only when the options are genuinely comparable AND the consequence is costly to reverse",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause stalled-phase-response: a fresh implementer and a third contract, dispatched immediately",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause two-review-contracts: two review CONTRACTS, not two reviewers",
+          "class": "binding"
+        },
+        {
+          "heading": "## The four duties this build paid tuition for",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause salvage-discipline: salvaged work is marked, and the marking is exact",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause verification-dispatch-isolation: every lens in its own clone, never a shared worktree",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause probe-injection: inject the phase's own probes into the clean-room review",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause tuition-promotion: promoting a kernel-relevant entry is a documented act, and the entry must NAME its mechanism",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause decorrelated-review: verify decorrelation against the verdict FILES, never against memory",
+          "class": "binding"
+        },
+        {
+          "heading": "## Supervision: how you know a dispatched agent is alive",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause dispatch-requires-a-beacon: no agent is dispatched without being told to write incrementally",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause dispatch-requires-a-guard: a freshness watchdog, armed in the SAME TURN as the dispatch",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause notification-is-not-liveness: waiting for a report is not supervision",
+          "class": "binding"
+        },
+        {
+          "heading": "## A green result is scoped to the run that produced it",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause merge-is-not-complete-until: the push run on the new tip, observed to completion",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause gate-result-is-scoped-to-its-run: name the event and the head sha, always",
+          "class": "binding"
+        }
+      ]
+    }
+  },
+  "state-stable-sections": [
+    "## How to resume cold",
+    "## Owner decisions",
+    "## M4 closure",
+    "## Earlier milestones",
+    "## History of this file"
+  ],
+  "disclaimers-acknowledged": [
+    {
+      "file": "CLAUDE.md",
+      "quote": "(DR-0011, superseding the original \"off until M5\")",
+      "reason": "Names the rule DR-0011 replaced; the sentence states the current rule."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "**A RETIRED id is never reused, in ANY of these schemes.**",
+      "reason": "A retired id is the subject of the rule, not a label on it."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "because the retired one keeps being cited by the documents",
+      "reason": "A retired id is the subject of the rule."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "allocate a fresh id and never reuse a retired one.",
+      "reason": "A retired id is the subject of the rule."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "the phase no longer waits for the owner.",
+      "reason": "States the current DR-0016 behaviour."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "the rule that stood here was FALSE and is withdrawn.",
+      "reason": "Withdraws a former rule by name; the current rule follows it in the same section."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "and the blanket prohibition above is withdrawn. Reading CI is no longer necessarily an orchestrator action",
+      "reason": "Withdraws the earlier sentence of the same warning; the paragraph says what still binds."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "The numbers above are historical and correct for the head they name",
+      "reason": "Qualifies measured counts, not a rule."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "**A red on the default toolchain is therefore no longer proof of a red branch**",
+      "reason": "States a current fact the warning depends on."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "which withdrew the fan-out rule that stood here.",
+      "reason": "Names the rule DR-0044 withdrew; the section states the current rule."
+    },
+    {
+      "file": "AGENTS.md",
+      "quote": "RESTATED under DR-0015, which superseded the earlier reading of it.",
+      "reason": "Names the reading DR-0015 replaced; the clause states the current one."
+    },
+    {
+      "file": "AGENTS.md",
+      "quote": "a lease held by a session that no longer exists must expire rather than block.",
+      "reason": "Describes a session, not a rule."
     }
   ]
 }
