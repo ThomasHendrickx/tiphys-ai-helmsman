@@ -2785,7 +2785,7 @@ test("the publishing job READS the registry after publishing, under the same gua
      ONE release-verification interface (DR-0014, scripts/release-verify.sh) and
      its two arms differ by one flag: with `--tarball` it installs a local
      artifact, without it it installs `$NAME@$VERSION` from the registry
-     (scripts/release-verify.sh:423, after the registry wait). So "reads the registry" is "invokes that
+     (scripts/release-verify.sh:421, after the registry wait). So "reads the registry" is "invokes that
      script with no --tarball", which is a property of the invocation rather
      than a word in a step name.
 

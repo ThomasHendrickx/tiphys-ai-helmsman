@@ -343,14 +343,14 @@ wait_for_registry() {
   local err_file; err_file="$(mktemp)"
   local started; started="$(date +%s)"
   local deadline=$((started + WAIT_SECONDS))
-  local first_at; first_at="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+  local first_at; first_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   local attempts=0 code=0 observed="" last_at="" now=0 served=no
   while :; do
     attempts=$((attempts + 1))
     rm -rf "$wait_cache"
     code=0
     observed="$(npm view "$NAME@$VERSION" version --cache "$wait_cache" --prefer-online 2>"$err_file")" || code=$?
-    last_at="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
+    last_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     if [ "$code" -eq 0 ] && [ "$observed" = "$VERSION" ]; then
       served=yes
       break
@@ -390,8 +390,6 @@ wait_for_registry() {
       lastNpmExitCode: Number(npmExit),
       lastStdout: observed,
       lastStderr: stderr,
-      resolvedPackagePath: null,
-      sourceTreeOnResolutionPath: null,
       workdir,
       at: new Date().toISOString(),
     }) + "\n");
