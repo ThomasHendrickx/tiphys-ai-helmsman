@@ -9,7 +9,7 @@
     {
       "kind": "mutation",
       "file": "plugin/package.json",
-      "find": "  \"peerDependencies\": {\n    \"@tiphys/kernel\": \"^0.1.0\"\n  },\n",
+      "find": "  \"peerDependencies\": {\n    \"@tiphys/kernel\": \"^0.2.0\"\n  },\n",
       "replace": ""
     },
     {
