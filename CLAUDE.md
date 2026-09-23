@@ -43,7 +43,7 @@ has lost it.
 | Plan and every revision | `delivery/plan/kernel-plan-v1.md` | before dispatch of anything it governs |
 | Requirements extraction | `delivery/requirements/` | before the plan cites it |
 | Review of a plan | `delivery/review/plan-review-<round>.md` | before findings are applied |
-| Review of a PR | `delivery/review/clean-room-<phase>.md` | before merge |
+| Review of a PR | `delivery/review/<phase-id>-<contract>.json`, one verdict per review contract, valid against `schemas/verdict.schema.json` | before merge |
 | Verification of a fix round | `delivery/review/verification-<phase>-fix-round.md` | before merge |
 | Investigation of a mystery | `delivery/verification/<subject>.md` | before the question is called settled |
 | What an implementer did and why | `delivery/work-history/<phase>.md` | in the phase branch, before the PR |
@@ -84,45 +84,14 @@ artifact behind it is treated as unknown.
    node scripts/check-authored-bytes.mjs
    ```
 
-   **The `-a` is LOAD-BEARING and its absence is why the second check was
-   itself blind until 2026-08-09.** Without `-a`, GNU grep detects a file
-   containing NUL as binary and stops reporting matches from it, so the check
-   silently skips exactly the file it exists to catch. Measured, GNU grep 3.11,
-   one byte per fixture:
-
-   | fixture | `grep -qP` | `grep -qaP` |
-   |---|---|---|
-   | `hello\x00world` | **MISSED** | detected |
-   | `hello\x01world` | detected | detected |
-   | `hello\x1bworld` | detected | detected |
-   | `hello world` | miss (correct) | miss (correct) |
-
-   NUL is the one byte it cannot see, and NUL is the one that makes git call a
-   source file binary and strip its diff. `test/status.test.ts` was caught in
-   the incident below only because it ALSO carried SOH. Two files were then
-   found on `main` that the fixed check catches and the old one did not, one of
-   them `delivery/review/arbitration-m3-p1.md`, which is the document that RULED
-   on that incident: its sentence saying control characters belong in escapes
-   contained a literal NUL inside the backticks meant to hold the escape. Every
-   "ASCII clean" report since, the orchestrator's and CI's alike, was true and
-   useless. Recorded as `delivery/tuition/T-010-the-control-character-check-could-not-see-nul.md`.
-
-   The first check ALONE is what this repository used until 2026-08-08, and it
-   is blind to control characters BY CONSTRUCTION: `NUL`, `SOH` and friends are
-   inside `\x00-\x7F`, so a file full of them is "pure ASCII" and the check
-   passes. That is not hypothetical. `test/status.test.ts` reached a pull
-   request carrying raw NUL and SOH bytes; git classified it as binary
-   (`Bin 0 -> 9332 bytes`), so it had NO REVIEWABLE DIFF at all, and every
-   "ASCII check passes" report on that branch, including the orchestrator's,
-   was TRUE and USELESS. A clean-room reviewer found it by reading the file,
-   not by running the check.
-
    The general shape is the one this project keeps paying for: a guard whose
    condition does not test the property that matters is green and worthless
    (T-008's postscript, the red-witness rule one level up). Control characters
    a test genuinely needs AS DATA belong in escapes, never as literal bytes in
    source. A quick way to see the failure mode is `git diff --stat`: a source
    file reported as `Bin` is unreviewable whatever the ASCII check says.
+   The NUL incident behind this rule is
+   delivery/tuition/T-010-the-control-character-check-could-not-see-nul.md:1.
 
    **AUTHORED is the operative word, and two exemptions are real.** Measured on
    `main` at `dd42ccb`: ZERO tracked files carry control characters, and
@@ -227,7 +196,7 @@ artifact behind it is treated as unknown.
    - **The gate lints at HEAD, not the working tree.** Staging a fix and
      re-running gives the OLD verdict. Commit, then re-run.
    - **A rule number is not a line number.** `CLAUDE.md:3b` is rejected as
-     malformed; the rule at 3b lives at CLAUDE.md:155.
+     malformed; the rule at 3b lives at CLAUDE.md:128.
 
    Verify before pushing rather than after a red gate:
 
@@ -352,13 +321,6 @@ hand-written strings chosen to match the implementation.
 
 ## Fix-round contract (measured, 2026-08-05)
 
-A throughput analysis of M1 measured sixteen completed fix rounds. Thirteen
-were re-reviewed and TWELVE of those thirteen produced a new finding
-attributable to the round itself. The dominant cause, roughly a third of the
-milestone's elapsed time, is a single shape: **the fix addressed the instance
-the reviewer named, when the defect was the mechanism.** M1-P3 chained four
-rounds that way, M1-P5 chained four, M1-P6 chained two.
-
 Every avoidable instance had a counterfactual that was a COMMAND or a DECLARED
 SCOPE, never a judgment call. So this is mechanical, and it is binding on every
 fix round from now on.
@@ -380,11 +342,6 @@ three of these:
    read as a clean result.
 
 **The reviewer's FIRST check is item 3**, before examining any row.
-
-This is proven inside this repository rather than imported. M1-P5's fourth
-round used exactly this method and derived eleven call sites where the review
-had listed eight, closing in one round a class that three prior rounds had each
-closed one path at a time.
 
 ### The claim grep, also binding
 
@@ -497,15 +454,6 @@ in, reported success, and said nothing. A guard whose condition does not test
 the property that matters is green and worthless, which is the red-witness rule
 one level up.
 
-**AND "THE NEWEST MTIME UNDER THE AGENT'S WORKING DIRECTORY" IS NOT MECHANICAL
-ENOUGH, which is why it was got wrong SIX TIMES in one session (T-014).** It
-reads as precise and needs judgment at every application: a gate run writes
-EVIDENCE outside the working tree, a freshly dispatched agent has no directory
-yet, and a finished agent leaves one that goes stale forever. The worst instance
-read a healthy round as approaching stale for fifteen minutes, and the correct
-response to a stale watchdog is to salvage and re-dispatch, which would have
-killed it three-quarters through its work.
-
 Answer these three IN WRITING in the dispatch turn, before arming anything:
 
 1. **Where does THIS agent write? MEASURE IT, DO NOT PREDICT IT.** An earlier
@@ -537,12 +485,12 @@ Answer these three IN WRITING in the dispatch turn, before arming anything:
    One that cannot tell them apart must SAY so rather than print a number
    implying it can.
 
-**AND AN UNISOLATED AGENT TAKES YOUR CLONE, measured 2026-09-15.** Six
-implementers were dispatched; five were given worktree isolation and one was not,
-because its files-to-touch list looked like documents only. Within minutes the
-main clone read `branch: claude/m4-p1-harness-probe`: the unisolated agent had
-checked out its own branch IN THE ORCHESTRATOR'S CLONE. Nothing was lost, and
-only because the orchestrator's work was already pushed.
+The two rules below come from one measured incident, 2026-09-15: one of six
+implementers was dispatched without worktree isolation, because its
+files-to-touch list read as documents only, and it checked out its own branch
+IN THE ORCHESTRATOR'S CLONE. Nothing was lost, only because the orchestrator's
+work was already pushed. The account is
+delivery/tuition/T-026-worktree-isolation-needs-a-git-cwd-and-fails-instantly-without-one.md:45.
 
 Two rules follow, both cheap:
 
@@ -567,11 +515,6 @@ is worse than none because it is trusted. Full account in
 delivery/tuition/T-014-the-watchdog-watched-the-wrong-place-six-times.md:1.
 
 ## Green is scoped to the run that produced it (T-009, binding)
-
-Measured 2026-08-07: `main` was red for **four hours and twenty-one minutes**
-across five consecutive push runs while every pull-request check was green, and
-the orchestrator merged four more PRs onto it without noticing. The owner
-surfaced it, not the process.
 
 The `gates` workflow fires on two events and they run DIFFERENT bundles: the
 `pull_request` event runs the strong PR bundle with `--phase` from
@@ -641,26 +584,11 @@ and `vacuous`. That row IS the per-gate evidence, so no deduction is needed.
 The procedure below still applies when there is no artifact to read: a run
 older than seven days, a run cancelled before its upload step, or a head from
 before M5-P4. The upload steps and their exactly-one-file property are
-guarded by test/gate-registry.test.ts:2086.
+guarded by test/gate-registry.test.ts:2090.
 
-The rest of this section is the history of why it existed, kept as written
-except where marked.
-
-One level down from the rule above, and the reading procedure is written out
-because the obvious method did not exist. **Until M5-P4 the `gates` workflow
-uploaded no evidence artifact**, so `summary.json`, which is the only place carrying per-gate
-`units`, `applicable` and `vacuous`, never leaves the runner. That last word is a
-universal, so here is what settles it rather than a reader having to trust it:
-
-```
-grep -rn 'upload-artifact\|actions/upload' .github/workflows/   # exit 1, no hits, BEFORE M5-P4
-```
-
-Re-run it before relying on this; the day a workflow gains an upload step, the
-procedure below is superseded by just reading `summary.json`. (M5-P4 is that
-day: the command now finds the two upload steps in `gates.yml`.) A reviewer asking
-"did gate X actually assert something on this head" has the JOB LOG and nothing
-else, and the log prints bundle-level counts, not per-gate rows.
+Without an artifact to read, a reviewer asking whether gate X asserted
+anything on a head has the JOB LOG, and the log prints bundle-level counts, not
+per-gate rows.
 
 So quoting `declared N applicable N verdict N green N` as evidence about one
 gate is a bundle-level green being passed off as a gate-level one. That is the
@@ -1137,13 +1065,14 @@ Each of these bit someone once. Forward them to every implementer.
     **AND SINCE 2026-08-20 THE DEFAULT TOOLCHAIN DOES NOT MERELY SKIP, IT
     FAILS.** The numbers above are historical and correct for the head they
     name; do not read them as today's expectation. At `1945d69`,
-    test/doctor.test.ts:934 is floor-DEPENDENT without being floor-GATED, so
+    test/doctor.test.ts:1086 is floor-DEPENDENT without being floor-GATED, so
     the container default reports `846 pass, 1 fail, 2 skipped` at a head whose
     CI is green. Two interpreters, one head, one test: fail on v22.22.2, pass on
     v26.6.0. **A red on the default toolchain is therefore no longer proof of a
     red branch**, which is a worse position than skipping, because it trains a
     reader to wave a failure through. Establish the base's result before
     attributing a failure to your change, and quote the interpreter with it.
+    The citation above is where that test sits now; at `1945d69` it was line 934.
 
 13. **`git diff main..branch` IS NOT A MERGE PREVIEW, and on a branch that has
     fallen behind it reads as though the branch DELETES things.** Measured
@@ -1171,28 +1100,12 @@ Each of these bit someone once. Forward them to every implementer.
 
 14. **THIS CONTAINER CANNOT DELETE A REMOTE REF, AND `--dry-run` WILL TELL YOU
     IT CAN.** The refusal itself is not new: it was measured on 2026-08-07 and
-    recorded in the owner-action register at delivery/STATE.md:1587, where A-4
+    recorded in the owner-action register at delivery/STATE.md:188, where A-4
     notes that ref deletion is refused with HTTP 403 on both the GitHub API and
     `git push --delete` while ordinary pushes from the same credentials succeed.
     It is repeated here because a fact that lives only in one item of a
     thousand-line register does not survive: the orchestrator rediscovered it
     from scratch, by three methods, thirteen days later.
-
-    The part that IS new was measured 2026-08-20 and is the trap worth naming.
-    A delete dry-run does not probe the authorization it appears to probe:
-
-    | command | reported |
-    |---|---|
-    | `git push --dry-run origin HEAD:refs/heads/<new>` | `* [new branch]`, exit 0 |
-    | `git push --dry-run --delete origin <existing>` | `- [deleted]`, **exit 0** |
-
-    The second line is a lie of omission, not a permission. Compare A-6 at
-    delivery/STATE.md:1572, where a plain `git push --dry-run` DID surface a 403
-    on `git-receive-pack` against a repository the app was not installed on. So
-    a dry-run catches a handshake-level refusal and does NOT catch this one,
-    which means it cannot distinguish "deletion is allowed" from "deletion is
-    refused". A check that returns the same answer either way is the T-008 shape:
-    a guard that cannot go red.
 
     **GENERALISED 2026-09-15, AND THE ORIGINAL ENTRY UNDERSTATED IT.** A
     cross-environment-exclusion probe measured a SECOND, independent instance
@@ -1264,21 +1177,19 @@ it), having just written a status report, a subagent being in flight (verify
 its beacon, then do orchestrator work meanwhile), or something looking blocked
 (name the blocker in one line and do everything that is not blocked).
 
-## Agent concurrency is PER WORKFLOW, and the fix is more workflows (binding)
+## Agent concurrency: ONE workflow at a time, two agents (DR-0044, binding)
 
-The owner has had to point this out TWICE, which is this project's own signal
-that a rule depending on memory does not survive and needs a mechanism.
+The owner decided on 2026-09-16 that one workflow in flight is enough, which
+withdrew the fan-out rule that stood here. The per-workflow cap is
+`min(16, CPUs - 2)` and `nproc` returns 4, so one workflow runs two agents at
+a time. Do not open a second workflow to get around the cap: before
+dispatching, check that nothing else is running, and queue rather than launch
+if something is. Fourteen concurrent agents drove this four-CPU box to load 69,
+and in that band a required gate reported false reds, so more parallelism
+bought work whose measurements were suspect. The record, and what it does NOT
+settle: delivery/decisions/DR-0044-two-agents-in-parallel-is-enough.md:1.
 
-**Measured 2026-09-15: `nproc` returns 4, and the workflow cap is
-`min(16, CPUs - 2)`, so ONE workflow runs at most TWO agents at a time.** Ten
-agents passed to a single workflow do not run ten wide; eight of them queue.
-Load average during the run was 0.03, so the cap is a configured limit and not a
-resource constraint: these agents are waiting on model calls, not on CPU.
-
-**The fix is N workflows of 2, not one workflow of 2N.** Each workflow gets its
-own cap. Five concurrent workflows give ten concurrent agents.
-
-Mechanical form, so it survives a busy session:
+The dispatch script pattern stays, so it survives a busy session:
 
 1. Write the script ONCE with an args filter, so one script serves every slice:
 
@@ -1288,14 +1199,17 @@ Mechanical form, so it survives a busy session:
    ```
 
 2. Launch it inline the first time. The tool result returns a `scriptPath`.
-3. Re-invoke with `{scriptPath, args: [...]}` once per PAIR. Four extra calls
-   cost four tool uses and buy four times the throughput.
 
-**Before dispatching any fan-out, state in writing: how many agents, in how many
-workflows, therefore how many run at once.** If that third number is 2, the
-dispatch is wrong. This is the same discipline T-008 requires for watchdogs, one
-level up: the number you intended is not the number the tool used, so read the
-number the tool reports rather than the one you passed.
+**Before dispatching, state in writing: how many agents, in how many
+workflows, therefore how many run at once.** If that third number is more
+than 2, the dispatch is wrong. This is the same discipline T-008 requires for
+watchdogs, one level up: the number you intended is not the number the tool
+used, so read the number the tool reports rather than the one you passed.
+
+Add a token estimate to that statement, as T-028 asks: the agent count says
+nothing about the session quota. Measured here, a clean-room review costs
+150,000 to 490,000 subagent tokens and a fix round 115,000 to 400,000
+(delivery/decisions/DR-0044-two-agents-in-parallel-is-enough.md:65-66).
 
 **Model choice is per agent and costs nothing to set.** `agent(prompt, {model:
 'fable'})` overrides for that call. Review and judgment stages benefit from a

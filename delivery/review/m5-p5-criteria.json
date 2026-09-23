@@ -1,0 +1,74 @@
+{
+  "kind": "verdict",
+  "phase": "M5-P5",
+  "head": "c1be4a89e9a537b3afa0ba59597afdcda6248d94",
+  "verdict": "APPROVE",
+  "produced-by": "claude-sonnet-5",
+  "framing": "delta-verification-fresh-round",
+  "review-contract": "criteria",
+  "findings": [],
+  "criteria": [
+    {
+      "id": "p5-size",
+      "quote": "The combined byte count of CLAUDE.md, AGENTS.md and delivery/STATE.md is at least 35 percent below the 287544-byte baseline, printed by wc -c in the work history.",
+      "evidence": [
+        "wc -c CLAUDE.md AGENTS.md delivery/STATE.md at c1be4a8: 73276 + 36192 + 34622 = 144090, byte-identical to d353faf; this round touched neither CLAUDE.md's content-bearing size (only citation text, no size-relevant edit) nor STATE.md",
+        "Ceiling 287544 x 0.65 = 186903.6; 144090 remains well under it"
+      ],
+      "met": true
+    },
+    {
+      "id": "p5-no-weak-port",
+      "quote": "Every removed instruction block has a machine-readable disposition naming an exact equivalent rule or enforcing command; a sibling keyword grep alone is rejected by a test.",
+      "evidence": [
+        "node --test test/retirement-inventory.test.ts, node v26.6.0: 56 tests, 56 pass, 0 fail, 0 skipped at c1be4a8",
+        "Independently re-derived 3 of the round's own red-witness rows by editing the real committed test file (never a copy), each restored byte-for-byte (cmp): reverting the STRIKE tripwire (CR-001 fix) reddens 'struck through with ~~: its disclaimer arm reports nothing'; reverting the blockquote-open regex to 0-3 spaces (CR-002 fix) reddens 'in a blockquote at four spaces of indent: its removal arm reports nothing'; reverting the fence-close regex to match any line starting with the marker (CR-003 fix) reddens 'inside a fence past an info-string line: its removal arm reports nothing'. All three match the work history's own mutation table (rows T1, I1, F1) exactly.",
+        "RELOCATIONS now carries 15 members (10 pre-existing plus 5 added this round), independently counted by reading test/retirement-inventory.test.ts:1679-1696",
+        "delivery/plan/cutover/retirement-inventory.json is unchanged by this round (not among the 3 files git diff d353faf..c1be4a8 --stat reports): 26 diet entries (14 superseded-status, 8 history-moved, 3 corrected, 1 archived, 0 mechanically-enforced), matching the prior review exactly",
+        "node scripts/check-retirement-inventory.mjs at c1be4a8: 318 rows against 318 derived rule anchors, 9 retired, commands EXECUTED, exit 0"
+      ],
+      "met": true
+    },
+    {
+      "id": "p5-current-state",
+      "quote": "delivery/STATE.md begins with the current M5 standing, contains no superseded daily status blocks, and links to M4 closure, its deliberate residue and git history.",
+      "evidence": [
+        "delivery/STATE.md is not among the 3 files this round touched (git diff d353faf..c1be4a8 --stat: only delivery/plan/cutover/retirement-inventory.md, delivery/work-history/m5-p5.md, test/retirement-inventory.test.ts)",
+        "Re-read at c1be4a8: first ## heading unchanged at delivery/STATE.md:8, owner-action register and the A-14 HTML-comment placeholder unchanged from d353faf"
+      ],
+      "met": true
+    },
+    {
+      "id": "p5-boundary",
+      "quote": "git diff --name-only contains no path under delivery/evidence, delivery/review, delivery/decisions, delivery/tuition or .claude/skills.",
+      "evidence": [
+        "git diff origin/main...HEAD --name-only at c1be4a8 lists the same 7 paths as at d353faf: CLAUDE.md, delivery/STATE.md, delivery/plan/cutover/retirement-inventory.json, delivery/plan/cutover/retirement-inventory.md, delivery/work-history/m5-p5.md, test/behaviors.json, test/retirement-inventory.test.ts; none under the five protected trees",
+        "Scope gate re-run at c1be4a8 on a local branch named claude/m5-p5-context-diet, reset to this head: green, 7 changed path(s) audited against the m5-p5 declaration at merge base b16f200 (4 declared paths not touched, no declaration entry added or removed)"
+      ],
+      "met": true
+    },
+    {
+      "id": "p5-gates",
+      "quote": "npm run build, node --test, check-agents-references, agent-rules-drift, brief-drift, clause-map and citations all exit 0 with nonzero applicable units where defined.",
+      "evidence": [
+        "node v26.6.0 (freshly fetched into a scratch prefix): npm ci exit 0, npm run build exit 0, git status --short clean apart from this review's own two output files",
+        "npm test (invocation node --test \"test/**/*.test.ts\", dist built): tests 1463, pass 1463, fail 0, cancelled 0, skipped 0, todo 0, duration_ms 478366, exit 0 (process confirmed exited, no leftover node --test process); matches the work history's own claimed count exactly",
+        "Individually re-run and green at c1be4a8: citations (22 citations resolved across 2 changed documents), scope (7 paths, see p5-boundary), brief-drift (21 rows), clause-map (74 rows, 0 pending), check-agents-references (23 references, 22 to an anchor), agent-rules-drift (3 preflight steps, 21 gates), check-authored-bytes.mjs (exit 0), check-id-collisions.mjs (no collisions), check-retirement-inventory.mjs (exit 0), render-agent-rules-gates.mjs --check (24 rendered gate rows compared)",
+        "Could not independently run the full scripts/m2-exit-test.sh PR bundle: this session's sandbox refuses the multi-command git/bash shapes that script issues, the same limitation recorded against d353faf; ran the constituent gates individually instead, which is strictly more granular than the bundle script's own assertions"
+      ],
+      "met": true
+    }
+  ],
+  "deviations-judged": [
+    {
+      "deviation": "The round's scope was deliberately narrow: fix CR-001 (inline markup) and CR-002 (four-space containers) from the Fable hazard review, fix the claim-grep miscount, fix CR-003 (fence length) only if it took one line, and list every other Fable low (CR-004 through CR-008 in that review's numbering) as residue rather than fixing them.",
+      "serves-plan-intent": true,
+      "reasoning": "The owner chose this scope explicitly (per the coordinator's framing, 'kept simple') rather than another full fix-round cycle. Independently confirmed: CR-001, CR-002 and the claim-grep count are genuinely closed (mutation-tested against the real files); CR-003 was fixed in exactly one line (the fence-close regex) with its length half left as stated residue; the round's own 'What the guards no longer claim' list (delivery/work-history/m5-p5.md:875-895) honestly carries forward CR-003's residue, CR-004, CR-005, CR-006 and CR-008 without overstating any of them as fixed. No claim in the round's work history or in the inventory document overstates what was done."
+    },
+    {
+      "deviation": "diet-claude-md-02 remains reclassified from mechanically-enforced to history-moved, and A-14 remains an HTML-comment placeholder in STATE.md rather than a live register entry.",
+      "serves-plan-intent": true,
+      "reasoning": "Both were already judged honest in the prior review of d353faf and are unchanged by this round (neither retirement-inventory.json nor STATE.md was touched). Re-confirmed: diet-claude-md-02's disposition and note are byte-for-byte identical, and A-14's register entry still lives on the unmerged M5-P1 branch."
+    }
+  ]
+}
