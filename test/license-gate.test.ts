@@ -1344,6 +1344,7 @@ function runStubbedReleaseVerify(
   root: string,
   stub: RegistryStub,
   extra: string[],
+  bounds: { wait: number; poll: number },
 ): { status: number; stderr: string; records: Array<Record<string, unknown>>; seconds: number } {
   const workdir = join(root, "clean");
   mkdirSync(workdir, { recursive: true });
@@ -1352,7 +1353,15 @@ function runStubbedReleaseVerify(
   const result = spawnSync("bash", [releaseVerify, "@tiphys/kernel", "0.2.0", "--records", recordsPath, ...extra], {
     cwd: workdir,
     encoding: "utf8",
-    env: stub.env,
+    /* THE BOUNDS GO BY ENVIRONMENT, not by flag, on purpose: the pre-fix
+       script rejects an unknown flag with exit 64, which would make every test
+       here red for a usage reason rather than for the defect. The flags have
+       their own test below. */
+    env: {
+      ...stub.env,
+      RELEASE_VERIFY_WAIT_SECONDS: String(bounds.wait),
+      RELEASE_VERIFY_POLL_SECONDS: String(bounds.poll),
+    },
     maxBuffer: 64 * 1024 * 1024,
     timeout: 120_000,
   });
@@ -1370,7 +1379,7 @@ test("release-verify in registry mode waits until the registry serves the versio
   const root = mkdtempSync(join(tmpdir(), "tiphys-rv-wait-"));
   try {
     const stub = registryStub(root, 2, false);
-    const run = runStubbedReleaseVerify(root, stub, ["--wait-seconds", "60", "--poll-seconds", "1"]);
+    const run = runStubbedReleaseVerify(root, stub, [], { wait: 60, poll: 1 });
     /* The pre-fix script fails here with five step failures, which is the
        incident: its first registry request is the install, and it is answered
        with the captured ETARGET. */
@@ -1399,7 +1408,7 @@ test("release-verify in registry mode times out with NOT SERVED and exit 75 when
   const root = mkdtempSync(join(tmpdir(), "tiphys-rv-never-"));
   try {
     const stub = registryStub(root, "never", false);
-    const run = runStubbedReleaseVerify(root, stub, ["--wait-seconds", "3", "--poll-seconds", "1"]);
+    const run = runStubbedReleaseVerify(root, stub, [], { wait: 3, poll: 1 });
     assert.equal(run.status, 75, `expected the distinct not-served exit; stderr:\n${run.stderr}`);
     assert.match(run.stderr, /NOT SERVED\. The registry did not serve @tiphys\/kernel@0\.2\.0 within 3 seconds/);
     /* NOT the five step failures: no step ran, and nothing was installed. */
@@ -1424,7 +1433,7 @@ test("release-verify in registry mode fails a served but broken version at its s
   const root = mkdtempSync(join(tmpdir(), "tiphys-rv-broken-"));
   try {
     const stub = registryStub(root, 0, true);
-    const run = runStubbedReleaseVerify(root, stub, ["--wait-seconds", "60", "--poll-seconds", "1"]);
+    const run = runStubbedReleaseVerify(root, stub, [], { wait: 60, poll: 1 });
     assert.equal(run.status, 1, `expected a step failure; stderr:\n${run.stderr}`);
     assert.doesNotMatch(run.stderr, /NOT SERVED/);
     assert.match(run.stderr, /step bin-version exited/);
@@ -1448,11 +1457,29 @@ test("release-verify in tarball mode makes no registry poll", () => {
     stub.env["STUB_TARBALL_VERSION"] = "0.2.0";
     const tarball = join(root, "kernel-0.2.0.tgz");
     writeFileSync(tarball, "");
-    const run = runStubbedReleaseVerify(root, stub, ["--tarball", tarball, "--wait-seconds", "2", "--poll-seconds", "1"]);
+    const run = runStubbedReleaseVerify(root, stub, ["--tarball", tarball], { wait: 2, poll: 1 });
     assert.equal(run.status, 0, `stderr:\n${run.stderr}`);
     assert.deepEqual(stub.calls().filter((line) => line.startsWith("view ")), [], "tarball mode asked the registry");
     assert.equal(run.records.some((entry) => entry["step"] === "registry-served"), false);
     assert.equal(run.records.find((entry) => entry["step"] === "install")?.["artifact"], "local-tarball");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("release-verify's wait flags override the environment and a malformed bound is a usage error", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-rv-flags-"));
+  try {
+    const stub = registryStub(root, "never", false);
+    /* The environment says 600s; the flag says 2s. A run that honoured the
+       environment would take ten minutes and hit the spawn timeout. */
+    const run = runStubbedReleaseVerify(root, stub, ["--wait-seconds", "2", "--poll-seconds", "1"], { wait: 600, poll: 1 });
+    assert.equal(run.status, 75, `stderr:\n${run.stderr}`);
+    assert.match(run.stderr, /within 2 seconds/);
+    for (const bad of [["--poll-seconds", "0"], ["--wait-seconds", "soon"], ["--wait-seconds", "-5"]]) {
+      const refused = runStubbedReleaseVerify(root, stub, bad, { wait: 2, poll: 1 });
+      assert.equal(refused.status, 64, `${bad.join(" ")} was accepted: ${refused.stderr}`);
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
