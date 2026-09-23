@@ -1,0 +1,31 @@
+{
+  "id": "kernel-0-2-1-admission-never-honours-old-stamp",
+  "behavior": "admission-applies-current-rules-to-old-stamp",
+  "tests": [
+    "an old-stamped verdict that breaks a current rule is excluded by name for the rule it breaks, never for its stamp, at check-dual-review and merge-preconditions"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    if (declaresNoHead(candidate.record)) {",
+      "replace": "    if (declaresNoHead(candidate.record) && !(\"tiphys-version\" in (candidate.record ?? {}))) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    if (declaresNoHead(entry.record)) {",
+      "replace": "    if (declaresNoHead(entry.record) && !(\"tiphys-version\" in entry.record)) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/kernel-0-2-1-history-git.json"
+    ],
+    "provenance": "Real output of git diff -z --no-renames --name-only base...head (the name list classifyReviewBudget reads), captured 2026-09-23 with git 2.43.0 against the scratch repositories test/history-compat.test.ts stages; the named tests stage them again and compare git's live output with the recorded stdout, commit shas spelled by staging name, before trusting either gate."
+  }
+}

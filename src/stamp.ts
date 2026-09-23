@@ -15,18 +15,14 @@
  *    rule's starting version is written; the validate command reads it and
  *    nothing else does.
  *
- * 2. ADMISSION (the merge gates). NOT relaxed by the stamp, ever. A verdict is
- *    admitted toward a merge only when its stamp is the RUNNING kernel's
- *    major.minor or newer (`admissionStampProblem`). Otherwise a writer could
- *    write an old stamp to escape a new rule: the stamp would buy the document
- *    a lighter shape check AND a merge. Excluded verdicts are named, exactly as
- *    a head-less or off-head verdict is.
- *
- * WHY major.minor AND NOT THE FULL VERSION. A patch release fixes defects and
- * adds no rule a reviewer must learn, so a verdict written under 0.2.0 is still
- * admissible under 0.2.1. A minor release is where rules are added. If a patch
- * release ever does add a rule, its `RULES_SINCE` entry still gates SHAPE by the
- * full version; only admission is coarser.
+ * 2. ADMISSION (the merge gates). The gates DO NOT READ THE STAMP. Every rule
+ *    they apply is applied to every verdict, stamped or not. That is what
+ *    keeps the stamp from ever relaxing admission: a writer cannot escape a
+ *    current rule with an old stamp, because nothing on the admission path
+ *    looks at it. It also means a verdict written under 0.2.0, which has a
+ *    head and no stamp, keeps counting when its project upgrades mid-phase.
+ *    A first 0.2.1 draft required a current stamp for admission, and that
+ *    excluded exactly those in-flight reviews; the orchestrator withdrew it.
  */
 
 import { readOwnVersion } from "./version.ts";
@@ -76,16 +72,6 @@ export function ownVersionForStamp(): string | undefined {
   } catch {
     return undefined;
   }
-}
-
-/** The running kernel's own version, from its package.json. */
-export function runningKernelVersion(): KernelVersion {
-  const own = readOwnVersion();
-  const parsed = parseKernelVersion(own);
-  if (parsed === undefined) {
-    throw new Error(`the kernel's own package.json version ${own} is not major.minor.patch`);
-  }
-  return parsed;
 }
 
 /**
@@ -211,31 +197,4 @@ export function describeRuleNotInForce(rule: RuleSince, stamp: StampReading): st
         ? `this document's ${STAMP_FIELD} ${stamp.value} is not a version`
         : `this document carries no ${STAMP_FIELD}, so it is pre-stamp history held to the 0.1.0 rules`;
   return `HISTORY ${rule.id} applies from ${STAMP_FIELD} ${rule.since} (${rule.statement}); ${document}`;
-}
-
-/**
- * Why a verdict may NOT be admitted toward a merge on its stamp, or undefined
- * when it may. Admission is never relaxed by the stamp: the stamp must be the
- * running kernel's major.minor or newer.
- */
-export function admissionStampProblem(record: unknown, running: KernelVersion = runningKernelVersion()): string | undefined {
-  const stamp = readStamp(record);
-  const floor = `${String(running.major)}.${String(running.minor)}`;
-  if (stamp.kind === "absent") {
-    return (
-      `carries no ${STAMP_FIELD}, so it does not say which kernel's rules it was written to; a verdict is ` +
-      `admitted toward a merge only when stamped ${floor} or newer, the running kernel ${running.text} (DR-0055)`
-    );
-  }
-  if (stamp.kind === "malformed") {
-    return `carries ${STAMP_FIELD} ${stamp.value}, which is not a version, so it is not admitted toward a merge (DR-0055)`;
-  }
-  const version = stamp.version;
-  if (version.major < running.major || (version.major === running.major && version.minor < running.minor)) {
-    return (
-      `is stamped ${STAMP_FIELD} ${version.text}, older than ${floor}, the running kernel ${running.text}; an ` +
-      `old stamp would escape the rules added since, so it is history and not admitted toward a merge (DR-0055)`
-    );
-  }
-  return undefined;
 }

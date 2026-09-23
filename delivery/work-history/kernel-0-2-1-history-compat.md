@@ -357,9 +357,11 @@ what was built:
    package.json (brief-compose, clean-room-brief, implementer-brief, two
    summary tests in test/gates.test.ts), where the strict reader threw. An
    omitted stamp reads as history at every reader, which is the safe side.
-   Admission keeps the strict reader (`runningKernelVersion`), so a gate that
-   cannot read its own version errors rather than admits. roles/clean-room-reviewer.md tells the
-   reviewer to copy the brief's line into the verdict.
+   (SUPERSEDED, see "Admission does not read the stamp" below: admission
+   kept a strict reader, `runningKernelVersion`; both were removed.)
+   roles/clean-room-reviewer.md tells the reviewer to copy the brief's line
+   into the verdict; since the admission round it says the stamp is
+   recommended, not required.
 2. **One `since` source**: `RULES_SINCE` in src/stamp.ts, a table in src/
    rather than a schema annotation, because the schema vocabulary is closed
    and an `x-` keyword would need a validator change. `tiphys validate`
@@ -367,21 +369,23 @@ what was built:
    `since`; an unstamped document is held to 0.1.0. A rule not applied is
    PRINTED as a `HISTORY <rule> applies from tiphys-version <v> ...` line,
    never dropped silently.
-3. **Admission never relaxed.** `admissionStampProblem` (src/stamp.ts) is
+3. **SUPERSEDED by the admission round below; kept as the record of what
+   the first draft did.** `admissionStampProblem` (src/stamp.ts) was
    called by BOTH merge gates, from one function: src/checks.ts
    (partitionByAuditedHead) and src/gates/merge-preconditions.ts
    (readReviewCorpus). Unstamped, malformed, or older than the running
-   major.minor: excluded by name, before the head relation. Head-less is
-   still checked first, so a head-less document gets the head sentence.
+   major.minor: excluded by name, before the head relation. Head-less was
+   checked first, so a head-less document got the head sentence. The
+   function, its caller blocks and the `stamp-not-admissible` exclusion kind
+   are removed.
 4. **The rest of the brief is kept.** The pulse fixture is unstamped history
    and still validates with no INVALID line (it now also prints HISTORY
    lines for the two rules it is not held to).
 5. **Witnesses**, three new specs:
    witness/kernel-0-2-1-stamp-rule-applies-from-its-version.json (members:
    validate.ts applies no gating; `ruleApplies` treats unstamped as in
-   force), witness/kernel-0-2-1-stamp-old-excluded-at-check-dual-review.json
-   and ...-at-merge-preconditions.json (members: the gate skips the stamp
-   check; the old-minor comparison never fires).
+   force), and two stamp-exclusion specs at the merge gates that the
+   admission round deleted (named there).
 
 ### Fix round inside the scope addition: a pointer is a place, not a rule
 
@@ -524,14 +528,12 @@ it is every file write in src/, locks and barriers included). Classified:
   it through that check. The check existed at 0.1.0 and only its head clause
   is 0.2.0; gating a part of a check needs the check itself to read the
   stamp. Open question 3 below.
-- **Admission floor is major.minor, as specified**, so this repository's
-  fixtures stamp `0.2.0` literally (witness/fixtures/dual-review/). A minor
-  bump to 0.3.0 will exclude them and redden the tests that stage them; that
-  is the rule working, and the restamp is part of that release. The
-  single-family staging reads the version from package.json instead.
-- **The kernel's own reviews of THIS branch** must carry
-  `tiphys-version: 0.2.0` (the package version, unbumped), or both merge
-  gates will exclude them. The composed brief now says so.
+- **SUPERSEDED: admission floor was major.minor.** Withdrawn with the
+  admission requirement. The fixtures under witness/fixtures/dual-review/
+  still carry `0.2.0`, which is now inert at admission.
+- **SUPERSEDED: the kernel's own reviews of this branch had to carry
+  `tiphys-version: 0.2.0`.** No longer needed; an unstamped review with a
+  head is admitted when it meets the rules. The brief recommends the stamp.
 
 ## Gates
 
@@ -758,6 +760,153 @@ of them is in a file this round changes except src/checks.ts
 (checklist-duplicate-probe-id-guard, dual-review-absent-dimension-refuses),
 whose matched text this round did not edit.
 
+## Admission does not read the stamp (the orchestrator's second message)
+
+The owner reported pulse running real work on 0.2.0, with reviewers writing
+verdicts that carry `head` and no `tiphys-version`, because 0.2.0 never asked
+for one. The first 0.2.1 draft excluded any verdict without a current stamp,
+so a project upgrading mid-phase would lose its in-flight reviews: the 0.2.0
+break again, one release later.
+
+**Mechanism.** The same one this branch exists for, in its mirror form:
+a rule about how CURRENT work is written (carry the stamp) placed where it
+also judges work written before the rule existed. The fix is the one the
+orchestrator specified: admission ignores the stamp and applies every rule
+it holds to every verdict, stamped or not. The stamp decides only which
+schema rules `tiphys validate` applies, for history. The safety property is
+kept by construction, not by a comparison: nothing on the admission path
+reads the stamp, so no stamp value can excuse a verdict from a rule.
+
+### Derivation
+
+Every reader and writer of the stamp, after the change:
+
+```
+grep -rnE 'admissionStampProblem|runningKernelVersion|stamp-not-admissible|readStamp|STAMP_FIELD|ownVersionForStamp' src bin scripts test roles schemas templates AGENTS.md
+src/stamp.ts:31:export const STAMP_FIELD = "tiphys-version";
+src/stamp.ts:68:export function ownVersionForStamp(): string | undefined {
+src/stamp.ts:87:export function readStamp(record: unknown): StampReading {
+src/stamp.ts:91:  if (!(STAMP_FIELD in record)) {
+src/stamp.ts:94:  const value = (record as Record<string, unknown>)[STAMP_FIELD];
+src/stamp.ts:195:      ? `this document is stamped ${STAMP_FIELD} ${stamp.version.text}`
+src/stamp.ts:197:        ? `this document's ${STAMP_FIELD} ${stamp.value} is not a version`
+src/stamp.ts:198:        : `this document carries no ${STAMP_FIELD}, so it is pre-stamp history held to the 0.1.0 rules`;
+src/stamp.ts:199:  return `HISTORY ${rule.id} applies from ${STAMP_FIELD} ${rule.since} (${rule.statement}); ${document}`;
+src/gates/run.ts:1:import { STAMP_FIELD, ownVersionForStamp } from "../stamp.ts";
+src/gates/run.ts:51:  const version = ownVersionForStamp();
+src/gates/run.ts:52:  return version === undefined ? {} : { [STAMP_FIELD]: version };
+src/commands/validate.ts:30:import { describeRuleNotInForce, readStamp, rulesNotYetInForce } from "../stamp.ts";
+src/commands/validate.ts:471:  const stamp = readStamp(decoded.value);
+src/commands/brief.ts:37:import { STAMP_FIELD, ownVersionForStamp } from "../stamp.ts";
+src/commands/brief.ts:403:  const stampVersion = ownVersionForStamp();
+src/commands/brief.ts:413:    ...(stampVersion === undefined ? [] : [`${STAMP_FIELD}: ${stampVersion}`]),
+exit=0
+```
+
+So the one remaining reader is `validate`; the other two sites are writers
+(the brief header and summary.json). Before the change the same grep also
+listed `admissionStampProblem` and `runningKernelVersion` in src/checks.ts
+and src/gates/merge-preconditions.ts, the two admission sites; both are gone.
+A second grep over the two admission files and the workflow script for the
+literal field name or the word `stamp`:
+
+```
+grep -rnE 'tiphys-version|stamp' src/checks.ts src/gates/merge-preconditions.ts scripts/check-dual-review.mjs
+src/checks.ts:4431:       gate applies is applied to every verdict, stamped or not, so an old or
+src/checks.ts:4432:       missing stamp can neither exclude a verdict nor excuse one from a rule.
+src/checks.ts:4433:       A 0.2.0 verdict, which carries a head and no stamp, is admitted exactly
+src/checks.ts:4434:       when it meets the rules. The stamp decides only which schema rules
+src/checks.ts:6118:   * KERNEL 0.2.1 (DR-0055): checks not in force for this document's stamp,
+src/checks.ts:6119:   * decided by src/stamp.ts's RULES_SINCE. They are not run and not counted
+src/gates/merge-preconditions.ts:1243:    /* KERNEL 0.2.1 (DR-0055): admission does not read the stamp, exactly as
+src/gates/merge-preconditions.ts:1245:       stamp. Every rule here applies to every verdict, stamped or not. */
+```
+
+All comments. src/checks.ts:6118 is the `notInForce` parameter of
+`runChecks`, which only validate.ts:472 fills; the gates call `runChecks`
+without it, so every derived check is in force at admission.
+
+**Not covered.** The grep is lexical: a site reading the stamp through a
+computed key would not appear. I read both admission loops in full instead
+of relying on it. Consumers outside this repository (pulse's own scripts)
+were not examined. The corpus is not schema-validated at either gate (open
+question 11), so "every current rule" at admission is the gate predicates:
+head present, head relation to the audited head, the pair approving with no
+unresolved high or medium, and decorrelation.
+
+### Changes
+
+- src/stamp.ts: `runningKernelVersion` and `admissionStampProblem` removed;
+  header point 2 rewritten to say the gates do not read the stamp.
+- src/checks.ts: the `stamp-not-admissible` exclusion kind, its describe
+  branch and the stamp block in `partitionByAuditedHead` removed; a comment
+  states the rule.
+- src/gates/merge-preconditions.ts: the stamp block in `readReviewCorpus`
+  removed; same comment.
+- schemas/verdict.schema.json: the `tiphys-version` $comment now says it is
+  not read at admission and is recommended, not required.
+- roles/clean-room-reviewer.md: the stamp paragraph says the same; the
+  brief still tells the reviewer to copy the line.
+
+### Tests
+
+Two stamp-exclusion tests in test/history-compat.test.ts are replaced:
+
+- "a real-shaped 0.2.0 verdict pair, with a head and no stamp, is admitted by
+  check-dual-review and merge-preconditions, and so is the same pair stamped
+  old or current". It loops over no stamp, `0.1.0` and the running version.
+  For the unstamped case it first asserts each staged verdict has a
+  forty-hex `head:` line and no `tiphys-version:` line, which is the 0.2.0
+  shape. check-dual-review must be green. merge-preconditions must reach its
+  network condition, `no repository could be established` (the fixture has
+  no remote), and must not report `admitted and N missing`, so the review
+  conditions are cleared.
+- "an old-stamped verdict that breaks a current rule is excluded by name for
+  the rule it breaks, never for its stamp, at check-dual-review and
+  merge-preconditions". The pair is stamped `0.1.0` and has no head. Both
+  gates are red, name `<file> declares no head` for each file, and print no
+  `tiphys-version` text in the detail or the selection row.
+
+Both call `assertGitMatchesCapture` on the staged repository, which is the
+external-output capture the red-witness gate requires for a member in a
+spawning file. test/behaviors.json rows `stamp-old-excluded-at-*` are
+replaced in place by `admission-ignores-stamp-admits-0-2-0-verdict` and
+`admission-applies-current-rules-to-old-stamp`.
+
+### Witnesses
+
+The two stamp-exclusion specs are deleted with `git rm`
+(witness/kernel-0-2-1-stamp-old-excluded-at-check-dual-review.json and
+...-at-merge-preconditions.json); their find text no longer exists. Two new
+specs, each with one member per gate so both gates are covered:
+
+- witness/kernel-0-2-1-admission-requires-no-stamp.json: admission starts
+  requiring a stamp, `declaresNoHead(x) || !("tiphys-version" in x)`, in
+  src/checks.ts and in src/gates/merge-preconditions.ts.
+- witness/kernel-0-2-1-admission-never-honours-old-stamp.json: admission
+  starts honouring a stamp, `declaresNoHead(x) && !("tiphys-version" in x)`,
+  so a stamped head-less verdict escapes the head rule, in both files.
+
+Hand trial, scratch try-members2.py (applies one member, runs the named
+test with node v26.6.0, restores the file). Tuples are (exit, pass, fail):
+
+```
+kernel-0-2-1-admission-requires-no-stamp HEAD a real-shaped 0.2.0 verdict pair, with a head and  (0, '1', '0')
+kernel-0-2-1-admission-requires-no-stamp member 0 a real-shaped 0.2.0 verdict pair, with a head and  (1, '0', '1')
+kernel-0-2-1-admission-requires-no-stamp member 1 a real-shaped 0.2.0 verdict pair, with a head and  (1, '0', '1')
+kernel-0-2-1-admission-never-honours-old-stamp HEAD an old-stamped verdict that breaks a current rule  (0, '1', '0')
+kernel-0-2-1-admission-never-honours-old-stamp member 0 an old-stamped verdict that breaks a current rule  (1, '0', '1')
+kernel-0-2-1-admission-never-honours-old-stamp member 1 an old-stamped verdict that breaks a current rule  (1, '0', '1')
+```
+
+Every member red, HEAD green. The gate's own run is under Gates.
+
+### What this supersedes
+
+Point 3 of the DR-0055 section, the major.minor floor and "reviews of this
+branch must carry 0.2.0" under its deviations, and open question 8 are
+marked superseded or resolved in place rather than deleted.
+
 ## Open questions
 
 1. **`headGroupFor` is unchanged.** In the derived checks, a same-phase
@@ -787,17 +936,23 @@ whose matched text this round did not edit.
    DR-0055 point 2 would gate it by `since`; I did not, for the reason given
    under the DR-0055 deviations (no admission gate stands behind a final
    report). The orchestrator decides.
-8. **Old fixtures break at the next minor.** The stamped fixtures under
-   witness/fixtures/dual-review/ carry `0.2.0` literally. At 0.3.0 the
-   admission floor excludes them and their tests redden until restamped.
-   Deriving the stamp at test time for these files was not attempted; they
-   are static YAML fixtures and I left them static.
+8. **RESOLVED by the admission round.** Was: the stamped fixtures under
+   witness/fixtures/dual-review/ would be excluded at 0.3.0 by the admission
+   floor. Admission no longer reads the stamp, so they are not.
 9. **Criterion 4c is amended by an orchestrator ruling, not by an owner
    record.** delivery/plan/kernel-plan-m3.md:1809 requires a nonzero exit for
    a skipped cross-document check; 0.2.1 exits 0. Whether that needs a
    decision record (DR-0016: it is reversible) is the orchestrator's call.
 10. **Stale per-check comments** at src/checks.ts:633, :2075 and :2571 still
-   say a skipped check "exits nonzero".
+   say a skipped check "exits nonzero", and the `runChecks` header says a
+   skip makes "the run FAIL" (true of `ChecksRun.failed`, which is kept; no
+   longer true of the validate exit).
+11. **Neither merge gate schema-validates the corpus it admits.**
+   `partitionByAuditedHead` and `readReviewCorpus` decode YAML and apply
+   their own predicates; they do not run the verdict schema. So "every
+   current rule" at admission means those predicates, not the schema. This
+   is pre-existing and unchanged; whether admission should also run the
+   current schema is for the orchestrator.
 6. **Unexaminable files.** A file under `delivery/review/` that cannot be
    decoded still makes merge-preconditions error, whatever its age. That
    also judges history; not changed.
@@ -810,35 +965,37 @@ whose matched text this round did not edit.
 grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/kernel-0-2-1-history-compat.md
 ```
 
-Re-run after the rulings round, before this list was rewritten. Hits by
+Re-run after the admission round, before this list was rewritten. Hits by
 line, and what settles each:
 
 - 6: the owner's rule, quoted.
 - 213 and 262: `never counts it`, a test title (quoted, and in the captured
   summary). The test is the settlement: green on the branch, red on main.
 - 219, 308, 309: `never-admitted`, a witness file name.
-- 221, 384, 731, 732: describe mutations (`always false`, "never fires",
-  "exit 1 whenever", "always exit 0"); the red-witness run settles each.
-- 369: HISTORY lines are "never dropped silently": the stamp-rule test
+- 221, 733, 734: describe mutations (`always false`, "exit 1 whenever",
+  "always exit 0"); the red-witness run settles each.
+- 371: HISTORY lines are "never dropped silently": the stamp-rule test
   asserts the HISTORY line is printed for both unstamped and 0.1.0 stamps.
-- 370: "Admission never relaxed": the two stamp-exclusion tests stage an
-  approving pair stamped 0.1.0 and unstamped and require red, by name, at
-  both gates; their witnesses redden when the stamp check is skipped.
-- 646: the plan's own rationale, quoted.
-- 649: "a skipped check is never reported as a pass": the skipped-only test
+- 648: the plan's own rationale, quoted.
+- 651: "a skipped check is never reported as a pass": the skipped-only test
   asserts at least one `SKIPPED <id> no context` line and no INVALID line.
-- 683: AGENTS.md:527's command is `tiphys validate --type verdict --context
+- 685: AGENTS.md:527's command is `tiphys validate --type verdict --context
   <project> <verdict>`; the `--context` is in the text itself.
-- 705: mode.ts and checklist.ts "always pass a context": src/commands/mode.ts:126
+- 707: mode.ts and checklist.ts "always pass a context": src/commands/mode.ts:126
   passes `dirname(read.path)`, and src/commands/checklist.ts:142-149 assigns
   `context = packageRoot()` before either `invalidityLines` call.
-- 797: "needs a", inside open question 9, which is a question.
-- 801: "cannot be decoded" describes an input (an undecodable file), not a
+- 766: "0.2.0 never asked for one": `git show origin/main:schemas/verdict.schema.json
+  | grep -c tiphys-version` printed 0 at b16f200, whose package.json says
+  0.2.0.
+- 865, 886, 897, 898, 899: a test title and a witness file name; the hand
+  trial printed with them settles each (members red, HEAD green).
+- 944: "needs a", inside open question 9, which is a question.
+- 956: "cannot be decoded" describes an input (an undecodable file), not a
   claim about the code.
-- 810: the grep command itself.
+- 965: the grep command itself.
 
 Occurrences, counted the same way in both forms after this section was
-written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 41, and the
-wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 41.
-Equal, so no hit was missed by wrapping. The hits after line 810 are this
+written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 44, and the
+wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 44.
+Equal, so no hit was missed by wrapping. The hits after line 965 are this
 section quoting the ones above it.

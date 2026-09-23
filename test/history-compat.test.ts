@@ -725,52 +725,70 @@ test("a verdict with a real INVALID line still exits 1 without a context, whethe
 });
 
 /** The approving, anchored, decorrelated pair with each document's stamp replaced. */
-function stampedPair(stamp: string | null): { from: string; as: string; stamp: string | null }[] {
-  return ANCHORED_APPROVING_PAIR.map((entry) => ({ ...entry, stamp }));
+function stampedPair(stamp: string | null, stripHead = false): { from: string; as: string; stamp: string | null; stripHead: boolean }[] {
+  return ANCHORED_APPROVING_PAIR.map((entry) => ({ ...entry, stamp, stripHead }));
 }
 
-test("an old-stamped or unstamped verdict is excluded by name at check-dual-review, and a current stamp is admitted", () => {
-  /* THE CONTROL: stamped with the running version, the pair is green. */
-  const control = stageReviewedChange(stampedPair(KERNEL_VERSION));
-  assertGitMatchesCapture(control.dir, "budget-name-list", { base: control.base, head: control.head });
-  const green = runGate(control, "check-dual-review");
-  assert.equal(green.record.status, "green", green.output);
-
-  for (const [stamp, reason] of [
-    ["0.1.0", "is stamped tiphys-version 0.1.0, older than"],
-    [null, "carries no tiphys-version"],
-  ] as const) {
+/*
+ * ADMISSION DOES NOT READ THE STAMP (kernel 0.2.1, the orchestrator's ruling
+ * after pulse was found running real work on 0.2.0). A 0.2.0 reviewer writes
+ * a head and no stamp, because 0.2.0 never asked for one. Those verdicts must
+ * keep counting when the project upgrades mid-phase, and an old stamp must not
+ * excuse a verdict from any rule either. Both tests run BOTH merge gates, so a
+ * change to either gate's admission reddens them.
+ */
+test("a real-shaped 0.2.0 verdict pair, with a head and no stamp, is admitted by check-dual-review and merge-preconditions, and so is the same pair stamped old or current", () => {
+  for (const stamp of [null, "0.1.0", KERNEL_VERSION]) {
     const repo = stageReviewedChange(stampedPair(stamp));
     assertGitMatchesCapture(repo.dir, "budget-name-list", { base: repo.base, head: repo.head });
-    const run = runGate(repo, "check-dual-review");
-    const detail = run.record.detail ?? "";
-    assert.equal(run.record.status, "red", `${String(stamp)}: ${run.output}`);
-    assert.match(detail, /0 of 2 are admitted and 2 missing/, detail);
-    for (const entry of ANCHORED_APPROVING_PAIR) {
-      assert.ok(detail.includes(`delivery/review/${entry.as} ${reason}`), `${String(stamp)} ${entry.as}:\n${detail}`);
+    if (stamp === null) {
+      /* Real-shaped 0.2.0: a forty-hex head and no tiphys-version line. */
+      for (const entry of ANCHORED_APPROVING_PAIR) {
+        const body = readFileSync(join(repo.dir, "delivery", "review", entry.as), "utf8");
+        assert.match(body, /^head: [0-9a-f]{40}$/m, `${entry.as} carries no full head`);
+        assert.doesNotMatch(body, /^tiphys-version:/m, `${entry.as} is still stamped`);
+      }
     }
+    const dual = runGate(repo, "check-dual-review");
+    assert.equal(dual.record.status, "green", `${String(stamp)}: ${dual.output}`);
+    /* merge-preconditions: the review conditions are cleared and the run
+       reaches the network condition this fixture has no repository for. */
+    const merge = runGate(repo, "merge-preconditions");
+    assert.equal(merge.record.status, "error", `${String(stamp)}: ${merge.output}`);
+    assert.match(merge.record.detail ?? "", /no repository could be established/, `${String(stamp)}: ${merge.output}`);
+    /* The review conditions are decided first: a pair with fewer than two
+       admitted is red on "admitted and missing" before this step (the old-stamp
+       head-less test below shows that shape). Reaching it is the admission. */
+    assert.doesNotMatch(merge.record.detail ?? "", /admitted and \d+ missing/, `${String(stamp)}: ${merge.output}`);
   }
 });
 
-test("an old-stamped verdict is excluded by name at merge-preconditions and never counts toward the two reviews", () => {
-  const control = stageReviewedChange(stampedPair(KERNEL_VERSION));
-  const reached = runGate(control, "merge-preconditions");
-  assert.equal(reached.record.status, "error", reached.output);
-  assert.match(reached.record.detail ?? "", /no repository could be established/);
-
-  const repo = stageReviewedChange(stampedPair("0.1.0"));
+test("an old-stamped verdict that breaks a current rule is excluded by name for the rule it breaks, never for its stamp, at check-dual-review and merge-preconditions", () => {
+  /* The rule broken is the head clause: the pair is stamped 0.1.0 and carries
+     no head. An admission that honoured the old stamp would let it through;
+     one that read the stamp at all would name the stamp. */
+  const repo = stageReviewedChange(stampedPair("0.1.0", true));
   assertGitMatchesCapture(repo.dir, "budget-name-list", { base: repo.base, head: repo.head });
-  const run = runGate(repo, "merge-preconditions");
-  assert.equal(run.record.status, "red", run.output);
-  assert.match(run.record.detail ?? "", /0 of 2 are admitted and 2 missing/);
-  const selection = run.gateStdout.split("\n").filter((line) => line.includes("verdict-selection"));
-  assert.equal(selection.length, 1, run.gateStdout);
+
+  const dual = runGate(repo, "check-dual-review");
+  const dualDetail = dual.record.detail ?? "";
+  assert.equal(dual.record.status, "red", dual.output);
+  assert.match(dualDetail, /0 of 2 are admitted and 2 missing/, dualDetail);
   for (const entry of ANCHORED_APPROVING_PAIR) {
-    assert.ok(
-      (selection[0] as string).includes(`delivery/review/${entry.as} is stamped tiphys-version 0.1.0, older than`),
-      `${entry.as}:\n${selection[0] as string}`,
-    );
+    assert.ok(dualDetail.includes(`delivery/review/${entry.as} declares no head`), `${entry.as}:\n${dualDetail}`);
   }
+  assert.doesNotMatch(dualDetail, /tiphys-version/, dualDetail);
+
+  const merge = runGate(repo, "merge-preconditions");
+  assert.equal(merge.record.status, "red", merge.output);
+  assert.match(merge.record.detail ?? "", /0 of 2 are admitted and 2 missing/);
+  const selection = merge.gateStdout.split("\n").filter((line) => line.includes("verdict-selection"));
+  assert.equal(selection.length, 1, merge.gateStdout);
+  const row = selection[0] as string;
+  for (const entry of ANCHORED_APPROVING_PAIR) {
+    assert.ok(row.includes(`delivery/review/${entry.as} declares no head`), `${entry.as}:\n${row}`);
+  }
+  assert.doesNotMatch(row, /tiphys-version/, row);
 });
 
 test("a composed clean-room-reviewer brief and a gate bundle's summary.json are stamped with the running kernel version", () => {

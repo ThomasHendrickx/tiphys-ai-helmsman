@@ -41,7 +41,6 @@ import type { Diagnostic } from "./validate.ts";
    than opening it (D-M3-27, the mechanism index's row
    `reading-a-path-whose-type-is-not-established`). */
 import { classifyEntry } from "./task.ts";
-import { admissionStampProblem, runningKernelVersion } from "./stamp.ts";
 
 /** What one derived check produced. */
 export interface CheckOutcome {
@@ -4174,14 +4173,7 @@ export type HeadRelation =
    * consumer wrote before the field existed, so absence is now a well-formed
    * document and the ADMISSION rule lives here. Never admitted.
    */
-  | { kind: "no-head" }
-  /**
-   * The verdict's `tiphys-version` is absent, malformed, or older than the
-   * running kernel's major.minor. KERNEL 0.2.1 (DR-0055): the stamp decides
-   * which SHAPE rules apply and never relaxes ADMISSION, so such a verdict is
-   * history and never admitted. `reason` is src/stamp.ts's sentence.
-   */
-  | { kind: "stamp-not-admissible"; reason: string };
+  | { kind: "no-head" };
 
 /**
  * Does this verdict declare no head AT ALL?
@@ -4414,7 +4406,6 @@ export function partitionByAuditedHead(
   const offHead: OffHeadVerdict[] = [];
   const unkeyed: Diagnostic[] = [];
   const unkeyedVerdicts: LoadedVerdict[] = [];
-  const running = runningKernelVersion();
   for (const candidate of verdicts) {
     /* KERNEL 0.2.1 (DR-0053, DR-0054). A verdict with NO head key is EXCLUDED
        BY NAME, never kept to be refused. Until 0.2.1 it was kept in the corpus
@@ -4435,18 +4426,13 @@ export function partitionByAuditedHead(
       offHead.push({ path: candidate.path, declared: "", relation: { kind: "no-head" } });
       continue;
     }
-    /* KERNEL 0.2.1 (DR-0055): ADMISSION NEEDS A CURRENT STAMP. Decided before
-       the head is related, because a verdict written to an older kernel's
-       rules is not evidence under this kernel's, whichever commit it names. */
-    const stampProblem = admissionStampProblem(candidate.record, running);
-    if (stampProblem !== undefined) {
-      offHead.push({
-        path: candidate.path,
-        declared: "",
-        relation: { kind: "stamp-not-admissible", reason: stampProblem },
-      });
-      continue;
-    }
+    /* KERNEL 0.2.1 (DR-0055, as the orchestrator ruled after pulse was found
+       mid-phase on 0.2.0): ADMISSION DOES NOT READ THE STAMP. Every rule this
+       gate applies is applied to every verdict, stamped or not, so an old or
+       missing stamp can neither exclude a verdict nor excuse one from a rule.
+       A 0.2.0 verdict, which carries a head and no stamp, is admitted exactly
+       when it meets the rules. The stamp decides only which schema rules
+       `tiphys validate` holds a document to, for history. */
     const key = headKeyOf(candidate.record, candidate.path);
     if (!key.ok) {
       unkeyed.push({ pointer: "#/head", message: key.message });
@@ -4476,9 +4462,6 @@ export function describeOffHeadVerdicts(
     .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
     .map((entry) => {
       const tail = `it is not evidence about the commit under audit ${auditedHead}`;
-      if (entry.relation.kind === "stamp-not-admissible") {
-        return `${entry.path} ${entry.relation.reason}; ${tail}`;
-      }
       if (entry.relation.kind === "no-head") {
         return (
           `${entry.path} declares no head, so it does not say which commit it reviewed and is never admitted ` +
