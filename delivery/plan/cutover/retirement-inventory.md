@@ -379,7 +379,7 @@ can.
 
 - phase: M5-P5, 2026-09-23, diet baseline `6dc5b06`
 - the register: the `diet` array in the JSON, beside `rows` and `retired`
-- the guard: the diet tests in test/retirement-inventory.test.ts:1236, not the
+- the guard: the diet tests in test/retirement-inventory.test.ts:1231, not the
   checker script
 
 The numbers in the sections above are as of M4-P23 and are left as that
@@ -406,12 +406,12 @@ The kinds, and what each must carry:
 | `mechanically-enforced` | the enforcing script exists and a workflow or the manifest runs it (or the gate is in the manifest); the test title is defined exactly once, the script's basename is in that test's OWN body, and a declared `asserts` fragment is in that body too; a quote of the kept rule is in the binding text of a rule file |
 | `history-moved` | a quote of at least 8 words AT a named line range of a `delivery/` file that existed at the baseline and is not a pruned file, plus a quote of at least 6 words of the kept rule in the binding text of a rule file |
 | `corrected` | a quote AT the authority's line range, in live text there (not inside a comment, fence, details block, blockquote or indented code, for a Markdown authority), and the replacement in the binding text of a rule file |
-| `superseded-status` | `delivery/STATE.md` only: a reason and a quote of at least 6 words, either PINNED (`rev`, `at`) at a commit that is an ancestor of HEAD, or in the binding text of a rule file, or in a registered stable section of `delivery/STATE.md`, or in the live text of a file the diet does not prune |
+| `superseded-status` | `delivery/STATE.md` only: a reason and a quote of at least 6 words, either PINNED (`rev`, `at`) at the diet baseline `6dc5b06`, the only pinnable commit, which no squash merge can orphan, or in the binding text of a rule file, or in a registered stable section of `delivery/STATE.md`, or in the live text of a file the diet does not prune |
 | `archived` | `delivery/STATE.md` only: a reason, and a paragraph of the current `delivery/STATE.md` naming `git show 6dc5b06:delivery/STATE.md` and the entry's own `lines A to B` |
 
 The refusal of a keyword is the word floor. An entry that carries
 `verified-by`, `probe` or `negative-witness` is refused outright, at
-test/retirement-inventory.test.ts:1332.
+test/retirement-inventory.test.ts:1328.
 
 **Binding text is an allowlist, since the fresh-implementer round.** Two
 earlier rounds defined NON-binding text by a list of labels (an HTML comment, a
@@ -449,7 +449,7 @@ baseline lines of `CLAUDE.md` and `AGENTS.md` that no diet range covers, split
 at blank lines, and requires it to be in the current file. Whitespace is
 collapsed, and citation line numbers are masked so that a repointed citation
 does not count as a removal. A run that was live at the baseline must be in the
-BINDING text now (test/retirement-inventory.test.ts:1451). The baseline is read
+BINDING text now (test/retirement-inventory.test.ts:1463). The baseline is read
 generously, every live line counting as binding, which is the strict direction.
 
 **`delivery/STATE.md` is status, and status is rewritten.** It is not under the
@@ -461,11 +461,11 @@ one of the five sections registered in `state-stable-sections` (How to resume
 cold, Owner decisions, M4 closure, Earlier milestones, History of this file).
 A simulated standing update, with a new date and head, a changed count, a
 rewritten re-verification paragraph and a new table row, keeps every diet and
-STATE check green. Its shape check (test/retirement-inventory.test.ts:1548)
+STATE check green. Its shape check (test/retirement-inventory.test.ts:1544)
 still requires the current standing first, no dated daily block, the M4 closure
 and its residue and the history pointers, and every A-n id of the baseline.
 Every id in the standing "Owner actions open" list needs a register item of at
-least 25 words with a code span (test/retirement-inventory.test.ts:1507); the
+least 25 words with a code span (test/retirement-inventory.test.ts:1503); the
 only exemption is the explicit id list at test/retirement-inventory.test.ts:846,
 which holds `A-14` until M5-P1 lands its register item.
 

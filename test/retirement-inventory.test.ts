@@ -807,7 +807,7 @@ test("retirement inventory deletes nothing from the three roots in this phase", 
  *
  * STATE.md IS NOT A RULE FILE and is rewritten by every standing update. No
  * diet check reads its volatile text: status evidence is read at a pinned
- * revision that is an ancestor of HEAD, or inside a registered stable section,
+ * revision that must be the diet baseline, or inside a registered stable section,
  * or in CLAUDE.md or AGENTS.md binding text, or in a file the diet does not
  * prune; the archived entry's pointer is derived from its own line range.
  * ------------------------------------------------------------------------ */
