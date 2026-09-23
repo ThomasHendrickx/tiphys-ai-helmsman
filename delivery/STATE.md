@@ -1614,6 +1614,34 @@ where other phases read (CR-902).** For the P2-P8 implementers and M2-P9:
   six branches and altered its default branch. Same constraint as A-9: ref
   deletion is refused here.
 
+- **A-14: REBOOT THE PULSE PILOT SESSION, SO IT RUNS ITS NEXT PHASE ON THE
+  KERNEL.** Opened 2026-09-23 by M5-P1. OPEN, not yet done.
+
+  What the owner does: start the `pulse` delivery session again, the way the
+  owner offered in DR-0042. That session then runs one bounded `pulse` phase
+  through to a merged pull request and a verified deploy. This orchestrator
+  does not start it and does not write to `pulse` (DR-0037).
+
+  Why: the M4 exit test needs the pilot's next phase merged and
+  deploy-verified on v1 (delivery/plan/kernel-plan-v1.md:368). M5-P1 cannot
+  finish without it. The trigger's four arms are satisfied; this is the step
+  after them.
+
+  How the orchestrator checks it, read-only: `git ls-remote` on `pulse` or
+  `pulse-fleet` shows a `main` other than `d4e491b` or `7656f67`, then the
+  pilot's own pushed evidence names the phase, its reviewed head, the merged
+  pull request, the post-merge push run and the deploy verification. The rows
+  are fixed in advance at delivery/verification/m4-exit-test-pulse.md:1.
+
+  Checked before opening: no reboot is recorded anywhere, and neither pilot
+  head has moved since 2026-09-16 (both last committed 2026-08-29). Ids A-11
+  to A-13 were skipped because those strings already appear in history as
+  fixture row labels.
+
+  **Settle before asking the owner:** which kernel release the pilot should
+  run. Only `@tiphys/kernel` 0.1.0 is published, from 2026-08-15, which is
+  before M4. That question is open in the evidence document named above.
+
 > **ANSWERED AND CLOSED, 2026-08-10: M3-P3's CR-002.** The owner authorised the
 > final round. Rounds 9 and 10 followed and the phase merged at `c7a7ce9`. The
 > question and the alternatives are at delivery/review/arbitration-m3-p3-stop.md:1
@@ -2680,3 +2708,34 @@ The terminal action for M4 is data rather than a hard-coded branch since #202,
 so `.claude/orchestrator-next.mjs` names the DR-0047 sweep for this milestone.
 M5 entry, and whether the M4 exit test is discharged before it, is the
 cutover-entry question above and it is the owner's to trigger.
+
+## M5 HAS STARTED. Standing at 2026-09-23, `main` at `e81c5e8`
+
+The approved plan is delivery/plan/value-delivery-plan.yaml:1, six phases.
+Pull request #206 repaired the cutover-entry trigger before M5 under DR-0049
+(delivery/decisions/DR-0049-pre-m5-cutover-trigger-repair-outside-the-plan.md:1).
+
+**The phases run in waves, not serially.** The owner asked for parallel work
+on 2026-09-23. The pre-pass and the decision are `delivery/plan/m5-conflict-pre-pass.md`
+and `delivery/decisions/DR-0050-m5-runs-in-waves-rather-than-serially.md`,
+quoted rather than cited because at this head they are on the unmerged branch
+`claude/m5-plan-readiness-y2jjo5` and not on `main`.
+
+| wave | phases, concurrent | starts when |
+|---|---|---|
+| A | M5-P1, M5-P2, M5-P4, M5-P6 kernel half | now |
+| B | M5-P3 | M5-P2 and M5-P4 merged |
+| C | M5-P5 | M5-P3 merged |
+| D | M5-P6 hemma half | M5-P5 merged and hemma access granted |
+
+Merge order is dependency order: P2 and P4 before P3, P3 before P5, P5 before
+P6. P1, P5 and P6 all edit this file; whichever merges second merges `main`
+in first and resolves it by hand.
+
+**M5-P1, the pulse value proof, is waiting on the owner.** The trigger's four
+arms are satisfied against a copy of the kernel's fleet home, exit 0. The
+pilot re-probe exited 3: REST is refused for the pilot in this session, and
+git reads both heads unchanged since 2026-09-16. The next step is owner
+action A-14, the pilot reboot, in the register above. Evidence:
+delivery/verification/m4-exit-test-pulse.md:1 and
+delivery/verification/pulse-re-probe-m5.md:1.
