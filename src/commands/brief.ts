@@ -1,6 +1,7 @@
 /**
  * `tiphys brief compose --role <id> --phase <plan-file> --phase-id <id>
- * [--out <file>]` (kernel plan M3, M3-P5 step 6).
+ * [--out <file>] [--charter <file>]` (kernel plan M3, M3-P5 step 6; the
+ * charter's product intent added by M5-P2 step 1).
  *
  * Resolves `roles/<id>.md` from the installed kernel, checks every
  * mandated-reading path, expands the shared clause include, and emits the
@@ -49,7 +50,8 @@ import {
   selectReviewContract,
   splitFrontmatter,
 } from "../roles.ts";
-import { refuseOpenForWrite, readRegularFileIfPresent } from "../task.ts";
+import { CHARTER_DOCUMENT } from "../checks.ts";
+import { classifyEntry, refuseOpenForWrite, readRegularFileIfPresent } from "../task.ts";
 import { decodeDocument, formatDiagnostics, readOperatorPath } from "../validate.ts";
 
 /** Exit code for usage errors, per BSD sysexits EX_USAGE. */
@@ -83,6 +85,14 @@ export interface ComposeOptions {
    * composing unchanged.
    */
   reviewContract?: string;
+  /**
+   * The project charter to read product intent from (M5-P2 step 1).
+   * `undefined` means the caller named none, and composition then looks for
+   * `charter.yaml` in `workingDirectory`, which is where a project keeps its
+   * charter (CHARTER_DOCUMENT in src/checks.ts, the same file
+   * `scripts/check-dual-review.mjs` resolves). See `resolveProductIntent`.
+   */
+  charterFile?: string;
 }
 
 export type ComposeResult =
@@ -97,6 +107,114 @@ function asRecord(value: unknown): Record<string, unknown> | undefined {
 
 function stringList(value: unknown): string[] {
   return Array.isArray(value) ? value.map((entry) => String(entry)) : [];
+}
+
+/**
+ * What reading the project charter produced (M5-P2 step 1).
+ *
+ * THREE OUTCOMES AND NOT TWO. "No charter is declared" and "a declared charter
+ * could not be read" are different facts with different consequences. The
+ * first is rendered as an explicit sentence in the brief, never as an absent
+ * section, so a reader can tell it from a composer that forgot to look. The
+ * second STOPS composition: a brief is never emitted with a default, a stale
+ * or an omitted product intent standing in for one that was declared and
+ * could not be established (hazard stale-charter).
+ */
+export type ProductIntentReading =
+  | { kind: "undeclared"; path: string }
+  | { kind: "declared"; path: string; productIntent: string }
+  | { kind: "error"; reason: string };
+
+/** The charter field this reads. Schema: schemas/charter.schema.json. */
+export const PRODUCT_INTENT_FIELD = "product-intent";
+
+/**
+ * Resolve and read the charter's product intent.
+ *
+ * WHAT COUNTS AS DECLARED. A charter is declared when `--charter` names one,
+ * or when ANY entry exists at `<workingDirectory>/charter.yaml`. Presence is
+ * judged by `lstat`, not by whether the path resolves, so a dangling link or a
+ * named pipe at that path is a declared charter that cannot be read, and an
+ * error, rather than an absence. Only a path with nothing at it at all is
+ * undeclared. A `--charter` path is declared by being named, so a missing one
+ * is an error too.
+ *
+ * WHAT COUNTS AS READ. The file is a regular file (so a named pipe is refused
+ * in bounded time, D-M3-27), it decodes, it is a mapping with `kind: charter`,
+ * and `product-intent` is a string with at least one non-space character. The
+ * full charter schema is NOT applied here: `tiphys validate --type charter`
+ * owns that, and duplicating it would make brief composition refuse a charter
+ * for a retention typo. What is checked is exactly the field this command
+ * carries into the brief, and the kind that says the document is a charter.
+ */
+export function resolveProductIntent(
+  charterFile: string | undefined,
+  workingDirectory: string,
+): ProductIntentReading {
+  const path = charterFile ?? join(workingDirectory, CHARTER_DOCUMENT);
+  if (charterFile === undefined && classifyEntry(path).kind === "absent") {
+    return { kind: "undeclared", path };
+  }
+  const read = readOperatorPath(path);
+  if (!read.ok) {
+    return { kind: "error", reason: `charter ${path}: ${read.reason}` };
+  }
+  const decoded = decodeDocument(read.body, path);
+  if (!decoded.ok) {
+    return { kind: "error", reason: `charter ${path}: ${decoded.reason}` };
+  }
+  const charter = asRecord(decoded.value);
+  if (charter === undefined || charter["kind"] !== "charter") {
+    return {
+      kind: "error",
+      reason: `charter ${path} is not a document with kind: charter, so it declares no product intent`,
+    };
+  }
+  const intent = charter[PRODUCT_INTENT_FIELD];
+  if (typeof intent !== "string" || !/\S/.test(intent)) {
+    return {
+      kind: "error",
+      reason:
+        `charter ${path} declares no ${PRODUCT_INTENT_FIELD}` +
+        (intent === undefined ? "" : " with any non-space text") +
+        ", so the brief would carry no product intent; composition stops rather than omitting it",
+    };
+  }
+  return { kind: "declared", path, productIntent: intent };
+}
+
+/**
+ * The intent section: the charter's product intent next to the phase's own
+ * intent, both VERBATIM (trailing newlines aside), so an agent reads what the
+ * project is for beside what this phase is for. The phase intent is also in
+ * the rendered phase below; it is repeated here on purpose, because "next to"
+ * is the property and a reader should not have to join two sections by hand.
+ */
+function renderIntent(
+  reading: Exclude<ProductIntentReading, { kind: "error" }>,
+  phase: Record<string, unknown>,
+): string[] {
+  const lines: string[] = ["# Intent", "", "## Product intent", ""];
+  if (reading.kind === "declared") {
+    lines.push(`charter: ${reading.path}`);
+    lines.push("");
+    lines.push(reading.productIntent.replace(/\n+$/, ""));
+  } else {
+    lines.push(
+      `no charter declared: --charter was not given and ${reading.path} does not exist, so this brief carries no product intent`,
+    );
+  }
+  lines.push("");
+  lines.push("## Phase intent");
+  lines.push("");
+  const phaseIntent = phase["intent"];
+  lines.push(
+    typeof phaseIntent === "string" && /\S/.test(phaseIntent)
+      ? phaseIntent.replace(/\n+$/, "")
+      : "(the phase declares no intent)",
+  );
+  lines.push("");
+  return lines;
 }
 
 /**
@@ -230,6 +348,11 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
     };
   }
 
+  const productIntent = resolveProductIntent(options.charterFile, options.workingDirectory);
+  if (productIntent.kind === "error") {
+    return { ok: false, reason: productIntent.reason };
+  }
+
   const lines: string[] = [
     `# Brief: ${options.roleId}`,
     "",
@@ -273,6 +396,7 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
   lines.push("");
   lines.push(body.replace(/^\n+/, "").replace(/\n+$/, ""));
   lines.push("");
+  lines.push(...renderIntent(productIntent, phase));
   lines.push(...renderPhase(phase));
 
   const warnings = readRegularFileIfPresent(
@@ -297,13 +421,14 @@ interface Options {
   phaseId?: string;
   out?: string;
   reviewContract?: string;
+  charter?: string;
 }
 
 function usage(): string {
   return (
     "usage: tiphys brief compose --role <" +
     ROLE_IDS.join(" | ") +
-    "> --phase <plan-file> --phase-id <id> [--out <file>] " +
+    "> --phase <plan-file> --phase-id <id> [--out <file>] [--charter <file>] " +
     `[--review-contract <${REVIEW_CONTRACTS.join(" | ")}>]`
   );
 }
@@ -316,6 +441,7 @@ function parseArgs(argv: string[]): { options?: Options; usageError?: string } {
     ["--phase-id", "phaseId"],
     ["--out", "out"],
     ["--review-contract", "reviewContract"],
+    ["--charter", "charter"],
   ]);
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index] as string;
@@ -330,7 +456,7 @@ function parseArgs(argv: string[]): { options?: Options; usageError?: string } {
     options[field] = value;
     index += 1;
   }
-  const optional = new Set<keyof Options>(["out", "reviewContract"]);
+  const optional = new Set<keyof Options>(["out", "reviewContract", "charter"]);
   for (const [flag, field] of flags) {
     if (!optional.has(field) && options[field] === undefined) {
       return { usageError: `${flag} is required` };
@@ -346,7 +472,7 @@ function cmdCompose(argv: string[]): number {
     process.stderr.write(`${usage()}\n`);
     return EX_USAGE;
   }
-  const { role, phase, phaseId, out, reviewContract } = parsed.options;
+  const { role, phase, phaseId, out, reviewContract, charter } = parsed.options;
 
   let root: string;
   try {
@@ -363,6 +489,7 @@ function cmdCompose(argv: string[]): number {
     root,
     workingDirectory: process.cwd(),
     ...(reviewContract === undefined ? {} : { reviewContract }),
+    ...(charter === undefined ? {} : { charterFile: charter }),
   });
   if (!composed.ok) {
     process.stderr.write(`tiphys brief compose: ${composed.reason}\n`);
