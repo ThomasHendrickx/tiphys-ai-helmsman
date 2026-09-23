@@ -1609,6 +1609,27 @@ where other phases read (CR-902).** For the P2-P8 implementers and M2-P9:
   recorded rather than left because a mistake that cannot be undone from here
   should not be discovered later by someone wondering what those branches are.
 
+- **A-15: CREATE THE v0.2.0 TAG AND GITHUB RELEASE.** Opened 2026-09-23.
+  OPEN. `@tiphys/kernel@0.2.0` is published, and the release workflow skipped
+  its tag job because the registry check raced npm (T-045, DR-0052). This
+  container can push neither tags nor releases.
+
+  What the owner does, from a clone with push rights:
+
+  ```
+  git fetch origin
+  git tag -a v0.2.0 cb5de0d29061ab5c50a6023658f18eee931e74a7 \
+    -m "v0.2.0, published to the npm registry by the release workflow"
+  git push origin refs/tags/v0.2.0
+  gh release create v0.2.0 --verify-tag --title v0.2.0 --notes "version: 0.2.0
+
+  commit: cb5de0d29061ab5c50a6023658f18eee931e74a7
+
+  npm: https://www.npmjs.com/package/@tiphys/kernel/v/0.2.0
+
+  workflow run: https://github.com/ThomasHendrickx/tiphys-ai-helmsman/actions/runs/35839356656"
+  ```
+
 - **A-10: THE SIX PROBE BRANCHES ON THE FLEET REMOTE, AND ITS DEFAULT BRANCH.**
   Raised earlier and unchanged. A probe against `tiphys-ai-helmsman-fleet` left
   six branches and altered its default branch. Same constraint as A-9: ref

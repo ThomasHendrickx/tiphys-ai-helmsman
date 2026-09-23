@@ -1,0 +1,24 @@
+{
+  "id": "p2-evidence-distinct",
+  "behavior": "p2-evidence-distinct",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "a delivered claim whose evidence repeats one entry or is only punctuation is refused by tiphys validate"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "schemas/final-report.schema.json",
+      "find": "\"uniqueItems\": true,",
+      "replace": "\"uniqueItems\": false,"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/final-report.schema.json",
+      "find": "\"pattern\": \"[A-Za-z0-9]\"",
+      "replace": "\"pattern\": \"\\\\S\""
+    }
+  ]
+}

@@ -1,0 +1,32 @@
+{
+  "id": "release-verify-polls-the-install-path",
+  "behavior": "release-verify-polls-the-install-path",
+  "tests": [
+    "release-verify polls the install path, so a version npm view shows before npm install can fetch it is still waited for"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "      npm cache add \"$NAME@$VERSION\" --cache \"$wait_cache\" --prefer-online \\",
+      "replace": "      npm view \"$NAME@$VERSION\" version --cache \"$wait_cache\" --prefer-online \\"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "      --fetch-retries=0 --fetch-timeout=\"$((limit * 1000))\" || code=$?\n    if [ \"$code\" -eq 0 ]; then",
+      "replace": "      --fetch-retries=0 --fetch-timeout=\"$((limit * 1000))\" || true\n    if true; then"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "npm cache add, npm view and npm install against the public registry, spawned by scripts/release-verify.sh",
+    "captures": [
+      "witness/captures/release-verify-registry-not-served.txt",
+      "witness/captures/release-verify-cache-add-not-served.txt"
+    ],
+    "provenance": "Both captures are real output from npm 11.18.0 on node v26.6.0, 2026-09-23, against registry.npmjs.org with a fresh cache per command; the tests' stub npm replays their exit codes and stderr rather than typed strings. rule (f)'s shell arm binds scripts/release-verify.sh because it is a *.sh that spawns npm and node. The named test's stub serves npm view from the first request while the install path (npm cache add, then npm install) answers with the captured ETARGET for its first two requests (Opus CR-001). TWO MEMBERS: member 0 replaces the install-path poll with a second npm view, which is the pre-fix condition; member 1 keeps the cache add call and ignores its result."
+  }
+}

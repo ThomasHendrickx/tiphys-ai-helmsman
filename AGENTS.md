@@ -79,6 +79,15 @@ it refuses a reference to any path this package does not publish, because a path
 that resolves in the source repository and not in your install is dead exactly
 where you would use it.
 
+The final report is yours, and it answers the intent. For each phase it states
+one delivered outcome: the phase intent as the plan states it, delivered yes or
+no, the evidence and a short explanation. The implementer's report gives you
+that answer; you carry it into the final report and check it against the
+reviews, not just copy it. The shape is the `delivered-outcome` object in
+`schemas/final-report.schema.json`, and the schema refuses a report without
+it, and a delivered answer whose evidence is empty, repeated or names nothing.
+It carries no score, percentage or ranking, and you add none.
+
 ## The eleven policy rows
 
 ## clause R-001b: you do not write feature code in a project, and the carve-out is named

@@ -1,0 +1,76 @@
+REAL CAPTURED OUTPUT of npm against the public registry, for the question
+scripts/release-verify.sh now asks before installing: does the registry SERVE
+exactly this version yet. Produced by a capture script run on 2026-09-23 with
+node v26.6.0 and npm 11.18.0, from an empty scratch directory with a fresh
+cache per command. The version 9.9.9 was never published and stands in for
+a version the registry has not started serving yet, which is the state
+release run 35839356656 hit one second after its publish.
+
+NO ALTERATION. Everything below this header is the capture byte for byte.
+The *** inside the debug-log paths is npm's OWN redaction of the session id
+(checked with od -c on the raw capture; 0 occurrence(s) of the id
+survive), not an edit made afterwards. The npm notice lines about a newer
+npm are real and are left in because they are part of the shape.
+captured 2026-09-23T09:06:26Z, node v26.6.0, npm 11.18.0
+=== npm view @tiphys/kernel@9.9.9 version --prefer-online (fresh cache)
+exit=1
+--- stdout:
+--- stderr:
+npm error code E404
+npm error 404 No match found for version 9.9.9
+npm error 404
+npm error 404  The requested resource '@tiphys/kernel@9.9.9' could not be found or you do not have permission to access it.
+npm error 404
+npm error 404 Note that you can also install from a
+npm error 404 tarball, folder, http url, or git url.
+npm notice
+npm notice New major version of npm available! 11.18.0 -> 12.1.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0
+npm notice To update run: npm install -g npm@12.1.0
+npm notice
+npm error A complete log of this run can be found in: /tmp/claude-0/-home-user/***/scratchpad/rvw/cap/c/_logs/2026-09-23T09_06_27_476Z-debug-0.log
+=== npm view @tiphys/kernel@0.2.0 version --prefer-online (fresh cache)
+exit=0
+--- stdout:
+0.2.0
+--- stderr:
+=== npm view @tiphys/kernel@0.1.0 version --prefer-online (fresh cache)
+exit=0
+--- stdout:
+0.1.0
+--- stderr:
+npm notice
+npm notice New major version of npm available! 11.18.0 -> 12.1.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0
+npm notice To update run: npm install -g npm@12.1.0
+npm notice
+=== npm view @tiphys/no-such-package-xyz@1.0.0 version --prefer-online (fresh cache)
+exit=1
+--- stdout:
+--- stderr:
+npm error code E404
+npm error 404 Not Found - GET https://registry.npmjs.org/@tiphys%2fno-such-package-xyz - Not found
+npm error 404
+npm error 404  The requested resource '@tiphys/no-such-package-xyz@1.0.0' could not be found or you do not have permission to access it.
+npm error 404
+npm error 404 Note that you can also install from a
+npm error 404 tarball, folder, http url, or git url.
+npm notice
+npm notice New major version of npm available! 11.18.0 -> 12.1.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0
+npm notice To update run: npm install -g npm@12.1.0
+npm notice
+npm error A complete log of this run can be found in: /tmp/claude-0/-home-user/***/scratchpad/rvw/cap/c/_logs/2026-09-23T09_06_29_317Z-debug-0.log
+=== npm install --prefix inst @tiphys/kernel@9.9.9 (fresh cache)
+exit=1
+--- stdout:
+--- stderr:
+npm error code ETARGET
+npm error notarget No matching version found for @tiphys/kernel@9.9.9.
+npm error notarget In most cases you or one of your dependencies are requesting a package version that doesn't exist.
+npm notice
+npm notice New major version of npm available! 11.18.0 -> 12.1.0
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v12.1.0
+npm notice To update run: npm install -g npm@12.1.0
+npm notice
+npm error A complete log of this run can be found in: /tmp/claude-0/-home-user/***/scratchpad/rvw/cap/c/_logs/2026-09-23T09_06_29_917Z-debug-0.log
