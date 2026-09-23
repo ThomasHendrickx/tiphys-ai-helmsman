@@ -1,0 +1,24 @@
+{
+  "id": "p2-charter-fleet-init",
+  "behavior": "p2-charter-fleet-init",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "brief compose in a tiphys init fleet reads the charter from charter/, the same document doctor reads"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/charter.ts",
+      "find": "        found.push(entry.path);",
+      "replace": "        void entry;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/brief.ts",
+      "find": "    const location = locateCharters(workingDirectory);",
+      "replace": "    const location = locateCharters(join(workingDirectory, \"no-such-root\"));"
+    }
+  ]
+}

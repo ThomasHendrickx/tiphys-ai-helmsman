@@ -10,7 +10,7 @@ import { expiryHasPassed } from "../lock.ts";
 import { poolList, resolveNetworkTimeoutMs } from "../pool.ts";
 import { classifyEntry, readRegularFileIfPresent, singleLine } from "../task.ts";
 import { sharedLockStatus } from "../exclusion.ts";
-import { decodeDocument } from "../validate.ts";
+import { CHARTER_DIRECTORY, readCharterDirectory } from "../charter.ts";
 import {
   MACHINE_IDENTITY_EMAIL,
   MACHINE_IDENTITY_NAME,
@@ -732,11 +732,15 @@ function checkIdentity(root: string): CheckResult {
  * generic profile.
  */
 function checkRetention(root: string): CheckResult {
-  const charterDir = join(root, "charter");
-  let names: string[];
-  try {
-    names = readdirSync(charterDir).sort();
-  } catch {
+  const charterDir = join(root, CHARTER_DIRECTORY);
+  /* THE DIRECTORY IS READ BY THE SHARED RULE in src/charter.ts (M5-P2 fix round
+     1, CR-001), the same one `tiphys brief compose` uses, so the two commands
+     cannot disagree about which documents in charter/ are charters. The walk
+     order, the candidate count and each entry's classification are the ones
+     this function computed inline before; the early returns below consume
+     them in that same order. */
+  const reading = readCharterDirectory(charterDir);
+  if (reading.kind === "no-directory") {
     /* The `layout` check owns a missing charter/ and FAILs on it (FLEET_DIRS in
        src/fleet.ts), so this arm never has to carry that verdict itself. */
     return {
@@ -746,38 +750,23 @@ function checkRetention(root: string): CheckResult {
       condition: "retention-not-applicable",
     };
   }
+  if (reading.kind === "unlistable") {
+    /* Something is at charter/ and it could not be listed (M5-P2 fix round 2,
+       CR-FR-02): retention paths cannot be established, so this is not the
+       not-applicable WARN above. */
+    return { name: "retention", status: "FAIL", detail: reading.reason };
+  }
   const declarations: { charter: string; paths: string[]; projectRoot?: string }[] = [];
-  let candidates = 0;
-  for (const name of names) {
-    if (!name.endsWith(".yaml") && !name.endsWith(".yml")) {
+  const candidates = reading.candidates;
+  for (const entry of reading.entries) {
+    if (entry.kind === "refused" || entry.kind === "undecodable") {
+      return { name: "retention", status: "FAIL", detail: entry.reason };
+    }
+    if (entry.kind !== "charter") {
       continue;
     }
-    candidates += 1;
-    const path = join(charterDir, name);
-    const read = readRegularFileIfPresent(path);
-    if (read.kind === "refused") {
-      return { name: "retention", status: "FAIL", detail: read.reason };
-    }
-    if (read.kind === "absent") {
-      continue;
-    }
-    let document: Record<string, unknown>;
-    try {
-      const decoded = decodeDocument(read.body, path);
-      if (!decoded.ok) {
-        return { name: "retention", status: "FAIL", detail: decoded.reason };
-      }
-      document = (decoded.value ?? {}) as Record<string, unknown>;
-    } catch (error) {
-      return {
-        name: "retention",
-        status: "FAIL",
-        detail: `${path} could not be decoded: ${String(error)}`,
-      };
-    }
-    if (document["kind"] !== "charter") {
-      continue;
-    }
+    const path = entry.path;
+    const document = entry.document;
     const retention = document["retention"];
     if (typeof retention !== "object" || retention === null) {
       return {

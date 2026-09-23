@@ -20,6 +20,7 @@
 import { spawnSync } from "node:child_process";
 import {
   cpSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   rmSync,
@@ -307,4 +308,423 @@ test("brief compose with a role no brief exists for exits nonzero naming the rol
   );
   assert.notEqual(run.status, 0);
   assert.match(run.stderr, /unknown role not-a-role/);
+});
+
+/* ------------------------------------------------------------------ */
+/* M5-P2: the charter's product intent reaches the composed brief       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE CHARTER IS READ FROM THE WORKING DIRECTORY, so every arm below composes
+ * with a SCRATCH working directory holding the charter under test, against
+ * this repository's own kernel root. The plan is passed by ABSOLUTE path for
+ * the same reason: `--phase` resolves against the working directory.
+ *
+ * THE TWO ROLES ARE THE TWO THE CRITERION NAMES (p2-charter-reaches-brief):
+ * the implementer, who does the work, and the clean-room reviewer, who judges
+ * it. They are composed through the real CLI, so the assertion is on the text
+ * an agent would be handed rather than on a helper's return value.
+ */
+const yamlParse = ((await import("yaml")) as unknown as { parse: (text: string) => unknown })
+  .parse;
+const CHARTER_TEMPLATE = join(repoRoot, "templates", "charter.example.yaml");
+const INTENT_ROLES = ["implementer", "clean-room-reviewer"] as const;
+
+function charterWorkspace(t: { after(fn: () => void): void }): string {
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-charter-"));
+  t.after(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+  return dir;
+}
+
+/** Write the template charter into `dir` with its product intent replaced (or deleted). */
+function writeCharter(dir: string, productIntent: unknown): void {
+  const charter = yamlParse(readFileSync(CHARTER_TEMPLATE, "utf8")) as Record<string, unknown>;
+  if (productIntent === undefined) {
+    delete charter["product-intent"];
+  } else {
+    charter["product-intent"] = productIntent;
+  }
+  /* JSON is YAML, so the charter decodes through the same reader without this
+     file depending on a YAML emitter's block-scalar choices. */
+  writeFileSync(join(dir, "charter.yaml"), JSON.stringify(charter, null, 2));
+}
+
+function composeRoleIn(cwd: string, role: string, extra: string[] = []): Run {
+  return runCliAt(
+    cliEntry,
+    [
+      "brief",
+      "compose",
+      "--role",
+      role,
+      "--phase",
+      join(repoRoot, PLAN),
+      "--phase-id",
+      PHASE_ID,
+      ...extra,
+    ],
+    cwd,
+  );
+}
+
+function templateProductIntent(): string {
+  const charter = yamlParse(readFileSync(CHARTER_TEMPLATE, "utf8")) as Record<string, unknown>;
+  return String(charter["product-intent"]).replace(/\n+$/, "");
+}
+
+function planPhaseIntent(): string {
+  const plan = yamlParse(readFileSync(join(repoRoot, PLAN), "utf8")) as {
+    phases: { id: string; intent: string }[];
+  };
+  const phase = plan.phases.find((candidate) => candidate.id === PHASE_ID);
+  assert.ok(phase !== undefined, `${PLAN} has no phase ${PHASE_ID}`);
+  return phase.intent.replace(/\n+$/, "");
+}
+
+/** The `# Intent` section of a composed brief, up to the rendered phase. */
+function intentSection(stdout: string): string {
+  const start = stdout.indexOf("# Intent\n");
+  const end = stdout.indexOf(`# Phase ${PHASE_ID}`);
+  assert.ok(start !== -1, "the composed brief carries no # Intent section");
+  assert.ok(end > start, "the # Intent section does not precede the rendered phase");
+  return stdout.slice(start, end);
+}
+
+test("a composed implementer brief and a composed reviewer brief each carry the charter's exact product intent and the phase intent, and an inverted charter changes both with no trace of the old value", (t) => {
+  const dir = charterWorkspace(t);
+  const original = templateProductIntent();
+  const phaseIntent = planPhaseIntent();
+  assert.ok(
+    original.includes("\n"),
+    "the template product intent is a single line, so the verbatim-block property is untested",
+  );
+  writeCharter(dir, `${original}\n`);
+
+  const before = new Map<string, string>();
+  for (const role of INTENT_ROLES) {
+    const run = composeRoleIn(dir, role);
+    assert.equal(run.status, 0, `${role}: ${run.stderr}`);
+    const section = intentSection(run.stdout);
+    /* EXACT, INCLUDING THE LINE BREAKS: the block scalar is carried verbatim,
+       so a composer that reflowed or truncated it is red here. */
+    assert.ok(
+      section.includes(`\n${original}\n`),
+      `${role}: the exact product intent is not in the brief`,
+    );
+    assert.ok(
+      section.includes(`## Phase intent\n\n${phaseIntent}\n`),
+      `${role}: the phase intent is not next to it`,
+    );
+    assert.ok(
+      section.indexOf("## Product intent") < section.indexOf("## Phase intent"),
+      `${role}: product intent does not precede phase intent`,
+    );
+    before.set(role, run.stdout);
+  }
+
+  /* THE INVERTED FIXTURE. It says the opposite of the original on purpose, so
+     a brief that still carried any line of the original would be carrying a
+     contradicted intent, which is the stale-charter hazard in the form that
+     matters: green, and wrong. */
+  const inverted =
+    "INVERTED FIXTURE. A service that writes orders to suppliers and sets prices.\n" +
+    "Success is measured by orders placed, not by parts found.\n" +
+    "Search is out of scope.";
+  writeCharter(dir, `${inverted}\n`);
+  for (const role of INTENT_ROLES) {
+    const run = composeRoleIn(dir, role);
+    assert.equal(run.status, 0, `${role} inverted: ${run.stderr}`);
+    assert.notEqual(
+      run.stdout,
+      before.get(role),
+      `${role}: the inverted charter left the brief unchanged`,
+    );
+    assert.ok(
+      intentSection(run.stdout).includes(`\n${inverted}\n`),
+      `${role}: the inverted intent is not in the brief`,
+    );
+    for (const line of original.split("\n").filter((entry) => entry.trim() !== "")) {
+      assert.ok(
+        !run.stdout.includes(line),
+        `${role}: a green brief still carries the old product intent line: ${line}`,
+      );
+    }
+  }
+});
+
+test("brief compose fails closed when a declared charter cannot be read or declares no product intent, and composes again once it is repaired", (t) => {
+  const dir = charterWorkspace(t);
+  const path = join(dir, "charter.yaml");
+
+  /* MEMBERS OF ONE CLASS, "a declared charter whose product intent cannot be
+     established", chosen to be structurally different: a path that cannot be
+     OPENED (a named pipe, which must also be refused in bounded time rather
+     than blocking), a path that is NAMED and absent, a document that does not
+     DECODE, a document that decodes and LACKS the field, and one whose field
+     is present and BLANK. Each must stop composition with no brief written. */
+  const members: { name: string; stage: () => string[]; stderr: RegExp }[] = [
+    {
+      name: "a named pipe at charter.yaml",
+      stage: () => {
+        const made = spawnSync("mkfifo", [path], { encoding: "utf8" });
+        assert.equal(made.status, 0, `mkfifo failed: ${made.stderr}`);
+        return [];
+      },
+      stderr: /is a named pipe, not a regular file/,
+    },
+    {
+      name: "a --charter path that does not exist",
+      stage: () => ["--charter", join(dir, "absent-charter.yaml")],
+      stderr: /absent-charter\.yaml does not exist/,
+    },
+    {
+      name: "a charter that does not decode",
+      stage: () => {
+        writeFileSync(path, "kind: charter\nproduct-intent: [unterminated\n");
+        return [];
+      },
+      stderr: /^tiphys brief compose: charter /,
+    },
+    {
+      name: "a charter with no product-intent field",
+      stage: () => {
+        writeCharter(dir, undefined);
+        return [];
+      },
+      stderr: /declares no product-intent, so the brief would carry no product intent/,
+    },
+    {
+      name: "a charter whose product-intent is blank",
+      stage: () => {
+        writeCharter(dir, "   \n");
+        return [];
+      },
+      stderr: /declares no product-intent with any non-space text/,
+    },
+  ];
+
+  for (const member of members) {
+    rmSync(path, { force: true });
+    const extra = member.stage();
+    for (const role of INTENT_ROLES) {
+      const started = Date.now();
+      const red = composeRoleIn(dir, role, extra);
+      assert.ok(
+        Date.now() - started < BOUNDED_MS,
+        `${member.name}: composition did not return in bounded time`,
+      );
+      assert.notEqual(red.status, null, `${member.name}: composition was killed by the timeout`);
+      assert.equal(
+        red.status,
+        1,
+        `${member.name} (${role}) composed: ${red.stdout.slice(0, 200)}`,
+      );
+      assert.equal(red.stdout, "", `${member.name} (${role}): a brief was emitted beside the refusal`);
+      assert.match(red.stderr, member.stderr, `${member.name} (${role}): ${red.stderr}`);
+    }
+  }
+
+  /* THE OTHER DIRECTION: the same directory with a readable charter composes. */
+  rmSync(path, { force: true });
+  writeCharter(dir, "A repaired intent.\n");
+  for (const role of INTENT_ROLES) {
+    const green = composeRoleIn(dir, role);
+    assert.equal(green.status, 0, green.stderr);
+    assert.ok(intentSection(green.stdout).includes("\nA repaired intent.\n"));
+  }
+});
+
+test("brief compose with no charter declared says so in the intent section rather than omitting it", (t) => {
+  const dir = charterWorkspace(t);
+  const run = composeRoleIn(dir, "implementer");
+  assert.equal(run.status, 0, run.stderr);
+  const section = intentSection(run.stdout);
+  assert.match(
+    section,
+    /no charter declared: --charter was not given, .*charter\.yaml does not exist and .*charter holds no YAML document/,
+  );
+  assert.ok(section.includes(`## Phase intent\n\n${planPhaseIntent()}\n`));
+
+  /* AND --charter NAMING A READABLE FILE ELSEWHERE IS USED, so a fleet whose
+     charter lives under charter/ can hand it over explicitly. */
+  const elsewhere = join(dir, "sub");
+  mkdirSync(elsewhere);
+  writeCharter(elsewhere, "Named explicitly.\n");
+  const named = composeRoleIn(dir, "implementer", ["--charter", join(elsewhere, "charter.yaml")]);
+  assert.equal(named.status, 0, named.stderr);
+  assert.ok(intentSection(named.stdout).includes("\nNamed explicitly.\n"));
+});
+
+test("the composed intent section has a closed heading and field set", (t) => {
+  const dir = charterWorkspace(t);
+  writeCharter(dir, `${templateProductIntent()}\n`);
+  for (const role of INTENT_ROLES) {
+    const run = composeRoleIn(dir, role);
+    assert.equal(run.status, 0, run.stderr);
+    const lines = intentSection(run.stdout).split("\n");
+    /* CLOSED SETS, not a denylist (p2-no-scoring): a heading or a key: value
+       line this test does not name, whatever it is called, is red. */
+    assert.deepEqual(
+      lines.filter((line) => line.startsWith("#")),
+      ["# Intent", "## Product intent", "## Phase intent"],
+    );
+    assert.deepEqual(
+      lines
+        .filter((line) => /^[A-Za-z][A-Za-z_-]*: /.test(line))
+        .map((line) => line.slice(0, line.indexOf(":"))),
+      ["charter"],
+      `${role}: the intent section carries a field other than the charter path`,
+    );
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M5-P2 fix round 1, CR-001: the charter in a real `tiphys init` fleet  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE LAYOUT IS THE ONE `tiphys init` CREATES, not a hand-built directory,
+ * because the defect was that the composer and doctor located the charter by
+ * different rules and the round-0 fixture used the composer's rule. A fleet
+ * keeps charters in `charter/` (src/fleet.ts), so the charter is written THERE
+ * and composition runs with the fleet root as its working directory, which is
+ * where the composer already reads the fleet warnings file from.
+ */
+function initFleet(t: { after(fn: () => void): void }): string {
+  const dir = charterWorkspace(t);
+  const fleet = join(dir, "fleet");
+  const made = runCliAt(cliEntry, ["init", fleet], dir);
+  assert.equal(made.status, 0, `tiphys init failed: ${made.stdout}${made.stderr}`);
+  return fleet;
+}
+
+function writeFleetCharter(fleet: string, name: string, productIntent: string): string {
+  const charter = yamlParse(readFileSync(CHARTER_TEMPLATE, "utf8")) as Record<string, unknown>;
+  charter["product-intent"] = productIntent;
+  const path = join(fleet, "charter", name);
+  writeFileSync(path, JSON.stringify(charter, null, 2));
+  return path;
+}
+
+test("brief compose in a tiphys init fleet reads the charter from charter/, the same document doctor reads", (t) => {
+  const fleet = initFleet(t);
+  const intent = "A fleet charter intent.\nRead from charter/, not from charter.yaml.";
+  const path = writeFleetCharter(fleet, "example-service.yaml", `${intent}\n`);
+
+  for (const role of INTENT_ROLES) {
+    const run = composeRoleIn(fleet, role);
+    assert.equal(run.status, 0, `${role}: ${run.stderr}`);
+    const section = intentSection(run.stdout);
+    assert.ok(!section.includes("no charter declared"), `${role}: the fleet charter was not found`);
+    assert.ok(section.includes(`charter: ${path}\n`), `${role}: the brief does not name ${path}`);
+    assert.ok(section.includes(`\n${intent}\n`), `${role}: the fleet charter's intent is not in the brief`);
+  }
+
+  /* ONE RULE, TWO READERS: doctor, run in the same directory, names the same
+     charter file in its retention line. */
+  const doctor = runCliAt(cliEntry, ["doctor"], fleet);
+  assert.match(doctor.stdout, /CHECK retention /);
+  assert.ok(
+    doctor.stdout.split("\n").some((line) => line.startsWith("CHECK retention ") && line.includes(path)),
+    `doctor's retention line does not name ${path}: ${doctor.stdout}`,
+  );
+});
+
+test("brief compose in a fleet refuses several charters until --charter picks one, and refuses YAML in charter/ that is not a charter", (t) => {
+  const fleet = initFleet(t);
+  const first = writeFleetCharter(fleet, "alpha.yaml", "Alpha intent.\n");
+  const second = writeFleetCharter(fleet, "beta.yaml", "Beta intent.\n");
+
+  /* SEVERAL: refused, naming each, and nothing emitted. */
+  const several = composeRoleIn(fleet, "implementer");
+  assert.equal(several.status, 1, several.stdout.slice(0, 200));
+  assert.equal(several.stdout, "");
+  assert.match(several.stderr, /2 charters are declared/);
+  assert.ok(several.stderr.includes(first) && several.stderr.includes(second), several.stderr);
+
+  /* --charter PICKS ONE and composes with that one's intent only. */
+  const picked = composeRoleIn(fleet, "implementer", ["--charter", second]);
+  assert.equal(picked.status, 0, picked.stderr);
+  assert.ok(intentSection(picked.stdout).includes("\nBeta intent.\n"));
+  assert.ok(!picked.stdout.includes("Alpha intent."));
+
+  /* YAML PRESENT, NONE OF IT A CHARTER: refused, never "no charter declared". */
+  rmSync(first);
+  rmSync(second);
+  writeFileSync(join(fleet, "charter", "notes.yaml"), "kind: notes\ntext: not a charter\n");
+  const stray = composeRoleIn(fleet, "implementer");
+  assert.equal(stray.status, 1, stray.stdout.slice(0, 200));
+  assert.equal(stray.stdout, "");
+  assert.match(stray.stderr, /1 YAML document\(s\) in .*charter, none with kind: charter/);
+
+  /* AND THE FRESH FLEET, charter/ holding only .gitkeep, is the undeclared
+     state, stated in the brief with both places that were searched. */
+  rmSync(join(fleet, "charter", "notes.yaml"));
+  const fresh = composeRoleIn(fleet, "implementer");
+  assert.equal(fresh.status, 0, fresh.stderr);
+  assert.match(
+    intentSection(fresh.stdout),
+    /no charter declared: --charter was not given, .*charter\.yaml does not exist and .*charter holds no YAML document/,
+  );
+});
+
+/* M5-P2 fix round 2 (CR-FR-01, CR-FR-02): the shared walker in src/charter.ts
+   has fail-closed branches, and each one is witnessed here through the real
+   CLI in a real `tiphys init` fleet. Where the dangerous state would compose
+   green, a VALID charter sits beside the bad entry, so failing open shows up
+   as a composed brief rather than as an absence. */
+
+test("brief compose in a fleet refuses a charter path that cannot be listed, and doctor's retention check fails on it", (t) => {
+  const fleet = initFleet(t);
+  /* A PLAIN FILE where charter/ should be: the listing fails with ENOTDIR,
+     which is not absence. */
+  rmSync(join(fleet, "charter"), { recursive: true, force: true });
+  writeFileSync(join(fleet, "charter"), "kind: charter\n");
+
+  const run = composeRoleIn(fleet, "implementer");
+  assert.equal(run.status, 1, run.stdout.slice(0, 200));
+  assert.equal(run.stdout, "");
+  assert.match(run.stderr, /charter: .*charter could not be listed: .*ENOTDIR/);
+
+  const doctor = runCliAt(cliEntry, ["doctor"], fleet);
+  assert.match(doctor.stdout, /^CHECK retention FAIL .*charter could not be listed: .*ENOTDIR/m);
+});
+
+test("brief compose in a fleet reads a charter named .yml, the same suffix doctor reads", (t) => {
+  const fleet = initFleet(t);
+  const path = writeFleetCharter(fleet, "only.yml", "A .yml charter intent.\n");
+  const run = composeRoleIn(fleet, "implementer");
+  assert.equal(run.status, 0, run.stderr);
+  const section = intentSection(run.stdout);
+  assert.ok(!section.includes("no charter declared"), "the .yml charter was not found");
+  assert.ok(section.includes(`charter: ${path}\n`), `the brief does not name ${path}`);
+  assert.ok(section.includes("\nA .yml charter intent.\n"), "the .yml charter's intent is not in the brief");
+});
+
+test("brief compose in a fleet refuses an undecodable document or a named pipe in charter/ even beside a valid charter", (t) => {
+  const fleet = initFleet(t);
+  writeFleetCharter(fleet, "alpha.yaml", "Alpha intent.\n");
+
+  /* UNDECODABLE: refused with the decoder's reason, not skipped as a
+     non-charter. */
+  const broken = join(fleet, "charter", "broken.yaml");
+  writeFileSync(broken, "kind: charter\nproduct-intent: [unclosed\n");
+  const undecodable = composeRoleIn(fleet, "implementer");
+  assert.equal(undecodable.status, 1, undecodable.stdout.slice(0, 200));
+  assert.equal(undecodable.stdout, "");
+  assert.ok(undecodable.stderr.includes(broken), undecodable.stderr);
+  rmSync(broken);
+
+  /* A NAMED PIPE: refused by type in bounded time, not opened, and not
+     counted as absent. */
+  const fifo = join(fleet, "charter", "pipe.yaml");
+  const made = spawnSync("mkfifo", [fifo], { encoding: "utf8" });
+  assert.equal(made.status, 0, `mkfifo failed: ${made.stderr}`);
+  const piped = composeRoleIn(fleet, "implementer");
+  assert.equal(piped.status, 1, piped.stdout.slice(0, 200));
+  assert.equal(piped.stdout, "");
+  assert.ok(piped.stderr.includes(fifo), piped.stderr);
+  assert.match(piped.stderr, /not a regular file/);
 });
