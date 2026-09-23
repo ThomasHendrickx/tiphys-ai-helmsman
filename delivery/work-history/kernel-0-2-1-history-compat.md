@@ -339,6 +339,104 @@ must equal it before the gate's verdict is asserted.
   CLAUDE.md rule 7 forbids model or tool names in commit messages and the
   project rules take precedence over the session's default trailer.
 
+## Scope addition: the kernel version stamp (DR-0055)
+
+Added mid-task by the coordinator for the owner. The design as given, and
+what was built:
+
+1. **Verdicts gain optional `tiphys-version`** (schemas/verdict.schema.json,
+   semver with no leading zeros, the grammar src/stamp.ts parses). Writers
+   stamped: the composed brief (a `tiphys-version:` header line, from
+   `readOwnVersion`) and the gate bundle's `summary.json` (both summary
+   constructors in src/gates/run.ts). roles/clean-room-reviewer.md tells the
+   reviewer to copy the brief's line into the verdict.
+2. **One `since` source**: `RULES_SINCE` in src/stamp.ts, a table in src/
+   rather than a schema annotation, because the schema vocabulary is closed
+   and an `x-` keyword would need a validator change. `tiphys validate`
+   applies a listed rule only when the document is stamped at or after its
+   `since`; an unstamped document is held to 0.1.0. A rule not applied is
+   PRINTED as a `HISTORY <rule> applies from tiphys-version <v> ...` line,
+   never dropped silently.
+3. **Admission never relaxed.** `admissionStampProblem` (src/stamp.ts) is
+   called by BOTH merge gates, from one function: src/checks.ts
+   (partitionByAuditedHead) and src/gates/merge-preconditions.ts
+   (readReviewCorpus). Unstamped, malformed, or older than the running
+   major.minor: excluded by name, before the head relation. Head-less is
+   still checked first, so a head-less document gets the head sentence.
+4. **The rest of the brief is kept.** The pulse fixture is unstamped history
+   and still validates with no INVALID line (it now also prints HISTORY
+   lines for the two rules it is not held to).
+5. **Witnesses**, three new specs:
+   witness/kernel-0-2-1-stamp-rule-applies-from-its-version.json (members:
+   validate.ts applies no gating; `ruleApplies` treats unstamped as in
+   force), witness/kernel-0-2-1-stamp-old-excluded-at-check-dual-review.json
+   and ...-at-merge-preconditions.json (members: the gate skips the stamp
+   check; the old-minor comparison never fires).
+
+### Rules the table holds, and the ones it deliberately does not
+
+| rule | since | gated |
+|---|---|---|
+| verdict `head` is forty lowercase hex when present (schema, `#/head`) | 0.2.0 | yes |
+| `verdict-pair-approves` derived check | 0.2.0 | yes |
+| verdict `head` required, medium escalation | (withdrawn in 0.2.1) | no row: not rules any more |
+| `dual-review-decorrelation` | 0.1.0 | no: existed at 0.1.0; its 0.2.0 head clause is not separable by id |
+| `final-report` `delivered-outcome` required (M5-P2) | would be 0.2.1 | NO, deviation below |
+| `model-resolution-subject-echo` | 0.2.0 | no: its type did not exist at 0.1.0, so no history can fail it |
+
+How the list was derived: `git diff v0.1.0 HEAD -- schemas/` (above) for
+schema rules, and the registered check ids at v0.1.0 against HEAD:
+
+```
+git show v0.1.0:src/checks.ts | grep -n 'id: "'    # 21 ids
+grep -n 'id: "' src/checks.ts                      # 23 ids
+```
+
+The second command printed 23 ids; the two not in the first are
+`verdict-pair-approves` and `model-resolution-subject-echo`.
+
+### Writers, enumerated
+
+```
+grep -rn "writeFileSync(\|writeFile(\|appendFileSync(" src --include=*.ts
+```
+
+It printed 58 lines (full output kept in the session scratch, not pasted:
+it is every file write in src/, locks and barriers included). Classified:
+
+- **Stamped**: src/commands/brief.ts:560 (the composed brief), and
+  src/gates/run.ts `summary.json` (both `RunSummary` constructors).
+- **Not stamped, and why**: every per-gate `result.json`
+  (`renderGateResult`, eleven call sites) is validated by
+  src/gates/schemas/gate-result.schema.json and read back by the runner; the
+  bundle's summary.json in the same evidence directory carries the stamp for
+  the run, so stamping each record would change a shipped schema for no new
+  fact. src/brief.ts:80 copies a CALLER's brief plus warnings into a task,
+  so it carries whatever stamp the composed brief carried. The rest are
+  state, not documents: locks, barriers, leases, status streams, pool and
+  spawn records, fleet init files, witness mutation scratch.
+
+### Deviations from the design as given
+
+- **`final-report` delivered-outcome is NOT since-gated.** A final report has
+  no admission gate behind it, so an unstamped report would escape the rule
+  with nothing to catch it: the stamp would relax a rule with no backstop,
+  which is what point 3 of the design exists to prevent for verdicts. It is
+  also an explicit M5-P2 acceptance criterion. Left for the orchestrator.
+- **`dual-review-decorrelation`'s head clause is not since-gated**, so
+  `tiphys validate --context` on a head-less history verdict still refuses
+  it through that check. The check existed at 0.1.0 and only its head clause
+  is 0.2.0; gating a part of a check needs the check itself to read the
+  stamp. Open question 3 below.
+- **Admission floor is major.minor, as specified**, so this repository's
+  fixtures stamp `0.2.0` literally (witness/fixtures/dual-review/). A minor
+  bump to 0.3.0 will exclude them and redden the tests that stage them; that
+  is the rule working, and the restamp is part of that release. The
+  single-family staging reads the version from package.json instead.
+- **The kernel's own reviews of THIS branch** must carry
+  `tiphys-version: 0.2.0` (the package version, unbumped), or both merge
+  gates will exclude them. The composed brief now says so.
+
 ## Open questions
 
 1. **`headGroupFor` is unchanged.** In the derived checks, a same-phase

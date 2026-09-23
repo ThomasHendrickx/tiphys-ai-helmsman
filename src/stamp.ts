@@ -61,6 +61,23 @@ export function compareKernelVersions(left: KernelVersion, right: KernelVersion)
   return left.major - right.major || left.minor - right.minor || left.patch - right.patch;
 }
 
+/**
+ * The kernel's own version for STAMPING an artifact it writes, or undefined
+ * when no package.json can be found above the running module (a partial
+ * kernel staged by a test). A writer then omits the stamp rather than invent
+ * one: an absent stamp reads as history everywhere, which is the safe
+ * direction, and a made-up value would be a false claim about which rules
+ * applied.
+ */
+export function ownVersionForStamp(): string | undefined {
+  try {
+    const own = readOwnVersion();
+    return parseKernelVersion(own) === undefined ? undefined : own;
+  } catch {
+    return undefined;
+  }
+}
+
 /** The running kernel's own version, from its package.json. */
 export function runningKernelVersion(): KernelVersion {
   const own = readOwnVersion();

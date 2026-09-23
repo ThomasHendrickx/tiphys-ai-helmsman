@@ -448,11 +448,17 @@ test("the reconstructed pre-change schema agrees with the one in git, so the rec
     git(["show", `${sha}:schemas/verdict.schema.json`]).stdout,
   ) as Record<string, unknown>;
 
+  /* Both instances are 0.1.0-era documents, so neither carries the 0.2.1
+     stamp, which the pre-change schema has no property for. */
   const headless = parsed(
-    fixture("decorrelated-criteria.yaml", [[`head: ${FIXTURE_HEAD}\n`, ""]]),
+    fixture("decorrelated-criteria.yaml", [
+      [`head: ${FIXTURE_HEAD}\n`, ""],
+      ["tiphys-version: 0.2.0\n", ""],
+    ]),
   );
   const approveWithMedium = parsed(mediumFindingBody());
   delete approveWithMedium["head"];
+  delete approveWithMedium["tiphys-version"];
 
   for (const instance of [headless, approveWithMedium]) {
     assert.deepEqual(
