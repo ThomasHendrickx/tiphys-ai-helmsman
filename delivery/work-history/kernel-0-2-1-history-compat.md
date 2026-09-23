@@ -582,6 +582,30 @@ Commits: 87f9e4c beacon, ffd14f9 reproduction, ec3016c implementation,
 DR-0055 stamp, 8acf44b tolerant stamp writers, 464c825 keyword-keyed gating,
 4ec78dc witness retarget.
 
+### Gates at 0636e03 (after the rulings and the admission round)
+
+Node v26.6.0 (scratch toolchain), `npm run build` exit 0, `git status`
+clean after build. `npm test`: 1457 tests, 1457 pass, 0 fail, 0 skipped,
+0 cancelled, 0 todo, exit 0. `node scripts/check-authored-bytes.mjs` exit 0.
+`node scripts/render-agent-rules-gates.mjs --check` exit 0 (24 rows).
+`bash scripts/m2-exit-test.sh --base origin/main --head HEAD --phase
+claude/kernel-0-2-1-history-compat --bundle pr --no-build <dir>`:
+
+```
+gates: declared 15 applicable 10 verdict 10 green 9 red 1 not-applicable 5 error 0 vacuous 0
+gates: suite: green: ... reported 1457 test(s) from 70 file(s) (pass 1457, fail 0, skipped 0, todo 0, did-not-run 0); ... 1331 behavior(s) resolve; merge base b16f20008ef9
+gates: citations: green: linted 2 changed document(s) at 0636e03...: 1 citation(s) resolved, 0 self-citation(s), 0 unverifiable-external
+gates: red-witness: green: 104 witness(es) evaluated (12 own, 92 stored re-evaluated in 950378ms); every witness red against every declared dangerous state and green at head
+gates: merge-preconditions: red: ... 0 of 2 are admitted and 2 missing ...
+```
+
+(Lines shortened with `...`; nothing else altered.) The one red is
+merge-preconditions, expected: no reviews of this branch exist yet. scope is
+not-applicable because this is not a phase branch; deploy and migrations are
+structurally not-applicable pre-merge; credential-token has no token.
+This paragraph is committed after that run, so the pushed head is one
+documentation commit past 0636e03.
+
 ## Round after the orchestrator's rulings
 
 The orchestrator accepted DR-0055 deviations 1, 3, 4, 5 and 6 as they stand,
@@ -972,30 +996,30 @@ line, and what settles each:
 - 213 and 262: `never counts it`, a test title (quoted, and in the captured
   summary). The test is the settlement: green on the branch, red on main.
 - 219, 308, 309: `never-admitted`, a witness file name.
-- 221, 733, 734: describe mutations (`always false`, "exit 1 whenever",
+- 221, 757, 758: describe mutations (`always false`, "exit 1 whenever",
   "always exit 0"); the red-witness run settles each.
 - 371: HISTORY lines are "never dropped silently": the stamp-rule test
   asserts the HISTORY line is printed for both unstamped and 0.1.0 stamps.
-- 648: the plan's own rationale, quoted.
-- 651: "a skipped check is never reported as a pass": the skipped-only test
+- 672: the plan's own rationale, quoted.
+- 675: "a skipped check is never reported as a pass": the skipped-only test
   asserts at least one `SKIPPED <id> no context` line and no INVALID line.
-- 685: AGENTS.md:527's command is `tiphys validate --type verdict --context
+- 709: AGENTS.md:527's command is `tiphys validate --type verdict --context
   <project> <verdict>`; the `--context` is in the text itself.
-- 707: mode.ts and checklist.ts "always pass a context": src/commands/mode.ts:126
+- 731: mode.ts and checklist.ts "always pass a context": src/commands/mode.ts:126
   passes `dirname(read.path)`, and src/commands/checklist.ts:142-149 assigns
   `context = packageRoot()` before either `invalidityLines` call.
-- 766: "0.2.0 never asked for one": `git show origin/main:schemas/verdict.schema.json
+- 790: "0.2.0 never asked for one": `git show origin/main:schemas/verdict.schema.json
   | grep -c tiphys-version` printed 0 at b16f200, whose package.json says
   0.2.0.
-- 865, 886, 897, 898, 899: a test title and a witness file name; the hand
+- 889, 910, 921, 922, 923: a test title and a witness file name; the hand
   trial printed with them settles each (members red, HEAD green).
-- 944: "needs a", inside open question 9, which is a question.
-- 956: "cannot be decoded" describes an input (an undecodable file), not a
+- 968: "needs a", inside open question 9, which is a question.
+- 980: "cannot be decoded" describes an input (an undecodable file), not a
   claim about the code.
-- 965: the grep command itself.
+- 989: the grep command itself.
 
 Occurrences, counted the same way in both forms after this section was
 written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 44, and the
 wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 44.
-Equal, so no hit was missed by wrapping. The hits after line 965 are this
+Equal, so no hit was missed by wrapping. The hits after line 989 are this
 section quoting the ones above it.
