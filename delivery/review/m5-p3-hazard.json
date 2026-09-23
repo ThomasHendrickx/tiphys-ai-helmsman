@@ -1,0 +1,82 @@
+{
+  "kind": "verdict",
+  "phase": "M5-P3",
+  "head": "3f78dce2ee965672ea55423c3fc9a33dddca1145",
+  "verdict": "APPROVE",
+  "produced-by": "claude-sonnet-5",
+  "framing": "hazard-first",
+  "review-contract": "hazard",
+  "findings": [],
+  "criteria": [
+    {
+      "id": "p3-output-contract",
+      "quote": "tiphys brief compose for both review contracts names a distinct top-level JSON path under delivery/review, and both produced documents validate as verdicts.",
+      "evidence": [
+        "unchanged from the H review: roles/clean-room-reviewer.md still states the verdict path is delivery/review/<phase-id>-criteria.json or delivery/review/<phase-id>-hazard.json; this document is the second of that pair",
+        "node bin/tiphys.ts validate --type verdict delivery/review/m5-p3-hazard.json (no --context) run against this document; exit code and output recorded below"
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-missing-is-red",
+      "quote": "The real full-mode gate command against a fixture branch changing src/ with zero or one admitted verdict exits nonzero with status red and names the missing count.",
+      "evidence": [
+        "not re-run live this round; unchanged since the H review (src/gates/merge-preconditions.ts's admission logic is untouched by this fix round, confirmed by git diff c4727e5..3f78dce --stat showing no src/ file changed). Independently reconfirmed live at H2 by scripts/m2-exit-test.sh's own real run: merge-preconditions reported red for H2 itself, '0 of 2 are admitted and 2 missing', which is this exact behavior exercised against the real branch rather than a fixture"
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-pair-arms",
+      "quote": "The same command is red for a FIX-ROUND-NEEDED pair and for a correlated pair, and green only for two APPROVE verdicts with distinct contracts, framings and declared families over the reviewed shipped tree.",
+      "evidence": [
+        "unchanged since the H review; no src/ code touched by this round"
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-paperwork-budget",
+      "quote": "A fixture branch changing only delivery/ follows its declared review budget and is not forced through the shipped-code two-verdict rule.",
+      "evidence": [
+        "unchanged since the H review; classifyReviewBudget and REVIEW_BUDGET_ROWS are untouched by this round (confirmed via git diff c4727e5..3f78dce --stat, no src/gates/merge-preconditions.ts hunk)"
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-scope-unchanged",
+      "quote": "src/gates/scope.ts is byte-identical to the baseline and its existing phase-own-evidence tests accept delivery/review/m5-p3-criteria.json while refusing another phase's filename.",
+      "evidence": [
+        "git diff c4727e5..3f78dce --stat -- src/gates/scope.ts: no output, byte-identical to the previously reviewed head",
+        "read src/gates/scope.ts:953-963 and :108-119 directly this round to verify CR-003's reasoning (a declaration removal is refused outright); confirmed the code enforces what the docstring claims"
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-suite",
+      "quote": "npm run build and node --test both exit 0 with a nonzero test count.",
+      "evidence": [
+        "npm run build at H2: exit 0, git status --porcelain after build showed only this review's own untracked files",
+        "npm test at H2 (node v26.6.0, dist/ built): 1441 tests, 1441 pass, 0 fail, 0 skipped, exit 0",
+        "bare node --test at H2 (same toolchain and build state): 1443 tests, 1443 pass, 0 fail, 0 skipped, exit 0; 1443 - 1441 (the H review's bare-invocation figure) = 2, exactly the two tests this round adds, confirmed comparable by using the same invocation on both sides"
+      ],
+      "met": true
+    }
+  ],
+  "deviations-judged": [],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "review-gate-never-runs",
+      "probed": "Unchanged since the H review: no src/gates/merge-preconditions.ts admission-path code was touched by this round (confirmed via git diff c4727e5..3f78dce --stat -- src, no output). Reconfirmed live at H2 via the real scripts/m2-exit-test.sh run: merge-preconditions reported red for the real branch head itself, '0 of 2 are admitted and 2 missing', which is the gate correctly refusing to call an unreviewed shipped change green or not-applicable.",
+      "cleared-because": "The mechanism that closes this hazard class is unchanged and independently reconfirmed live against the real head rather than only a fixture this round."
+    },
+    {
+      "class-id": "review-of-old-code",
+      "probed": "Unchanged since the H review: relateDeclaredHead/partitionByAuditedHead in src/checks.ts are still untouched by this phase (git diff c4727e5..3f78dce --stat -- src/checks.ts: no output).",
+      "cleared-because": "No new surface was introduced this round that could reopen the ancestry-admission question; the mechanism previously cleared for H still applies unchanged at H2."
+    },
+    {
+      "class-id": "process-tax-on-paperwork",
+      "probed": "Unchanged since the H review: REVIEW_BUDGET_ROWS and tierOfPath are untouched by this round. Independently reconfirmed by reading classifyReviewBudget (src/gates/merge-preconditions.ts:958-1012, read again this round while tracing CR-002's derivation) and confirming it still fails closed to the dual tier for any unlisted path, including the new witness/ files this round itself adds.",
+      "cleared-because": "The none-tier classification for delivery/ paths is unchanged and the fail-closed default for unlisted paths, including this round's own new files, was re-read and confirmed rather than assumed."
+    }
+  ]
+}

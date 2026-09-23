@@ -1,0 +1,31 @@
+{
+  "id": "m5-p3-symbolic-head-resolved",
+  "behavior": "m5-p3-symbolic-head-resolved",
+  "tests": [
+    "a symbolic --head reaches merge-preconditions resolved to the staged repository's forty-character sha"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  const head = resolveHeadFlag(contextDirectory, flags.head as string);",
+      "replace": "  const head = (flags.head as string).toLowerCase();"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "`${value}^{commit}`], {\n    cwd: contextDirectory,",
+      "replace": "`${value}^{commit}`], {\n    cwd: process.cwd(),"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m5-p3-git-rev-parse-symbolic-head.json"
+    ],
+    "provenance": "Real output of git rev-parse --verify --quiet --end-of-options <ref>^{commit}, the command resolveHeadFlag runs, for HEAD, a mixed-case branch and both lowercased spellings, captured 2026-09-23 in a scratch repository. The named test re-runs all four in its staged repository and compares exit codes and stdout shape with the recorded ones before trusting the gate."
+  }
+}

@@ -11,11 +11,13 @@ never:
   - Posts to the pull request
 mandated-reading:
   - roles/_shared-dispatch-contract.md
+  - schemas/verdict.schema.json
   - schemas/finding.schema.json
   - assurance-modes.yaml
 verifiers:
   - citations
 outputs:
+  - verdict
   - finding
 model-tier: strongest
 clauses:
@@ -39,17 +41,38 @@ mode requires both, on the same head, because the decorrelation that mattered
 here was in the QUESTION ASKED and not in the number of reviewers. Two reviews
 that both walk the criteria agree with each other and miss the same things.
 
-Your output is a set of findings, and the contract they must satisfy is written
-down in `schemas/finding.schema.json`, which is on your mandated reading. Read
-it before you write: severity, the evidence a finding carries, and what makes a
-finding actionable rather than an observation are all defined there and not
-here.
+Your output is ONE verdict document. Its contract is
+`schemas/verdict.schema.json`, and each finding inside it follows
+`schemas/finding.schema.json`. Both are on your mandated reading. Read them
+before you write: the verdict word, the criteria walk, severity, and the
+evidence a finding carries are all defined there and not here.
 
-Your verdict document will also carry a `verdict` instance once that type ships.
-It is named here by type name deliberately and is NOT declared in this brief's
-`outputs`, because no schema is registered for it yet and declaring an output
-whose contract cannot be read is exactly the defect the output-contract check
-exists to refuse.
+Where it goes. Write the verdict as JSON at the path your contract clause below
+names. It sits at the top level of `delivery/review/`, and `<phase-id>` is the
+phase id in lower case: phase M5-P3 writes `delivery/review/m5-p3-criteria.json`
+or `delivery/review/m5-p3-hazard.json`. The two contracts write two different
+files, so one review never overwrites the other.
+
+How it is written. Create the file within your first minutes. Rewrite it as you
+work, so its mtime is your beacon and a death leaves a partial result (see the
+incremental-output clause). A partial file may not validate yet. The finished
+file must: `tiphys validate --type verdict <path>` reports no `INVALID` line.
+
+What it is about. `head` is the full forty-character sha of the exact commit
+you reviewed. Not a branch name, not a short sha, not the commit you expect to
+be merged. A verdict whose head is not the reviewed commit is not evidence
+about it, and the merge gate excludes it and names the exclusion. `produced-by`
+names your model family, `framing` names your entry point, and
+`review-contract` names the contract stated at the top of your brief.
+
+What happens to it. You do not commit it. The orchestrator commits both
+contracts' verdicts on the phase branch. A change to shipped code (`src/`,
+`bin/`, `schemas/`, `roles/`, `tuition/`) is red at merge unless two verdicts
+are admitted for it, both APPROVE, and they differ in model family, framing and
+contract. A missing review is red, never not-applicable. Commits after the
+reviewed head that touch only `delivery/` keep your verdict admitted; any other
+later commit means your verdict no longer covers the head, and a new review is
+owed.
 
 The delivered outcome. Your brief carries the project's product intent, from
 the charter, next to the phase's intent. The final report answers the phase
@@ -64,6 +87,9 @@ is yours. Judge the outcome as delivered or not. Do not score it.
 ## clause review-contract-criteria: walk every criterion, and do not call it completeness
 
 You are running the CRITERIA contract.
+
+Your verdict file is `delivery/review/<phase-id>-criteria.json`, and it says
+`review-contract: criteria`.
 
 Walk every acceptance criterion of the phase, in order. QUOTE each one, then
 return a met or not-met verdict for it with evidence a reader can resolve: a
@@ -88,6 +114,10 @@ did not reach, and leave the completeness claim to nobody.
 ## clause review-contract-hazard: start from the hazard classes, and not from the criteria
 
 You are running the HAZARD contract.
+
+Your verdict file is `delivery/review/<phase-id>-hazard.json`, and it says
+`review-contract: hazard`. It carries `hazard-classes-addressed`: one entry per
+declared hazard class, saying what you probed and why it is cleared.
 
 DO NOT BEGIN FROM THE ACCEPTANCE CRITERIA. Your starting question is the phase's
 declared hazard classes: for each one, what could pass this phase's criteria and

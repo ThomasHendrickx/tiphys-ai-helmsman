@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "  const probe = readJsonBody(probeUrl, await requestJson(probeUrl));\n  if (!probe.ok) {",
-      "replace": "  const probe = readJsonBody(probeUrl, await requestJson(probeUrl));\n  if (false) {"
+      "find": "  const probe = readJsonBody(probeUrl, await requestJson(probeUrl, token));\n  if (!probe.ok) {",
+      "replace": "  const probe = readJsonBody(probeUrl, await requestJson(probeUrl, token));\n  if (false) {"
     }
   ],
   "deterministic": true,

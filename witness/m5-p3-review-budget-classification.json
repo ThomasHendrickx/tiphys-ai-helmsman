@@ -1,0 +1,31 @@
+{
+  "id": "m5-p3-review-budget-classification",
+  "behavior": "m5-p3-review-budget-classification",
+  "tests": [
+    "the review budget classifies git's real NUL-separated, rename-split name list for a nested project by DR-0027's table"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    tier: path.startsWith(prefix) ? tierOfPath(path.slice(prefix.length)).tier : (\"dual\" as ReviewTier),",
+      "replace": "    tier: tierOfPath(path).tier,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "[\"diff\", \"-z\", \"--no-renames\", \"--name-only\", `${base}...${head}`, \"--\"]",
+      "replace": "[\"diff\", \"-z\", \"--name-only\", `${base}...${head}`, \"--\"]"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m5-p3-git-review-budget.json"
+    ],
+    "provenance": "Real output of git rev-parse --show-prefix and git diff -z --no-renames --name-only base...head, the two commands classifyReviewBudget runs, captured 2026-09-23 against a scratch repository with the project nested at kernel/; the named tests stage that repository again and compare git's live output with the recorded stdout before trusting the classifier with it."
+  }
+}

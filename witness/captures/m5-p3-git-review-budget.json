@@ -1,0 +1,44 @@
+{
+  "provenance": "Real output of the two git commands classifyReviewBudget in src/gates/merge-preconditions.ts runs, captured 2026-09-23 by the M5-P3 implementer against a scratch repository whose project is nested at kernel/. The staging is reproduced byte for byte by test/dual-review.test.ts, which re-runs both commands and compares its output with the stdout recorded here. JSON escapes NUL as \\u0000, so this file is ASCII.",
+  "git": "git version 2.43.0",
+  "staging": {
+    "base": [
+      "kernel/src/feature.ts",
+      "kernel/src/old.ts"
+    ],
+    "change": [
+      "modify kernel/src/feature.ts",
+      "move kernel/src/old.ts to kernel/delivery/old.md",
+      "add kernel/delivery/a b.md",
+      "add kernel/test/x.test.ts",
+      "add kernel/CLAUDE.md",
+      "add outside.md"
+    ]
+  },
+  "commands": [
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "--show-prefix"
+      ],
+      "cwd": "kernel",
+      "exit": 0,
+      "stdout": "kernel/\n"
+    },
+    {
+      "argv": [
+        "git",
+        "diff",
+        "-z",
+        "--no-renames",
+        "--name-only",
+        "<base>...<head>",
+        "--"
+      ],
+      "cwd": "kernel",
+      "exit": 0,
+      "stdout": "kernel/CLAUDE.md\u0000kernel/delivery/a b.md\u0000kernel/delivery/old.md\u0000kernel/src/feature.ts\u0000kernel/src/old.ts\u0000kernel/test/x.test.ts\u0000outside.md\u0000"
+    }
+  ]
+}

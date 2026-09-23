@@ -210,13 +210,21 @@ jobs:
       # document reports not-applicable WITH A REASON rather than green, which
       # is M2-C-3 and SC-011. `set -e` is on by default in a `run:` block, so
       # the second invocation's nonzero exit fails the job.
-      - name: Dual-review decorrelation (M3-P9)
+      #
+      # M5-P3: THIS STEP IS NOT THE REVIEW GATE THAT ENFORCES DR-0012. It runs
+      # without `--base`, so it cannot know what review a change OWES and it
+      # stays silent about a shipped change that carries no review at all. The
+      # enforcing gate is `merge-preconditions`, run inside the M2 exit test
+      # step below with `--base`: a shipped-tree change with fewer than two
+      # approving, decorrelated verdicts is red there. The name and the message
+      # say so, so that nobody reads this step's not-applicable as a pass.
+      - name: Dual-review decorrelation, informational only (M3-P9; the enforcing review gate is merge-preconditions)
         if: github.event_name == 'pull_request'
         run: |
           if node scripts/check-dual-review.mjs --precondition .; then
             node scripts/check-dual-review.mjs .
           else
-            echo "check-dual-review: not applicable, no verdict document under delivery/review, so there is no pair of reviews to compare"
+            echo "check-dual-review (informational, no --base): no verdict document under delivery/review, so there is no pair of reviews to compare here. This is NOT the review requirement: merge-preconditions in the M2 exit test step decides from the diff whether two reviews are owed, and is red when they are missing."
           fi
       # THE LICENSE GATE (kernel plan M3, M3-P10 step 2; EXT-F-09, DR-0013
       # clause 5, D-M3-34).
@@ -247,8 +255,16 @@ jobs:
       # matrix, so the published required status context is still `gates`.
       - name: License gate (EXT-F-09, M3-P10)
         run: node scripts/license-gate.mjs
+      # M5-P3: merge-preconditions reads its GitHub API token from the variable
+      # its registry command names (`--token-env GH_TOKEN`). Without it the
+      # gate's requests are unauthenticated and share the runner address's rate
+      # limit, and an exhausted limit is `error`, which fails this step. The
+      # job token is read-only for a pull request from a fork, which is all the
+      # gate needs: it only issues GET requests.
       - name: M2 exit test (pull request)
         if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: >
           scripts/m2-exit-test.sh
           --no-build
