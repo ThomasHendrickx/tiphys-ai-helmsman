@@ -2730,9 +2730,8 @@ delivery/verification/cutover-status-tree-digest-intermittent.md:1.
 
 ### Owner decisions open
 
-- Publish kernel 0.2.1 to npm once its PR is merged under DR-0012 (DR-0053).
-  Asked 2026-09-23. The owner asked for the 0.2.0 publish by name, so this one
-  waits for a go-ahead too.
+- None. The 0.2.1 publish was approved by the owner on 2026-09-23 (DR-0053);
+  it runs after the 0.2.1 merge and a green post-merge `push` run.
 
 ### Owner actions open
 

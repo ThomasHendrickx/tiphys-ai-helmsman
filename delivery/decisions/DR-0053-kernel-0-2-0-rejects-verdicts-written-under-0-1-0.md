@@ -84,3 +84,9 @@ on purpose (DR-0038). The owner has decided that Tiphys judges current and
 future work, never history (DR-0054). So 0.2.1 also limits that check to
 verdicts committed from the declaration onward. Pulse keeps its records
 unedited.
+
+## Owner answer, 2026-09-23
+
+The owner approved the 0.2.1 publish: "yes, publish 0.2.1 once it's green".
+The publish follows the 0.2.1 merge under DR-0012 and a green post-merge
+`push` run, and runs the release verification before it is reported done.
