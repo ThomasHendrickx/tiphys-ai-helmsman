@@ -1,7 +1,8 @@
 # DR-0056: M5-P5 after the third review contract
 
 - id: DR-0056
-- status: RAISED, recommendation below, waiting on the owner
+- status: DECIDED, option A
+- decided-by: owner, 2026-09-23
 - raised-by: orchestrator, 2026-09-23
 - relates-to: DR-0012, DR-0016, DR-0054
 
@@ -38,3 +39,10 @@ C. Stop the phase and narrow what it claims.
 A. The recurring high did not recur, so the change of approach worked. The
 two mediums are parser edge cases, and the reviewer judged each fixable in a
 few lines. Strikethrough is a routine editor move, so it is worth closing.
+
+## Owner answer, 2026-09-23
+
+"Option a but dont overcomplicate the implementation." One short round for
+the two mediums, kept simple: a tripwire over strikethrough markup and any
+indented container marker, not a fuller parser. The remaining lows are
+recorded as residue unless a fix is one line.
