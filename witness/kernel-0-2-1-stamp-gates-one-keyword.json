@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "src/commands/validate.ts",
-      "find": "    companionsFor(resolvedType),\n  );",
-      "replace": "    companionsFor(resolvedType),\n  ).filter((diagnostic) => !(gatedSchemaPaths.length > 0 && diagnostic.pointer === \"#/head\"));"
+      "find": "    withoutKeywords(schema, gatedSchemaPaths),\n    decoded.value,\n    companionsFor(resolvedType),\n  );",
+      "replace": "    schema,\n    decoded.value,\n    companionsFor(resolvedType),\n  ).filter((diagnostic) => !(gatedSchemaPaths.length > 0 && diagnostic.pointer === \"#/head\"));"
     },
     {
       "kind": "mutation",

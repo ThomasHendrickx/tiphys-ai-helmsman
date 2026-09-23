@@ -456,6 +456,18 @@ witness/kernel-0-2-1-stamp-gates-one-keyword.json, two members: the old
 place-keyed filter put back after validation, and `withoutKeywords` removing
 every keyword at the node instead of the one named.
 
+The first gate run at 464c825 (inside m2-exit-test) refused this spec on rule
+(d): member 0's find text began at `    companionsFor(resolvedType),`, a line
+main already had, so it touched no changed hunk. Member 0 now starts at the
+changed `    withoutKeywords(schema, gatedSchemaPaths),` line and replaces
+the call with the old form (the whole schema, then the `#/head` filter).
+Before re-running the gate each member was applied by hand, one at a time,
+with the file restored after each (scratch try-members.py): member 0 exit 1,
+member 1 exit 1, restored exit 0. The head-required patch was also applied by
+hand to the pulse test: 0 pass, 1 fail, the one INVALID line being
+`INVALID #/head required property head is missing`, which is the red the
+gate had stopped seeing. Reverted with `git apply -R`.
+
 ### Rules the table holds, and the ones it deliberately does not
 
 | rule | since | gated |
