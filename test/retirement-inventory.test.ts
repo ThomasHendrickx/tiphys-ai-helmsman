@@ -1147,10 +1147,6 @@ function atRevision(rev: string, path: string): string | null {
   return revCache.get(key) ?? null;
 }
 
-function isAncestorOfHead(rev: string): boolean {
-  return spawnSync("git", ["-C", repo, "merge-base", "--is-ancestor", rev, "HEAD"]).status === 0;
-}
-
 function currentText(path: string): string | null {
   const full = join(repo, path);
   return existsSync(full) ? readFileSync(full, "utf8") : null;
@@ -1228,9 +1224,8 @@ interface DietWorld {
   current: (path: string) => string | null;
   tests: () => Map<string, TestSite[]>;
   ci: () => string;
-  isAncestor: (rev: string) => boolean;
 }
-const realWorld: DietWorld = { current: currentText, tests: allTests, ci: ciText, isAncestor: isAncestorOfHead };
+const realWorld: DietWorld = { current: currentText, tests: allTests, ci: ciText };
 
 /** Every reason a diet register is not evidenced. Empty means it is. */
 function checkDiet(doc: DietDoc, world: Partial<DietWorld> = {}): string[] {
@@ -1280,15 +1275,16 @@ function checkDiet(doc: DietDoc, world: Partial<DietWorld> = {}): string[] {
     return p?.path ?? null;
   };
   /**
-   * Status evidence for a STATE.md entry. Pinned (`rev`, `at`): read at a
-   * commit that is an ancestor of HEAD, so no later edit changes it. Unpinned:
-   * a rule file's binding text, a registered stable STATE.md section, or the
-   * live text of a file the diet does not prune.
+   * Status evidence for a STATE.md entry. Pinned (`rev`, `at`): read at the
+   * diet baseline, a commit already on `main`, so no later edit changes it and
+   * no squash merge can orphan it (a branch commit would vanish from `main`).
+   * Unpinned: a rule file's binding text, a registered stable STATE.md
+   * section, or the live text of a file the diet does not prune.
    */
   const statusQuote = (q: Quote | undefined, what: string, fail: (m: string) => void) => {
     if (q !== undefined && q.rev !== undefined) {
-      if (!/^[0-9a-f]{7,40}$/.test(q.rev) || !w.isAncestor(q.rev)) {
-        fail(`${what} revision ${q.rev} is not an ancestor of HEAD`);
+      if (q.rev !== DIET_BASELINE) {
+        fail(`${what} revision ${q.rev} is not the diet baseline ${DIET_BASELINE}, the only pinnable commit`);
         return;
       }
       pointerQuote(q, MIN_RULE_WORDS, what, fail, "live");
@@ -1881,11 +1877,12 @@ test("STATE.md status evidence is pinned or stable, never read from text a stand
   };
   const fA = checkDiet(volatile);
   assert.ok(fA.some((m) => m.startsWith(`${pinned.id}: superseded-by quote is in ${STATE_FILE} only outside its stable sections`)), fA.join("\n"));
-  // Member B: a pin to a revision that is not an ancestor of HEAD.
+  // Member B: a pin to any other revision, here a branch head, which a squash
+  // merge would orphan from `main`.
   const stray = clone(doc);
-  stray.diet.find((d) => d.id === pinned.id)!["superseded-by"]!.rev = "1234567";
+  stray.diet.find((d) => d.id === pinned.id)!["superseded-by"]!.rev = "HEAD";
   const fB = checkDiet(stray);
-  assert.ok(fB.includes(`${pinned.id}: superseded-by revision 1234567 is not an ancestor of HEAD`), fB.join("\n"));
+  assert.ok(fB.includes(`${pinned.id}: superseded-by revision HEAD is not the diet baseline ${DIET_BASELINE}, the only pinnable commit`), fB.join("\n"));
   // Member C: a pin whose quote is not at its range at that revision.
   const off = clone(doc);
   const q = off.diet.find((d) => d.id === pinned.id)!["superseded-by"]!;
