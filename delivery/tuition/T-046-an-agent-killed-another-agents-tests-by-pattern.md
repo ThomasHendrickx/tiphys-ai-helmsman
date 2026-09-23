@@ -16,7 +16,9 @@ implementer could not explain it and recorded it as an open intermittent. The
 cause surfaced only because the other implementer reported its own `pkill`.
 
 The implementer's own report is the evidence, in
-delivery/work-history/release-verify-waits-for-registry.md:446 on that branch.
+`delivery/work-history/release-verify-waits-for-registry.md` on the branch
+`claude/release-verify-waits-for-registry` (quoted, because it is not on this
+branch). Constraint C-2 is in the rules file's Never list, CLAUDE.md:1.
 
 ## The mechanism
 
