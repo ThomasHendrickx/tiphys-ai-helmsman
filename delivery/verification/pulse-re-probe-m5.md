@@ -1,6 +1,6 @@
 # Pilot re-probe, read-only: cutover-entry trigger step 2
 
-- started: 2026-09-23T06:57:59.933Z
+- started: 2026-09-23T08:02:55.929Z
 - produced by: `scripts/probe-pilot-readonly.mjs`
 - api base: `https://api.github.com`
 - git base: `https://github.com`
@@ -14,126 +14,85 @@
 
 | target | verdict | detail |
 |---|---|---|
-| `ThomasHendrickx/pulse` | refused | head `unread` (git ref `d4e491b`), default branch `unread`, visibility `unread`, updated `unread`. sources: record=refused, commits=refused, gitRef=satisfied. record refused: https://api.github.com/repos/ThomasHendrickx/pulse answered HTTP 403; commits refused: https://api.github.com/repos/ThomasHendrickx/pulse/commits?per_page=1 answered HTTP 403 |
-| `ThomasHendrickx/pulse-fleet` | refused | head `unread` (git ref `7656f67`), default branch `unread`, visibility `unread`, updated `unread`. sources: record=refused, commits=refused, gitRef=satisfied. record refused: https://api.github.com/repos/ThomasHendrickx/pulse-fleet answered HTTP 403; commits refused: https://api.github.com/repos/ThomasHendrickx/pulse-fleet/commits?per_page=1 answered HTTP 403 |
+| `ThomasHendrickx/pulse` | satisfied | head `d4e491b` (git ref `d4e491b`), default branch `main`, visibility `public`, updated `2026-08-29T16:29:21Z` |
+| `ThomasHendrickx/pulse-fleet` | satisfied | head `7656f67` (git ref `7656f67`), default branch `main`, visibility `public`, updated `2026-08-29T17:04:48Z` |
 
 ## Overall
 
-OVERALL refused
+OVERALL satisfied
 
-- finished: 2026-09-23T06:58:01.288Z
+- finished: 2026-09-23T08:02:59.572Z
 - targets probed: 2
+- every target was read. This is a statement about the two repositories
+  named above and about nothing else.
 
-### What was NOT established
+## Comparison and run history (added by M5-P1, not by the script)
 
-- `ThomasHendrickx/pulse`: refused. record refused: https://api.github.com/repos/ThomasHendrickx/pulse answered HTTP 403; commits refused: https://api.github.com/repos/ThomasHendrickx/pulse/commits?per_page=1 answered HTTP 403
-- `ThomasHendrickx/pulse-fleet`: refused. record refused: https://api.github.com/repos/ThomasHendrickx/pulse-fleet answered HTTP 403; commits refused: https://api.github.com/repos/ThomasHendrickx/pulse-fleet/commits?per_page=1 answered HTTP 403
+Everything above this heading is the script's output from the run of
+2026-09-23T08:02:55Z, unchanged. Everything below was written by the M5-P1
+implementer.
 
-An unreachable or refused target is NOT a clean probe and is NOT an
-absence of the thing looked for. The trigger does not advance on this run.
+### The three runs at this path, all on node v26.6.0
 
-## Comparison with the last recorded reading (added by M5-P1, not by the script)
-
-Everything above this heading was written by the script, byte for byte, in
-the run of 2026-09-23 that exited 3. Everything below it was written by the
-M5-P1 implementer from separate commands, each quoted with its exit code.
-
-### What the script's run established, and what it did not
-
-- Targets: `ThomasHendrickx/pulse` and `ThomasHendrickx/pulse-fleet`, the two
-  defaults at scripts/probe-pilot-readonly.mjs:77.
-- Transports: three sources per target. The REST repository record and the
-  REST newest-commit listing were both `refused` (HTTP 403) for both targets.
-  `git ls-remote HEAD` over the git protocol was `satisfied` for both.
-- Observed heads, git protocol only: `pulse` `d4e491b`, `pulse-fleet`
-  `7656f67`. Default branch, visibility and last update were NOT read, because
-  only the refused REST record carries them.
-- Excluded write operations: every git subcommand except `ls-remote` and a
-  `clone` carrying `--depth 1` is refused before a child is spawned
-  (scripts/probe-pilot-readonly.mjs:116), and every request uses the GET
-  method with no body (scripts/probe-pilot-readonly.mjs:253). So no push, ref
-  update, branch, pull request, fleet state or lease, which is DR-0037's list.
-- Verdict: `OVERALL refused`, exit 3. By the four-word vocabulary this run is
-  NOT satisfied, and acceptance criterion p1-probe, which asks for exit 0, is
-  NOT met by it.
-- The header above still reads "status: IN PROGRESS" although the run
-  finished. The script writes that header before its first read and does not
-  rewrite it; the "Overall" section is the completion marker. Recorded, not
-  changed, because the script is outside this phase's files.
-
-### Why REST is refused: the session's repository scope, measured
-
-The 403 body, read with a plain GET on 2026-09-23:
-
-```
-GET /repos/ThomasHendrickx/pulse -> 403
-{"message":"GitHub access to this repository is not enabled for this session.
-Use add_repo to request access. If add_repo answers that read access is already
-available and you need GitHub API or write access, call add_repo again with
-access:\"push\" to attach the repository with credentials.", ...}
-GET /repos/ThomasHendrickx/pulse-fleet -> 403, same body
-GET /repos/ThomasHendrickx/tiphys-ai-helmsman -> 200
-GET /repos/ThomasHendrickx/tiphys-ai-helmsman-fleet -> 200
-GET /rate_limit -> 200, core.limit 15000
-```
-
-So the refusal is the agent session's repository allowlist, not GitHub and not
-the proxy being down: two repositories attached to this session answer 200 in
-the same shell. The body names the remedy, and the remedy is a PUSH-scoped
-attach of the pilot repositories. That hands this session write credentials
-for a repository DR-0037 says this orchestrator does not work on. The M5-P1
-implementer did NOT do it. Whether to do it for read-only REST access is an
-orchestrator call, and it is raised as an open question in
-delivery/verification/m4-exit-test-pulse.md:1.
-
-This also explains most of what the M4-P27 record called unexplained
-(delivery/work-history/m4-p27.md:121): REST reachability depends on which
-repositories the session has attached. The single successful run on
-2026-09-16 is still not explained by this; it may have run in a session with
-a different attachment, and nothing here shows that.
-
-### Heads against the last committed readings
-
-Independent read-only commands, 2026-09-23:
-
-```
-$ git ls-remote --symref https://github.com/ThomasHendrickx/pulse.git HEAD
-ref: refs/heads/main	HEAD
-d4e491b124666a77aa63024b3eedf606657e9e88	HEAD
-exit 0
-$ git ls-remote --symref https://github.com/ThomasHendrickx/pulse-fleet.git HEAD
-ref: refs/heads/main	HEAD
-7656f672210628b9a8bf14b15828d8f38e04d398	HEAD
-exit 0
-$ git clone --depth 1 https://github.com/ThomasHendrickx/pulse.git <scratch>/pulse-ro
-$ git log -1 --format='%H %cI %s'
-d4e491b124666a77aa63024b3eedf606657e9e88 2026-08-29T16:27:11+00:00 Merge remote-tracking branch 'origin/claude/import-format-duplicate-name' into merge-m3p12
-$ git clone --depth 1 https://github.com/ThomasHendrickx/pulse-fleet.git <scratch>/pulse-fleet-ro
-$ git log -1 --format='%H %cI %s'
-7656f672210628b9a8bf14b15828d8f38e04d398 2026-08-29T17:04:36+00:00 notes: prepped for the owner's test session, and the false-witness rule the last fix earned
-```
-
-Both clones are `--depth 1`, the one clone form the probe itself admits, into
-this session's scratchpad, and were read only.
-
-| target | 2026-08-20 (DR-0034 premise check) | 2026-09-16 (M4-P27) | 2026-09-23 (this run) |
+| run | command | exit | result |
 |---|---|---|---|
-| `pulse` `main` | `1204775` | `d4e491b` | `d4e491b` |
-| `pulse-fleet` `main` | `ebed33b` | `7656f67` | `7656f67` |
+| 1, 06:57Z | `node scripts/probe-pilot-readonly.mjs --out delivery/verification/pulse-re-probe-m5.md` | 3 | `OVERALL refused`: REST 403 on both targets, git read both heads |
+| 2, 08:02:05Z | the same, plus `--force` because the file existed (without it: exit 64, nothing probed, nothing written) | 3 | `OVERALL refused`, same shape |
+| 3, 08:02:55Z | the same as run 2, with `NODE_USE_ENV_PROXY=1` in the environment | **0** | `OVERALL satisfied`, the record above |
 
-Sources: delivery/verification/dr-0034-premise-check.md:25 and
-delivery/verification/dr-0034-premise-check.md:27 for the first column;
-delivery/work-history/m4-p27.md:69 and delivery/work-history/m4-p27.md:121 for
-the second (line 121 is the one REST run M4-P27 recorded as unexplained; its `d4e491b` is corroborated by the git read at line 69, and `7656f67` is the value it reported).
+Run 1's full record is in git at commit 618544b, at this same path. `--force`
+is the script's own documented way to overwrite on purpose
+(delivery/plan/cutover/entry-trigger.md:130).
 
-**Neither pilot head has moved since 2026-09-16, and both were last committed
-on 2026-08-29.** So the pilot has had no pushed `main` activity for 25 days. A
-reading of the pilot as it stood on 2026-09-16 is still current on `main`.
+### Why runs 1 and 2 were refused: the probe bypassed the proxy
 
-Other facts from the same reads:
+Run 1's record put the refusal down to this session not having the pilot
+repositories attached. **That diagnosis was wrong for the probe's own
+requests.** It was based on `curl`, which honours `HTTPS_PROXY`. Node's
+built-in `fetch` does not, unless `NODE_USE_ENV_PROXY=1` is set, and the probe
+uses it (scripts/probe-pilot-readonly.mjs:252). Measured at 08:02Z with a
+scratch GET-only script, same headers as the probe:
 
-- `pulse` carries 106 branches (`git ls-remote --heads`, exit 0). Branch
-  creation dates are not readable without fetching them, so this record does
-  not say whether any is newer than 2026-08-29.
-- `pulse-fleet` at `7656f67` pins `"@tiphys/kernel": "0.1.0"` in its
-  `package.json` and its `tasks/` directory is empty.
+```
+without NODE_USE_ENV_PROXY:
+  /repos/ThomasHendrickx/pulse               403 {"message":"API rate limit exceeded for 34.45.210.119. ...
+  /repos/ThomasHendrickx/tiphys-ai-helmsman  403 {"message":"API rate limit exceeded for 34.45.210.119. ...
+with NODE_USE_ENV_PROXY=1:
+  /repos/ThomasHendrickx/pulse               200 {"id":1335801685,...,"full_name":"ThomasHendrickx/pulse",...
+  /repos/ThomasHendrickx/tiphys-ai-helmsman  200
+```
+
+So without the variable, the probe went straight to GitHub without
+credentials and hit this IP's anonymous rate limit. The kernel repository
+answers 403 the same way, so pilot access has nothing to do with it. `curl`
+went through the proxy and did show pilot access missing in run 1's session.
+At 08:01Z, after the pilot repositories were attached, `curl` read `pulse`
+and `pulse-fleet` with 200. Both causes were real, and run 3 needed both
+fixed.
+
+The script classifies every 403 as `refused` without reading the body
+(scripts/probe-pilot-readonly.mjs:272), so a rate limit and an authorization
+refusal are indistinguishable in its output. Recorded, not changed: the
+script is outside this phase's files.
+
+This probably also explains the "unexplained" single success on 2026-09-16
+(delivery/work-history/m4-p27.md:121): an anonymous request that happened to
+fall inside the rate limit. Nothing here proves that.
+
+### Heads against the last readings
+
+| target | 2026-08-20 | 2026-09-16 | 2026-09-23, run 3 |
+|---|---|---|---|
+| `pulse` `main` | `1204775` | `d4e491b` | `d4e491b`, updated 2026-08-29T16:29:21Z |
+| `pulse-fleet` `main` | `ebed33b` | `7656f67` | `7656f67`, updated 2026-08-29T17:04:48Z |
+
+Sources for the earlier columns: delivery/verification/dr-0034-premise-check.md:25,
+delivery/verification/dr-0034-premise-check.md:27 and
+delivery/work-history/m4-p27.md:69. The REST record and the git ref agree for
+both targets. Neither pilot head has moved since 2026-09-16.
+
+Transports: REST repository record, REST newest commit, and `git ls-remote
+HEAD`. Excluded writes: only `ls-remote` and `clone --depth 1` are admitted
+for git (scripts/probe-pilot-readonly.mjs:116), and every request is a GET
+(scripts/probe-pilot-readonly.mjs:253). The header still reads "IN PROGRESS"
+after a finished run; the "Overall" section is what marks completion.
