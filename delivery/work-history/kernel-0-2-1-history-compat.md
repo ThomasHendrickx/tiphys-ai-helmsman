@@ -244,7 +244,8 @@ What the derivation did NOT cover:
    under Reproduction and are not forced green. Red witness for the schema
    half: witness/kernel-0-2-1-history-well-formed.json (head re-required;
    medium re-added to the enum).
-5. **behaviors.** Six appended, three repointed (Deviations).
+5. **behaviors.** Eleven appended (six for the brief, five for DR-0055),
+   three repointed (Deviations).
 
 ### The new tests, red on main and green on the branch
 
@@ -532,6 +533,53 @@ it is every file write in src/, locks and barriers included). Classified:
   `tiphys-version: 0.2.0` (the package version, unbumped), or both merge
   gates will exclude them. The composed brief now says so.
 
+## Gates
+
+All measured at 4ec78dc on node v26.6.0 (scratch toolchain), `npm ci` and
+`npm run build` exit 0, `git status` clean after the build.
+
+- **Suite, standalone**, at 8acf44b: `npm test`, exit 0, 1452 tests, 1452
+  pass, 0 fail, 0 skipped, dist built. The one test added after it is in the
+  bundle run below.
+- **Suite, inside the bundle** at 4ec78dc (the `suite` gate, which runs
+  `npm test`): 1453 tests from 70 files, 1453 pass, 0 fail, 0 skipped,
+  1327 behaviors resolve.
+- **m2-exit-test, PR bundle**:
+  `bash scripts/m2-exit-test.sh --base origin/main --head HEAD --phase claude/kernel-0-2-1-history-compat --bundle pr --no-build <scratch>/ev-m2exit`.
+  The `--phase` value is what the workflow's sed yields for this branch name.
+  Printed `declared 15 applicable 9 verdict 9 green 8 red 1 not-applicable 6
+  error 0 vacuous 0`, exit 1. The one red is `merge-preconditions`: 0 of 2
+  approving decorrelated verdicts admitted for 4ec78dc, because this branch
+  has not been reviewed yet. That red is the gate doing its job and clears
+  only with the two reviews (stamped `tiphys-version: 0.2.0`, see the DR-0055
+  deviations). Green: manifest-self-check (8), coverage (115),
+  credential-scrub (7), suite (1453), clause-map (74), red-witness (100
+  witnesses: 9 own, 91 stored), brief-drift (21), typecheck (454).
+  Not-applicable: credential-token, citations, scope, gate-classes (the
+  branch is not a phase branch, or the diff touches no document in scope),
+  deploy, migrations (structural pre-merge).
+  The bundle's own summary.json carries `"tiphys-version": "0.2.0"`, which
+  is the stamp writer working on a real run.
+- **Earlier red-witness runs**, kept because each found something: at
+  8acf44b, red on kernel-0-2-1-history-well-formed (the pointer defect,
+  fix round above); at 464c825, red on rule (d) for the new spec (member
+  retargeted, above).
+- `node scripts/check-authored-bytes.mjs` exit 0;
+  `node scripts/render-agent-rules-gates.mjs --check` exit 0 (24 rows);
+  `node scripts/check-id-collisions.mjs` exit 0.
+- `git merge-tree --write-tree origin/main HEAD` at 4ec78dc against
+  origin/main b16f200: exit 0, tree 7b21e25. Since the merge base 6dc5b06
+  main changed seven paths, all paperwork: delivery/STATE.md, DR-0053,
+  DR-0054, one M5-P3 evidence file and three review or arbitration files.
+  `comm -12` of that list against the branch's own changed paths printed
+  nothing, so no file is changed on both sides.
+
+Commits: 87f9e4c beacon, ffd14f9 reproduction, ec3016c implementation,
+606e1f9 test updates, b69f438 new tests, fixtures, witnesses, behaviors,
+8c127e6 and c7c6f9f work history, 97156e2 witness split, 2512f74 the
+DR-0055 stamp, 8acf44b tolerant stamp writers, 464c825 keyword-keyed gating,
+4ec78dc witness retarget.
+
 ## Open questions
 
 1. **`headGroupFor` is unchanged.** In the derived checks, a same-phase
@@ -578,10 +626,27 @@ it is every file write in src/, locks and barriers included). Classified:
 grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/kernel-0-2-1-history-compat.md
 ```
 
-Run before this section was written, five hits: line 6 is the owner's rule
-quoted; the two `never counts it` hits are a test title (quoted and in the
-captured summary); `never-admitted` is a witness file name; `always false`
-describes a mutation (`declaresNoHead` returning false), which the witness
-run settles. The wrap-insensitive form found the same five (1 `always`,
-4 `never`), so no hit was missed by wrapping. The sentences added after it
-were written to avoid the listed words.
+Re-run at 4ec78dc, after the DR-0055 sections, before this paragraph was
+rewritten. Hits by line, and what settles each:
+
+- 6: the owner's rule, quoted.
+- 213 and 262: `never counts it`, a test title (quoted, and in the captured
+  summary). The test is the settlement: green on the branch, red on main.
+- 219, 308, 309: `never-admitted`, a witness file name.
+- 221: `always false`, describes a mutation; the witness run settles it.
+- 369: HISTORY lines are "never dropped silently": the stamp-rule test
+  asserts the HISTORY line is printed for both unstamped and 0.1.0 stamps.
+- 370: "Admission never relaxed": the two stamp-exclusion tests stage an
+  approving pair stamped 0.1.0 and unstamped and require red, by name, at
+  both gates; their witnesses redden when the stamp check is skipped.
+- 384: "never fires", describes a mutation (the old-minor comparison made
+  false); the witness run settles it.
+- 617: "cannot be decoded" describes an input (an undecodable file), not a
+  claim about the code.
+- 626: the grep command itself.
+
+Occurrences, counted the same way in both forms after this section was
+written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 29, and the
+wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 29.
+Equal, so no hit was missed by wrapping. The hits after line 626 are this
+section quoting the ones above it.
