@@ -1,23 +1,23 @@
 {
-  "id": "m5-p3-paperwork-review-budget",
-  "behavior": "m5-p3-paperwork-review-budget",
+  "id": "m5-p3-merge-preconditions-missing-is-red",
+  "behavior": "m5-p3-merge-preconditions-missing-is-red",
   "tests": [
-    "a delivery-only change is not forced through the two-verdict rule and names its tier",
-    "merge-preconditions through the real runner is not-applicable for a delivery-only change, and an approving pair reaches the network conditions"
+    "merge-preconditions, the review gate the pull-request bundle runs, is red through the real runner for zero and one committed review",
+    "with --base, a shipped change with fewer than two committed reviews is red before any network request"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "      return { tier: row.tier, source: row.source };",
-      "replace": "      return { tier: \"dual\", source: row.source };"
+      "find": "    tier: \"dual\",\n    source: \"DR-0027 row 1",
+      "replace": "    tier: \"none\",\n    source: \"DR-0027 row 1"
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    paths: [\"delivery/\", \"CLAUDE.md\", \".claude/\"],",
-      "replace": "    paths: [\"CLAUDE.md\", \".claude/\"],"
+      "find": "  const short = budget !== undefined && budget.tier === \"dual\" && review.forHead.length < REQUIRED_VERDICTS;",
+      "replace": "  const short = false;"
     }
   ],
   "deterministic": true,

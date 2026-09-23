@@ -1309,5 +1309,8 @@
   "m5-p3-merge-preconditions-paperwork-budget": "merge-preconditions through the real runner is not-applicable for a delivery-only change, and an approving pair reaches the network conditions",
   "m5-p3-merge-preconditions-in-flight-ci": "an approving pair evaluated inside the unconcluded CI of its own head is not-applicable naming the in-flight run and the rows it established",
   "m5-p3-in-flight-never-softens-a-refusal": "a refusing pair inside the unconcluded CI of its own head stays red, so the in-flight rule never softens a refusal",
-  "m5-p3-in-flight-is-head-scoped": "an in-flight gates run for a different head is not counted as this head's CI in flight"
+  "m5-p3-in-flight-is-head-scoped": "an in-flight gates run for a different head is not counted as this head's CI in flight",
+  "m5-p3-review-budget-classification": "the review budget classifies git's real NUL-separated, rename-split name list for a nested project by DR-0027's table",
+  "m5-p3-merge-preconditions-token-env": "--token-env sends the named variable's value as a bearer token on every API request and writes it nowhere, and without the flag no credential is sent",
+  "m5-p3-token-env-declared-in-registry-manifest-and-workflow": "the registry and the manifest both declare the token variable in merge-preconditions' command, and the pull-request step sets it"
 }

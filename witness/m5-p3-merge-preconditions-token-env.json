@@ -1,22 +1,22 @@
 {
-  "id": "m5-p3-merge-preconditions-in-flight-ci",
-  "behavior": "m5-p3-merge-preconditions-in-flight-ci",
+  "id": "m5-p3-merge-preconditions-token-env",
+  "behavior": "m5-p3-merge-preconditions-token-env",
   "tests": [
-    "an approving pair evaluated inside the unconcluded CI of its own head is not-applicable naming the in-flight run and the rows it established"
+    "--token-env sends the named variable's value as a bearer token on every API request and writes it nowhere, and without the flag no credential is sent"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "        String(run.status ?? \"\") !== \"completed\",",
-      "replace": "        false,"
+      "find": "  if (token !== undefined && token !== \"\") {\n    headers[\"authorization\"]",
+      "replace": "  if (false) {\n    headers[\"authorization\"]"
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    if (inFlight.length > 0 && gateStatusForRows(rows) === \"green\") {",
-      "replace": "    if (inFlight.length < 0 && gateStatusForRows(rows) === \"green\") {"
+      "find": "  const token = tokenVariable === undefined ? undefined : process.env[tokenVariable];",
+      "replace": "  const token = process.env[\"M5P3_TEST_API_TOKEN\"];"
     }
   ],
   "deterministic": true,

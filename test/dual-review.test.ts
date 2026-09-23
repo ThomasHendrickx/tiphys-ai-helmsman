@@ -25,6 +25,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -1230,4 +1231,83 @@ test("merge-preconditions through the real runner is not-applicable for a delive
     assert.equal(run.record.status, "error", run.output);
     assert.match(run.record.detail ?? "", /no repository could be established/);
   });
+});
+
+const budgetModule = (await import(new URL("../src/gates/merge-preconditions.ts", import.meta.url).href)) as {
+  classifyReviewBudget: (
+    contextDirectory: string,
+    base: string,
+    head: string,
+  ) =>
+    | { ok: true; budget: { tier: string; paths: { path: string; tier: string }[]; dual: string[] } }
+    | { ok: false; reason: string };
+};
+
+/**
+ * THE REVIEW BUDGET CONSUMES git's OUTPUT, so the red-witness rule's stronger
+ * form applies: the assertion is made against REAL captured output. The
+ * capture at witness/captures/m5-p3-git-review-budget.json was taken from this
+ * exact staging; the test re-stages it, re-runs both commands, requires the
+ * live output to equal the recorded bytes, and only then asks the shipped
+ * classifier about it. A git that printed something else would redden the
+ * first half before the classifier was trusted with it.
+ */
+const GIT_BUDGET_CAPTURE = join(repoRoot, "witness", "captures", "m5-p3-git-review-budget.json");
+
+test("the review budget classifies git's real NUL-separated, rename-split name list for a nested project by DR-0027's table", () => {
+  const recorded = JSON.parse(readFileSync(GIT_BUDGET_CAPTURE, "utf8")) as {
+    commands: { argv: string[]; cwd: string; stdout: string }[];
+  };
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-budget-git-"));
+  try {
+    const kernel = join(dir, "kernel");
+    mkdirSync(join(kernel, "src"), { recursive: true });
+    writeFileSync(join(kernel, "src", "feature.ts"), "export const feature = 1;\n");
+    writeFileSync(join(kernel, "src", "old.ts"), "export const old = 1;\n");
+    fixtureGit(dir, ["init", "-q", "."]);
+    fixtureGit(dir, ["add", "-A"]);
+    fixtureGit(dir, ["commit", "-q", "-m", "base"]);
+    const base = fixtureGit(dir, ["rev-parse", "HEAD"]);
+    writeFileSync(join(kernel, "src", "feature.ts"), "export const feature = 2;\n");
+    mkdirSync(join(kernel, "delivery"), { recursive: true });
+    writeFileSync(join(kernel, "delivery", "a b.md"), "paperwork with a space in its name\n");
+    renameSync(join(kernel, "src", "old.ts"), join(kernel, "delivery", "old.md"));
+    mkdirSync(join(kernel, "test"), { recursive: true });
+    writeFileSync(join(kernel, "test", "x.test.ts"), "// test\n");
+    writeFileSync(join(kernel, "CLAUDE.md"), "rules\n");
+    writeFileSync(join(dir, "outside.md"), "outside the project\n");
+    fixtureGit(dir, ["add", "-A"]);
+    fixtureGit(dir, ["commit", "-q", "-m", "the change"]);
+    const head = fixtureGit(dir, ["rev-parse", "HEAD"]);
+
+    for (const command of recorded.commands) {
+      const argv = command.argv.slice(1).map((arg) => (arg === "<base>...<head>" ? `${base}...${head}` : arg));
+      const live = spawnSync("git", argv, { cwd: join(dir, command.cwd), encoding: "utf8" });
+      assert.equal(live.status, 0, live.stderr);
+      assert.equal(live.stdout, command.stdout, `git ${argv.join(" ")} no longer prints what was captured`);
+    }
+
+    const classified = budgetModule.classifyReviewBudget(kernel, base, head);
+    assert.ok(classified.ok, classified.ok ? "" : classified.reason);
+    const tiers = new Map(classified.budget.paths.map((entry) => [entry.path, entry.tier]));
+    assert.deepEqual(
+      Object.fromEntries(tiers),
+      {
+        "kernel/CLAUDE.md": "none",
+        "kernel/delivery/a b.md": "none",
+        "kernel/delivery/old.md": "none",
+        /* THE SOURCE HALF OF A MOVE INTO delivery/ IS SEEN, which is what
+           `--no-renames` is for: without it only the destination prints and a
+           shipped file moved into paperwork reads as paperwork. */
+        "kernel/src/old.ts": "dual",
+        "kernel/src/feature.ts": "dual",
+        "kernel/test/x.test.ts": "single",
+        /* OUTSIDE THE PROJECT, fail closed. */
+        "outside.md": "dual",
+      },
+    );
+    assert.equal(classified.budget.tier, "dual");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

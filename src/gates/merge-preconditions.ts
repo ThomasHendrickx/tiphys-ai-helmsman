@@ -128,7 +128,7 @@ const PRECONDITION_ID = "merge-preconditions-verdict-names-this-head";
 const USAGE =
   "usage: node src/gates/merge-preconditions.ts --result <file> --head <sha> --phase <id> " +
   "[--base <ref>] [--evidence <dir>] [--context <dir>] [--repo <owner/name>] [--api-base <url>] " +
-  "[--scope-record <file>] [--arbitrations <dir>]";
+  "[--scope-record <file>] [--arbitrations <dir>] [--token-env <NAME>]";
 
 interface Flags {
   result?: string;
@@ -141,6 +141,7 @@ interface Flags {
   "api-base"?: string;
   "scope-record"?: string;
   arbitrations?: string;
+  "token-env"?: string;
 }
 
 const SINGLE_VALUE_FLAGS = [
@@ -154,6 +155,7 @@ const SINGLE_VALUE_FLAGS = [
   "--api-base",
   "--scope-record",
   "--arbitrations",
+  "--token-env",
 ] as const;
 
 function parseFlags(args: string[]): Flags | undefined {
@@ -274,12 +276,27 @@ export type ApiResponse =
  * the fail-closed direction and never a silent pass, and supplying a token
  * would have to be a DECLARED FLAG in the registry command rather than an
  * ambient environment read.
+ *
+ * M5-P3: THAT DECLARED FLAG NOW EXISTS, AND THE COST ABOVE WAS MEASURED REAL.
+ * On 2026-09-23 from this container, Node's `fetch` (which does NOT go through
+ * the agent proxy) answered the unauthenticated `GET /repos/{slug}` with HTTP
+ * 403 "API rate limit exceeded for <ip>", and the same request with an
+ * Authorization header answered 200. Until M5-P3 the gate never reached the
+ * network in CI, because no verdict was ever committed; from M5-P3 on it does,
+ * on every reviewed shipped-code head, from a shared runner address. So
+ * `--token-env <NAME>` names the environment variable that holds the token,
+ * the registry command declares the name, and the value is sent as a bearer
+ * token and never written to any record, line or evidence file. Absent or
+ * empty, no header is sent, which is the M4-P12 behaviour.
  */
-export async function requestJson(url: string): Promise<ApiResponse> {
+export async function requestJson(url: string, token?: string): Promise<ApiResponse> {
   const headers: Record<string, string> = {
     accept: "application/vnd.github+json",
     "user-agent": "tiphys-merge-preconditions",
   };
+  if (token !== undefined && token !== "") {
+    headers["authorization"] = `Bearer ${token}`;
+  }
   try {
     const response = await fetch(url, { headers });
     const body = await response.text();
@@ -1089,9 +1106,10 @@ function read(path: string): Read {
 async function readRulesets(
   apiBase: string,
   slug: string,
+  token: string | undefined,
 ): Promise<{ ok: true; rulesets: RulesetReading[] } | { ok: false; reason: string }> {
   const listUrl = `${apiBase}/repos/${slug}/rulesets?includes_parents=true`;
-  const listed = readJsonBody(listUrl, await requestJson(listUrl));
+  const listed = readJsonBody(listUrl, await requestJson(listUrl, token));
   if (!listed.ok) {
     return { ok: false, reason: listed.reason };
   }
@@ -1112,7 +1130,7 @@ async function readRulesets(
     let source = entry;
     if (!Array.isArray(entry["rules"])) {
       const detailUrl = `${apiBase}/repos/${slug}/rulesets/${String(entry["id"] ?? "")}`;
-      const detail = readJsonBody(detailUrl, await requestJson(detailUrl));
+      const detail = readJsonBody(detailUrl, await requestJson(detailUrl, token));
       if (!detail.ok) {
         return { ok: false, reason: detail.reason };
       }
@@ -1341,6 +1359,10 @@ export async function runGate(flags: Flags): Promise<number> {
   const phase = (flags.phase as string).toLowerCase();
   const apiBase = (flags["api-base"] ?? DEFAULT_API_BASE).replace(/\/+$/, "");
   const shared = { gate: GATE_ID, unitLabel: UNIT_LABEL, startedAt };
+  /* M5-P3: the token is read from the variable the COMMAND names, never from a
+     name this module chooses (see requestJson). */
+  const tokenVariable = flags["token-env"];
+  const token = tokenVariable === undefined ? undefined : process.env[tokenVariable];
 
   /* M5-P3: THE BUDGET, AND THE REVIEW EVIDENCE, BEFORE THE NETWORK. With
      `--base` (which the registry now declares, so every runner invocation
@@ -1456,7 +1478,7 @@ export async function runGate(flags: Flags): Promise<number> {
      run that depends on it, in either direction, so this is the probe and not
      an assumption. */
   const probeUrl = `${apiBase}/repos/${slug}`;
-  const probe = readJsonBody(probeUrl, await requestJson(probeUrl));
+  const probe = readJsonBody(probeUrl, await requestJson(probeUrl, token));
   if (!probe.ok) {
     return emit(
       resultPath,
@@ -1525,7 +1547,7 @@ export async function runGate(flags: Flags): Promise<number> {
   }
 
   const checkRunsUrl = `${apiBase}/repos/${slug}/commits/${head}/check-runs`;
-  const checkRuns = readJsonBody(checkRunsUrl, await requestJson(checkRunsUrl));
+  const checkRuns = readJsonBody(checkRunsUrl, await requestJson(checkRunsUrl, token));
   if (!checkRuns.ok) {
     rows.push({
       id: "condition-4",
@@ -1613,7 +1635,7 @@ export async function runGate(flags: Flags): Promise<number> {
     sentence: arbitration.sentence,
   });
 
-  const rulesets = await readRulesets(apiBase, slug);
+  const rulesets = await readRulesets(apiBase, slug, token);
   if (!rulesets.ok) {
     rows.push({
       id: "branch-protection",
@@ -1668,6 +1690,9 @@ export async function main(argv: string[]): Promise<number> {
   const missing = (["result", "head", "phase"] as const).filter((name) => flags[name] === undefined);
   if (missing.length > 0) {
     return usageError(`${GATE_ID} requires ${missing.map((name) => `--${name}`).join(" ")}`);
+  }
+  if (flags["token-env"] !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(flags["token-env"])) {
+    return usageError(`--token-env takes an environment variable NAME, and ${flags["token-env"]} is not one`);
   }
   return runGate(flags);
 }

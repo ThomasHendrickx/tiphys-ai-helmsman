@@ -478,7 +478,13 @@ gates:
       with every review row green and evidence naming them, because condition
       4 asks about the CI this run is part of. Before M5-P3 no verdict was ever
       committed, so the gate never ran in CI and that loop was invisible.
-    command: [node, src/gates/merge-preconditions.ts]
+      `--token-env GH_TOKEN` NAMES the variable the gate reads its API token
+      from, so the read is declared here rather than ambient; the pull-request
+      step of .github/workflows/gates.yml sets it from the job token. Measured
+      2026-09-23: an unauthenticated request from a shared address answered
+      403 "API rate limit exceeded", and an error there would fail every
+      reviewed shipped-code pull request.
+    command: [node, src/gates/merge-preconditions.ts, --token-env, GH_TOKEN]
     unitLabel: merge preconditions evaluated
     applicability: conditional
     verified-by: script

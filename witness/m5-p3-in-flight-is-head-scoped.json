@@ -1,22 +1,22 @@
 {
-  "id": "m5-p3-merge-preconditions-in-flight-ci",
-  "behavior": "m5-p3-merge-preconditions-in-flight-ci",
+  "id": "m5-p3-in-flight-is-head-scoped",
+  "behavior": "m5-p3-in-flight-is-head-scoped",
   "tests": [
-    "an approving pair evaluated inside the unconcluded CI of its own head is not-applicable naming the in-flight run and the rows it established"
+    "an in-flight gates run for a different head is not counted as this head's CI in flight"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "        String(run.status ?? \"\") !== \"completed\",",
-      "replace": "        false,"
+      "find": "        String(run.head_sha ?? \"\").toLowerCase() === head.toLowerCase() &&\n        String(run.status ?? \"\") !== \"completed\",",
+      "replace": "        String(run.status ?? \"\") !== \"completed\","
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    if (inFlight.length > 0 && gateStatusForRows(rows) === \"green\") {",
-      "replace": "    if (inFlight.length < 0 && gateStatusForRows(rows) === \"green\") {"
+      "find": "        String(run.head_sha ?? \"\").toLowerCase() === head.toLowerCase() &&\n        String(run.status ?? \"\") !== \"completed\",",
+      "replace": "        String(run.head_sha ?? \"\") !== \"\" &&\n        String(run.status ?? \"\") !== \"completed\","
     }
   ],
   "deterministic": true,

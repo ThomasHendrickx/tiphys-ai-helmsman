@@ -22,7 +22,16 @@
     "witness/m5-p3-paperwork-review-budget.json",
     "witness/m5-p3-merge-preconditions-missing-is-red.json",
     "witness/m5-p3-merge-preconditions-in-flight-ci.json",
-    "witness/captures/m5-p3-github-check-runs-in-flight.json"
+    "witness/captures/m5-p3-github-check-runs-in-flight.json",
+    "witness/captures/m5-p3-git-review-budget.json",
+    "witness/m5-p3-merge-preconditions-missing-is-red-runner.json",
+    "witness/m5-p3-in-flight-never-softens-a-refusal.json",
+    "witness/m5-p3-in-flight-is-head-scoped.json",
+    "witness/m5-p3-review-of-old-code-is-red.json",
+    "witness/m5-p3-merge-preconditions-token-env.json",
+    ".github/workflows/gates.yml",
+    "witness/merge-preconditions-unreachable-api-is-error.json",
+    "witness/m5-p3-review-budget-classification.json"
   ],
   "declaredExtras": [
     "test/behaviors.json",

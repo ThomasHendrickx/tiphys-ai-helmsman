@@ -1,0 +1,24 @@
+{
+  "id": "m5-p3-review-of-old-code-is-red",
+  "behavior": "m5-p3-review-of-old-code-is-red",
+  "tests": [
+    "an approving pair that names an ancestor whose gap adds shipped bytes is red, and names the exclusion"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "scripts/check-dual-review.mjs",
+      "find": "    admittedCount: anchor.kind === \"anchored\" ? partition.admitted.length : partition.onHead.length,",
+      "replace": "    admittedCount: anchor.kind === \"anchored\" ? partition.admitted.length + partition.offHead.length : partition.onHead.length,"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/check-dual-review.mjs",
+      "find": "    if (found.admittedCount < REQUIRED_VERDICTS) {",
+      "replace": "    if (found.paths.length + found.offHead.length < REQUIRED_VERDICTS) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

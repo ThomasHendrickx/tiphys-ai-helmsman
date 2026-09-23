@@ -228,7 +228,9 @@
       "id": "merge-preconditions",
       "command": [
         "node",
-        "src/gates/merge-preconditions.ts"
+        "src/gates/merge-preconditions.ts",
+        "--token-env",
+        "GH_TOKEN"
       ],
       "unitLabel": "merge preconditions evaluated",
       "applicability": "conditional",

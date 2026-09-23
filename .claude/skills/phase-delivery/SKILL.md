@@ -184,8 +184,12 @@ from the phase worktree, with `--base` so the review budget is decided:
 node src/gates/merge-preconditions.ts --base origin/main --head <V> \
   --phase <phase-id> --context . --result <scratch>/mp/result.json \
   --evidence <scratch>/mp --scope-record <scope result.json from a local run> \
-  --arbitrations <scratch>/arbitration
+  --arbitrations <scratch>/arbitration --token-env GH_TOKEN
 ```
+
+`--token-env GH_TOKEN` matters: the gate's `fetch` does not use the agent
+proxy, and an unauthenticated request from this container was measured
+answering 403 "API rate limit exceeded" (M5-P3).
 
 It must report `green`. Condition 6 reads `arbitration-<phase-id>.md` from
 `--arbitrations`; that document names both verdict files and V. It lives

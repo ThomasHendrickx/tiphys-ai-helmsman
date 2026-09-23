@@ -1,22 +1,22 @@
 {
-  "id": "m5-p3-merge-preconditions-in-flight-ci",
-  "behavior": "m5-p3-merge-preconditions-in-flight-ci",
+  "id": "m5-p3-in-flight-never-softens-a-refusal",
+  "behavior": "m5-p3-in-flight-never-softens-a-refusal",
   "tests": [
-    "an approving pair evaluated inside the unconcluded CI of its own head is not-applicable naming the in-flight run and the rows it established"
+    "a refusing pair inside the unconcluded CI of its own head stays red, so the in-flight rule never softens a refusal"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "        String(run.status ?? \"\") !== \"completed\",",
-      "replace": "        false,"
+      "find": "    if (inFlight.length > 0 && gateStatusForRows(rows) === \"green\") {",
+      "replace": "    if (inFlight.length > 0) {"
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
       "find": "    if (inFlight.length > 0 && gateStatusForRows(rows) === \"green\") {",
-      "replace": "    if (inFlight.length < 0 && gateStatusForRows(rows) === \"green\") {"
+      "replace": "    if (inFlight.length > 0 && gateStatusForRows(rows) !== \"error\") {"
     }
   ],
   "deterministic": true,

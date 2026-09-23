@@ -44,6 +44,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -1398,4 +1399,75 @@ test("with --base, a shipped change with fewer than two committed reviews is red
       cleanup(staged);
     }
   }
+});
+
+test("--token-env sends the named variable's value as a bearer token on every API request and writes it nowhere, and without the flag no credential is sent", async () => {
+  /* THE CREDENTIAL IS DECLARED, NOT AMBIENT: the registry command names the
+     variable, and a run without the flag sends no header even when the same
+     variable is set in its environment. Measured before this flag existed:
+     the unauthenticated request from this container answered 403 "API rate
+     limit exceeded" (delivery/work-history/m5-p3.md), and from a shared CI
+     address it is the same request. */
+  const secret = "m5p3-token-value-that-must-never-be-printed";
+  const variable = "M5P3_TEST_API_TOKEN";
+  const { staged, base, head } = stageShippedBranch(APPROVING_VERDICTS());
+  const seen: (string | undefined)[] = [];
+  const shape = inFlightApi(head);
+  const server: Server = createServer((request: IncomingMessage, response: ServerResponse) => {
+    seen.push(request.headers["authorization"]);
+    const url = request.url ?? "";
+    const chosen = url.includes("/check-runs") ? shape.checkRuns : shape.repo;
+    response.writeHead(chosen?.status ?? 404, { "content-type": "application/json" });
+    response.end(chosen?.body ?? "{}");
+  });
+  await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+  const apiBase = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}`;
+  process.env[variable] = secret;
+  try {
+    const flagged = await runGate(gateSource, staged, apiBase, ["--base", base, "--token-env", variable], head);
+    assert.equal(flagged.record["status"], "not-applicable", flagged.stdout);
+    assert.ok(seen.length >= 2, `only ${String(seen.length)} request(s) reached the fixture API`);
+    for (const header of seen) {
+      assert.equal(header, `Bearer ${secret}`);
+    }
+    const written = [
+      flagged.stdout,
+      flagged.stderr,
+      JSON.stringify(flagged.record),
+      ...readdirSync(staged.evidence).map((name) => readFileSync(join(staged.evidence, name), "utf8")),
+    ].join("\n");
+    assert.equal(written.includes(secret), false, "the token value was written to an output");
+
+    seen.length = 0;
+    const unflagged = await runGate(gateSource, staged, apiBase, ["--base", base], head);
+    assert.equal(unflagged.record["status"], "not-applicable", unflagged.stdout);
+    assert.ok(seen.length >= 2);
+    for (const header of seen) {
+      assert.equal(header, undefined, "a credential was sent without --token-env");
+    }
+
+    /* A VALUE THAT IS NOT A VARIABLE NAME is a usage error, so a token pasted
+       into the command line by mistake is refused rather than looked up. */
+    const pasted = await runGate(gateSource, staged, apiBase, ["--base", base, "--token-env", "ghp not a name"], head);
+    assert.equal(pasted.exit, 64, pasted.stderr);
+    assert.match(pasted.stderr, /--token-env takes an environment variable NAME/);
+  } finally {
+    delete process.env[variable];
+    await new Promise<void>((done) => server.close(() => done()));
+    cleanup(staged);
+  }
+});
+
+test("the registry and the manifest both declare the token variable in merge-preconditions' command, and the pull-request step sets it", () => {
+  const registry = readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8");
+  assert.match(registry, /command: \[node, src\/gates\/merge-preconditions\.ts, --token-env, GH_TOKEN\]/);
+  const manifest = JSON.parse(readFileSync(join(repoRoot, "gates.manifest.json"), "utf8")) as {
+    gates: { id: string; command: string[] }[];
+  };
+  const entry = manifest.gates.find((gate) => gate.id === "merge-preconditions");
+  assert.deepEqual(entry?.command, ["node", "src/gates/merge-preconditions.ts", "--token-env", "GH_TOKEN"]);
+  const workflow = readFileSync(join(repoRoot, ".github", "workflows", "gates.yml"), "utf8");
+  const step = /- name: M2 exit test \(pull request\)\n((?: {8}.*\n)+)/.exec(workflow);
+  assert.ok(step !== null, "no pull-request M2 exit step in gates.yml");
+  assert.match(step[1] as string, /env:\n {10}GH_TOKEN: \$\{\{ github\.token \}\}\n/);
 });
