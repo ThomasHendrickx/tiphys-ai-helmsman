@@ -261,3 +261,93 @@ its scope gate is asserted green.
 not block on their own, but CR-001 is a real, currently-true gap in the
 document's central claim, with a cheap, concrete, two-sentence fix. No high
 findings.
+
+## Delta verification, 2026-09-23
+
+New head: d0bc5ccf7b264cd644db549b5b544ff6bd00824c (2026-09-23 08:20:16Z),
+same branch, same two files plus this report now committed.
+`git diff 5101d8a d0bc5cc` shows exactly three changes: the amendment to
+delivery/plan/m5-conflict-pre-pass.md, the amendment to
+delivery/decisions/DR-0050-m5-runs-in-waves-rather-than-serially.md, and
+this review file added verbatim (byte-identical to the copy this reviewer
+kept locally, confirmed with `diff`, exit 0). No other tracked file touched.
+
+**CR-001: closed.** The pre-pass now carries a row
+"P4 P5 delivery/plan/cutover/retirement-inventory.json" under a new
+"Amendment after dispatch, 2026-09-23" heading, and the sentence this review
+flagged now reads "Every other pair was literally disjoint **at dispatch**"
+(past tense, scoped), rather than the unscoped present-tense claim. A new
+bullet under "What this pre-pass did NOT cover" names the general mechanism:
+"Declarations as they change after dispatch... A phase that adds a file to
+its own declaration later (allowed, since grants are additive) can create an
+overlap this table does not show," and directs the orchestrator to re-derive
+overlap from live branches with `git diff --name-only
+origin/main...origin/<branch>` before each wave starts. That is the same
+method this review used, generalized into a standing instruction rather than
+a one-off fact, which is what the fix asked for (mechanism, not instance).
+The amendment also explicitly re-confirms the practical point this review
+made: it does not change the waves, since P4 merges in wave A before P5
+starts in wave C.
+
+Re-checked the underlying facts, not just the prose, since this is a delta
+verification and prose can be corrected without being true:
+
+```
+git diff --stat origin/main...origin/claude/m5-p4-ci-truth -- \
+  delivery/plan/cutover/retirement-inventory.json
+```
+still reports 217 insertions, so the overlap the amendment names is the same
+real one this review found, not a different or narrower one substituted in.
+The declared list for M5-P5 still includes
+`delivery/plan/cutover/retirement-inventory.json`
+(delivery/plan/phase-declarations/m5-p5.json, files-to-touch), confirmed by
+re-reading that file at d0bc5cc. Both halves of the claimed overlap are
+still true.
+
+**CR-002: closed.** DR-0050's consequence section is now "Two consequences,"
+and the second names the delivery/STATE.md three-way overlap exactly:
+"delivery/STATE.md is edited by M5-P1, M5-P5 and M5-P6, and waves do not
+separate all three. Whichever of them merges second merges main into its
+branch first and resolves that file by hand, and the resolution is
+reviewed." This matches the pre-pass's own existing handling of that overlap
+(delivery/plan/m5-conflict-pre-pass.md, merge-order paragraph, unchanged by
+this amendment) rather than inventing a new, different resolution, so the
+owner-facing decision record and the pre-pass now agree and neither
+overstates the other.
+
+**CR-003: still open, and correctly left alone.** It was scoped to
+claude/m5-p6-scale-out-proof's own undeclared witness/ files, which is a
+different branch and a different phase's own review; this amendment (to
+delivery/plan/m5-conflict-pre-pass.md and DR-0050 only) had no reason to
+touch it and did not. No new finding against that observation.
+
+Re-ran the mechanical checks against d0bc5cc, isolated by checking this
+report's file out separately first so the amended tracked copy and this
+reviewer's local copy would not collide (`diff` confirmed the tracked copy
+is byte-identical to what was written before the amendment, so this report
+is genuinely unmodified by the coordinator, matching the instruction):
+
+- `npm ci` and `npm run build`: both exit 0, Node v26.6.0, clean.
+- `node scripts/check-authored-bytes.mjs`: **exit 0**.
+- Citations gate, direct `--only citations` run against this exact head:
+
+  ```
+  gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 \
+    error 0 vacuous 0
+  gates: citations: green: linted 2 changed document(s) at \
+    d0bc5ccf7b264cd644db549b5b544ff6bd00824c: 5 citation(s) resolved, \
+    0 self-citation(s), 0 unverifiable-external
+  ```
+
+  5 resolved, up from 4 at 5101d8a: the one new citation is the amendment's
+  "delivery/review/clean-room-m5-pre-pass-sonnet.md:1" in the pre-pass,
+  correctly formed outside backticks with a line number per binding
+  convention 3b, and it now resolves because this report is committed on
+  the same branch. Still green, still a direct per-gate run, not a
+  bundle-level deduction.
+
+**Verdict: APPROVE.** Both findings this review raised are closed with
+matching, re-verified facts, not just re-worded prose. CR-003 remains open
+but was always out of scope for this PR. No new finding from this delta
+pass. Build, authored-bytes and citations are all green at d0bc5cc by direct
+re-run.
