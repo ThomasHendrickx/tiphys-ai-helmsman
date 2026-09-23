@@ -1327,7 +1327,7 @@ function registryStub(root: string, notServedFor: number | "never", broken: bool
     "",
   ].join("\n");
   writeFileSync(join(dir, "bin", "npm"), script, { mode: 0o755 });
-  const env = { ...cleanEnv(), PATH: `${join(dir, "bin")}:${process.env["PATH"] ?? ""}` };
+  const env: Record<string, string> = { ...cleanEnv(), PATH: `${join(dir, "bin")}:${process.env["PATH"] ?? ""}` };
   delete env["RELEASE_VERIFY_WAIT_SECONDS"];
   delete env["RELEASE_VERIFY_POLL_SECONDS"];
   return {
