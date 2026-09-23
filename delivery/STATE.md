@@ -5,7 +5,7 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-## M5 standing at 2026-09-23, 17:40 UTC, `main` at 6dc5b06
+## M5 standing at 2026-09-23, 23:15 UTC, `main` at 209004b
 
 M5 runs in waves under DR-0050 (delivery/plan/m5-conflict-pre-pass.md:1). The
 approved plan is delivery/plan/value-delivery-plan.yaml:1.
@@ -18,6 +18,8 @@ approved plan is delivery/plan/value-delivery-plan.yaml:1.
 | release verification waits for the registry | #211 | ac98d3c | gates 35858746022 success |
 | M5-P2, charter intent into briefs, delivered outcome in reports | #207 | 5662d74 | gates 35862907311 success on attempt 2 |
 | M5-P3, live review evidence | #213 | 6dc5b06 | gates 35890128107 success |
+| paperwork: DR-0053, DR-0054, M5-P3 evidence | #214 | b16f200 | gates 35897702941 success |
+| M5-P5, context diet | #215 | 209004b | gates 35927282691 success |
 
 The M5-P2 push run went red once on attempt 1 in a test M5-P2 does not touch,
 and was green on the one allowed re-run. Recorded, with the #211 instance, in
@@ -33,24 +35,24 @@ the merge gate rather than not-applicable.
 
 ### In flight
 
-- M5-P5, context diet (wave C): implementer dispatched 17:00 UTC on
-  `claude/m5-p5-context-diet`.
-- Kernel 0.2.1, old history validates again (DR-0053, DR-0054): implementer
-  dispatched 17:00 UTC on `claude/kernel-0-2-1-history-compat`.
+- Kernel 0.2.1, old history validates again and content is version-stamped
+  (DR-0053, DR-0054, DR-0055): PR #216, in fix round 1 after its first two
+  reviews.
 - M5-P1, pulse value proof: `claude/m5-p1-pulse-value-proof`, waiting on A-14.
 - M5-P6, scale-out proof: `claude/m5-p6-scale-out-proof`, wave D.
 
 ### Owner decisions open
 
-- Publish kernel 0.2.1 to npm once its PR is merged under DR-0012 (DR-0053).
-  Asked 2026-09-23. The owner asked for the 0.2.0 publish by name, so this one
-  waits for a go-ahead too.
+- None. The owner approved the 0.2.1 publish on 2026-09-23 (DR-0053), and
+  chose option A for M5-P5's last round (DR-0056).
 
 ### Owner actions open
 
 - A-14: restart pulse and bump pulse-fleet to kernel 0.2.0. Its register
   entry was allocated on the M5-P1 branch and reaches this register when that
-  phase merges; it is not yet on `main`. Pulse reports its pin is done.
+  phase merges; it is not yet on `main`. The owner reports pulse is running a
+  real phase on 0.2.0, not yet pushed; pulse `main` was still d4e491b at
+  19:40 UTC.
 - A-15: tag and release v0.2.0. The tag was still absent at 17:03 UTC.
 - A-10: fleet default branch and six probe branches.
 - A-9 and A-8: scratch and superseded branches on this repository. Both were
