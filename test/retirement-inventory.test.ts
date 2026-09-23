@@ -19,7 +19,7 @@
 
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
@@ -767,4 +767,387 @@ test("retirement inventory deletes nothing from the three roots in this phase", 
   for (const root of ["CLAUDE.md", ".claude/skills/phase-delivery/SKILL.md", ".claude/orchestrator-next.mjs"]) {
     assert.ok(extract.stdout.includes(`\t${root}:`), `${root} still carries rules`);
   }
+});
+
+/* ------------------------------------------------------------------------ *
+ * M5-P5, the context diet.
+ *
+ * THE DANGEROUS STATE here is a removal whose disposition LOOKS evidenced and
+ * is not. The cheapest such evidence is the one M4-P23 used for its PORT rows:
+ * a grep for a keyword the removed block shares with some other file. The word
+ * "watchdog" is in a dozen documents, so a grep for it exits 0 whether or not
+ * the removed block's CONTENT survives anywhere. So a diet entry must carry
+ * evidence a keyword cannot give: a multi-word quote that is found AT a named
+ * line range of a file that existed at the diet baseline, plus the quote of the
+ * rule that stayed. And it must not carry a probe command at all.
+ *
+ * Two structurally different members of the class are witnessed below:
+ *   A. a history-moved entry whose quote is one shared keyword
+ *   B. an entry whose evidence is a keyword grep command instead of a quote
+ * plus a third, orthogonal failure: a block removed with no entry at all.
+ * ------------------------------------------------------------------------ */
+
+const DIET_FILES = ["CLAUDE.md", "AGENTS.md", "delivery/STATE.md"];
+const COMPLETENESS_FILES = ["CLAUDE.md", "AGENTS.md"];
+const STATE_ONLY = ["superseded-status", "archived"];
+const DIET_KINDS = [
+  "exact-duplicate",
+  "mechanically-enforced",
+  "history-moved",
+  "corrected",
+  ...STATE_ONLY,
+];
+const MIN_RECORD_WORDS = 8;
+const MIN_RULE_WORDS = 6;
+const DIET_BASELINE = "6dc5b06";
+
+interface Quote {
+  at?: string;
+  file?: string;
+  quote?: string;
+}
+interface DietEntry {
+  id?: string;
+  file?: string;
+  baseline?: string;
+  lines?: [number, number];
+  first?: string;
+  last?: string;
+  disposition?: string;
+  reason?: string;
+  retires?: string[];
+  history?: Quote;
+  "rule-kept"?: Quote;
+  authority?: Quote;
+  replacement?: Quote;
+  "superseded-by"?: Quote;
+  "pointer-in-file"?: Quote;
+  "duplicate-of"?: Quote;
+  "enforced-by"?: { script?: string; gate?: string; test?: string };
+  [k: string]: unknown;
+}
+interface DietDoc {
+  rows: Row[];
+  retired: { id: string; diet?: string }[];
+  diet: DietEntry[];
+}
+
+const normalise = (s: string) => s.replace(/\s+/g, " ").trim();
+const withoutLineNumbers = (s: string) => s.replace(/(\.[A-Za-z0-9]+:)\d+(?:-\d+)?/g, "$1N");
+const wordCount = (s: string) => normalise(s).split(" ").filter((w) => w !== "").length;
+
+const revCache = new Map<string, string | null>();
+function atRevision(rev: string, path: string): string | null {
+  const key = `${rev}:${path}`;
+  if (!revCache.has(key)) {
+    const r = spawnSync("git", ["-C", repo, "show", key], { encoding: "utf8", maxBuffer: 64 << 20 });
+    revCache.set(key, r.status === 0 ? r.stdout : null);
+  }
+  return revCache.get(key) ?? null;
+}
+
+function currentText(path: string): string | null {
+  const full = join(repo, path);
+  return existsSync(full) ? readFileSync(full, "utf8") : null;
+}
+
+/** The text at `path:a` or `path:a-b` in the working tree, or null. */
+function textAt(pointer: string): string | null {
+  const m = /^(.+?):(\d+)(?:-(\d+))?$/.exec(pointer);
+  if (m === null) return null;
+  const body = currentText(m[1]);
+  if (body === null) return null;
+  const lines = body.split("\n");
+  const a = Number(m[2]);
+  const b = m[3] === undefined ? a : Number(m[3]);
+  if (a < 1 || b < a || b > lines.length) return null;
+  return lines.slice(a - 1, b).join("\n");
+}
+
+let titleCache: Set<string> | null = null;
+function allTestTitles(): Set<string> {
+  if (titleCache !== null) return titleCache;
+  const titles = new Set<string>();
+  const dir = join(repo, "test");
+  for (const f of readdirSync(dir)) {
+    if (!f.endsWith(".test.ts")) continue;
+    const src = readFileSync(join(dir, f), "utf8");
+    for (const m of src.matchAll(/\btest\(\s*"((?:[^"\\]|\\.)*)"/g)) titles.add(m[1]);
+  }
+  titleCache = titles;
+  return titles;
+}
+
+/** Every reason a diet register is not evidenced. Empty means it is. */
+function checkDiet(doc: DietDoc, current: (path: string) => string | null = currentText): string[] {
+  const findings: string[] = [];
+  const seen = new Set<string>();
+  const liveIds = new Set(doc.rows.map((r) => r.id));
+  const retiredIds = new Map(doc.retired.map((r) => [r.id, r]));
+  const inCurrent = (q: Quote | undefined, min: number, what: string, fail: (m: string) => void) => {
+    if (q === undefined || typeof q.file !== "string" || typeof q.quote !== "string") {
+      fail(`has no ${what} {file, quote}`);
+      return;
+    }
+    if (wordCount(q.quote) < min) fail(`${what} quote is under ${min} words, which a keyword can satisfy`);
+    const body = current(q.file);
+    if (body === null) fail(`${what} file ${q.file} is absent`);
+    else if (!normalise(body).includes(normalise(q.quote))) fail(`${what} quote is not in ${q.file}`);
+  };
+  const atPointer = (q: Quote | undefined, min: number, what: string, fail: (m: string) => void) => {
+    if (q === undefined || typeof q.at !== "string" || typeof q.quote !== "string") {
+      fail(`has no ${what} {at, quote}`);
+      return null;
+    }
+    if (wordCount(q.quote) < min) fail(`${what} quote is under ${min} words, which a keyword can satisfy`);
+    const text = textAt(q.at);
+    if (text === null) fail(`${what} pointer ${q.at} does not resolve`);
+    else if (!normalise(text).includes(normalise(q.quote))) fail(`${what} quote is not at ${q.at}`);
+    return q.at.replace(/:\d+(?:-\d+)?$/, "");
+  };
+
+  for (const e of doc.diet) {
+    const id = typeof e.id === "string" && e.id !== "" ? e.id : "<diet entry with no id>";
+    const fail = (m: string) => findings.push(`${id}: ${m}`);
+    if (seen.has(id)) fail("duplicate id");
+    seen.add(id);
+    if (typeof e.file !== "string" || !DIET_FILES.includes(e.file)) {
+      fail(`file is not one of ${DIET_FILES.join(", ")}`);
+      continue;
+    }
+    if (e.baseline !== DIET_BASELINE) fail(`baseline is not ${DIET_BASELINE}`);
+    for (const k of ["verified-by", "probe", "negative-witness"]) {
+      if (k in e) fail(`carries a keyword probe (${k}); a diet disposition is evidenced by quotes, not by a grep`);
+    }
+    const base = atRevision(DIET_BASELINE, e.file);
+    if (base === null) {
+      fail(`cannot read ${e.file} at ${DIET_BASELINE}; the check needs full history`);
+      continue;
+    }
+    const L = base.split("\n");
+    const [a, b] = Array.isArray(e.lines) ? e.lines : [0, 0];
+    if (!Number.isInteger(a) || !Number.isInteger(b) || a < 1 || b < a || b > L.length) {
+      fail("lines is not a range inside the baseline file");
+    } else {
+      // A range may carry trailing or leading blank lines; its first and last
+      // NON-EMPTY lines are what the entry names.
+      const body = L.slice(a - 1, b).filter((l) => l.trim() !== "");
+      if (normalise(body[0] ?? "") !== normalise(e.first ?? "")) fail(`baseline lines ${a}-${b} do not begin with the entry's first line`);
+      if (normalise(body[body.length - 1] ?? "") !== normalise(e.last ?? "")) fail(`baseline lines ${a}-${b} do not end with the entry's last line`);
+    }
+    const kind = e.disposition ?? "";
+    if (!DIET_KINDS.includes(kind)) {
+      fail(`disposition ${kind} is not one of ${DIET_KINDS.join(", ")}`);
+      continue;
+    }
+    if (STATE_ONLY.includes(kind) && e.file !== "delivery/STATE.md") {
+      fail(`${kind} is a status disposition and is allowed only for delivery/STATE.md`);
+    }
+    if (kind === "exact-duplicate") {
+      const d = e["duplicate-of"];
+      const body = d?.file === undefined ? null : current(d.file);
+      if (body === null) fail("duplicate-of file is absent");
+      else if (Number.isInteger(a) && Number.isInteger(b) && a >= 1 && b <= L.length) {
+        const block = withoutLineNumbers(normalise(L.slice(a - 1, b).join("\n")));
+        if (!withoutLineNumbers(normalise(body)).includes(block)) {
+          fail(`the whole removed block is not in ${d?.file}; a shared keyword is not a duplicate`);
+        }
+      }
+    }
+    if (kind === "mechanically-enforced") {
+      const by = e["enforced-by"];
+      const gates = (JSON.parse(readFileSync(join(repo, "gates.manifest.json"), "utf8")) as {
+        gates: { id: string }[];
+      }).gates.map((g) => g.id);
+      const scriptOk = typeof by?.script === "string" && existsSync(join(repo, by.script));
+      const gateOk = typeof by?.gate === "string" && gates.includes(by.gate);
+      if (!scriptOk && !gateOk) fail("enforced-by names no existing script and no manifest gate");
+      if (typeof by?.test !== "string" || !allTestTitles().has(by.test)) {
+        fail("enforced-by names no existing test title");
+      }
+      inCurrent(e["rule-kept"], MIN_RULE_WORDS, "rule-kept", fail);
+    }
+    if (kind === "history-moved") {
+      const target = atPointer(e.history, MIN_RECORD_WORDS, "history", fail);
+      if (target !== null) {
+        if (!target.startsWith("delivery/")) fail("history is not under delivery/");
+        if (DIET_FILES.includes(target)) fail("history points into a file this diet prunes");
+        if (atRevision(DIET_BASELINE, target) === null) fail(`history file ${target} did not exist at ${DIET_BASELINE}`);
+      }
+      inCurrent(e["rule-kept"], MIN_RULE_WORDS, "rule-kept", fail);
+    }
+    if (kind === "corrected") {
+      atPointer(e.authority, MIN_RULE_WORDS, "authority", fail);
+      inCurrent(e.replacement, MIN_RULE_WORDS, "replacement", fail);
+    }
+    if (STATE_ONLY.includes(kind)) {
+      if (typeof e.reason !== "string" || e.reason === "") fail("has no reason");
+      if (kind === "superseded-status") inCurrent(e["superseded-by"], 1, "superseded-by", fail);
+      if (kind === "archived") inCurrent(e["pointer-in-file"], MIN_RULE_WORDS, "pointer-in-file", fail);
+    }
+    for (const r of e.retires ?? []) {
+      if (liveIds.has(r)) fail(`retires ${r}, which is still a live row`);
+      const entry = retiredIds.get(r);
+      if (entry === undefined) fail(`retires ${r}, which is not in the retired register`);
+      else if (entry.diet !== id) fail(`retired ${r} does not name ${id} back`);
+    }
+  }
+  for (const r of doc.retired) {
+    if (r.diet === undefined) continue;
+    const e = doc.diet.find((d) => d.id === r.diet);
+    if (e === undefined) findings.push(`retired ${r.id}: names diet entry ${r.diet}, which does not exist`);
+    else if (!(e.retires ?? []).includes(r.id)) findings.push(`retired ${r.id}: ${r.diet} does not list it in retires`);
+  }
+  return findings;
+}
+
+/**
+ * Every run of baseline lines NOT inside a diet range, split at blank lines,
+ * must still be in the current file (whitespace collapsed, citation line
+ * numbers masked, so a repointed citation is not a removal).
+ */
+function uncoveredRemovals(doc: DietDoc, file: string, baseText: string, nowText: string): string[] {
+  const L = baseText.split("\n");
+  const covered = new Array<boolean>(L.length + 1).fill(false);
+  for (const e of doc.diet) {
+    if (e.file !== file || !Array.isArray(e.lines)) continue;
+    for (let i = e.lines[0]; i <= e.lines[1]; i++) covered[i] = true;
+  }
+  const now = withoutLineNumbers(normalise(nowText));
+  const missing: string[] = [];
+  let seg: number[] = [];
+  const flush = () => {
+    if (seg.length === 0) return;
+    const text = withoutLineNumbers(normalise(seg.map((n) => L[n - 1]).join("\n")));
+    if (text !== "" && !now.includes(text)) missing.push(`${file}@${DIET_BASELINE} lines ${seg[0]}-${seg[seg.length - 1]}`);
+    seg = [];
+  };
+  for (let n = 1; n <= L.length; n++) {
+    if (covered[n] || L[n - 1].trim() === "") flush();
+    else seg.push(n);
+  }
+  flush();
+  return missing;
+}
+
+/** Why a STATE.md is not a current-standing document. Empty means it is. */
+function checkState(text: string, baselineText: string): string[] {
+  const f: string[] = [];
+  const first = text.split("\n").find((l) => l.startsWith("## "));
+  if (first === undefined || !/^## M\d+ standing at /.test(first)) {
+    f.push(`the first section is not the current standing: ${first ?? "<none>"}`);
+  }
+  if (/^- as of:/m.test(text)) f.push("a dated '- as of:' daily block survives");
+  if (text.includes("NEWEST BLOCK")) f.push("a NEWEST BLOCK marker survives");
+  if (/^## Standing at /m.test(text)) f.push("a superseded '## Standing at' section survives");
+  const standings = text.split("\n").filter((l) => /^## M\d+ standing at /.test(l)).length;
+  if (standings !== 1) f.push(`${standings} standing sections, not exactly one`);
+  for (const needle of [
+    "## M4 closure",
+    "### Residue, carried deliberately rather than lost",
+    `git show ${DIET_BASELINE}:delivery/STATE.md`,
+    "git log -p",
+  ]) {
+    if (!text.includes(needle)) f.push(`missing ${needle}`);
+  }
+  const ids = (s: string) => new Set([...s.matchAll(/\bA-(\d+)\b/g)].map((m) => `A-${m[1]}`));
+  const now = ids(text);
+  for (const a of ids(baselineText)) if (!now.has(a)) f.push(`owner action ${a} is lost`);
+  return f;
+}
+
+function dietDoc(): DietDoc {
+  return JSON.parse(readFileSync(inventoryPath, "utf8")) as DietDoc;
+}
+const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
+
+test("every diet disposition carries evidence a keyword cannot give, and the live inventory passes", () => {
+  const doc = dietDoc();
+  assert.ok(doc.diet.length > 0, "the diet register is not empty");
+  assert.deepEqual(checkDiet(doc), []);
+});
+
+test("a history-moved disposition whose only evidence is a keyword is refused", () => {
+  const doc = dietDoc();
+  const e = doc.diet.find((d) => d.disposition === "history-moved");
+  assert.ok(e !== undefined && e.history !== undefined);
+  // "watchdogs" is present in T-014 at the pointer, so only the word floor refuses it.
+  e.history = { at: "delivery/tuition/T-014-the-watchdog-watched-the-wrong-place-six-times.md:1-40", quote: "watchdogs" };
+  const f = checkDiet(doc);
+  assert.ok(f.some((m) => m.includes(`${e.id}: history quote is under`)), f.join("\n"));
+});
+
+test("an exact-duplicate disposition pointing at a shared keyword is refused", () => {
+  const doc = dietDoc();
+  const e = clone(doc.diet.find((d) => d.file === "CLAUDE.md" && d.disposition === "history-moved")!);
+  e.id = "diet-fixture-duplicate";
+  e.disposition = "exact-duplicate";
+  e["duplicate-of"] = { file: "AGENTS.md" }; // AGENTS.md shares words, not the block
+  doc.diet.push(e);
+  const f = checkDiet(doc);
+  assert.ok(f.some((m) => m.startsWith("diet-fixture-duplicate: the whole removed block is not in AGENTS.md")), f.join("\n"));
+});
+
+test("a diet entry whose evidence is a sibling keyword grep is refused", () => {
+  const doc = dietDoc();
+  const e = doc.diet.find((d) => d.disposition === "history-moved")!;
+  delete e.history;
+  e["verified-by"] = { command: "grep -c watchdog AGENTS.md", exit: 0, output: "AGENTS.md:7" };
+  const f = checkDiet(doc);
+  assert.ok(f.some((m) => m.includes(`${e.id}: carries a keyword probe (verified-by)`)), f.join("\n"));
+  assert.ok(f.some((m) => m.includes(`${e.id}: has no history {at, quote}`)), f.join("\n"));
+});
+
+test("a diet entry naming a block that is not at its baseline range is refused", () => {
+  const doc = dietDoc();
+  const e = doc.diet.find((d) => d.file === "CLAUDE.md")!;
+  e.lines = [e.lines![0] + 1, e.lines![1] + 1];
+  const f = checkDiet(doc);
+  assert.ok(f.some((m) => m.startsWith(`${e.id}: baseline lines`)), f.join("\n"));
+});
+
+test("every line removed from CLAUDE.md or AGENTS.md since the diet baseline has a disposition", () => {
+  const doc = dietDoc();
+  for (const file of COMPLETENESS_FILES) {
+    const base = atRevision(DIET_BASELINE, file);
+    assert.ok(base !== null, `${file} is readable at ${DIET_BASELINE}; this check needs full history`);
+    assert.deepEqual(uncoveredRemovals(doc, file, base, currentText(file) ?? ""), [], file);
+  }
+});
+
+test("a block removed from CLAUDE.md with no disposition reddens the completeness check", () => {
+  const doc = dietDoc();
+  const base = atRevision(DIET_BASELINE, "CLAUDE.md");
+  assert.ok(base !== null);
+  const now = currentText("CLAUDE.md") ?? "";
+  // Remove a kept paragraph that no diet entry covers: the Red-witness rule's first sentence.
+  const kept = "A test only counts as guarding a behavior if it has been demonstrated red";
+  assert.ok(now.includes(kept));
+  const pruned = now.replace(kept, "");
+  assert.deepEqual(uncoveredRemovals(doc, "CLAUDE.md", base, now), []);
+  const missing = uncoveredRemovals(doc, "CLAUDE.md", base, pruned);
+  assert.equal(missing.length, 1, missing.join("\n"));
+  // Dropping the entry that covers a real removal reddens it too.
+  const without = clone(doc);
+  without.diet = without.diet.filter((d) => d.id !== "diet-claude-md-03");
+  assert.ok(uncoveredRemovals(without, "CLAUDE.md", base, now).length > 0);
+});
+
+test("STATE.md begins with the current standing, carries no superseded daily block, and keeps every owner-action id", () => {
+  const base = atRevision(DIET_BASELINE, "delivery/STATE.md");
+  assert.ok(base !== null);
+  assert.deepEqual(checkState(currentText("delivery/STATE.md") ?? "", base), []);
+});
+
+test("a STATE.md with a surviving daily block or a lost owner action is refused", () => {
+  const base = atRevision(DIET_BASELINE, "delivery/STATE.md");
+  assert.ok(base !== null);
+  // The baseline itself is the first dangerous state: daily blocks first, standing buried.
+  const old = checkState(base, base);
+  assert.ok(old.some((m) => m.startsWith("the first section is not the current standing")), old.join("\n"));
+  assert.ok(old.some((m) => m.includes("NEWEST BLOCK")), old.join("\n"));
+  // The second: a current file that drops an owner action id.
+  const now = currentText("delivery/STATE.md") ?? "";
+  const lost = checkState(now.replace(/\bA-7\b/g, "an action"), base);
+  assert.ok(lost.includes("owner action A-7 is lost"), lost.join("\n"));
 });

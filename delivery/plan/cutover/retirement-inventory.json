@@ -7615,7 +7615,11 @@
       "last": "> notification, and CONTINUED WORK.",
       "disposition": "superseded-status",
       "summary": "The answered-and-closed CR-002 escalation note from 2026-08-10.",
-      "reason": "Answered and closed; the phase merged at c7a7ce9 and DR-0023 records the lesson."
+      "reason": "Answered and closed; the phase merged at c7a7ce9 and DR-0023 records the lesson.",
+      "superseded-by": {
+        "file": "delivery/decisions/DR-0023-the-stop-rule-notifies-it-does-not-wait.md",
+        "quote": "# DR-0023: DR-0012's stop rule NOTIFIES the owner, it does not WAIT for them"
+      }
     },
     {
       "id": "diet-state-08",

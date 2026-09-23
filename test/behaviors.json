@@ -1314,5 +1314,14 @@
   "m5-p3-merge-preconditions-token-env": "--token-env sends the named variable's value as a bearer token on every API request and writes it nowhere, and without the flag no credential is sent",
   "m5-p3-token-env-declared-in-registry-manifest-and-workflow": "the registry and the manifest both declare the token variable in merge-preconditions' command, and the pull-request step sets it",
   "m5-p3-symbolic-head-resolved": "a symbolic --head reaches merge-preconditions resolved to the staged repository's forty-character sha",
-  "m5-p3-dual-review-symbolic-head-resolved": "check-dual-review through the real runner resolves --head HEAD to the staged commit"
+  "m5-p3-dual-review-symbolic-head-resolved": "check-dual-review through the real runner resolves --head HEAD to the staged commit",
+  "m5-p5-diet-live-inventory-evidenced": "every diet disposition carries evidence a keyword cannot give, and the live inventory passes",
+  "m5-p5-diet-keyword-history-refused": "a history-moved disposition whose only evidence is a keyword is refused",
+  "m5-p5-diet-keyword-duplicate-refused": "an exact-duplicate disposition pointing at a shared keyword is refused",
+  "m5-p5-diet-keyword-grep-refused": "a diet entry whose evidence is a sibling keyword grep is refused",
+  "m5-p5-diet-baseline-range-checked": "a diet entry naming a block that is not at its baseline range is refused",
+  "m5-p5-diet-every-removal-disposed": "every line removed from CLAUDE.md or AGENTS.md since the diet baseline has a disposition",
+  "m5-p5-diet-undisposed-removal-refused": "a block removed from CLAUDE.md with no disposition reddens the completeness check",
+  "m5-p5-state-current-standing-first": "STATE.md begins with the current standing, carries no superseded daily block, and keeps every owner-action id",
+  "m5-p5-state-daily-block-or-lost-action-refused": "a STATE.md with a surviving daily block or a lost owner action is refused"
 }
