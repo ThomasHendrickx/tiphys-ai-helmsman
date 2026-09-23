@@ -442,3 +442,460 @@ On the final file the wrap-insensitive form and `grep -oEi` over the lines
 report IDENTICAL per-phrase occurrence counts, so no hit was split by a wrap.
 The counts themselves are not quoted here, because this section quotes the
 phrases and every quotation changes them.
+
+## Fix round 1 (PR 211)
+
+Both clean-room reviews of head `90f09fc` asked for a fix round, and both are
+committed unchanged in this branch:
+delivery/review/clean-room-release-verify-wait-sonnet.md:51 (CR-001 high,
+CR-002 medium) and delivery/review/clean-room-release-verify-wait-opus.md:31
+(CR-001 medium, CR-002 to CR-004 low). The coordinator's brief for the round
+named the shared mechanism, and this round works from it.
+
+### Mechanism
+
+**The wait's bound and its "served" test were not the properties they claimed
+to be.** The bound claimed "the wait ends by --wait-seconds", and it was a
+check made only BETWEEN polls, on a number bash could not always do arithmetic
+on. The "served" test claimed "npm install can now fetch the version", and it
+asked a different registry document from the one install reads, with a
+comparison no test could tell from "exit 0". Each finding is one place where
+the claimed property and the tested property came apart:
+
+| finding | claimed property | what was actually tested | fix |
+|---|---|---|---|
+| Sonnet CR-001 | the run ends by the deadline | the deadline, checked only after a poll returned | every poll runs under `bounded_run` with the time left, floor 10s |
+| Sonnet CR-002 | the deadline is N seconds | N as bash arithmetic, which wraps at 19 digits | length check first, then a ceiling of 86400, else exit 64 |
+| Opus CR-001 | install can fetch the version | the full packument, which install does not read | `npm cache add` (install's path) first, then the exact `npm view` check |
+| Opus CR-002 | served is exactly this version | exit 0 AND equality, but no test reddens without the equality | new test with exit 0 and a wrong or empty stdout |
+| Opus CR-003 | polls are spaced by the interval | a lower bound on attempts only | upper bound on attempts in the never-served test |
+| Opus CR-004 | the log says why it was not served | the exit code only | the last `npm error` line is on the NOT SERVED line |
+
+### What changed in scripts/release-verify.sh
+
+- Bound validation, scripts/release-verify.sh:113. `checked_seconds` rejects
+  non-digits, strips leading zeros (so `08` is not an octal error), checks the
+  LENGTH against the ceiling's length before any integer comparison, then
+  compares against `MAX_SECONDS=86400` and the minimum (0 for wait, 1 for
+  poll). Beyond it: exit 64, "from N to at most 86400". Both flags and both
+  environment variables go through it, because the flags only overwrite the
+  variables before validation runs.
+- `bounded_run`, scripts/release-verify.sh:415. Node, not `timeout(1)`:
+  macOS ships no GNU `timeout`, and the repository treats macOS as supported
+  (there is a macOS smoke workflow; it does NOT run this script, its test step
+  names five other test files), so a maintainer running this by hand on a Mac
+  must get the same bound; a bash
+  background job with a watchdog `sleep` is portable but leaves the watchdog
+  or a grandchild behind; node is already required by every record this script
+  writes. The command runs `detached`, in its own process group, with stdout
+  and stderr going to FILES, and on expiry the whole group gets SIGKILL and the
+  wrapper exits 124 and creates `<stderr-file>.timed-out`. Sending a signal to
+  a child this script started, on a timer this script set, is not identity or
+  exclusion, so constraint C-2 does not govern it: no decision is taken from
+  whether a process is alive.
+- The poll, scripts/release-verify.sh:447. Each attempt computes a poll
+  deadline, the later of the run's deadline and now plus
+  `POLL_FLOOR_SECONDS=10`, and gives each npm call the time left on it. So a
+  whole run ends by the deadline plus at most 10s. npm also gets
+  `--fetch-retries=0` and `--fetch-timeout` equal to that limit, so in the
+  ordinary case npm fails by itself with its own error.
+- "Served" is now two conditions in order: `npm cache add <spec>` exits 0,
+  then `npm view <spec> version` exits 0 and prints exactly the version.
+- The record gains `lastCommand`, `lastPollTimedOut` and `pollFloorSeconds`.
+  The NOT SERVED line now reads `(... poll(s); last poll: <command> exited C;
+  last npm error: <line>)`, or `<command> timed out and was killed` and
+  `last npm error: none`.
+
+### A measurement that changes what Sonnet CR-001 was
+
+The review reproduced a 60s+ poll against `http://127.0.0.1:1/`, a refused
+port, and read it as a stalled connection. Measured here, same toolchain
+(node v26.6.0, npm 11.18.0), from an empty scratch directory:
+
+```
+--- registry http://127.0.0.1:1/ extra '': exit=1 elapsed=70s; first npm error: npm error code ECONNREFUSED
+--- registry http://127.0.0.1:1/ extra '--fetch-retries=0': exit=1 elapsed=1s; first npm error: npm error code ECONNREFUSED
+--- registry http://10.255.255.1/ extra '': exit=1 elapsed=0s; first npm error: npm error code E405
+--- registry http://10.255.255.1/ extra '--fetch-retries=0': exit=1 elapsed=0s; first npm error: npm error code E405
+```
+
+So the measured 60s and more was npm's own retry backoff on a REFUSED
+connection, not a hang: with retries off the same call fails in one second.
+`--fetch-retries=0` fixes the case the review measured. A connection that truly
+never answers is the case `bounded_run` exists for, and I did not find a way to
+produce one here: the non-routable address was answered by the container's
+proxy with E405, so the real-network arm of that case is witnessed only by the
+stub, not by a real stalled socket. That is an open residue, not a settled one.
+
+The fixed script against both real addresses, `--wait-seconds 5
+--poll-seconds 1`:
+
+```
+release-verify: NOT SERVED. The registry did not serve @tiphys/kernel@0.1.0 within 5 seconds (4 poll(s); last poll: npm cache add exited 1; last npm error: npm error code ECONNREFUSED).
+exit=75 elapsed=5s
+release-verify: NOT SERVED. The registry did not serve @tiphys/kernel@0.1.0 within 5 seconds (4 poll(s); last poll: npm cache add exited 1; last npm error: npm error code E405).
+exit=75 elapsed=5s
+```
+
+Against the real public registry at head `e350076`: `@tiphys/kernel 0.2.0`
+exit 0, `registry-served` with `attempts 1`, `lastCommand "npm view"`,
+`lastStdout "0.2.0"`; `@tiphys/kernel 9.9.9 --wait-seconds 20
+--poll-seconds 5` exit 75 after 17s, `last npm error: npm error code ETARGET`,
+`lastStderr` the capture's three ETARGET lines. That the NOT SERVED line
+distinguishes causes is shown by three real answers: ETARGET (not served),
+ECONNREFUSED (network) and E405 (the proxy). An E401 was not produced here.
+
+### New real capture
+
+witness/captures/release-verify-cache-add-not-served.txt: `npm cache add` of
+9.9.9 (exit 1, ETARGET) and of 0.2.0 (exit 0), npm 11.18.0 on node v26.6.0,
+2026-09-23, fresh cache per command, with `--fetch-retries=0`. Everything
+below its header is byte for byte what npm printed. The stub's `cache`
+answer replays its exit code and stderr.
+
+### Tests
+
+The stub widened (test/license-gate.test.ts:1245): `cache` and `install` share
+the request counter, and so does `view` by default; `view: "served"` serves
+view from the first request while the install path is not served;
+`view: {wrong, count}` answers exit 0 with a wrong stdout; `hang: true` makes
+every registry request sleep in a child that never answers.
+
+Edited: test 1 now also asserts 3 `cache add` calls and 1 `view` call; the
+never-served test asserts at most 5 attempts (Opus CR-003), the cache-add
+capture's exit code and ETARGET, and `last npm error: npm error code ETARGET`
+on stderr (Opus CR-004); the tarball test asserts no `view` and no `cache`
+call.
+
+New, each registered in test/behaviors.json by name:
+
+- `release-verify-bounds-each-registry-poll`: hang stub, wait 3, poll 1;
+  exit 75 in under 25s, "timed out", `lastPollTimedOut: true`, no install.
+- `release-verify-polls-the-install-path`: view served, install path served
+  on its third request; exit 0, 3 attempts, 3 `cache add` calls, install 0.
+- `release-verify-served-means-the-exact-version`: two arms, `0.1.9` twice
+  and empty stdout once; exit 0 with count+1 attempts and `lastStdout
+  "0.2.0"`.
+- `release-verify-rejects-bounds-above-a-day`: 86401 and nineteen nines, each
+  by `--wait-seconds`, `--poll-seconds`, `RELEASE_VERIFY_WAIT_SECONDS` and
+  `RELEASE_VERIFY_POLL_SECONDS`, all exit 64 with "at most 86400" and no
+  registry call; control: `--wait-seconds 86400 --poll-seconds 86400` exit 0.
+
+### Red before the fix
+
+Tests committed first (`dd642f8`), script untouched since `319b55c` (blob
+`f7bde19`). TRANSLITERATION DECLARED for this block: U+2716 rendered `x` (5),
+U+2714 rendered `v` (3), U+2139 rendered `i` (4). Lines omitted where `...`
+appears; nothing else changed.
+
+```
+node v26.6.0; head dd642f8; script blob f7bde19
+x release-verify in registry mode waits until the registry serves the version, then verifies it (3082.14962ms)
+x release-verify in registry mode times out with NOT SERVED and exit 75 when the registry never serves the version (3400.743256ms)
+v release-verify in registry mode fails a served but broken version at its steps without waiting out the deadline (1054.475222ms)
+v release-verify in tarball mode makes no registry poll (1184.757283ms)
+x release-verify bounds each registry poll, so a registry that never answers still ends within the deadline (40042.239554ms)
+x release-verify polls the install path, so a version npm view shows before npm install can fetch it is still waited for (1127.345505ms)
+v release-verify does not count npm view exiting 0 with a different or empty version as served (5300.623977ms)
+x release-verify rejects a wait or poll bound above 86400 seconds, by flag and by environment (10010.477853ms)
+i tests 8
+i pass 3
+i fail 5
+i skipped 0
+...
+  AssertionError [ERR_ASSERTION]: lastStderr ["npm error code E404","npm error 404 No match found for version 9.9.9","npm error 404"]
+  AssertionError [ERR_ASSERTION]: expected NOT SERVED from a registry that never answers; status -1 after 40.04s
+  AssertionError [ERR_ASSERTION]: --wait-seconds 86401 was accepted (status -1 after 10.002s): release-verify: @tiphys/kernel@0.2.0 not served yet (poll 1, npm view exited 1); polling again in 1s
+```
+
+The hang test was killed by its own 40s spawn timeout, a run with a 3s
+deadline. The corgi test failed `1 !== 0`: the pre-fix wait passed on its
+first `npm view` and the install then failed. Test 1 failed `0 !== 3` on
+`cache add` calls. The pattern missed `release-verify's wait flags`
+(unchanged this round).
+
+Two new assertions are GREEN pre-fix by construction, and their red is a
+mutation, not the pre-fix script: the exact-version test (the pre-fix script
+already compared stdout; Opus CR-002 was that nothing reddened WITHOUT the
+comparison) and the attempts upper bound (the pre-fix script already slept;
+CR-003 was that nothing reddened without the sleep). Both reds are below.
+
+The run left an orphaned `sleep 100000` from the killed pre-fix hang run, and
+the mutation lab left two more; all were removed with `pkill -f '^sleep
+100000'` and `pgrep` then found none. After the fix, the green runs left none.
+
+### Red against each dangerous state, and green
+
+Five witness specs now touch scripts/release-verify.sh besides the
+pre-existing contamination one. Each member was applied by the scratch
+mutation lab (clean tree required, restore from `HEAD`, `restored, tree
+clean` printed), at head `e350076`, node v26.6.0. The lab prints `PASS`,
+`FAIL` and `i` itself, so nothing here is transliterated.
+
+| witness | member | what it breaks | named tests red |
+|---|---|---|---|
+| waits-for-the-registry-to-serve-the-version | 0 | wait removed | 3 of 3 |
+| same | 1 | gives up after one poll | 2 of 3 |
+| same | 2 | served misread as `v$VERSION` | 2 of 3 |
+| same | 3 | no pause between polls (CR-003) | 1 of 3: "polled 42 time(s) in a 3s window at 1s" |
+| same | 4 | last npm error dropped (CR-004) | 1 of 3: "does not carry npm error code ETARGET" |
+| bounds-each-registry-poll | 0 | timer 1000 times too long | 1 of 1, killed at 40s |
+| same | 1 | npm run directly, unbounded | 1 of 1, killed at 40s |
+| polls-the-install-path | 0 | cache add replaced by a second view | 1 of 1 |
+| same | 1 | cache add called, result ignored | 1 of 1 |
+| served-means-the-exact-version | 0 | exit 0 alone is served (CR-002) | 1 of 1: arm `0.1.9`, 3 polls expected |
+| same | 1 | prefix match | 1 of 1: arm `""`, 2 polls expected |
+| rejects-bounds-above-a-day | 0 | ceiling raised | 1 of 1: 86401 accepted |
+| same | 1 | length check dropped | 1 of 1: `[: 9999999999...` then exit 75 |
+| tarball-mode-makes-no-registry-poll | 0, 1 | unchanged members | 1 of 1 each |
+
+Named but NOT a member: killing only the direct child instead of the group.
+With output going to files, a surviving grandchild holds nothing the script
+waits on, so that mutation would leave the hang test green. The group kill is
+defence for a wrapper whose grandchild holds the connection, and no test here
+observes it. The witness's provenance says the same.
+
+The lab ran at `e350076`. The later commits change comments only in the
+script (`2369631`), so a scratch count of every member's `find` string in
+`HEAD:scripts/release-verify.sh` at `2369631` was run instead of a second
+lab: all 18 members of all seven release-verify witnesses, the pre-existing
+contamination witness's three included, match exactly once. The
+contamination witness's members were NOT re-run this round.
+
+Green at the fixed script, all twelve release-verify tests in the file,
+node v26.6.0, `dist/` built: `i tests 12`, `i pass 12`, `i fail 0`,
+`i skipped 0` (glyph U+2139 rendered `i`, 4). The hang test took 10.4s against
+its 3s deadline, which is the 10s floor.
+
+### Derivation
+
+Four enumerations, run at the final head by a scratch script. D1 lists every
+external command the script runs, so each can be classed as bounded or not;
+D2 every place a numeric input enters arithmetic or a comparison; D3 every
+place the script decides served; D4 every other registry read in the
+repository.
+
+```
+head 2369631
+$ grep -nE '(^|[^a-z_-])(npm|node|sleep|timeout|curl|tar|cp|mktemp)( |$)' scripts/release-verify.sh | grep -vE '^[0-9]+:\s*#'
+184:  node -e '
+199:  node -e '
+255:    printf 'node resolution from this directory'
+262:  node -e '
+278:  node -e '
+419:  node -e '
+464:    last_command="npm cache add"
+468:      npm cache add "$NAME@$VERSION" --cache "$wait_cache" --prefer-online \
+471:      last_command="npm view"
+476:        npm view "$NAME@$VERSION" version --cache "$wait_cache" --prefer-online \
+491:    sleep "$POLL_SECONDS"
+498:  last_error="$(grep '^npm error' "$err_file" | grep -v 'complete log' | head -n 1 || true)"
+499:  node -e '
+505:      .filter((line) => line.startsWith("npm error") && !line.includes("complete log"))
+512:      command: "npm cache add " + name + "@" + version + ", then npm view " + name + "@" + version + " version; --prefer-online --fetch-retries=0, fresh cache per poll, each bounded by the time left on the deadline",
+538:    echo "release-verify: NOT SERVED. The registry did not serve $NAME@$VERSION within $WAIT_SECONDS seconds ($attempts poll(s); last poll: $why; last npm error: ${last_error:-none})." >&2
+555:  run_step install npm install --prefix "$PREFIX" --cache "$CACHE" \
+558:  run_step install npm install --prefix "$PREFIX" --cache "$CACHE" \
+565:run_step import node -e '
+590:cp "$PREFIX/node_modules/$NAME/templates/plan.example.yaml" "$COPIED/plan.example.yaml" 2>/dev/null || COPY_CODE=$?
+591:record copy-template "$COPY_CODE" "cp <install>/templates/plan.example.yaml $COPIED/"
+exit=0
+
+$ grep -nE 'WAIT_SECONDS|POLL_SECONDS|POLL_FLOOR_SECONDS|MAX_SECONDS|\$\(\(' scripts/release-verify.sh | grep -vE '^[0-9]+:\s*#'
+72:               or RELEASE_VERIFY_WAIT_SECONDS). 0 means poll exactly once.
+77:               RELEASE_VERIFY_POLL_SECONDS); at least 1, at most 86400
+89:WAIT_SECONDS="${RELEASE_VERIFY_WAIT_SECONDS:-900}"
+90:POLL_SECONDS="${RELEASE_VERIFY_POLL_SECONDS:-15}"
+97:    --wait-seconds) WAIT_SECONDS="${2:?--wait-seconds needs a value}"; shift 2 ;;
+98:    --poll-seconds) POLL_SECONDS="${2:?--poll-seconds needs a value}"; shift 2 ;;
+121:MAX_SECONDS=86400
+126:    ''|*[!0-9]*) echo "release-verify: $option must be a whole number of seconds, from $minimum to at most $MAX_SECONDS, got '$value'" >&2; usage; exit 64 ;;
+130:  if [ "${#digits}" -gt "${#MAX_SECONDS}" ] || [ "$digits" -gt "$MAX_SECONDS" ] || [ "$digits" -lt "$minimum" ]; then
+131:    echo "release-verify: $option must be a whole number of seconds, from $minimum to at most $MAX_SECONDS, got '$value'" >&2; usage; exit 64
+136:checked_seconds --wait-seconds "$WAIT_SECONDS" 0
+137:WAIT_SECONDS="$CHECKED"
+138:checked_seconds --poll-seconds "$POLL_SECONDS" 1
+139:POLL_SECONDS="$CHECKED"
+298:    FAILURES=$((FAILURES + 1))
+392:POLL_FLOOR_SECONDS=10
+452:  local deadline=$((started + WAIT_SECONDS))
+457:    attempts=$((attempts + 1))
+459:    poll_deadline=$((now + POLL_FLOOR_SECONDS))
+465:    limit=$((poll_deadline - now))
+469:      --fetch-retries=0 --fetch-timeout="$((limit * 1000))" || code=$?
+473:      limit=$((poll_deadline - now))
+477:        --fetch-retries=0 --fetch-timeout="$((limit * 1000))" || code=$?
+487:    if [ $((now + POLL_SECONDS)) -gt "$deadline" ]; then
+490:    echo "release-verify: $NAME@$VERSION not served yet (poll $attempts, $last_command exited $code); polling again in ${POLL_SECONDS}s" >&2
+491:    sleep "$POLL_SECONDS"
+494:  local elapsed=$(( $(date +%s) - started ))
+531:    "$WAIT_SECONDS" "$POLL_SECONDS" "$first_at" "$last_at" "$elapsed" \
+533:    "$POLL_FLOOR_SECONDS"
+538:    echo "release-verify: NOT SERVED. The registry did not serve $NAME@$VERSION within $WAIT_SECONDS seconds ($attempts poll(s); last poll: $why; last npm error: ${last_error:-none})." >&2
+exit=0
+
+$ grep -nE 'served=|observed|"\$code" -eq 0|exit_code=75' scripts/release-verify.sh
+367:# three times what was observed and still far inside any job timeout. On
+454:  local attempts=0 code=0 observed="" last_at="" now=0 served=no
+462:    observed=""
+470:    if [ "$code" -eq 0 ]; then
+478:      observed="$(cat "$out_file")"
+482:    if [ "$code" -eq 0 ] && [ "$observed" = "$VERSION" ]; then
+483:      served=yes
+496:  [ "$served" = yes ] || exit_code=75
+501:      firstAt, lastAt, elapsed, npmExit, observed, errFile, lastCommand, timedOut,
+525:      lastStdout: observed,
+532:    "$code" "$observed" "$err_file" "$last_command" "$timed_out" \
+exit=0
+
+$ grep -rnE 'npm (view|info|show|cache add)|registry\.npmjs|--wait-seconds|RELEASE_VERIFY_(WAIT|POLL)' scripts .github src bin
+scripts/release-verify.sh:69:  --wait-seconds <n>
+scripts/release-verify.sh:72:               or RELEASE_VERIFY_WAIT_SECONDS). 0 means poll exactly once.
+scripts/release-verify.sh:77:               RELEASE_VERIFY_POLL_SECONDS); at least 1, at most 86400
+scripts/release-verify.sh:89:WAIT_SECONDS="${RELEASE_VERIFY_WAIT_SECONDS:-900}"
+scripts/release-verify.sh:90:POLL_SECONDS="${RELEASE_VERIFY_POLL_SECONDS:-15}"
+scripts/release-verify.sh:97:    --wait-seconds) WAIT_SECONDS="${2:?--wait-seconds needs a value}"; shift 2 ;;
+scripts/release-verify.sh:115:# 64-bit arithmetic (a 19-nine --wait-seconds was measured giving up after ONE
+scripts/release-verify.sh:136:checked_seconds --wait-seconds "$WAIT_SECONDS" 0
+scripts/release-verify.sh:349:#   1. `npm cache add <name>@<version>` exits 0. This is INSTALL'S OWN FETCH
+scripts/release-verify.sh:351:#      of this wait asked only `npm view`, which reads the FULL packument, a
+scripts/release-verify.sh:356:#   2. `npm view <name>@<version> version` exits 0 AND prints exactly
+scripts/release-verify.sh:374:# first version checked its deadline only BETWEEN polls, so one `npm view`
+scripts/release-verify.sh:375:# that did not return outlived --wait-seconds without limit. The review
+scripts/release-verify.sh:464:    last_command="npm cache add"
+scripts/release-verify.sh:468:      npm cache add "$NAME@$VERSION" --cache "$wait_cache" --prefer-online \
+scripts/release-verify.sh:471:      last_command="npm view"
+scripts/release-verify.sh:476:        npm view "$NAME@$VERSION" version --cache "$wait_cache" --prefer-online \
+scripts/release-verify.sh:512:      command: "npm cache add " + name + "@" + version + ", then npm view " + name + "@" + version + " version; --prefer-online --fetch-retries=0, fresh cache per poll, each bounded by the time left on the deadline",
+.github/workflows/release.yml:144:          registry-url: https://registry.npmjs.org
+exit=0
+```
+
+Reading:
+
+- D1. The network-reaching calls are the two polls, both through
+  `bounded_run`, and the two `run_step install npm install` lines. The
+  tarball arm reads no registry. The REGISTRY arm's install is NOT bounded by
+  this script; see "not covered". Every `node -e` is local (resolution
+  probes, the record writer, the import step, the wrapper itself), and `cp` is
+  local. The `sleep` runs only after a check that the interval ends before the
+  deadline.
+- D2. Every use of `WAIT_SECONDS` and `POLL_SECONDS` in arithmetic comes after
+  `checked_seconds` at lines 136 to 139; the only other inputs to arithmetic
+  are `date +%s`, the floor constant, and counters the script owns.
+- D3. One decision, at the `served=yes` line, and it needs both conditions.
+- D4. The only registry reader outside the script is the workflow's
+  `registry-url` for `setup-node`; the wait flags and variables appear only in
+  scripts/release-verify.sh. The workflow passes neither, so it gets the 900s
+  and 15s defaults.
+
+### What the derivation did NOT cover
+
+- **The registry-mode install step is not bounded by this script.** It runs
+  after the wait has seen the version through install's own path, so it is
+  not the wait's bound and not what the reviews named; but it is the same
+  shape, one network command with no wall-clock limit, and it is left to the
+  job. The release job sets no `timeout-minutes` (Sonnet quotes the grep), so
+  that limit is GitHub's default. Stated as an open item for the coordinator,
+  not fixed here.
+- D1's pattern lists `npm`, `node`, `sleep`, `timeout`, `curl`, `tar`, `cp`
+  and `mktemp` only. A command spelled another way (a variable holding a
+  command name, `"$BIN" version` at the bin step) is not matched; the bin step
+  runs the installed package's own bin locally and reads no network, which I
+  checked by reading the lines, not by the grep.
+- D4 covers `scripts`, `.github`, `src` and `bin`, not `plugin/`, `test/` or
+  any consumer project, and only the spellings in the pattern.
+- Whether `npm cache add` succeeding implies `npm install` succeeding in every
+  propagation state is not established. Opus's reading of npm's source says it
+  fetches the corgi packument and the tarball of THIS package, which is what
+  install needs for it. Install ALSO resolves the package's production
+  dependencies (package.json lists `ajv`, `commonmark` and `yaml`, pinned),
+  and `cache add` does not fetch those. An unfetchable dependency would
+  therefore pass the wait and fail at `install` as a step failure. Those are
+  long-published versions rather than part of this publish, so the
+  propagation lag does not apply to them, but that is reasoning, not a
+  measurement. No real propagation window was observed.
+- A truly stalled socket was not produced on a real network (see the
+  measurement above); the stub is the only witness of that arm.
+- The macOS smoke job was not run. `bounded_run`'s portability rests on
+  node's `detached` spawn making the child a process-group leader on
+  non-Windows platforms, and on `kill` with a negative pid meaning that group,
+  which is POSIX behaviour. Neither was exercised on macOS: the macOS smoke
+  workflow does not run test/license-gate.test.ts, so no CI run will exercise
+  it there either.
+- `--fetch-timeout` is npm's per-request timeout. Whether it alone would bound
+  the whole command is not established, so `bounded_run` stays as the
+  backstop.
+
+### An error of mine in a shared container, recorded for the coordinator
+
+At about 10:40Z I stopped my own interrupted full-suite run and then ran
+`pkill -f` on the Node 26 scratch interpreter's PATH to clear its leftover
+children. That interpreter is shared by every agent in this session, and the
+command also killed child processes of ANOTHER agent's gate run: the M5-P2
+local PR bundle writing to the session scratchpad's `p2/ev-r2` directory,
+whose red-witness harness was running mutated `test/doctor.test.ts` cases at
+the time (seen in `ps` as `node --test ... test/doctor.test.ts` and a
+`tiphys-witness-*` fleet). A killed mutation run can read as a red witness, so
+that bundle's red-witness verdict should be treated as unknown and the bundle
+re-run. My two earlier cleanups, `pkill -f '^sleep 100000'`, matched a
+command line that this branch's hang stub starts and that I know of nothing
+else starting; I did not check each process's parent before killing it,
+which is the same gap at lower risk. The mechanism is
+the one the dispatch contract names for watchdogs: a pattern chosen because
+it matched MY processes, with no check that it matched ONLY mine.
+
+### Gates at the final head
+
+All on node v26.6.0, npm 11.18.0, `dist/` built, head `701b31f`: `npm ci`
+exit 0, `npm run build` exit 0, `git status --porcelain` empty afterwards.
+Local PR bundle,
+`./scripts/m2-exit-test.sh --no-build --bundle pr --base origin/main --head HEAD --phase claude/release-verify-waits-for-registry <scratch>`,
+exit 0:
+
+    gates: declared 15 applicable 8 verdict 8 green 8 red 0 not-applicable 7 error 0 vacuous 0
+    gates: suite: green: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 1403 test(s) from 68 file(s) (pass 1403, fail 0, skipped 0, todo 0, did-not-run 0); discovered 68 file(s) walking test for .test.ts; 1278 behavior(s) resolve; merge base 0b6eee7dfc0f
+    gates: citations: green: linted 3 changed document(s) at 701b31f89dec315c790ff0097492e1465d19ffbf: 3 citation(s) resolved, 0 self-citation(s), 0 unverifiable-external
+    gates: red-witness: not-applicable: precondition red-witness-diff evaluated and unmet: no changed path under src/, bin/, plugin/
+    gates: required gate(s) not applicable: scope, red-witness, gate-classes
+    m2-assert (PR bundle): OK. 15 gate record(s) match section 1.4; ... zero red; zero error; zero vacuous.
+    m2-green: OK. 3 diff-scoped gate(s) demonstrated green on a triggering state.
+
+1403 is round 0's 1399 plus the four new tests. `red-witness`, `scope` and
+`gate-classes` are not applicable on this branch by their own preconditions,
+so this bundle is NOT evidence that they asserted anything; the witness
+evidence is the hand-run lab above.
+
+The FIRST bundle run this round, at `2369631`, exited 1 with `suite: error:
+M2-C-5: the tree changed during the run: ... test/license-gate.test.ts
+changed during the run`. That was my edit of a comment in that file while the
+suite ran. The gate was right; the edit was committed as `701b31f` and the
+bundle re-run with the tree untouched, which is the run quoted above.
+
+The commit after `701b31f` adds only this work-history section. The citations
+in it were checked by the claim grep and a citations-only gate run below, not
+by the bundle.
+
+### Claim grep, fix round 1
+
+Both forms, run by a scratch script over this section (it starts at line
+446) before this subsection was written. Line-based: 11 matching lines, 11
+occurrences (`always` 1, `needs a` 3, `never` 7). Wrap-insensitive over the
+same lines: the same 11, so none was split by a wrap. Whole file: 44 by each
+form.
+
+Each hit settled:
+
+- Line 459, "could not always do arithmetic": settled by Sonnet CR-002's
+  measurement (delivery/review/clean-room-release-verify-wait-sonnet.md:122,
+  a nineteen-nine bound giving up after one poll) and by the cap witness's
+  member 1 above, whose captured stderr shows bash's `[` failing on the
+  nineteen-digit value.
+- Line 525, "never answers" and "I did not find a way": an open residue,
+  stated as one; the adjacent measurement shows the two addresses tried.
+- Lines 471, 562, 565, 594, 597, 607: test names, a stub mode and captured
+  assertion text, not claims about the world.
+- Lines 709, 710, 757: pasted derivation output (`needs a value` is the
+  script's own usage message).
+
+This subsection itself adds hits by quoting the phrases above.
