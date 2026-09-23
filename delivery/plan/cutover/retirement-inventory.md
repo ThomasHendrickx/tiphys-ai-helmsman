@@ -109,7 +109,7 @@ because the scope gate reads the declaration from the merge base only.
 src/gates/scope.ts:110 records that M3-P11 changed exactly that: the
 declaration is read from BOTH the merge base and the head, an addition on the
 head is allowed, and the protection is that the addition is printed by name.
-Corrected in this phase at CLAUDE.md:794. Carried across uncritically, this
+Corrected in this phase at CLAUDE.md:806. Carried across uncritically, this
 would have become a false constraint inside a kernel brief, where no scope gate
 exists to contradict it.
 
@@ -375,6 +375,139 @@ checker also runs against scratch roots that hold almost none of the surface, so
 it cannot tell a renamed tree from a deliberately absent one, and the repository
 can.
 
+## M5-P5, the context diet: a disposition for every removed block
+
+- phase: M5-P5, 2026-09-23, diet baseline `6dc5b06`
+- the register: the `diet` array in the JSON, beside `rows` and `retired`
+- the guard: the diet tests in test/retirement-inventory.test.ts:1243, not the
+  checker script
+
+The numbers in the sections above are as of M4-P23 and are left as that
+phase's record. At this phase's head the checker reports 318 rows against 318
+derived anchors and 9 retired. The JSON gives 212 PORTED, 102 GAP and 4 FALSE,
+and 212 PORT, 89 KEEP and 17 DELETE. By root: 136 in `CLAUDE.md`, 146 in
+`.claude/skills` and 36 in `.claude/orchestrator-next.mjs`. At `6dc5b06` the
+same command gave 323 rows: 214 PORTED, 105 GAP, 4 FALSE, and 20 DELETE. The
+difference is this phase: seven rows retired and two added.
+
+**Why a second register, and why it is not a PORT row.** M4-P23's rows track
+RULES and prove a port with a negative-witness command. That shape is weak for
+a pruned BLOCK. A block of history shares its keywords with a dozen other
+files, so a grep for one of them exits 0 whether the block's content survived
+or not. That is the sibling-keyword port the phase section forbids. So a diet
+entry names the baseline line range and its first and last lines, and it is
+evidenced by QUOTES, never by a command.
+
+The kinds, and what each must carry:
+
+| disposition | evidence the test checks |
+|---|---|
+| `exact-duplicate` | the WHOLE removed block, normalised, is in the BINDING text of a rule file (`CLAUDE.md` or `AGENTS.md`) |
+| `mechanically-enforced` | the enforcing script exists and a workflow or the manifest runs it (or the gate is in the manifest); the test title is defined exactly once, the script's basename is in that test's OWN body, and a declared `asserts` fragment is in that body too; a quote of the kept rule is in the binding text of a rule file |
+| `history-moved` | a quote of at least 8 words AT a named line range of a `delivery/` file that existed at the baseline and is not a pruned file, plus a quote of at least 6 words of the kept rule in the binding text of a rule file |
+| `corrected` | a quote AT the authority's line range, in live text there (not inside a comment, fence, details block, blockquote or indented code, for a Markdown authority), and the replacement in the binding text of a rule file |
+| `superseded-status` | `delivery/STATE.md` only: a reason and a quote of at least 6 words, either PINNED (`rev`, `at`) at the diet baseline `6dc5b06`, the only pinnable commit, which no squash merge can orphan, or in the binding text of a rule file, or in a registered stable section of `delivery/STATE.md`, or in the live text of a file the diet does not prune |
+| `archived` | `delivery/STATE.md` only: a reason, and a paragraph of the current `delivery/STATE.md` naming `git show 6dc5b06:delivery/STATE.md` and the entry's own `lines A to B` |
+
+The refusal of a keyword is the word floor. An entry that carries
+`verified-by`, `probe` or `negative-witness` is refused outright, at
+test/retirement-inventory.test.ts:1340.
+
+**Binding text is an allowlist, since the fresh-implementer round.** Two
+earlier rounds defined NON-binding text by a list of labels (an HTML comment, a
+heading with certain words, a paragraph calling itself non-binding), and every
+phrasing not on the list passed: `## Archive`, `## Deprecated rules`, a fenced
+block, `<details>`, a Setext heading, a disclaimer in its own paragraph. So the
+two rule files are now parsed (test/retirement-inventory.test.ts:936), and a
+line is binding only when it is a paragraph, list item, table row, heading or
+registered-binding frontmatter line outside every fence, HTML comment,
+`<details>` block, other HTML block, blockquote and indented code block, AND
+every heading above it is registered `binding` (test/retirement-inventory.test.ts:1050).
+Text before the first heading is not binding.
+
+**The heading register** is `binding-headings` in the JSON: every heading of
+`CLAUDE.md` (24) and `AGENTS.md` (35), keyed by level and text, each `binding`,
+plus `AGENTS.md`'s frontmatter. A heading in either file that is not
+registered is a finding, and so is a registered heading that is gone
+(test/retirement-inventory.test.ts:1090). So a new `## Archive` fails loudly
+and needs a reviewer to register it, `binding` or `non-binding`. A later phase
+that adds a heading to either file registers it in the same change.
+
+**Disclaimers cannot be classified by a test**, so they are not classified.
+Every match of a broad word list (obsolete, deprecated, no longer, not binding,
+non-binding, for reference, historical, superseded, archived, retired, kept
+for, legacy, withdrawn, outdated, and forms of them) in binding text is a
+finding of its own unless it sits inside a quote in `disclaimers-acknowledged`,
+and each acknowledged quote must occur exactly once in binding text
+(test/retirement-inventory.test.ts:1116). Twelve are acknowledged today, ten in
+`CLAUDE.md` and two in `AGENTS.md`, each with its reason. The acknowledgement is
+the human decision.
+
+**Completeness, which the register alone does not give.** A register can be
+fully evidenced and still omit a block. So a second test takes every run of
+baseline lines of `CLAUDE.md` and `AGENTS.md` that no diet range covers, split
+at blank lines, and requires it to be in the current file. Whitespace is
+collapsed, and citation line numbers are masked so that a repointed citation
+does not count as a removal. A run that was live at the baseline must be in the
+BINDING text now (test/retirement-inventory.test.ts:1475). The baseline is read
+generously, every live line counting as binding, which is the strict direction.
+
+**`delivery/STATE.md` is status, and status is rewritten.** It is not under the
+completeness check, because its point is to be rebuilt, and no diet check reads
+its volatile text: the standing section, the standing reminders and the tracked
+obligations are rewritten by routine updates. Status evidence is PINNED at
+`6dc5b06` for six entries, and the rest quote CLAUDE.md, a decision record, or
+one of the five sections registered in `state-stable-sections` (How to resume
+cold, Owner decisions, M4 closure, Earlier milestones, History of this file).
+A simulated standing update, with a new date and head, a changed count, a
+rewritten re-verification paragraph and a new table row, keeps every diet and
+STATE check green. Its shape check (test/retirement-inventory.test.ts:1556)
+still requires the current standing first, no dated daily block, the M4 closure
+and its residue and the history pointers, and every A-n id of the baseline.
+Every id in the standing "Owner actions open" list needs a register item of at
+least 25 words with a code span (test/retirement-inventory.test.ts:1515); the
+only exemption is the explicit id list at test/retirement-inventory.test.ts:848,
+which holds `A-14` until M5-P1 lands its register item.
+
+This phase's register: eleven `CLAUDE.md` entries (eight `history-moved`, three
+`corrected`) and fifteen `delivery/STATE.md` entries (fourteen
+`superseded-status`, one `archived`). `diet-claude-md-02` was
+`mechanically-enforced` until the fresh-implementer round. No real test names
+`scripts/check-authored-bytes.mjs` inside its own body (they call it through a
+module-level helper), so that claim cannot be checked honestly, and the entry
+is now `history-moved` to T-010 with the kept rule. The `mechanically-enforced`
+arm is witnessed on fixtures only. `AGENTS.md` is unchanged. It is the shipped
+orchestrator brief and 66 PORT rows name it as their destination, so thinning
+it is a brief change and not a diet.
+
+**What this does NOT reach.** The quote check shows the text is AT the named
+place. It does not show that the place is the right home, or that a history
+quote carries everything the block said. That is a reading, and it stays with
+the reviewer. A disclaimer in words that are not on the list is still read as
+binding. The register says which sections are binding; it cannot say a
+section's content is true. Tables inherit their section's class, because a
+table cannot be told from a table of history by syntax; a disclaimer before
+one is caught by the tripwire, a table of history under a binding heading with
+no such word is not. The parser follows CommonMark closely enough for these two
+files and is not a CommonMark implementation, and it does NOT always err toward
+not-binding: a rule in a table row, in a `- > ` bullet, or in an inline code
+span still reads as binding. Inline markup is not parsed; instead any line of
+binding text carrying `~~`, `<s>`, `<del>` or `<strike>` is a finding of its
+own, a tripwire like the disclaimer one. A `>` or an HTML tag at the start of a
+line is a container at any indent. The completeness sweep protects the text
+that existed at `6dc5b06`; text added to a rule file later is protected by
+review of the diff only. A pinned status quote
+shows what the file said at `6dc5b06`, not what STATE.md says now: currency is
+still the orchestrator's. The `enforced-by` checks show the named test names
+the script and makes the declared assertion; they do not show the assertion is
+the rule's property. The completeness test needs the baseline commit, so a
+shallow clone fails it rather than skipping it. The two `corrected` entries for
+DR-0044 retire five rows, and the test checks both directions of that link. It
+does not check that a replacement is true. For the DR-0044 rule the authority
+is the owner record, because the rule is about the harness and `src/` models no
+workflow cap. For the review-path row the authority is the M5-P3 contract in
+the plan. Both readings are in the work history.
+
 ## Re-running it
 
 ```
@@ -393,6 +526,7 @@ console.log("PORT",c(x=>x.disposition==="PORT"),"KEEP",c(x=>x.disposition==="KEE
 console.log("GAP groups",new Set(r.filter(x=>x.status==="GAP").map(x=>x.group)).size);'
 ```
 
-The inventory is a description and changes nothing in the three roots except the
-two corrections named above. M4-P25 performs the deletions, under the rollback
-note in section 4.3 of the plan.
+The M4-P23 inventory was a description and changed nothing in the three roots
+except the two corrections named above. M4-P25 performs the deletions, under
+the rollback note in section 4.3 of the plan. M5-P5 removed blocks under the
+diet register described above.
