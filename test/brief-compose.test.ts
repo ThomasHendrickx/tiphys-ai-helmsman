@@ -543,7 +543,7 @@ test("brief compose with no charter declared says so in the intent section rathe
   const section = intentSection(run.stdout);
   assert.match(
     section,
-    /no charter declared: --charter was not given and .*charter\.yaml does not exist/,
+    /no charter declared: --charter was not given, .*charter\.yaml does not exist and .*charter holds no YAML document/,
   );
   assert.ok(section.includes(`## Phase intent\n\n${planPhaseIntent()}\n`));
 
@@ -578,4 +578,94 @@ test("the composed intent section has a closed heading and field set", (t) => {
       `${role}: the intent section carries a field other than the charter path`,
     );
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* M5-P2 fix round 1, CR-001: the charter in a real `tiphys init` fleet  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE LAYOUT IS THE ONE `tiphys init` CREATES, not a hand-built directory,
+ * because the defect was that the composer and doctor located the charter by
+ * different rules and the round-0 fixture used the composer's rule. A fleet
+ * keeps charters in `charter/` (src/fleet.ts), so the charter is written THERE
+ * and composition runs with the fleet root as its working directory, which is
+ * where the composer already reads the fleet warnings file from.
+ */
+function initFleet(t: { after(fn: () => void): void }): string {
+  const dir = charterWorkspace(t);
+  const fleet = join(dir, "fleet");
+  const made = runCliAt(cliEntry, ["init", fleet], dir);
+  assert.equal(made.status, 0, `tiphys init failed: ${made.stdout}${made.stderr}`);
+  return fleet;
+}
+
+function writeFleetCharter(fleet: string, name: string, productIntent: string): string {
+  const charter = yamlParse(readFileSync(CHARTER_TEMPLATE, "utf8")) as Record<string, unknown>;
+  charter["product-intent"] = productIntent;
+  const path = join(fleet, "charter", name);
+  writeFileSync(path, JSON.stringify(charter, null, 2));
+  return path;
+}
+
+test("brief compose in a tiphys init fleet reads the charter from charter/, the same document doctor reads", (t) => {
+  const fleet = initFleet(t);
+  const intent = "A fleet charter intent.\nRead from charter/, not from charter.yaml.";
+  const path = writeFleetCharter(fleet, "example-service.yaml", `${intent}\n`);
+
+  for (const role of INTENT_ROLES) {
+    const run = composeRoleIn(fleet, role);
+    assert.equal(run.status, 0, `${role}: ${run.stderr}`);
+    const section = intentSection(run.stdout);
+    assert.ok(!section.includes("no charter declared"), `${role}: the fleet charter was not found`);
+    assert.ok(section.includes(`charter: ${path}\n`), `${role}: the brief does not name ${path}`);
+    assert.ok(section.includes(`\n${intent}\n`), `${role}: the fleet charter's intent is not in the brief`);
+  }
+
+  /* ONE RULE, TWO READERS: doctor, run in the same directory, names the same
+     charter file in its retention line. */
+  const doctor = runCliAt(cliEntry, ["doctor"], fleet);
+  assert.match(doctor.stdout, /CHECK retention /);
+  assert.ok(
+    doctor.stdout.split("\n").some((line) => line.startsWith("CHECK retention ") && line.includes(path)),
+    `doctor's retention line does not name ${path}: ${doctor.stdout}`,
+  );
+});
+
+test("brief compose in a fleet refuses several charters until --charter picks one, and refuses YAML in charter/ that is not a charter", (t) => {
+  const fleet = initFleet(t);
+  const first = writeFleetCharter(fleet, "alpha.yaml", "Alpha intent.\n");
+  const second = writeFleetCharter(fleet, "beta.yaml", "Beta intent.\n");
+
+  /* SEVERAL: refused, naming each, and nothing emitted. */
+  const several = composeRoleIn(fleet, "implementer");
+  assert.equal(several.status, 1, several.stdout.slice(0, 200));
+  assert.equal(several.stdout, "");
+  assert.match(several.stderr, /2 charters are declared/);
+  assert.ok(several.stderr.includes(first) && several.stderr.includes(second), several.stderr);
+
+  /* --charter PICKS ONE and composes with that one's intent only. */
+  const picked = composeRoleIn(fleet, "implementer", ["--charter", second]);
+  assert.equal(picked.status, 0, picked.stderr);
+  assert.ok(intentSection(picked.stdout).includes("\nBeta intent.\n"));
+  assert.ok(!picked.stdout.includes("Alpha intent."));
+
+  /* YAML PRESENT, NONE OF IT A CHARTER: refused, never "no charter declared". */
+  rmSync(first);
+  rmSync(second);
+  writeFileSync(join(fleet, "charter", "notes.yaml"), "kind: notes\ntext: not a charter\n");
+  const stray = composeRoleIn(fleet, "implementer");
+  assert.equal(stray.status, 1, stray.stdout.slice(0, 200));
+  assert.equal(stray.stdout, "");
+  assert.match(stray.stderr, /1 YAML document\(s\) in .*charter, none with kind: charter/);
+
+  /* AND THE FRESH FLEET, charter/ holding only .gitkeep, is the undeclared
+     state, stated in the brief with both places that were searched. */
+  rmSync(join(fleet, "charter", "notes.yaml"));
+  const fresh = composeRoleIn(fleet, "implementer");
+  assert.equal(fresh.status, 0, fresh.stderr);
+  assert.match(
+    intentSection(fresh.stdout),
+    /no charter declared: --charter was not given, .*charter\.yaml does not exist and .*charter holds no YAML document/,
+  );
 });

@@ -2294,3 +2294,53 @@ test("delivered-outcome is a closed four-key object with no numeric field anywhe
     assert.deepEqual(finalReportLines(extended, open), []);
   }
 });
+
+test("a delivered claim whose evidence repeats one entry or is only punctuation is refused by tiphys validate", (t) => {
+  /* TWO STRUCTURALLY DIFFERENT MEMBERS of "evidence that satisfies minItems
+     and says nothing" (fix round 1, CR-M5P2-01): the SAME real-looking entry
+     twice, which only a uniqueness rule sees, and entries made only of
+     punctuation and spaces, which only a content rule sees. */
+  const duplicated = readTemplate("final-report.example.yaml");
+  deliveredOutcome(duplicated)["evidence"] = ["Same unverified claim.", "Same unverified claim."];
+  const punctuation = readTemplate("final-report.example.yaml");
+  deliveredOutcome(punctuation)["evidence"] = [".", " . "];
+
+  const dup = validateThroughCli(t, "final-report", duplicated);
+  assert.equal(dup.status, 1, `${dup.stdout}${dup.stderr}`);
+  assert.match(dup.stdout, /#\/delivered-outcome\/evidence /);
+  const blank = validateThroughCli(t, "final-report", punctuation);
+  assert.equal(blank.status, 1, `${blank.stdout}${blank.stderr}`);
+  assert.match(blank.stdout, /#\/delivered-outcome\/evidence\/0 /);
+  assert.match(blank.stdout, /#\/delivered-outcome\/evidence\/1 /);
+
+  /* THE HONEST FORMS STILL PASS: two distinct entries, each naming something. */
+  const distinct = readTemplate("final-report.example.yaml");
+  deliveredOutcome(distinct)["evidence"] = ["test/report-contract.test.ts:1", "npm test exit 0"];
+  const green = validateThroughCli(t, "final-report", distinct);
+  assert.equal(green.status, 0, `${green.stdout}${green.stderr}`);
+
+  /* KIND A WITNESS, each keyword removed on a fresh copy. */
+  const noUnique = readSchema("final-report.schema.json");
+  delete nodeAt(noUnique, ["properties", "delivered-outcome", "properties", "evidence"])["uniqueItems"];
+  assert.deepEqual(finalReportLines(duplicated, noUnique), []);
+  const whitespaceOnly = readSchema("final-report.schema.json");
+  nodeAt(whitespaceOnly, ["properties", "delivered-outcome", "properties", "evidence"])["items"] = {
+    type: "string",
+    minLength: 1,
+    pattern: "\\S",
+  };
+  assert.deepEqual(finalReportLines(punctuation, whitespaceOnly), []);
+});
+
+test("the evidence content pattern is linear on a long punctuation near-miss", () => {
+  /* T-012: a pattern change owes a worst-case timing measurement on a long
+     near-miss. The subject is 200000 characters of punctuation and spaces
+     with NO letter or digit, so the engine must scan all of it and fail. */
+  const nearMiss = readTemplate("final-report.example.yaml");
+  deliveredOutcome(nearMiss)["evidence"] = [". ,;:-".repeat(33334)];
+  const started = Date.now();
+  const lines = finalReportLines(nearMiss);
+  const elapsed = Date.now() - started;
+  assert.ok(lines.some((line) => line.startsWith("INVALID #/delivered-outcome/evidence/0 ")), lines.join("\n"));
+  assert.ok(elapsed < 2000, `validation took ${String(elapsed)}ms on a 200000-character near-miss`);
+});

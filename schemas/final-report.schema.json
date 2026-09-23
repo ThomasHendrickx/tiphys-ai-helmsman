@@ -71,12 +71,14 @@
           "type": "boolean"
         },
         "evidence": {
+          "$comment": "M5-P2 fix round 1, CR-M5P2-01. TWO MECHANICAL RULES, NEITHER A JUDGEMENT OF QUALITY. `uniqueItems`: the same string cited twice is one piece of evidence, so a list of one claim repeated cannot satisfy `minItems` for `delivered: true`. The item `pattern` requires at least one ASCII letter or digit: every form this field names (a path with a line number, a command, an exit code, a run URL, a sentence) contains one, and a string of only punctuation and spaces refers to nothing. WHAT THEY DO NOT REACH: `uniqueItems` compares exact strings, so `a` and `a ` are two items; a single alphanumeric character such as `x` passes; and nothing checks that an entry resolves or is true. Those are a reviewer's.",
           "description": "What shows the answer is true: paths with line numbers, commands with exit codes, run URLs.",
           "type": "array",
+          "uniqueItems": true,
           "items": {
             "type": "string",
             "minLength": 1,
-            "pattern": "\\S"
+            "pattern": "[A-Za-z0-9]"
           }
         },
         "explanation": {
