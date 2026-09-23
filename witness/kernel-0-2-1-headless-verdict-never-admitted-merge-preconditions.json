@@ -1,16 +1,16 @@
 {
-  "id": "kernel-0-2-1-headless-verdict-never-admitted",
-  "behavior": "verdict-head-required",
+  "id": "kernel-0-2-1-headless-verdict-never-admitted-merge-preconditions",
+  "behavior": "headless-verdict-excluded-at-merge-preconditions",
   "tests": [
-    "a dual-tier change whose only reviews declare no head is red at check-dual-review, and each is excluded by name"
+    "merge-preconditions excludes a verdict that declares no head by name and never counts it toward the two reviews"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
-      "file": "src/checks.ts",
-      "find": "      offHead.push({ path: candidate.path, declared: \"\", relation: { kind: \"no-head\" } });",
-      "replace": "      onHead.push(candidate);\n      admitted.push({ path: candidate.path, declared: \"\", relation: { kind: \"same\" } });"
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "      excluded.push({ path: entry.path, declared: \"\", relation: { kind: \"no-head\" } });",
+      "replace": "      admitted.push({ path: entry.path, declared: \"\", relation: { kind: \"same\" } });\n      forHead.push({ path: entry.path, record: entry.record });"
     },
     {
       "kind": "mutation",

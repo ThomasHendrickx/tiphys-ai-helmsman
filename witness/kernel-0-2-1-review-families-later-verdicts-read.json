@@ -1,22 +1,23 @@
 {
-  "id": "kernel-0-2-1-headless-verdict-never-admitted",
-  "behavior": "verdict-head-required",
+  "id": "kernel-0-2-1-review-families-later-verdicts-read",
+  "behavior": "review-families-later-family-red",
   "tests": [
-    "a dual-tier change whose only reviews declare no head is red at check-dual-review, and each is excluded by name"
+    "a second family committed after review-families was declared still contradicts it",
+    "a history verdict edited after review-families was declared is current work and is read again"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "      offHead.push({ path: candidate.path, declared: \"\", relation: { kind: \"no-head\" } });",
-      "replace": "      onHead.push(candidate);\n      admitted.push({ path: candidate.path, declared: \"\", relation: { kind: \"same\" } });"
+      "find": "    if (id !== undefined && history.has(id)) {",
+      "replace": "    if (id !== undefined) {"
     },
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "  return record === undefined || !(\"head\" in record);",
-      "replace": "  return false;"
+      "find": "    const before = paperworkBlobIds(contextDirectory, parent);",
+      "replace": "    const before = paperworkBlobIds(contextDirectory, refSha);"
     }
   ],
   "deterministic": true,

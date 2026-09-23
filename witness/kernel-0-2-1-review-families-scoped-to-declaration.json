@@ -2,9 +2,7 @@
   "id": "kernel-0-2-1-review-families-scoped-to-declaration",
   "behavior": "review-families-history-not-read",
   "tests": [
-    "committed history naming several families before review-families was declared does not contradict the declaration",
-    "a second family committed after review-families was declared still contradicts it",
-    "a history verdict edited after review-families was declared is current work and is read again"
+    "committed history naming several families before review-families was declared does not contradict the declaration"
   ],
   "class": "classification",
   "dangerousStates": [

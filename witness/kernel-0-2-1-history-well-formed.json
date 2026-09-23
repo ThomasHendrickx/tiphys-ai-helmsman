@@ -7,10 +7,8 @@
   "class": "classification",
   "dangerousStates": [
     {
-      "kind": "mutation",
-      "file": "schemas/verdict.schema.json",
-      "find": "    \"kind\",\n    \"phase\",\n    \"verdict\",",
-      "replace": "    \"kind\",\n    \"phase\",\n    \"head\",\n    \"verdict\","
+      "kind": "patch",
+      "patch": "witness/patches/kernel-0-2-1-verdict-head-required-again.patch"
     },
     {
       "kind": "mutation",
