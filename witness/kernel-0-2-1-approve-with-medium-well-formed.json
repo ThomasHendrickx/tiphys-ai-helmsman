@@ -1,0 +1,22 @@
+{
+  "id": "kernel-0-2-1-approve-with-medium-well-formed",
+  "behavior": "verdict-approve-with-medium-finding-rejected",
+  "tests": [
+    "APPROVE beside a medium finding is well formed to the schema, and the merge gate is what refuses it"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "schemas/verdict.schema.json",
+      "find": "              \"enum\": [\"high\", \"critical\"]",
+      "replace": "              \"enum\": [\"medium\", \"high\", \"critical\"]"
+    },
+    {
+      "kind": "patch",
+      "patch": "witness/patches/kernel-0-2-1-verdict-medium-not-a-severity.patch"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -60,6 +60,7 @@ const yamlModule = (await import("yaml")) as unknown as { parse: (text: string) 
 
 const scriptModule = (await import(new URL("../scripts/check-dual-review.mjs", import.meta.url).href)) as {
   SINGLE_FAMILY_PRECONDITION: string;
+  HEADLESS_ONLY_WARNING: string;
 };
 
 /** The six pulse documents that ARE verdicts and must now be well formed. */
@@ -225,7 +226,18 @@ interface ReviewedRepo {
  * `tiphys-version` line to the given value, or removes it when null.
  */
 function stageReviewedChange(
-  verdicts: { from: string; as: string; stripHead?: boolean; stamp?: string | null }[],
+  verdicts: {
+    from: string;
+    as: string;
+    stripHead?: boolean;
+    stamp?: string | null;
+    /** Rewrite the document's single `phase:` line to this value. */
+    phase?: string;
+    /** Keep the file byte for byte: no head is added or rewritten. */
+    verbatim?: boolean;
+    /** Give a head-less document a PRESENT but abbreviated head of the reviewed commit. */
+    abbreviatedHead?: boolean;
+  }[],
 ): ReviewedRepo {
   const dir = scratch("tiphys-history-compat-gate-");
   copyFileSync(join(repoRoot, "assurance-modes.yaml"), join(dir, "assurance-modes.yaml"));
@@ -241,6 +253,21 @@ function stageReviewedChange(
   mkdirSync(join(dir, "delivery", "review"), { recursive: true });
   for (const entry of verdicts) {
     let body = readFileSync(entry.from, "utf8");
+    if (entry.phase !== undefined) {
+      const rephased = body.replace(/^phase: .*$/m, `phase: ${entry.phase}`);
+      assert.notEqual(rephased, body, `${entry.from} has no single-line phase to rewrite`);
+      body = rephased;
+    }
+    if (entry.verbatim === true) {
+      writeFileSync(join(dir, "delivery", "review", entry.as), body);
+      continue;
+    }
+    if (entry.abbreviatedHead === true) {
+      assert.doesNotMatch(body, /^head:/m, `${entry.from} already carries a head`);
+      body = body.replace(/^(phase: .*)$/m, `$1\nhead: ${reviewed.slice(0, 7)}`);
+      writeFileSync(join(dir, "delivery", "review", entry.as), body);
+      continue;
+    }
     if (entry.stripHead === true) {
       const stripped = body.replace(/^head: .*\n/m, "");
       assert.notEqual(stripped, body, `${entry.from} has no single-line head to remove`);
@@ -354,6 +381,49 @@ test("a dual-tier change whose only reviews declare no head is red at check-dual
     }
     assert.match(detail, /never admitted toward a merge/, `${name}: ${detail}`);
   }
+});
+
+test("the bare check-dual-review script without --base, on a corpus whose every verdict declares no head, is not-applicable with a warning that names --base, and the same corpus with one anchored verdict carries no warning", () => {
+  /* The criteria review, CR-006. Without --base the script computes no review
+     budget, so a corpus of history only is not-applicable, where 0.2.0 was
+     red. The gate runner passes --base and is red (the test above); a consumer
+     wiring the script by hand is told so rather than left to read a quiet
+     not-applicable. */
+  const bare = (repo: ReviewedRepo): { status: string; detail: string; stdout: string } => {
+    const recordPath = join(repo.dir, "bare-result.json");
+    const run = spawnSync(
+      process.execPath,
+      [scriptPath, repo.dir, "--head", repo.reviewed, "--result", recordPath, "--evidence", join(repo.dir, "bare-evidence")],
+      { cwd: repoRoot, encoding: "utf8" },
+    );
+    const record = JSON.parse(readFileSync(recordPath, "utf8")) as { status: string; detail?: string };
+    return { status: record.status, detail: record.detail ?? "", stdout: `${run.stdout ?? ""}${run.stderr ?? ""}` };
+  };
+  const history = stageReviewedChange([...PULSE_PAIR]);
+  assertGitMatchesCapture(history.dir, "budget-name-list-pulse", { base: history.base, head: history.head });
+  const run = bare(history);
+  assert.equal(run.status, "not-applicable", run.stdout);
+  assert.ok(run.detail.includes(scriptModule.HEADLESS_ONLY_WARNING), `no warning:\n${run.detail}`);
+  assert.match(run.detail, /pass --base \(the gate runner does\)/, run.detail);
+  for (const entry of PULSE_PAIR) {
+    assert.ok(run.detail.includes(`delivery/review/${entry.as} declares no head`), run.detail);
+  }
+
+  /* THE CONTROL: one anchored verdict beside one head-less one. The exclusion
+     is still named, and the warning is absent because not every verdict is
+     history. */
+  const mixed = stageReviewedChange([
+    { from: join(dualFixtures, "decorrelated-criteria.yaml"), as: "m3-p9-criteria.yaml" },
+    { from: join(dualFixtures, "decorrelated-hazard.yaml"), as: "m3-p9-hazard.yaml", stripHead: true },
+  ]);
+  assertGitMatchesCapture(mixed.dir, "budget-name-list", { base: mixed.base, head: mixed.head });
+  const control = bare(mixed);
+  /* Measured: the anchored verdict alone reaches the derived checks, which
+     refuse a group of one, so the control is red, not not-applicable. */
+  assert.equal(control.status, "red", `${control.detail}\n${control.stdout}`);
+  assert.ok(control.stdout.includes("m3-p9-hazard.yaml declares no head"), control.stdout);
+  assert.ok(!control.detail.includes("WARNING every committed verdict declares no head"), control.detail);
+  assert.ok(!control.stdout.includes("WARNING every committed verdict declares no head"), control.stdout);
 });
 
 test("merge-preconditions excludes a verdict that declares no head by name and never counts it toward the two reviews", () => {
@@ -724,6 +794,65 @@ test("a verdict with a real INVALID line still exits 1 without a context, whethe
   assert.equal(schema.status, 1, schema.output);
 });
 
+test("a derived check gated out by a document's stamp is printed as NOT IN FORCE with the stamp named, for an unstamped and an old-stamped verdict, and never for a current one", () => {
+  /* The 0.2.1 hazard review, CR-KH-001: a check the stamp gates out is not
+     run, and the line saying so sits beside the checks' own lines, so a
+     reader scanning SKIPPED lines sees it rather than an absence. */
+  const dir = scratch("tiphys-history-compat-not-in-force-");
+  const source = readFileSync(join(dualFixtures, "decorrelated-criteria.yaml"), "utf8");
+  assert.match(source, /^tiphys-version: .*$/m, "the fixture has no tiphys-version line");
+  const cases: { stamp: string | null; expected: string | null }[] = [
+    { stamp: null, expected: "NOT IN FORCE verdict-pair-approves for no tiphys-version" },
+    { stamp: "0.1.0", expected: "NOT IN FORCE verdict-pair-approves for tiphys-version 0.1.0" },
+    { stamp: KERNEL_VERSION, expected: null },
+  ];
+  for (const { stamp, expected } of cases) {
+    const body =
+      stamp === null
+        ? source.replace(/^tiphys-version: .*\n/m, "")
+        : source.replace(/^tiphys-version: .*$/m, `tiphys-version: ${stamp}`);
+    const path = join(dir, `verdict-${String(stamp)}.yaml`);
+    writeFileSync(path, body);
+    const run = validateRun("verdict", path);
+    const notInForce = run.lines.filter((line) => line.startsWith("NOT IN FORCE"));
+    if (expected === null) {
+      assert.deepEqual(notInForce, [], `${String(stamp)}: a current document printed NOT IN FORCE:\n${run.output}`);
+    } else {
+      assert.deepEqual(notInForce, [expected], `${String(stamp)}:\n${run.output}`);
+      assert.ok(
+        run.lines.some((line) => line.startsWith("HISTORY verdict-pair-approves applies from tiphys-version 0.2.0")),
+        `${String(stamp)}: the HISTORY line for the gated check is missing:\n${run.output}`,
+      );
+    }
+    assert.ok(!run.lines.some((line) => line.startsWith("INVALID")), `${String(stamp)}:\n${run.output}`);
+  }
+});
+
+test("a RULES_SINCE row whose since is not a kernel version is an internal defect that names the row, for an unstamped document as much as a stamped one", async () => {
+  /* The 0.2.1 hazard review, CR-KH-002: RULES_SINCE is authored in this
+     repository, so a malformed since is a defect to fail on loudly, never a
+     reason to read every document as current or as history. */
+  const stampModule = (await import(new URL("../src/stamp.ts", import.meta.url).href)) as {
+    ruleApplies: (rule: Record<string, unknown>, stamp: Record<string, unknown>) => boolean;
+    readStamp: (record: unknown) => Record<string, unknown>;
+  };
+  const rule = { id: "a-malformed-row", type: "verdict", since: "0.2", check: "verdict-pair-approves", statement: "x" };
+  for (const record of [{}, { "tiphys-version": "0.1.0" }, { "tiphys-version": KERNEL_VERSION }, { "tiphys-version": "0.2" }]) {
+    assert.throws(
+      () => stampModule.ruleApplies(rule, stampModule.readStamp(record)),
+      /^Error: internal defect: RULES_SINCE entry a-malformed-row has since "0\.2", which is not a kernel version/,
+      JSON.stringify(record),
+    );
+  }
+  /* The shipped table is well formed: every row applies to a current stamp. */
+  const shipped = (await import(new URL("../src/stamp.ts", import.meta.url).href)) as {
+    RULES_SINCE: Record<string, unknown>[];
+  };
+  for (const row of shipped.RULES_SINCE) {
+    assert.equal(stampModule.ruleApplies(row, stampModule.readStamp({ "tiphys-version": KERNEL_VERSION })), true, String(row["id"]));
+  }
+});
+
 /** The approving, anchored, decorrelated pair with each document's stamp replaced. */
 function stampedPair(stamp: string | null, stripHead = false): { from: string; as: string; stamp: string | null; stripHead: boolean }[] {
   return ANCHORED_APPROVING_PAIR.map((entry) => ({ ...entry, stamp, stripHead }));
@@ -789,6 +918,72 @@ test("an old-stamped verdict that breaks a current rule is excluded by name for 
     assert.ok(row.includes(`delivery/review/${entry.as} declares no head`), `${entry.as}:\n${row}`);
   }
   assert.doesNotMatch(row, /tiphys-version/, row);
+});
+
+/*
+ * KERNEL 0.2.1 FIX ROUND 1 (CR-001): HISTORY JUDGED AT ADMISSION THROUGH
+ * GROUPING. Pulse's M3-P3 review is paused with head-less verdicts committed
+ * for that phase; resuming it writes an anchored pair beside them. The derived
+ * checks group every committed verdict by (phase, head), and until this round a
+ * same-phase sibling with no head was a violation, so that phase could never go
+ * green without editing history (DR-0054). The sibling here is pulse's own
+ * m3-p3-criteria-round4.yaml byte for byte; the pair is the decorrelated
+ * fixture pair re-phased to M3-P3 and anchored to the reviewed commit.
+ */
+test("a same-phase sibling verdict with no head is history: a real pulse M3-P3 round-4 review beside an anchored approving pair is excluded by name and both merge gates clear the review conditions, while a sibling whose head is present and unusable still reddens both", () => {
+  const anchoredM3P3 = ANCHORED_APPROVING_PAIR.map((entry) => ({
+    ...entry,
+    as: entry.as.replace("m3-p9", "m3-p3-resumed"),
+    phase: "M3-P3",
+  }));
+  const pulseSibling = join(pulseDir, "m3-p3-criteria-round4.yaml");
+  const siblingRecord = yamlModule.parse(readFileSync(pulseSibling, "utf8")) as Record<string, unknown>;
+  assert.equal(siblingRecord["kind"], "verdict");
+  assert.equal(siblingRecord["phase"], "M3-P3");
+  assert.equal("head" in siblingRecord, false, "the pulse sibling carries a head, so it does not exercise the change");
+
+  /* Arm 1: history. Green at check-dual-review, the sibling named. */
+  const history = stageReviewedChange([
+    ...anchoredM3P3,
+    { from: pulseSibling, as: "m3-p3-criteria-round4.yaml", verbatim: true },
+  ]);
+  assertGitMatchesCapture(history.dir, "budget-name-list-m3-p3-sibling", { base: history.base, head: history.head });
+  assert.equal(
+    readFileSync(join(history.dir, "delivery", "review", "m3-p3-criteria-round4.yaml"), "utf8"),
+    readFileSync(pulseSibling, "utf8"),
+    "the pulse sibling was not staged byte for byte",
+  );
+  const dual = runGate(history, "check-dual-review");
+  assert.equal(dual.record.status, "green", dual.output);
+  for (const check of ["dual-review-decorrelation", "verdict-pair-approves"]) {
+    assert.ok(
+      dual.gateStdout.includes(
+        `REPORT ${check} delivery/review/m3-p3-criteria-round4.yaml declares no head, so it is history (DR-0054)`,
+      ),
+      `${check} did not name the excluded sibling:\n${dual.gateStdout}`,
+    );
+  }
+  const merge = runGate(history, "merge-preconditions");
+  assert.equal(merge.record.status, "error", merge.output);
+  assert.match(merge.record.detail ?? "", /no repository could be established/, merge.output);
+  assert.doesNotMatch(merge.record.detail ?? "", /condition-[12]=red/, merge.output);
+
+  /* Arm 2: the same sibling with a PRESENT but abbreviated head tried to name
+     what it reviewed and named it wrongly, so it still refuses the group. */
+  const unusable = stageReviewedChange([
+    ...anchoredM3P3,
+    { from: pulseSibling, as: "m3-p3-criteria-round4.yaml", abbreviatedHead: true },
+  ]);
+  assertGitMatchesCapture(unusable.dir, "budget-name-list-m3-p3-sibling", { base: unusable.base, head: unusable.head });
+  const dualUnusable = runGate(unusable, "check-dual-review");
+  assert.equal(dualUnusable.record.status, "red", dualUnusable.output);
+  assert.match(
+    dualUnusable.gateStdout,
+    /INVALID #\/head delivery\/review\/m3-p3-criteria-round4\.yaml declares head [0-9a-f]{7}, which is not forty lowercase hexadecimal digits/,
+    dualUnusable.gateStdout,
+  );
+  const mergeUnusable = runGate(unusable, "merge-preconditions");
+  assert.equal(mergeUnusable.record.status, "red", mergeUnusable.output);
 });
 
 test("a composed clean-room-reviewer brief and a gate bundle's summary.json are stamped with the running kernel version", () => {

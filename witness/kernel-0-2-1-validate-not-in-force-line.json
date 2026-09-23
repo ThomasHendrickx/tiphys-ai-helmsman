@@ -1,0 +1,30 @@
+{
+  "id": "kernel-0-2-1-validate-not-in-force-line",
+  "behavior": "validate-not-in-force-line-names-stamp",
+  "tests": [
+    "a derived check gated out by a document's stamp is printed as NOT IN FORCE with the stamp named, for an unstamped and an old-stamped verdict, and never for a current one"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "    process.stdout.write(`NOT IN FORCE ${check} for ${describeStamp(stamp)}\\n`);",
+      "replace": "    void check;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/stamp.ts",
+      "find": "    ? `${STAMP_FIELD} ${stamp.version.text}`",
+      "replace": "    ? STAMP_FIELD"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/stamp.ts",
+      "find": "      : `no ${STAMP_FIELD}`;",
+      "replace": "      : \"\";"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

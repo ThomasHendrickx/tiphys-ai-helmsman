@@ -1,0 +1,20 @@
+{
+  "id": "kernel-0-2-1-pulse-non-verdict-stays-invalid",
+  "behavior": "pulse-0-1-0-non-verdict-stays-invalid",
+  "tests": [
+    "a 0.1.0-era document that is not a verdict stays invalid, for the reasons it was invalid under 0.1.0"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "patch",
+      "patch": "witness/patches/kernel-0-2-1-verdict-kind-const-dropped.patch"
+    },
+    {
+      "kind": "patch",
+      "patch": "witness/patches/kernel-0-2-1-verdict-framing-not-required.patch"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,24 @@
+{
+  "id": "kernel-0-2-1-final-report-template-stamped",
+  "behavior": "final-report-template-stamped",
+  "tests": [
+    "the shipped final-report template is stamped with the running kernel version and validates"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "templates/final-report.example.yaml",
+      "find": "tiphys-version: 0.2.0\n",
+      "replace": "tiphys-version: 0.1.0\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/final-report.schema.json",
+      "find": "      \"pattern\": \"^(0|[1-9][0-9]*)\\\\.(0|[1-9][0-9]*)\\\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$\"",
+      "replace": "      \"pattern\": \"^0\\\\.1\\\\.0$\""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -173,10 +173,15 @@ What the derivation did NOT cover:
 ## Decisions
 
 - **Head absent is history; head present and wrong is still malformed.**
-  `declaresNoHead` is true only when the key is absent (src/checks.ts:4186).
+  `declaresNoHead` is true only when the key is absent (src/checks.ts:4220).
   An abbreviated or uppercase head keeps the old refusal (schema pattern, and
   unkeyed at the gate), because a document that stated its head wrongly was
-  written after the rule existed.
+  written after the rule existed. **Superseded in part by the DR-0055 round,
+  corrected in fix round 1 (criteria review CR-003):** for an UNSTAMPED
+  document `validate` now lifts the schema pattern (`verdict-head-full-sha`
+  prints a HISTORY line), so only the gate half still refuses. Pulse's
+  0.2.0-written verdicts are unstamped, so `validate` accepts an abbreviated
+  head on them, and both merge gates still refuse it.
 - **Medium moved, it was not dropped.** The schema's escalation enum is back
   to [high, critical], the M3-P7 shape rule. `verdict-pair-approves` keeps
   BLOCKING_SEVERITIES [medium, high, critical], so a merge with an unresolved
@@ -206,7 +211,7 @@ What the derivation did NOT cover:
 
 1. **head optional, merge gates exclude head-less by name, test red if the
    gate-side check is removed.** Schema: `head` out of `required`. Gates:
-   src/checks.ts:4421 and src/gates/merge-preconditions.ts:1239. Tests in
+   src/checks.ts:4456 and src/gates/merge-preconditions.ts:1239. Tests in
    test/history-compat.test.ts: "a dual-tier change whose only reviews
    declare no head is red at check-dual-review, and each is excluded by name"
    and "merge-preconditions excludes a verdict that declares no head by name
@@ -426,24 +431,24 @@ src/stamp.ts:150:  schemaPath?: string;
 src/stamp.ts:156:export const RULES_SINCE: readonly RuleSince[] = [
 src/stamp.ts:161:    schemaPath: "/properties/head/pattern",
 src/stamp.ts:174:export function ruleApplies(rule: RuleSince, stamp: StampReading): boolean {
-src/stamp.ts:186:export function rulesNotYetInForce(type: string, stamp: StampReading): RuleSince[] {
-src/stamp.ts:187:  return RULES_SINCE.filter((rule) => rule.type === type && !ruleApplies(rule, stamp));
+src/stamp.ts:204:export function rulesNotYetInForce(type: string, stamp: StampReading): RuleSince[] {
+src/stamp.ts:205:  return RULES_SINCE.filter((rule) => rule.type === type && !ruleApplies(rule, stamp));
 src/validate.ts:770:     subschema's own schemaPath, which is the subsidiary's path minus the
-src/checks.ts:6127:   * decided by src/stamp.ts's RULES_SINCE. They are not run and not counted
+src/checks.ts:6172:   * decided by src/stamp.ts's RULES_SINCE. They are not run and not counted
 src/commands/validate.ts:30:import { describeRuleNotInForce, readStamp, rulesNotYetInForce } from "../stamp.ts";
 src/commands/validate.ts:467:     src/stamp.ts's RULES_SINCE are in force for it; an unstamped document is
 src/commands/validate.ts:472:  const notInForce = rulesNotYetInForce(resolvedType, stamp);
 src/commands/validate.ts:474:  const gatedSchemaPaths = notInForce.flatMap((rule) => (rule.schemaPath === undefined ? [] : [rule.schemaPath]));
-src/commands/validate.ts:502: * resolve to a keyword is an internal defect and throws: RULES_SINCE naming a
-src/commands/validate.ts:505:function withoutKeywords(schema: SchemaDocument, schemaPaths: readonly string[]): SchemaDocument {
-src/commands/validate.ts:506:  if (schemaPaths.length === 0) {
-src/commands/validate.ts:510:  for (const schemaPath of schemaPaths) {
-src/commands/validate.ts:511:    const segments = schemaPath
-src/commands/validate.ts:527:      throw new Error(`internal defect: RULES_SINCE names schema keyword ${schemaPath}, which this schema does not hold`);
+src/commands/validate.ts:509: * resolve to a keyword is an internal defect and throws: RULES_SINCE naming a
+src/commands/validate.ts:512:function withoutKeywords(schema: SchemaDocument, schemaPaths: readonly string[]): SchemaDocument {
+src/commands/validate.ts:513:  if (schemaPaths.length === 0) {
+src/commands/validate.ts:517:  for (const schemaPath of schemaPaths) {
+src/commands/validate.ts:518:    const segments = schemaPath
+src/commands/validate.ts:534:      throw new Error(`internal defect: RULES_SINCE names schema keyword ${schemaPath}, which this schema does not hold`);
 ```
 
 One consumer lifts rules: src/commands/validate.ts. The check-id rows go to
-`runChecks` (src/checks.ts:6127), and a registered id names one check, so
+`runChecks` (src/checks.ts:6172), and a registered id names one check, so
 that half does not have this over-reach. Not covered: `test/`, which uses
 the table only through the CLI, and the admission path, which reads the
 stamp for the whole document and gates no individual rule.
@@ -692,8 +697,8 @@ scripts/check-retirement-inventory.mjs):
 ```
 src/checks.ts:16: * `SKIPPED <check-id> no context` and the command exits nonzero. That is the
 src/checks.ts:629: * prints `SKIPPED mode-gate-sets-resolve no context` and exits nonzero. That
-src/checks.ts:2071: * prints `SKIPPED gate-probes-resolve no context` and exits nonzero. A
-src/checks.ts:2566: * running the validator without `--context` prints `SKIPPED
+src/checks.ts:2074: * prints `SKIPPED gate-probes-resolve no context` and exits nonzero. A
+src/checks.ts:2570: * running the validator without `--context` prints `SKIPPED
 src/commands/mode.ts:126:  const checks = runChecks(MODES_TYPE, read.raw, dirname(read.path));
 src/commands/mode.ts:127:  if (lines.length > 0 || checks.failed) {
 src/commands/validate.ts:395:  const checks = runChecks("role-brief", decoded.value, context);
@@ -726,10 +731,10 @@ What each site got:
 | site | change |
 |---|---|
 | src/checks.ts `ChecksRun` | new `violated` field (a violation, skips excluded); `failed` kept as it was, so the three registry tests asserting `failed: true` on a skip still hold |
-| src/commands/validate.ts:503 (per-type validate) | exits on `checks.violated` |
+| src/commands/validate.ts:510 (per-type validate) | exits on `checks.violated` |
 | src/commands/validate.ts:399 (role-brief) | UNCHANGED: `role-brief` has no context-requiring check (`grep -rn 'requiresContext: true' -B3 src` lists assurance-modes, checklist, verdict, tuition only), so `failed` equals `violated` there; changing it would also have broken stored witness role-brief-output-contract-refused, whose find text is that line and whose other member is in src/roles.ts, which this branch does not change (rule (d)) |
 | src/commands/mode.ts:126, src/commands/checklist.ts:113 | UNCHANGED: both always pass a context (`dirname(read.path)`, `packageRoot()`), so no check can be skipped there |
-| src/checks.ts:16 header | rewritten to state the 0.2.1 behaviour and cite the plan criterion it amends; the per-check comments (now at src/checks.ts:633, :2075, :2571) still say "exits nonzero" and are stale (not edited, to keep this round's diff to the sites that decide behaviour) |
+| src/checks.ts:16 header | rewritten to state the 0.2.1 behaviour and cite the plan criterion it amends; the per-check comments (now at src/checks.ts:632, :2075, :2571) still say "exits nonzero" and are stale (not edited, to keep this round's diff to the sites that decide behaviour) |
 | test/assurance-modes.test.ts:904 | now asserts exit 0 and the SKIPPED line |
 | test/dual-review.test.ts:139 | now also asserts exit 0 |
 | test/checks.test.ts | asserts `violated: false` beside `failed: true` |
@@ -813,9 +818,9 @@ src/stamp.ts:87:export function readStamp(record: unknown): StampReading {
 src/stamp.ts:91:  if (!(STAMP_FIELD in record)) {
 src/stamp.ts:94:  const value = (record as Record<string, unknown>)[STAMP_FIELD];
 src/stamp.ts:195:      ? `this document is stamped ${STAMP_FIELD} ${stamp.version.text}`
-src/stamp.ts:197:        ? `this document's ${STAMP_FIELD} ${stamp.value} is not a version`
-src/stamp.ts:198:        : `this document carries no ${STAMP_FIELD}, so it is pre-stamp history held to the 0.1.0 rules`;
-src/stamp.ts:199:  return `HISTORY ${rule.id} applies from ${STAMP_FIELD} ${rule.since} (${rule.statement}); ${document}`;
+src/stamp.ts:215:        ? `this document's ${STAMP_FIELD} ${stamp.value} is not a version`
+src/stamp.ts:216:        : `this document carries no ${STAMP_FIELD}, so it is pre-stamp history held to the 0.1.0 rules`;
+src/stamp.ts:217:  return `HISTORY ${rule.id} applies from ${STAMP_FIELD} ${rule.since} (${rule.statement}); ${document}`;
 src/gates/run.ts:1:import { STAMP_FIELD, ownVersionForStamp } from "../stamp.ts";
 src/gates/run.ts:51:  const version = ownVersionForStamp();
 src/gates/run.ts:52:  return version === undefined ? {} : { [STAMP_FIELD]: version };
@@ -931,19 +936,260 @@ Point 3 of the DR-0055 section, the major.minor floor and "reviews of this
 branch must carry 0.2.0" under its deviations, and open question 8 are
 marked superseded or resolved in place rather than deleted.
 
+## Fix round 1 (reviews of b57bd7c)
+
+Inputs: the criteria review (FIX-ROUND-NEEDED, one medium CR-001 and five
+lows CR-002 to CR-006) and the hazard review (APPROVE, two lows CR-KH-001
+and CR-KH-002). Both were read in full; neither is committed here, by
+instruction. All runs below are node v26.6.0.
+
+### CR-001 (medium): the mechanism
+
+The finding: `headGroupFor` reddens both merge gates when a same-phase
+sibling verdict has no `head`. Pulse has that case: paused M3-P3 verdicts
+with no head, and a dispatch plan that resumes that review.
+
+The mechanism: **history is judged at admission through grouping.** Round 0
+made the corpus readers (`partitionByAuditedHead`, `readReviewCorpus`) treat
+a verdict that declares no head as history, excluded by name. The derived
+checks do not read the corpus through those readers. They group the
+committed verdicts again, by (phase, head), in `headGroupFor`, and that
+grouping still called a head-less sibling "unkeyed", which is a refusal.
+So a verdict one layer called history, the next layer refused.
+
+The fix makes the grouping use the same predicate as the readers:
+`declaresNoHead` (src/checks.ts:4225, key absent only). A same-phase
+sibling for which it is true goes to a new `headless` list
+(src/checks.ts:4013), is never a member and never a refusal, and both
+derived checks print it by name as a REPORT line. A sibling whose head is
+PRESENT and unusable (abbreviated, uppercase, not a string) still goes to
+`unkeyed` through `headKeyOf` (src/checks.ts:4017) and still refuses.
+
+### Derivation
+
+Every admission-path site that groups or refuses on a missing head:
+
+```
+grep -rnE 'headGroupFor\(|headKeyOf\(|declaresNoHead\(|establishField\([^)]*"head"|"head" in |no-head' src scripts bin --include=*.ts --include=*.mjs
+```
+
+Full output on the final tree (exit 0):
+
+```
+src/gates/merge-preconditions.ts:1239:    if (declaresNoHead(entry.record)) {
+src/gates/merge-preconditions.ts:1240:      excluded.push({ path: entry.path, declared: "", relation: { kind: "no-head" } });
+src/checks.ts:3920:function headKeyOf(record: Record<string, unknown> | undefined, where: string): HeadKey {
+src/checks.ts:3921:  const reading = establishField(record, "head");
+src/checks.ts:3980:function headGroupFor(
+src/checks.ts:4013:    if (declaresNoHead(candidate.record)) {
+src/checks.ts:4017:    const key = headKeyOf(candidate.record, candidate.path);
+src/checks.ts:4210:  | { kind: "no-head" };
+src/checks.ts:4225:export function declaresNoHead(record: Record<string, unknown> | undefined): boolean {
+src/checks.ts:4226:  return record === undefined || !("head" in record);
+src/checks.ts:4460:    if (declaresNoHead(candidate.record)) {
+src/checks.ts:4461:      offHead.push({ path: candidate.path, declared: "", relation: { kind: "no-head" } });
+src/checks.ts:4471:    const key = headKeyOf(candidate.record, candidate.path);
+src/checks.ts:4500:      if (entry.relation.kind === "no-head") {
+src/checks.ts:5552:    const ownHead = headKeyOf(verdict, "this verdict");
+src/checks.ts:5560:    const grouped = headGroupFor(committed.verdicts, phaseKey, headKey);
+src/checks.ts:5813:    const ownHead = headKeyOf(verdict, "this verdict");
+src/checks.ts:5829:    const grouped = headGroupFor(committed.verdicts, phaseKey, headKey);
+scripts/check-dual-review.mjs:261: * as `no-head` and it arrives here in `offHead`, never admitted.
+scripts/check-dual-review.mjs:622:      (found.offHead ?? []).length > 0 && (found.offHead ?? []).every((entry) => entry.relation.kind === "no-head"),
+```
+
+Reading the rows. The three readers of a SIBLING's head are
+merge-preconditions.ts:1239, checks.ts:4013 (this fix) and checks.ts:4460;
+all three now call `declaresNoHead` before `headKeyOf`. checks.ts:4017 and
+:4471 are the present-head path, which keeps the refusal. checks.ts:5552 and
+:5813 read the verdict's OWN head, not a sibling's (see below).
+check-dual-review.mjs:622 is the CR-006 line added in this round and reads
+the result of checks.ts:4460. A second grep, for `["head"]` and `.head` in
+the same files, found only display uses: merge-preconditions.ts:1246 builds a
+`declared` string after the no-head exclusion, and check-dual-review.mjs
+prints `anchor.head` in lines.
+
+What the derivation did NOT cover:
+
+- **checks.ts:5552 and :5813, the instance's OWN head.** `tiphys validate
+  --context` on a head-less verdict still refuses it through the derived
+  checks. That is open question 3, unchanged: a merge question asked of one
+  history document by an explicit command.
+- **Lexical only.** A head read through a computed key or a helper not named
+  in the pattern would be missed.
+- **Kernel only.** `plugin/` and every consumer other than pulse were not
+  searched.
+
+### Test, red at b57bd7c and green after
+
+Test: "a same-phase sibling verdict with no head is history: a real pulse
+M3-P3 round-4 review beside an anchored approving pair is excluded by name and
+both merge gates clear the review conditions, while a sibling whose head is
+present and unusable still reddens both" (test/history-compat.test.ts, behavior
+`admission-headless-sibling-is-history`). It stages pulse's
+m3-p3-criteria-round4.yaml byte for byte beside the anchored approving pair,
+re-phased to M3-P3. Arm 1: check-dual-review green with a REPORT line naming
+the sibling for both checks; merge-preconditions reaches its repository
+condition with no `condition-1=red` or `condition-2=red`. Arm 2, the control:
+the same sibling with a present, abbreviated head reddens both gates with
+`INVALID #/head ... declares head <7 hex>, which is not forty lowercase
+hexadecimal digits`. Both arms compare git's live name list with a new real
+capture, `budget-name-list-m3-p3-sibling` in
+witness/captures/kernel-0-2-1-history-git.json (git 2.43.0).
+
+Before the fix (src/checks.ts as at b57bd7c): 1 test, 0 pass, 1 fail, and the
+gate printed four lines of this form, two per check:
+
+```
+INVALID #/head delivery/review/m3-p3-criteria-round4.yaml declares no head, so the reviews cannot be grouped by the head they reviewed, and a delegated grant is not satisfied by a review that does not say what it reviewed (check: dual-review-decorrelation) [delivery/review/m3-p3-resumed-criteria.yaml]
+```
+
+After: 1 test, 1 pass, 0 fail. The related files (history-compat,
+verdict-head, dual-review, checks, single-family-exception,
+dual-review-head-anchor) after the fix: 151 tests, 151 pass, 0 fail,
+0 skipped.
+
+A second red run, against a whole b57bd7c tree (`git archive b57bd7c` into
+the scratchpad, this round's test file copied in), for all four new tests of
+this round:
+
+```
+validate-not-in-force-line-names-stamp b57bd7c exit=1 pass=0 fail=1 AssertionError [ERR_ASSERTION]: null:
+validate-not-in-force-line-names-stamp fix-round exit=0 pass=1 fail=0
+rules-since-malformed-since-is-internal-defect b57bd7c exit=1 pass=0 fail=1 AssertionError [ERR_ASSERTION]: Missing expected exception: {}
+rules-since-malformed-since-is-internal-defect fix-round exit=0 pass=1 fail=0
+check-dual-review-headless-only-warns-without-base b57bd7c exit=1 pass=0 fail=1 AssertionError [ERR_ASSERTION]: no warning:
+check-dual-review-headless-only-warns-without-base fix-round exit=0 pass=1 fail=0
+admission-headless-sibling-is-history b57bd7c exit=1 pass=0 fail=1 AssertionError [ERR_ASSERTION]: gates: run 0d5b09600378b719123a8622
+admission-headless-sibling-is-history fix-round exit=0 pass=1 fail=0
+```
+
+### Witnesses, every member tried by hand
+
+Method: copy the file out, apply the member (a mutation, or `git apply` of a
+patch), run the one test by `--test-name-pattern`, copy back, run again.
+Printed as (exit, pass, fail).
+
+| witness | members | HEAD | each member | restored |
+|---|---|---|---|---|
+| kernel-0-2-1-headless-sibling-is-history | 3 (headless pushed to unkeyed; `headless` never returned; REPORT line made generic) | (0,1,0) | (1,0,1) each | (0,1,0) |
+| kernel-0-2-1-validate-not-in-force-line | 3 (write removed; stamped phrase; unstamped phrase) | (0,1,0) | (1,0,1) each | (0,1,0) |
+| kernel-0-2-1-rules-since-malformed-is-defect | 2 (throw only for a malformed stamp; early return before the since check) | (0,1,0) | (1,0,1) each | (0,1,0) |
+| kernel-0-2-1-headless-only-warns-without-base | 2 (predicate false; warning dropped from the detail) | (0,1,0) | (1,0,1) each | (0,1,0) |
+| kernel-0-2-1-stamp-written-by-brief-and-summary | 2 (M5: `ownVersionForStamp` returns undefined; the brief's stamp line removed) | (0,1,0) | (1,0,1) each | (0,1,0) |
+| kernel-0-2-1-final-report-template-stamped | 2 (M6: template stamped 0.1.0; schema stamp pattern narrowed to 0.1.0) | (0,1,0) | (1,0,1) each | (0,1,0) |
+| kernel-0-2-1-pulse-non-verdict-stays-invalid | 2 patches (M8: `kind` const dropped; `framing` no longer required) | (0,1,0) | (1,0,1) each | (0,1,0) |
+| kernel-0-2-1-approve-with-medium-well-formed | 2 (schema escalation back to medium; patch removing medium from the severity vocabulary) | (0,1,0) | (1,0,1) each | (0,1,0) |
+
+The headless-sibling witness sits in src/checks.ts, which spawns, so it
+declares `consumesExternalOutput` citing the git capture the test compares.
+The five CR-005 specs keep their members out of src/checks.ts for that
+reason, and use patches where the target line is outside a changed hunk
+(rule (d) is file-level for a patch, line-level for a mutation).
+
+**One CR-005 row has no spec: `verdict-pair-blocking-finding-refused`.** Its
+behavior lives only in src/checks.ts (`BLOCKING_SEVERITIES`, src/checks.ts:5689,
+not in a changed hunk). A member there takes rule (f)'s capture obligation,
+and the test (test/verdict-head.test.ts) consumes no captured external output
+to cite. So this row's red demonstration is recorded here instead, as the
+review allowed:
+
+```
+HEAD (0, '1', '0')
+mutated export const BLOCKING_SEVERITIES: readonly string[ (1, '0', '1')
+mutated     if (BLOCKING_SEVERITIES.includes(severity.valu (1, '0', '1')
+RESTORED (0, '1', '0')
+```
+
+The first mutation drops `medium` from `BLOCKING_SEVERITIES`; the second
+replaces the severity test with `if (false)`.
+
+### The lows
+
+- **CR-002, criterion 4c.** Recorded as an amendment section in
+  delivery/decisions/DR-0053-kernel-0-2-0-rejects-verdicts-written-under-0-1-0.md:94:
+  what changed, why (the owner's report and DR-0054), that
+  `ChecksRun.failed` is kept, the reviewer's consumer search, and a
+  release-note line.
+- **CR-003, stale text.** Corrected: the validate.ts comment above
+  `readStamp` (the gates do not read the stamp), the per-check comments of
+  `modeGateSetsResolve`, `gateProbesResolve` and `tuitionTargetExists`, the
+  `runChecks` header, and the Decisions bullet above (superseded for
+  unstamped documents). Found while deriving CR-001, the same kind of stale
+  text in the `head` `$comment` of schemas/verdict.schema.json, which said
+  `headGroupFor` refuses a head-less sibling; corrected to the new behaviour.
+- **CR-004, DR-0055.** Taken from origin/claude/m5-orchestrator-paperwork-3
+  at 60c434f with `git show <ref>:<path>`; the only difference is the
+  correction section to point 3.
+- **CR-005.** Seven of the eight rows above; the eighth recorded above.
+- **CR-006, the bare step without `--base`.** Fixed, small. When every
+  excluded verdict declares no head, the not-applicable detail and evidence
+  now carry `HEADLESS_ONLY_WARNING` (scripts/check-dual-review.mjs), which
+  says the script computed no review budget and names `--base`. Test: "the
+  bare check-dual-review script without --base, on a corpus whose every
+  verdict declares no head, is not-applicable with a warning that names
+  --base, and the same corpus with one anchored verdict carries no warning".
+  Its control arm is red (measured), because the anchored verdict alone
+  reaches the derived checks, which refuse a group of one; the warning is
+  absent there.
+- **CR-KH-002, the malformed `since`.** `ruleApplies` now parses `since`
+  FIRST, for every document, and throws `internal defect: RULES_SINCE entry
+  <id> has since "<value>", which is not a kernel version (major.minor.patch)`.
+  Before, the cast hid the case, and an unstamped document never reached the
+  comparison, so the defect showed only for stamped documents. The test
+  asserts the throw for no stamp, 0.1.0, the current version and a malformed
+  stamp, and that every shipped row applies to a current stamp.
+- **CR-KH-001, a check gated out by stamp.** `validate` now prints
+  `NOT IN FORCE <check> for <stamp>` after the check lines, for example
+  `NOT IN FORCE verdict-pair-approves for tiphys-version 0.1.0`, and
+  `for no tiphys-version` when unstamped. **The finding's premise was only
+  partly reproduced.** At b57bd7c the same 0.1.0-stamped document already
+  printed a HISTORY line naming the check; it did not print anything beside
+  the SKIPPED lines. Captured with the b57bd7c tree:
+
+  ```
+  exit=0
+  HISTORY verdict-head-full-sha applies from tiphys-version 0.2.0 (a present head is the full forty-character lowercase sha (M4-P10)); this document is stamped tiphys-version 0.1.0
+  HISTORY verdict-pair-approves applies from tiphys-version 0.2.0 (the committed pair for the head both approve with no blocking finding (M4-P10)); this document is stamped tiphys-version 0.1.0
+  SKIPPED dual-review-decorrelation no context
+  SKIPPED verdict-criteria-complete no context
+  SKIPPED verdict-deviations-judged no context
+  SKIPPED verdict-hazard-classes-addressed no context
+  ```
+
+  The fix-round tree prints the same seven lines plus
+  `NOT IN FORCE verdict-pair-approves for tiphys-version 0.1.0`, still exit 0.
+
+### Citations re-pointed
+
+This round inserted lines into src/checks.ts, src/stamp.ts and
+src/commands/validate.ts, so `path:line` citations written against b57bd7c
+earlier in this file would have resolved silently to other lines. Each was
+mapped from b57bd7c to the new tree by a line diff (difflib, scratch
+fr1-remap.py): 18 moved by an exact line match, 2 (both src/checks.ts:633,
+inside a rewritten comment) moved to the start of the rewritten block, and
+21 did not move. Citations inside backticks were left alone.
+
+### What this round did not do
+
+- It did not change checks.ts:5552 and :5813 (open question 3).
+- It did not add a spec for `verdict-pair-blocking-finding-refused` (above).
+- It did not re-examine any consumer other than pulse.
+
 ## Open questions
 
-1. **`headGroupFor` is unchanged.** In the derived checks, a same-phase
+1. **RESOLVED in fix round 1 (CR-001).** Was: **`headGroupFor` is unchanged.** In the derived checks, a same-phase
    sibling with no usable head still reddens the group. A consumer that
    REVIEWS AGAIN a phase whose old verdicts lack a head will see that red.
    Kept fail-closed; not measured against pulse, because pulse has no such
-   case today.
-2. **No `--base` arm is weaker than 0.2.0.** The bare `check-dual-review`
+   case today. The criteria review found that pulse DOES have it (paused
+   M3-P3 verdicts); the grouping now excludes a head-less sibling by name.
+2. **ADDRESSED in fix round 1 (CR-006): the arm now warns.** Was: **No `--base` arm is weaker than 0.2.0.** The bare `check-dual-review`
    workflow step, without `--base`, reads a corpus of ONLY head-less verdicts
    as not-applicable, each named. 0.2.0 read it as red. With `--base` (which
    the gate runner supplies) a dual-tier change is red, as the tests show.
 3. **`validate --context` with the merge checks** still refuses a head-less
-   verdict through the derived checks (checks.ts:5506, 5763). That is a merge
+   verdict through the derived checks (src/checks.ts:5552 and src/checks.ts:5813 at fix round 1). That is a merge
    question asked of history by an explicit command; I left it. Under DR-0055
    this is the `dual-review-decorrelation` deviation above: gating its head
    clause by stamp needs the check to read the stamp itself, and the table
@@ -963,11 +1209,11 @@ marked superseded or resolved in place rather than deleted.
 8. **RESOLVED by the admission round.** Was: the stamped fixtures under
    witness/fixtures/dual-review/ would be excluded at 0.3.0 by the admission
    floor. Admission no longer reads the stamp, so they are not.
-9. **Criterion 4c is amended by an orchestrator ruling, not by an owner
+9. **RESOLVED in fix round 1 (CR-002): recorded in DR-0053.** Was: **Criterion 4c is amended by an orchestrator ruling, not by an owner
    record.** delivery/plan/kernel-plan-m3.md:1809 requires a nonzero exit for
    a skipped cross-document check; 0.2.1 exits 0. Whether that needs a
    decision record (DR-0016: it is reversible) is the orchestrator's call.
-10. **Stale per-check comments** at src/checks.ts:633, :2075 and :2571 still
+10. **RESOLVED in fix round 1 (CR-003).** Was: **Stale per-check comments** at src/checks.ts:632, :2075 and :2571 still
    say a skipped check "exits nonzero", and the `runChecks` header says a
    skip makes "the run FAIL" (true of `ChecksRun.failed`, which is kept; no
    longer true of the validate exit).
@@ -989,37 +1235,46 @@ marked superseded or resolved in place rather than deleted.
 grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/kernel-0-2-1-history-compat.md
 ```
 
-Re-run after the admission round, before this list was rewritten. Hits by
-line, and what settles each:
+Re-run after fix round 1, before this list was rewritten. Hits by line,
+and what settles each:
 
 - 6: the owner's rule, quoted.
-- 213 and 262: `never counts it`, a test title (quoted, and in the captured
+- 218 and 267: `never counts it`, a test title (quoted, and in the captured
   summary). The test is the settlement: green on the branch, red on main.
-- 219, 308, 309: `never-admitted`, a witness file name.
-- 221, 757, 758: describe mutations (`always false`, "exit 1 whenever",
+- 224, 313, 314: `never-admitted`, a witness file name.
+- 226, 762, 763: describe mutations (`always false`, "exit 1 whenever",
   "always exit 0"); the red-witness run settles each.
-- 371: HISTORY lines are "never dropped silently": the stamp-rule test
+- 376: HISTORY lines are "never dropped silently": the stamp-rule test
   asserts the HISTORY line is printed for both unstamped and 0.1.0 stamps.
-- 672: the plan's own rationale, quoted.
-- 675: "a skipped check is never reported as a pass": the skipped-only test
+- 677: the plan's own rationale, quoted.
+- 680: "a skipped check is never reported as a pass": the skipped-only test
   asserts at least one `SKIPPED <id> no context` line and no INVALID line.
-- 709: AGENTS.md:527's command is `tiphys validate --type verdict --context
+- 714: AGENTS.md:527's command is `tiphys validate --type verdict --context
   <project> <verdict>`; the `--context` is in the text itself.
-- 731: mode.ts and checklist.ts "always pass a context": src/commands/mode.ts:126
+- 736: mode.ts and checklist.ts "always pass a context": src/commands/mode.ts:126
   passes `dirname(read.path)`, and src/commands/checklist.ts:142-149 assigns
   `context = packageRoot()` before either `invalidityLines` call.
-- 790: "0.2.0 never asked for one": `git show origin/main:schemas/verdict.schema.json
+- 795: "0.2.0 never asked for one": `git show origin/main:schemas/verdict.schema.json
   | grep -c tiphys-version` printed 0 at b16f200, whose package.json says
   0.2.0.
-- 889, 910, 921, 922, 923: a test title and a witness file name; the hand
+- 894, 915, 926, 927, 928: a test title and a witness file name; the hand
   trial printed with them settles each (members red, HEAD green).
-- 968: "needs a", inside open question 9, which is a question.
-- 980: "cannot be decoded" describes an input (an undecodable file), not a
+- 963: a head-less sibling "is never a member and never a refusal": the
+  fix-round test's arm 1 asserts check-dual-review green with the REPORT line
+  naming the sibling, and merge-preconditions with no condition-1 or
+  condition-2 red.
+- 997: a line of the derivation's captured output.
+- 1044: captured gate output (the red before the fix).
+- 1075: describes a mutation; the hand trial on the same row settles it.
+- 1138: "an unstamped document never reached the comparison" at b57bd7c: the
+  new test is red there with `Missing expected exception: {}`, the `{}` being
+  the unstamped record (captured above).
+- 1214: "needs a", inside open question 9, which is a question.
+- 1226: "cannot be decoded" describes an input (an undecodable file), not a
   claim about the code.
-- 989: the grep command itself.
+- 1235: the grep command itself.
 
 Occurrences, counted the same way in both forms after this section was
-written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 44, and the
-wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 44.
-Equal, so no hit was missed by wrapping. The hits after line 989 are this
-section quoting the ones above it.
+written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 53, and the
+wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 53.
+Equal, so no hit was missed by wrapping. The hits after line 1235 are this section quoting the ones above it.

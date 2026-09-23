@@ -272,6 +272,17 @@ function parseArgs(argv) {
  * `error`, which is the same fail-closed rule `REGIME_DOCUMENTS` applies one
  * screen down: at this layer, could-not-determine is `error` and never green.
  */
+/**
+ * KERNEL 0.2.1 (the criteria review, CR-006). Printed in the not-applicable
+ * detail when every committed verdict was excluded for declaring no head. That
+ * arm is reached only without `--base`, where no review budget is computed, so
+ * a dual-tier change with only history reviews reads not-applicable here where
+ * 0.2.0 read it red. The gate runner always passes `--base`, and there the same
+ * corpus is red; this line says so to anyone wiring the script by hand.
+ */
+export const HEADLESS_ONLY_WARNING =
+  "WARNING every committed verdict declares no head, so none is a review of any commit; without --base this script computes no review budget and cannot refuse a change that owes two reviews: pass --base (the gate runner does) for that refusal";
+
 export function committedVerdictPaths(directory, requestedHead) {
   const loaded = loadCommittedVerdicts(directory);
   if (!loaded.ok) {
@@ -603,6 +614,12 @@ export function evaluate(directory, requestedHead, options = {}) {
        sweep. */
     anchor: found.anchor,
     offHeadLines: found.offHeadLines ?? [],
+    /* KERNEL 0.2.1 (the criteria review, CR-006). True when something was
+       excluded and EVERY exclusion is a verdict that declares no head: the
+       corpus is history only, and without --base this run cannot tell a
+       dual-tier change missing its reviews from a change that owes none. */
+    headlessOnly:
+      (found.offHead ?? []).length > 0 && (found.offHead ?? []).every((entry) => entry.relation.kind === "no-head"),
     admittedLines: found.admittedLines ?? [],
     /* THE EXCEPTION IS REPORTED ONLY WHEN IT WAS ACTUALLY RELIED ON, and
        "relied on" is derived rather than asserted. Both falsifiers live inside
@@ -890,11 +907,13 @@ function main(argv) {
         ", so there is no pair of reviews to compare" +
         (run.offHeadLines.length > 0
           ? `; ${String(run.offHeadLines.length)} committed verdict document(s) review other work and are NOT evidence about this commit: ${run.offHeadLines.join("; ")}`
-          : ""),
+          : "") +
+        (run.headlessOnly === true ? `; ${HEADLESS_ONLY_WARNING}` : ""),
       evidenceLines: [
         `directory: ${options.directory}`,
         `anchor:${describeAnchor(run.anchor)}`,
         ...run.offHeadLines,
+        ...(run.headlessOnly === true ? [HEADLESS_ONLY_WARNING] : []),
       ],
     });
   }

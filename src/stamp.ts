@@ -173,14 +173,32 @@ export const RULES_SINCE: readonly RuleSince[] = [
 
 /** Whether a rule introduced at `since` applies to a document with this stamp. */
 export function ruleApplies(rule: RuleSince, stamp: StampReading): boolean {
+  const since = parseKernelVersion(rule.since);
+  if (since === undefined) {
+    /* An authoring defect in RULES_SINCE, never consumer input. Fail loudly
+       and name the row, for EVERY document and not only a stamped one,
+       rather than crash on an undefined inside the comparison (the 0.2.1
+       hazard review, CR-KH-002). */
+    throw new Error(
+      `internal defect: RULES_SINCE entry ${rule.id} has since ${JSON.stringify(rule.since)}, which is not a kernel version (major.minor.patch)`,
+    );
+  }
   if (stamp.kind !== "stamped") {
     /* Unstamped is pre-stamp history, held to 0.1.0 only. A MALFORMED stamp
        is refused by the schema itself, so treating it as history here does
        not let it pass: the document is already INVALID on its stamp. */
     return false;
   }
-  const since = parseKernelVersion(rule.since) as KernelVersion;
   return compareKernelVersions(stamp.version, since) >= 0;
+}
+
+/** How `tiphys validate` names a document's stamp in a NOT IN FORCE line. */
+export function describeStamp(stamp: StampReading): string {
+  return stamp.kind === "stamped"
+    ? `${STAMP_FIELD} ${stamp.version.text}`
+    : stamp.kind === "malformed"
+      ? `${STAMP_FIELD} ${String(stamp.value)} (not a version)`
+      : `no ${STAMP_FIELD}`;
 }
 
 /** The rules of `type` that do NOT apply to a document with this stamp. */

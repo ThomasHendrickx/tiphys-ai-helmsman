@@ -629,9 +629,12 @@ export const modeStageOrder: DerivedCheck = {
  * the hazard exactly as the plan words it.
  *
  * `requiresContext` is TRUE, so invoking the validator without `--context`
- * prints `SKIPPED mode-gate-sets-resolve no context` and exits nonzero. That
- * is the point of the mechanism (M3-P1 criterion 4c): a cross-document rule
- * must never be able to pass BY NOT RUNNING.
+ * prints `SKIPPED mode-gate-sets-resolve no context`. That is the point of
+ * the mechanism (M3-P1 criterion 4c): a cross-document rule must never be able
+ * to pass BY NOT RUNNING. Since kernel 0.2.1 the skip no longer makes
+ * `tiphys validate` exit nonzero on its own (the orchestrator's ruling,
+ * recorded in DR-0053); it is still printed, and `ChecksRun.failed` still
+ * counts it.
  */
 export const modeGateSetsResolve: DerivedCheck = {
   id: "mode-gate-sets-resolve",
@@ -2071,8 +2074,9 @@ export const checklistFramingIdsUnique: DerivedCheck = {
  * here; neither is reachable from direction 1.
  *
  * `requiresContext` is TRUE, so invoking the validator without `--context`
- * prints `SKIPPED gate-probes-resolve no context` and exits nonzero. A
- * cross-document rule must never be able to pass BY NOT RUNNING.
+ * prints `SKIPPED gate-probes-resolve no context`, which is never a pass
+ * (since kernel 0.2.1 it no longer makes `tiphys validate` exit nonzero on its
+ * own; see DR-0053).
  */
 export const gateProbesResolve: DerivedCheck = {
   id: "gate-probes-resolve",
@@ -2567,8 +2571,9 @@ export const verdictFindingReferencesResolve: DerivedCheck = {
  * KIND B BY NECESSITY: it resolves a string against the filesystem, which no
  * keyword under any DR-0013 option reaches. `requiresContext` is TRUE, so
  * running the validator without `--context` prints `SKIPPED
- * tuition-target-exists no context` and exits nonzero rather than passing by
- * not running.
+ * tuition-target-exists no context` rather than passing by not running (since
+ * kernel 0.2.1 the skip alone no longer makes `tiphys validate` exit nonzero;
+ * see DR-0053).
  *
  * ONLY `applied` IS CHECKED, and that is the point rather than a limitation.
  * `proposed` names a change nobody has made and `ticketed` names one carried
@@ -3933,6 +3938,17 @@ function headKeyOf(record: Record<string, unknown> | undefined, where: string): 
 interface HeadGroup {
   members: LoadedVerdict[];
   unkeyed: Diagnostic[];
+  /**
+   * KERNEL 0.2.1 (DR-0054): same-phase siblings that declare NO head at all,
+   * by path. History, excluded by name and never a member; the caller prints
+   * each one so the exclusion is never silent.
+   */
+  headless: string[];
+}
+
+/** The line a derived check prints for each head-less sibling it excluded. */
+function headlessSiblingReport(checkId: string, path: string, phase: string, headKey: string): string {
+  return `REPORT ${checkId} ${path} declares no head, so it is history (DR-0054): excluded by name from the group for phase ${phase} at head ${headKey}, never counted toward it and never refusing it`;
 }
 
 /**
@@ -3947,6 +3963,19 @@ interface HeadGroup {
  * head would leave a compared pair of two and a green run. So every same-phase
  * sibling that cannot be keyed is REPORTED as a violation and the remaining
  * members are still compared: a reader is owed both facts.
+ *
+ * KERNEL 0.2.1 (DR-0054), AND THE SPLIT IS THE ONE `partitionByAuditedHead`
+ * MAKES. A sibling that declares NO head key is history, written before
+ * M4-P10 asked for one, and it is not evidence about any head in either
+ * direction: it cannot be counted toward the group and it cannot refuse it.
+ * Refusing it made a phase whose old reviews predate the field unreviewable
+ * for ever without editing history, which is measured against pulse's paused
+ * M3-P3. So it is EXCLUDED BY NAME (`headless`, printed by every caller) and
+ * the fail-open worry above does not apply to it: a document that does not say
+ * what it reviewed was never part of the set for this head. A sibling whose
+ * head is PRESENT and unusable tried to name a head and named it wrongly, so it
+ * keeps the refusal. Both readers use `declaresNoHead`, so they cannot disagree
+ * about which documents are history.
  */
 function headGroupFor(
   verdicts: readonly LoadedVerdict[],
@@ -3955,6 +3984,7 @@ function headGroupFor(
 ): HeadGroup {
   const members: LoadedVerdict[] = [];
   const unkeyed: Diagnostic[] = [];
+  const headless: string[] = [];
   for (const candidate of verdicts) {
     /* BOTH SIDES CANONICAL. `phaseKey` is already canonical; the sibling's is
        read through the same function so the two are compared in one form
@@ -3980,6 +4010,10 @@ function headGroupFor(
     if (phaseReading.value !== phaseKey) {
       continue;
     }
+    if (declaresNoHead(candidate.record)) {
+      headless.push(candidate.path);
+      continue;
+    }
     const key = headKeyOf(candidate.record, candidate.path);
     if (!key.ok) {
       unkeyed.push({ pointer: "#/head", message: key.message });
@@ -3989,7 +4023,7 @@ function headGroupFor(
       members.push(candidate);
     }
   }
-  return { members, unkeyed };
+  return { members, unkeyed, headless };
 }
 
 /* ------------------------------------------------------------------ */
@@ -4184,8 +4218,9 @@ export type HeadRelation =
  * by name and is never admitted, and it no longer reddens a gate by merely
  * existing. A document whose `head` is PRESENT and unusable (null, empty, an
  * abbreviation, a list) is a document that tried to state its head and stated
- * it wrongly, which the schema still refuses, so it keeps the M4-P10 treatment
- * in `partitionByAuditedHead` and `headGroupFor`: kept, refused, red.
+ * it wrongly, which the schema still refuses for a current document, so it
+ * keeps the M4-P10 treatment in `partitionByAuditedHead` and `headGroupFor`:
+ * kept, refused, red. Both readers call this function for the absent case.
  */
 export function declaresNoHead(record: Record<string, unknown> | undefined): boolean {
   return record === undefined || !("head" in record);
@@ -4420,8 +4455,8 @@ export function partitionByAuditedHead(
        holding ONLY head-less verdicts is not-applicable with each one named,
        which is the treatment a corpus of reviews of other commits already
        gets (CR-VS-001); that arm is weaker than 0.2.0 and is stated, not
-       hidden. A same-phase sibling with no head still reddens the group
-       through `headGroupFor`, which is deliberately unchanged. */
+       hidden. `headGroupFor` makes the same split for a same-phase sibling,
+       through the same `declaresNoHead`. */
     if (declaresNoHead(candidate.record)) {
       offHead.push({ path: candidate.path, declared: "", relation: { kind: "no-head" } });
       continue;
@@ -5615,6 +5650,9 @@ export const dualReviewDecorrelation: DerivedCheck = {
     const compared = DECORRELATION_DIMENSIONS.filter(
       (dimension) => !exemptDimensions.has(dimension),
     );
+    const headlessReports = grouped.headless.map((path) =>
+      headlessSiblingReport("dual-review-decorrelation", path, phase, headKey),
+    );
     return {
       violations,
       reports:
@@ -5623,9 +5661,10 @@ export const dualReviewDecorrelation: DerivedCheck = {
                requirement is that nobody can hide it. A red run whose reader
                cannot see that produced-by was exempt is one where the exception
                is invisible exactly when the record is being read most closely. */
-            [...exceptionReports]
+            [...exceptionReports, ...headlessReports]
           : [
               ...exceptionReports,
+              ...headlessReports,
               `REPORT dual-review-decorrelation ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} are distinct on ${compared.join(", ")}${producedByCaveat(compared)}`,
             ],
     };
@@ -5825,12 +5864,16 @@ export const verdictPairApproves: DerivedCheck = {
       violations.push(...blockingFindings(candidate, phase, headKey));
     }
 
+    const headlessReports = grouped.headless.map((path) =>
+      headlessSiblingReport("verdict-pair-approves", path, phase, headKey),
+    );
     return {
       violations,
       reports:
         violations.length > 0
-          ? []
+          ? headlessReports
           : [
+              ...headlessReports,
               `REPORT verdict-pair-approves ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} read APPROVE and carry no finding at ${BLOCKING_SEVERITIES.join(", ")}`,
             ],
     };
@@ -6105,7 +6148,9 @@ export interface ChecksRun {
  * Run every registered check for `type`.
  *
  * A check whose `requiresContext` is true and which was given none is
- * SKIPPED and the run FAILS. It is deliberately not an ordinary violation:
+ * SKIPPED and `failed` is set (since kernel 0.2.1 `tiphys validate` exits on
+ * `violated`, so a skip alone exits 0; DR-0053). It is deliberately not an
+ * ordinary violation:
  * "this rule did not run" and "this rule found a problem" are different
  * facts and a reader must be able to tell them apart, but both are reasons
  * not to trust a green.

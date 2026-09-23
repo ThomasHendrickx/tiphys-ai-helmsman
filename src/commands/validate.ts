@@ -27,7 +27,7 @@ import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { runChecks } from "../checks.ts";
-import { describeRuleNotInForce, readStamp, rulesNotYetInForce } from "../stamp.ts";
+import { describeRuleNotInForce, describeStamp, readStamp, rulesNotYetInForce } from "../stamp.ts";
 import { outputContractDiagnostics, splitFrontmatter } from "../roles.ts";
 import { roleBriefBodyDiagnostics } from "./brief.ts";
 import {
@@ -466,8 +466,8 @@ export function cmdValidate(argv: string[]): number {
      IT. The document's own `tiphys-version` decides which of the rules in
      src/stamp.ts's RULES_SINCE are in force for it; an unstamped document is
      pre-stamp history held to the 0.1.0 rules. A rule not applied is PRINTED,
-     never dropped silently, and this is shape only: the merge gates admit a
-     verdict on its stamp separately and never relax on it. */
+     never dropped silently, and this is `validate` only: the merge gates do
+     not read the stamp, and apply every rule they hold to every verdict. */
   const stamp = readStamp(decoded.value);
   const notInForce = rulesNotYetInForce(resolvedType, stamp);
   const historyLines = notInForce.map((rule) => describeRuleNotInForce(rule, stamp));
@@ -493,6 +493,13 @@ export function cmdValidate(argv: string[]): number {
   const checks = runChecks(resolvedType, decoded.value, context, gatedChecks);
   for (const line of checks.lines) {
     process.stdout.write(`${line}\n`);
+  }
+  /* A derived check gated out by the stamp is not run, and says so where the
+     check results are read, beside the SKIPPED lines, so a reader scanning
+     them sees it rather than an absence (the 0.2.1 hazard review, CR-KH-001).
+     The HISTORY line above gives the rule and its version. */
+  for (const check of [...gatedChecks].sort()) {
+    process.stdout.write(`NOT IN FORCE ${check} for ${describeStamp(stamp)}\n`);
   }
   /* KERNEL 0.2.1 (orchestrator ruling on open question 4): a run whose only
      non-pass results are `SKIPPED <id> no context` EXITS 0. The SKIPPED lines
