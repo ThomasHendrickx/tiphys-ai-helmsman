@@ -1225,6 +1225,24 @@
       }
     },
     {
+      "id": "claude-md:updated-by-m5-p4-summary-json-is-now-uploaded-so",
+      "root": "CLAUDE.md",
+      "rule": "CLAUDE.md:628",
+      "kind": "bold-lead",
+      "text": "**UPDATED BY M5-P4: `summary.json` IS NOW UPLOADED, so read it first.** The",
+      "group": "four-printed-facts",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "where this repository's gates workflow uploads summary.json, and under which artifact names and retention, is a property of this repository's CI, not of the kernel; the kernel's own answer is summary.json itself, which a consumer reads wherever its own CI keeps it",
+      "dr0029-side": "predicate",
+      "note": "Added by M5-P4 fix round 1 (CR-003), when the gates workflow gained the summary upload the section below it was written around. Same disposition as the four printed facts it supersedes.",
+      "verified-by": {
+        "command": "grep -c 'IS NOW UPLOADED' AGENTS.md roles/implementer.md checklists/clean-room.yaml",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / checklists/clean-room.yaml:0"
+      }
+    },
+    {
       "id": "claude-md:the-gate-id-is-in-the-gates-manifest-json-on-tha",
       "root": "CLAUDE.md",
       "rule": "CLAUDE.md:608",
@@ -6483,6 +6501,223 @@
         "command": "grep -c 'watching the wrong place' roles/implementer.md",
         "exit": 1,
         "output": "0"
+      }
+    },
+    {
+      "id": "next-script:value-plan-path",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:55",
+      "kind": "binding",
+      "text": "const VALUE_PLAN_PATH = \"delivery/plan/value-delivery-plan.yaml\";",
+      "group": "next-failed-measurement",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel artifact states that a phase set derived only from work TRACES is incomplete, nor that the plan is the source which names a phase before anyone starts it; M4-P24 owns the command that would carry it",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. The path of the YAML plan M5 is delivered under. It is the value-delivery plan half of next-script:planunread's rule: the plan is the source that names a phase before anyone starts it, and a plan that cannot be read is a reason, never an empty phase set.",
+      "probe": "A DENOMINATOR THAT GROWS IS NOT A DENOMINATOR",
+      "verified-by": {
+        "command": "grep -c 'phase the plan names' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:readvalueplan",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:57",
+      "kind": "function",
+      "text": "async function readValuePlan() {",
+      "group": "next-failed-measurement",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel artifact states that a phase set derived only from work TRACES is incomplete, nor that the plan is the source which names a phase before anyone starts it; M4-P24 owns the command that would carry it",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. Parses the YAML plan's phase ids and branches in plan order. It is the value-delivery plan half of next-script:planunread's rule: the plan is the source that names a phase before anyone starts it, and a plan that cannot be read is a reason, never an empty phase set.",
+      "probe": "A DENOMINATOR THAT GROWS IS NOT A DENOMINATOR",
+      "verified-by": {
+        "command": "grep -c 'phase the plan names' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:value-plan",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:90",
+      "kind": "binding",
+      "text": "const VALUE_PLAN = await readValuePlan();",
+      "group": "next-failed-measurement",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel artifact states that a phase set derived only from work TRACES is incomplete, nor that the plan is the source which names a phase before anyone starts it; M4-P24 owns the command that would carry it",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. The parsed plan, or the reason it could not be read. It is the value-delivery plan half of next-script:planunread's rule: the plan is the source that names a phase before anyone starts it, and a plan that cannot be read is a reason, never an empty phase set.",
+      "probe": "A DENOMINATOR THAT GROWS IS NOT A DENOMINATOR",
+      "verified-by": {
+        "command": "grep -c 'phase the plan names' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:mergedbranchset",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:98",
+      "kind": "function",
+      "text": "function mergedBranchSet() {",
+      "group": "next-merged-predicate",
+      "status": "GAP",
+      "disposition": "DELETE",
+      "reason": "Added by M5-P4, which introduced the declaration. Reads which branches pull-request merge commits on origin/main name. Like next-script:done, the script's merged-ness predicate is not ported; the kernel's tiphys next carries its own landedness predicate.",
+      "gap": "the merged-ness predicate must NOT be ported: a branch whose commits landed inside another branch's pull request is reported OPEN by it forever. M4-P24 criterion 3 replaces it with a delivered-elsewhere predicate",
+      "verified-by": {
+        "command": "grep -c 'delivered-elsewhere' AGENTS.md src/cli.ts src/fleet.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / src/cli.ts:0 / src/fleet.ts:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/commands/next.ts"
+        ],
+        "read": "src/commands/next.ts carries the token because it ships the REPLACEMENT this row's own gap field predicted, deliveredElsewhere, not the naive merged-ness predicate this row refuses to port. The naive predicate is absent from the kernel: no kernel source filters branches on git's merged-ness, and src/commands/next.ts reaches the same question through landedness plus a patch-id arm precisely because git branch --merged reports a squash-merged branch open forever. The hit confirms the deletion rather than refuting it."
+      }
+    },
+    {
+      "id": "next-script:planordered",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:313",
+      "kind": "binding",
+      "text": "let planOrdered = null;",
+      "group": "next-failed-measurement",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel artifact states that a phase set derived only from work TRACES is incomplete, nor that the plan is the source which names a phase before anyone starts it; M4-P24 owns the command that would carry it",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. The plan's phases for this milestone, in plan order. It is the value-delivery plan half of next-script:planunread's rule: the plan is the source that names a phase before anyone starts it, and a plan that cannot be read is a reason, never an empty phase set.",
+      "probe": "A DENOMINATOR THAT GROWS IS NOT A DENOMINATOR",
+      "verified-by": {
+        "command": "grep -c 'phase the plan names' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:merged-branches",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:418",
+      "kind": "binding",
+      "text": "const MERGED_BRANCHES = mergedBranchSet();",
+      "group": "next-merged-predicate",
+      "status": "GAP",
+      "disposition": "DELETE",
+      "reason": "Added by M5-P4, which introduced the declaration. The merged-branch set for this run. Like next-script:done, the script's merged-ness predicate is not ported; the kernel's tiphys next carries its own landedness predicate.",
+      "gap": "the merged-ness predicate must NOT be ported: a branch whose commits landed inside another branch's pull request is reported OPEN by it forever. M4-P24 criterion 3 replaces it with a delivered-elsewhere predicate",
+      "verified-by": {
+        "command": "grep -c 'delivered-elsewhere' AGENTS.md src/cli.ts src/fleet.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / src/cli.ts:0 / src/fleet.ts:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/commands/next.ts"
+        ],
+        "read": "src/commands/next.ts carries the token because it ships the REPLACEMENT this row's own gap field predicted, deliveredElsewhere, not the naive merged-ness predicate this row refuses to port. The naive predicate is absent from the kernel: no kernel source filters branches on git's merged-ness, and src/commands/next.ts reaches the same question through landedness plus a patch-id arm precisely because git branch --merged reports a squash-merged branch open forever. The hit confirms the deletion rather than refuting it."
+      }
+    },
+    {
+      "id": "next-script:phasemerged",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:421",
+      "kind": "function",
+      "text": "function phaseMerged(id, plannedBranch) {",
+      "group": "next-merged-predicate",
+      "status": "GAP",
+      "disposition": "DELETE",
+      "reason": "Added by M5-P4, which introduced the declaration. Merged is a work history on main or a merged plan-named branch. Like next-script:done, the script's merged-ness predicate is not ported; the kernel's tiphys next carries its own landedness predicate.",
+      "gap": "the merged-ness predicate must NOT be ported: a branch whose commits landed inside another branch's pull request is reported OPEN by it forever. M4-P24 criterion 3 replaces it with a delivered-elsewhere predicate",
+      "verified-by": {
+        "command": "grep -c 'delivered-elsewhere' AGENTS.md src/cli.ts src/fleet.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / src/cli.ts:0 / src/fleet.ts:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/commands/next.ts"
+        ],
+        "read": "src/commands/next.ts carries the token because it ships the REPLACEMENT this row's own gap field predicted, deliveredElsewhere, not the naive merged-ness predicate this row refuses to port. The naive predicate is absent from the kernel: no kernel source filters branches on git's merged-ness, and src/commands/next.ts reaches the same question through landedness plus a patch-id arm precisely because git branch --merged reports a squash-merged branch open forever. The hit confirms the deletion rather than refuting it."
+      }
+    },
+    {
+      "id": "next-script:plannextaction",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:553",
+      "kind": "function",
+      "text": "function planNextAction(entries, planLabel) {",
+      "group": "next-exit-nonzero",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel command exits nonzero while work remains; tiphys next in M4-P24 is that command and does not exist yet",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. The first plan-ordered phase not merged, as DRIVE or DISPATCH. Part of choosing the ONE next action this script prints while exiting nonzero, which is next-script:next's rule.",
+      "verified-by": {
+        "command": "grep -c 'exits nonzero whenever work remains' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:terminal",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:606",
+      "kind": "binding",
+      "text": "const TERMINAL = {",
+      "group": "next-exit-nonzero",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel command exits nonzero while work remains; tiphys next in M4-P24 is that command and does not exist yet",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. What a finished milestone owes; M4 now hands over to its successor plan instead of naming the closed approval sweep. Part of choosing the ONE next action this script prints while exiting nonzero, which is next-script:next's rule.",
+      "verified-by": {
+        "command": "grep -c 'exits nonzero whenever work remains' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:plannext",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:610",
+      "kind": "binding",
+      "text": "const planNext = planOrdered !== null ? planNextAction(planOrdered, VALUE_PLAN_PATH) : null;",
+      "group": "next-exit-nonzero",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel command exits nonzero while work remains; tiphys next in M4-P24 is that command and does not exist yet",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. The plan-derived next action for this milestone. Part of choosing the ONE next action this script prints while exiting nonzero, which is next-script:next's rule.",
+      "verified-by": {
+        "command": "grep -c 'exits nonzero whenever work remains' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:successornext",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:611",
+      "kind": "binding",
+      "text": "let successorNext = null;",
+      "group": "next-exit-nonzero",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel command exits nonzero while work remains; tiphys next in M4-P24 is that command and does not exist yet",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. The successor plan's next action once the milestone is finished. Part of choosing the ONE next action this script prints while exiting nonzero, which is next-script:next's rule.",
+      "verified-by": {
+        "command": "grep -c 'exits nonzero whenever work remains' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
       }
     },
     {

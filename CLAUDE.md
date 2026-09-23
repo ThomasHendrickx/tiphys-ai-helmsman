@@ -625,18 +625,40 @@ for. PR #30 is what that exemption cost.
 
 ### A green BUNDLE is not evidence that a PARTICULAR gate asserted anything
 
+**UPDATED BY M5-P4: `summary.json` IS NOW UPLOADED, so read it first.** The
+`gates` job uploads exactly ONE file per event, the bundle's own summary and
+nothing else from the evidence directory, with 7-day retention:
+
+| event | artifact | file |
+|---|---|---|
+| `pull_request` | `gates-summary-pull-request-attempt-<n>` | `<evidence>/pr-bundle/summary.json` |
+| `push` | `gates-summary-push-attempt-<n>` | `<evidence>/main-bundle/summary.json` |
+
+To read it, list the run's artifacts (`GET /repos/<owner>/<repo>/actions/runs/<run-id>/artifacts`,
+or the run page), download the one for that event and attempt, unzip it, and
+read the row for the gate in `gates[]`: its `status`, `units`, `applicable`
+and `vacuous`. That row IS the per-gate evidence, so no deduction is needed.
+The procedure below still applies when there is no artifact to read: a run
+older than seven days, a run cancelled before its upload step, or a head from
+before M5-P4. The upload steps and their exactly-one-file property are
+guarded by test/gate-registry.test.ts:2086.
+
+The rest of this section is the history of why it existed, kept as written
+except where marked.
+
 One level down from the rule above, and the reading procedure is written out
-because the obvious method does not exist. **The `gates` workflow uploads no
-evidence artifact**, so `summary.json`, which is the only place carrying per-gate
+because the obvious method did not exist. **Until M5-P4 the `gates` workflow
+uploaded no evidence artifact**, so `summary.json`, which is the only place carrying per-gate
 `units`, `applicable` and `vacuous`, never leaves the runner. That last word is a
 universal, so here is what settles it rather than a reader having to trust it:
 
 ```
-grep -rn 'upload-artifact\|actions/upload' .github/workflows/   # exit 1, no hits
+grep -rn 'upload-artifact\|actions/upload' .github/workflows/   # exit 1, no hits, BEFORE M5-P4
 ```
 
 Re-run it before relying on this; the day a workflow gains an upload step, the
-procedure below is superseded by just reading `summary.json`. A reviewer asking
+procedure below is superseded by just reading `summary.json`. (M5-P4 is that
+day: the command now finds the two upload steps in `gates.yml`.) A reviewer asking
 "did gate X actually assert something on this head" has the JOB LOG and nothing
 else, and the log prints bundle-level counts, not per-gate rows.
 

@@ -28,7 +28,7 @@
  * that must be made through the GitHub tools and refuses to call anything
  * settled on their behalf.
  *
- * Usage: node .claude/orchestrator-next.mjs [--milestone m3]
+ * Usage: node .claude/orchestrator-next.mjs [--milestone m5]
  */
 
 import { execFileSync } from "node:child_process";
@@ -37,6 +37,74 @@ import { join } from "node:path";
 
 /* Fetch BEFORE deriving: both derivations below read origin/main. */
 git(["fetch", "-q", "origin", "main"]);
+
+/* THE VALUE-DELIVERY PLAN IS A PLAN SOURCE TOO (M5-P4).
+ *
+ * Until M5 every milestone's plan was a markdown file named
+ * delivery/plan/kernel-plan-<milestone>.md, and the phase derivation below
+ * read only that. M5's plan is delivery/plan/value-delivery-plan.yaml, so
+ * `--milestone m5` found no plan, pushed "could not be read" onto the hard
+ * errors and exited 7 on every run, and a finished M4 printed the DR-0047
+ * sweep, which pull request #202 had already closed. Both are this script
+ * naming work that is not the next work.
+ *
+ * The YAML plan is read from origin/main and PARSED, never grepped: it
+ * carries each phase's id AND its branch, in the plan's own order, and that
+ * order is the dependency order merges follow (binding convention 5). A read
+ * or parse failure is returned as a reason, never as an empty plan. */
+const VALUE_PLAN_PATH = "delivery/plan/value-delivery-plan.yaml";
+
+async function readValuePlan() {
+  const shown = gitTry(["show", `origin/main:${VALUE_PLAN_PATH}`]);
+  if (!shown.ok) return { ok: false, phases: [], why: `${VALUE_PLAN_PATH} could not be read from origin/main (${shown.err})` };
+  let parse;
+  try {
+    ({ parse } = await import("yaml"));
+  } catch (error) {
+    return { ok: false, phases: [], why: `the yaml package could not be loaded to parse ${VALUE_PLAN_PATH} (${String(error?.message ?? error)}); run npm ci` };
+  }
+  let document;
+  try {
+    document = parse(shown.out);
+  } catch (error) {
+    return { ok: false, phases: [], why: `${VALUE_PLAN_PATH} on origin/main does not parse (${String(error?.message ?? error)})` };
+  }
+  const rows = Array.isArray(document?.phases) ? document.phases : null;
+  if (rows === null) return { ok: false, phases: [], why: `${VALUE_PLAN_PATH} on origin/main has no phases list` };
+  const phases = [];
+  for (const row of rows) {
+    const m = /^M([0-9]+)-P([0-9]+)$/.exec(String(row?.id ?? ""));
+    if (m === null || typeof row?.branch !== "string" || row.branch === "") {
+      return { ok: false, phases: [], why: `${VALUE_PLAN_PATH} has a phase entry without an M<n>-P<n> id and a branch: ${JSON.stringify({ id: row?.id, branch: row?.branch })}` };
+    }
+    phases.push({
+      id: `m${m[1]}-p${m[2]}`,
+      milestone: `m${m[1]}`,
+      number: Number.parseInt(m[2], 10),
+      branch: row.branch,
+    });
+  }
+  return { ok: true, phases, why: null };
+}
+
+const VALUE_PLAN = await readValuePlan();
+
+/* Branches merged into origin/main by pull request, read from the merge
+ * commits' subjects ("Merge pull request #N from <owner>/<branch>"). A phase
+ * whose PLAN names its branch is merged when that branch was merged, which is
+ * what the plan-derived next action asks; the work-history probe below stays
+ * as the other, older half of "merged". A failed listing is a hard error, not
+ * an empty set, because an empty set would make every phase read unmerged. */
+function mergedBranchSet() {
+  const r = gitTry(["log", "origin/main", "--merges", "--format=%s"]);
+  if (!r.ok) return { ok: false, set: new Set(), why: `cannot list merge commits on origin/main: ${r.err}` };
+  const set = new Set();
+  for (const line of r.out.split("\n")) {
+    const m = /^Merge pull request #[0-9]+ from [^/\s]+\/(\S+)$/.exec(line.trim());
+    if (m !== null) set.add(m[1]);
+  }
+  return { ok: true, set, why: null };
+}
 
 /* THE MILESTONE IS DERIVED TOO, AND IT DEFAULTED TO A FINISHED ONE.
  *
@@ -63,6 +131,10 @@ function deriveMilestone() {
     /(?:^|\/)m([0-9]+)-p[0-9]+\.md$/,
   );
   harvestM(git(["branch", "-a", "--list", "*claude/m*-p*"]), /claude\/m([0-9]+)-p[0-9]+-/);
+  /* The plan names a milestone before any branch or work history exists
+     for it (M5-P4), so a planned milestone is not hidden behind a finished
+     one on the default invocation. */
+  for (const p of VALUE_PLAN.phases) seen.add(Number.parseInt(p.milestone.slice(1), 10));
   if (seen.size === 0) return null;
   return `m${Math.max(...seen)}`;
 }
@@ -235,6 +307,10 @@ function newestMtime(dir) {
  * nonzero saying so. Reporting "0/0 merged, nothing left" would be this
  * script's own false green. */
 let planUnread = null;
+/* Set when the phases come from the value-delivery plan: [{id, branch}] in
+ * the plan's order. Null for a markdown-plan milestone, which keeps the
+ * numeric order and the rule it has always had. */
+let planOrdered = null;
 
 function derivePhaseNumbers() {
   const found = new Set();
@@ -299,14 +375,25 @@ function derivePhaseNumbers() {
    * and the reason is pushed onto hardErrors below. */
   const planPath = `delivery/plan/kernel-plan-${MILESTONE}.md`;
   const plan = gitTry(["show", `origin/main:${planPath}`]);
+  /* THE VALUE-DELIVERY PLAN, when it names this milestone (M5-P4). Its
+   * phases are harvested in PLAN ORDER and with their BRANCHES, and that
+   * order and those branches drive the next action below instead of the
+   * numeric order, so the next action is the plan's first unmerged phase. */
+  const valuePhases = VALUE_PLAN.phases.filter((p) => p.milestone === MILESTONE);
   if (plan.ok) {
     harvest(
       plan.out,
       new RegExp(`^#{2,4} (?:[0-9.]+ )?${MILESTONE.toUpperCase()}-P([0-9]+)[: ]`, "i"),
     );
     harvest(plan.out, new RegExp(`^- id: ${MILESTONE.toUpperCase()}-P([0-9]+) *$`, "i"));
+  } else if (valuePhases.length > 0) {
+    for (const p of valuePhases) found.add(p.number);
+    planOrdered = valuePhases;
   } else {
-    planUnread = `${planPath} could not be read from origin/main (${plan.err}), so a phase the plan names and nobody has started yet is INVISIBLE to this run; the count below is of STARTED phases only`;
+    planUnread =
+      `${planPath} could not be read from origin/main (${plan.err}), and ` +
+      `${VALUE_PLAN.ok ? `${VALUE_PLAN_PATH} names no ${MILESTONE.toUpperCase()} phase` : VALUE_PLAN.why}, ` +
+      `so a phase the plan names and nobody has started yet is INVISIBLE to this run; the count below is of STARTED phases only`;
   }
   return [...found].sort((a, b) => a - b);
 }
@@ -328,9 +415,15 @@ const phases = [];
 /* Counts that could NOT be taken. Never silently zero: see gitTry. */
 const hardErrors = [];
 if (planUnread !== null) hardErrors.push(planUnread);
+const MERGED_BRANCHES = mergedBranchSet();
+if (!MERGED_BRANCHES.ok) hardErrors.push(MERGED_BRANCHES.why);
+/** Merged: the work history is on main, or the branch the PLAN names for the phase was merged. */
+function phaseMerged(id, plannedBranch) {
+  return onMain(`delivery/work-history/${id}.md`) || (plannedBranch !== undefined && MERGED_BRANCHES.set.has(plannedBranch));
+}
 for (const n of phaseNumbers) {
   const id = `${MILESTONE}-p${n}`;
-  const merged = onMain(`delivery/work-history/${id}.md`);
+  const merged = phaseMerged(id, planOrdered?.find((p) => p.id === id)?.branch);
   const branch = `claude/${id}-`;
   /* EVERY MATCHING BRANCH, NOT THE FIRST.
    *
@@ -449,9 +542,85 @@ for (const p of phases) {
 }
 lines.push("");
 
+/* THE PLAN'S NEXT ACTION (M5-P4). For a milestone whose phases came from the
+ * value-delivery plan, and for the successor of a finished M4, the next action
+ * is the FIRST phase in plan order whose branch is not merged to origin/main:
+ * DRIVE it when its plan-named branch is pushed and ahead of main, DISPATCH it
+ * otherwise. Plan order is dependency order, so this is the phase that merges
+ * next. Every input is read from origin/main or a remote ref; none is a
+ * constant in this file. A count that could not be taken is pushed onto
+ * hardErrors, so it can never be read as "not pushed". */
+function planNextAction(entries, planLabel) {
+  for (const p of entries) {
+    if (phaseMerged(p.id, p.branch)) continue;
+    const remote = `origin/${p.branch}`;
+    const exists = gitTry(["rev-parse", "--verify", "-q", `refs/remotes/${remote}`]).ok;
+    let ahead = 0;
+    if (exists) {
+      const c = gitCount(["rev-list", "--count", `origin/main..${remote}`]);
+      if (c.value === null) {
+        hardErrors.push(`${p.id}: cannot count commits ahead on ${remote}: ${c.why}`);
+        return null;
+      }
+      ahead = c.value;
+    }
+    const where = `It is the first phase in ${planLabel} whose branch ${p.branch} is not merged to origin/main`;
+    if (ahead > 0) {
+      return {
+        next:
+          `DRIVE ${p.id.toUpperCase()} TO MERGE. ${where}, and ${remote} is ${ahead} commit(s) ahead of main. ` +
+          `Next step is whichever of these is not yet done: scope green, dual cross-model clean-room ` +
+          `review, arbitration, fix round, delta verification, merge, post-merge push run verified.`,
+        exitCode: 2,
+      };
+    }
+    return {
+      next: `DISPATCH ${p.id.toUpperCase()}. ${where}, and no pushed branch for it is ahead of main.`,
+      exitCode: 2,
+    };
+  }
+  return { next: null, exitCode: null };
+}
+
+/* WHAT A FINISHED MILESTONE OWES IS NOT THE SAME FOR EVERY MILESTONE, AND
+   HARD-CODING THE EXIT TEST MADE THIS SCRIPT NAME A WRONG NEXT ACTION.
+   Measured 2026-09-18, the moment M4's last phase merged: it printed `RUN THE
+   M4 EXIT TEST`, which DR-0041 and DR-0042 had already deferred to cutover
+   entry, bound to the pilot and refusing a kernel-only subject. M4-P27 ships
+   that trigger and is merged, so the instruction was not merely early, it was
+   for a step this milestone does not own.
+
+   A stop condition that names the wrong action is worse than one that names
+   none, because it trains the reader to discount the line that is supposed to
+   be beyond discounting. That is T-036's shape one step out: there the
+   denominator was wrong, here the verdict is.
+
+   So the terminal action is DATA per milestone rather than one hard-coded
+   branch, and a milestone with no entry says so instead of guessing.
+
+   M4'S ENTRY NAMED THE FINAL APPROVAL SWEEP UNTIL M5-P4, and that sweep was
+   closed by pull request #202 (delivery/STATE.md, "M4 IS CLOSED"). Its probe
+   file was never landed, so the entry named completed work forever. A
+   finished M4 now hands over to its SUCCESSOR PLAN: the value-delivery plan's
+   next incomplete phase, derived by planNextAction above. */
+const TERMINAL = {
+  m4: { successorPlan: VALUE_PLAN_PATH },
+};
+
+const planNext = planOrdered !== null ? planNextAction(planOrdered, VALUE_PLAN_PATH) : null;
+let successorNext = null;
+if (done.length === PHASE_COUNT && TERMINAL[MILESTONE]?.successorPlan !== undefined) {
+  if (!VALUE_PLAN.ok) {
+    hardErrors.push(`${MILESTONE.toUpperCase()} is finished and its successor plan is unreadable: ${VALUE_PLAN.why}`);
+  } else {
+    successorNext = planNextAction(VALUE_PLAN.phases, VALUE_PLAN_PATH);
+  }
+}
+
 /* The next action, chosen by rule and not by judgment. Order matters: an
  * unmerged pushed branch always outranks starting new work, because merge
- * order is dependency order (binding convention 5). */
+ * order is dependency order (binding convention 5). For a plan-ordered
+ * milestone the plan's order IS that dependency order, so planNext decides. */
 let next;
 let exitCode;
 /* A COUNT THAT COULD NOT BE TAKEN OUTRANKS EVERY OTHER ANSWER, including the
@@ -479,35 +648,6 @@ if (unreplicated.length > 0) {
     `session can recover them. Run: git push -u origin <branch> for each.`;
   exitCode = 6;
 } else if (done.length === PHASE_COUNT) {
-  /* WHAT A FINISHED MILESTONE OWES IS NOT THE SAME FOR EVERY MILESTONE, AND
-     HARD-CODING THE EXIT TEST MADE THIS SCRIPT NAME A WRONG NEXT ACTION.
-     Measured 2026-09-18, the moment M4's last phase merged: it printed `RUN THE
-     M4 EXIT TEST`, which DR-0041 and DR-0042 had already deferred to cutover
-     entry, bound to the pilot and refusing a kernel-only subject. M4-P27 ships
-     that trigger and is merged, so the instruction was not merely early, it was
-     for a step this milestone does not own.
-
-     A stop condition that names the wrong action is worse than one that names
-     none, because it trains the reader to discount the line that is supposed to
-     be beyond discounting. That is T-036's shape one step out: there the
-     denominator was wrong, here the verdict is.
-
-     So the terminal action is DATA per milestone rather than one hard-coded
-     branch, and a milestone with no entry says so instead of guessing. */
-  const TERMINAL = {
-    m4: {
-      owes: "delivery/review",
-      probe: (onMainFn) => onMainFn("delivery/review/verdict-final-exclusion-criteria.json"),
-      action:
-        "RUN THE DR-0047 FINAL APPROVAL SWEEP. All phases merged. M4's exit test is " +
-        "NOT due here: DR-0041 and DR-0042 bind it to the pilot at cutover entry, " +
-        "which M4-P27 ships. What the FINAL STATE owes is the approval stamp, which " +
-        "is two clean-room reviews per shipped subsystem on different model families, " +
-        "landing verdict documents at the TOP LEVEL of delivery/review so " +
-        "check-dual-review can pair them.",
-      done: "NOTHING LEFT. All phases merged and the final approval sweep's verdicts are on main.",
-    },
-  };
   const terminal = TERMINAL[MILESTONE];
   if (terminal === undefined) {
     const exitEvidence = onMain(`delivery/evidence/${MILESTONE}-exit-test`);
@@ -522,13 +662,19 @@ if (unreplicated.length > 0) {
         `rather than guessing an action. Add an entry to TERMINAL above.`;
       exitCode = 3;
     }
-  } else if (terminal.probe(onMain)) {
-    next = terminal.done;
-    exitCode = 0;
+  } else if (successorNext !== null && successorNext.next !== null) {
+    next = `${MILESTONE.toUpperCase()} IS CLOSED, all ${PHASE_COUNT} phases merged. ${successorNext.next}`;
+    exitCode = successorNext.exitCode;
   } else {
-    next = terminal.action;
+    next =
+      `${MILESTONE.toUpperCase()} IS CLOSED and every phase of its successor plan ` +
+      `${terminal.successorPlan} is merged too. Run this script with that plan's ` +
+      `milestone for its terminal rule.`;
     exitCode = 3;
   }
+} else if (planNext !== null && planNext.next !== null) {
+  next = planNext.next;
+  exitCode = planNext.exitCode;
 } else if (pushedNotMerged.length > 0) {
   const p = pushedNotMerged[0];
   next =
