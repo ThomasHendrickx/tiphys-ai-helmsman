@@ -2155,3 +2155,142 @@ test("a report with no findings and no statement is rejected, and so is a statem
   }
   assert.equal(checkLines("report", silent).failed, true);
 });
+
+/* ------------------------------------------------------------------ */
+/* M5-P2: the delivered-outcome join from phase intent to outcome        */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE REJECTIONS ARE ASSERTED THROUGH THE REAL VALIDATOR COMMAND, `tiphys
+ * validate --type final-report <file>`, and not through a helper, because the
+ * criterion (p2-final-report-contract) is about what an operator's command
+ * refuses. The Kind A witness then removes each guarding KEYWORD from a fresh
+ * schema copy and shows the same dangerous instance accepted, in-process,
+ * because the CLI reads the shipped schema and a defanged copy cannot be handed
+ * to it without staging a kernel.
+ */
+function deliveredOutcome(document: Record<string, unknown>): Record<string, unknown> {
+  return document["delivered-outcome"] as Record<string, unknown>;
+}
+
+test("a final report without delivered-outcome, without its evidence, or claiming delivery on empty evidence is refused by tiphys validate", (t) => {
+  const shipped = runCli(["validate", "--type", "final-report", join("templates", "final-report.example.yaml")]);
+  assert.equal(shipped.status, 0, `${shipped.stdout}${shipped.stderr}`);
+
+  /* THREE DANGEROUS MEMBERS, structurally different: the whole answer is
+     SILENT (the object is gone), the answer is present and its evidence KEY is
+     gone, and the answer CLAIMS delivery over an evidence list that is present
+     and empty. The third is the one a reviewer skimming a green file misses. */
+  const silent = readTemplate("final-report.example.yaml");
+  delete silent["delivered-outcome"];
+  const unevidenced = readTemplate("final-report.example.yaml");
+  delete deliveredOutcome(unevidenced)["evidence"];
+  const emptyClaim = readTemplate("final-report.example.yaml");
+  deliveredOutcome(emptyClaim)["evidence"] = [];
+  assert.equal(deliveredOutcome(emptyClaim)["delivered"], true, "the shipped example no longer claims delivery");
+
+  for (const [name, document, pointer] of [
+    ["delivered-outcome deleted", silent, /required property delivered-outcome is missing/],
+    ["evidence deleted", unevidenced, /#\/delivered-outcome\/evidence required property evidence is missing/],
+    ["delivered true, evidence empty", emptyClaim, /#\/delivered-outcome\/evidence array has 0 items/],
+  ] as const) {
+    const run = validateThroughCli(t, "final-report", document);
+    assert.equal(run.status, 1, `${name}: ${run.stdout}${run.stderr}`);
+    assert.match(run.stdout, pointer, `${name}: ${run.stdout}`);
+  }
+
+  /* THE HONEST UNDELIVERED REPORT IS STILL WRITABLE: `delivered: false` with an
+     empty list and a reason. Without this arm a schema that refused every empty
+     list would pass the test above while making failure unreportable. */
+  const undelivered = readTemplate("final-report.example.yaml");
+  deliveredOutcome(undelivered)["delivered"] = false;
+  deliveredOutcome(undelivered)["evidence"] = [];
+  deliveredOutcome(undelivered)["explanation"] = "The retry change was reverted before merge.";
+  const honest = validateThroughCli(t, "final-report", undelivered);
+  assert.equal(honest.status, 0, `${honest.stdout}${honest.stderr}`);
+
+  /* KIND A WITNESS, one keyword per member, each on a fresh schema copy. */
+  const noRequired = readSchema("final-report.schema.json");
+  noRequired["required"] = (noRequired["required"] as string[]).filter(
+    (field) => field !== "delivered-outcome",
+  );
+  assert.deepEqual(finalReportLines(silent, noRequired), []);
+
+  const noEvidenceRequired = readSchema("final-report.schema.json");
+  const outcomeSchema = nodeAt(noEvidenceRequired, ["properties", "delivered-outcome"]);
+  outcomeSchema["required"] = (outcomeSchema["required"] as string[]).filter(
+    (field) => field !== "evidence",
+  );
+  assert.deepEqual(finalReportLines(unevidenced, noEvidenceRequired), []);
+
+  const noCoupling = readSchema("final-report.schema.json");
+  /* Both halves of the conditional go: an `if` with no `then` is refused by
+     the validator's strict policy, which would witness strictness, not the
+     coupling. */
+  delete nodeAt(noCoupling, ["properties", "delivered-outcome"])["if"];
+  delete nodeAt(noCoupling, ["properties", "delivered-outcome"])["then"];
+  assert.deepEqual(finalReportLines(emptyClaim, noCoupling), []);
+
+  /* And restored: the shipped schema, re-read, refuses all three again. */
+  for (const document of [silent, unevidenced, emptyClaim]) {
+    assert.ok(finalReportLines(document).length > 0);
+  }
+});
+
+test("delivered-outcome is a closed four-key object with no numeric field anywhere in the final report", () => {
+  const schema = readSchema("final-report.schema.json");
+  const outcome = nodeAt(schema, ["properties", "delivered-outcome"]);
+  const FOUR = ["phase-intent", "delivered", "evidence", "explanation"];
+  /* THE CLOSED KEY SET, asserted as a set and not as a denylist (p2-no-scoring).
+     A fifth key of ANY name is red here, which a list of forbidden words could
+     only be for the words it lists. */
+  assert.deepEqual(Object.keys(outcome["properties"] as Record<string, unknown>), FOUR);
+  assert.deepEqual(outcome["required"], FOUR);
+  assert.equal(outcome["additionalProperties"], false);
+  assert.equal(
+    (nodeAt(outcome, ["properties", "delivered"]) as Record<string, unknown>)["type"],
+    "boolean",
+  );
+
+  /* NO NUMBER, anywhere in the document's schema, not only in the new object:
+     a score smuggled in beside the object is the same hazard one level up. */
+  const numeric: string[] = [];
+  const walk = (node: unknown, pointer: string): void => {
+    if (Array.isArray(node)) {
+      node.forEach((entry, index) => walk(entry, `${pointer}/${String(index)}`));
+      return;
+    }
+    if (node === null || typeof node !== "object") {
+      return;
+    }
+    const record = node as Record<string, unknown>;
+    const type = record["type"];
+    for (const name of Array.isArray(type) ? type : [type]) {
+      if (name === "number" || name === "integer") {
+        numeric.push(pointer);
+      }
+    }
+    for (const [key, value] of Object.entries(record)) {
+      walk(value, `${pointer}/${key}`);
+    }
+  };
+  walk(schema, "#");
+  assert.deepEqual(numeric, [], `numeric field(s) in the final-report schema: ${numeric.join(", ")}`);
+
+  /* THROUGH THE VALIDATOR, two structurally different fifth keys: a numeric
+     score and a string one. Both are refused by the closed set. */
+  for (const [key, value] of [
+    ["value-score", 0.9],
+    ["risk-note", "low"],
+  ] as const) {
+    const extended = readTemplate("final-report.example.yaml");
+    deliveredOutcome(extended)[key] = value;
+    assert.deepEqual(finalReportLines(extended), [
+      `INVALID #/delivered-outcome/${key} property ${key} is not permitted here`,
+    ]);
+    /* KIND A WITNESS: the closure removed, the same key is accepted. */
+    const open = readSchema("final-report.schema.json");
+    delete nodeAt(open, ["properties", "delivered-outcome"])["additionalProperties"];
+    assert.deepEqual(finalReportLines(extended, open), []);
+  }
+});
