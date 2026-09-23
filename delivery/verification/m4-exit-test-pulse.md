@@ -67,26 +67,36 @@ fleet home. No clone checked in this container holds `state/` or
 arms `satisfied`, against the kernel fleet home and not a scratch
 `tiphys init` fleet.
 
-### Step 2, the pilot re-probe: refused, exit 3
+### Step 2, the pilot re-probe: satisfied, exit 0 (third run)
+
+The first two runs, at 06:57Z and 08:02:05Z, exited 3 with `OVERALL refused`.
+The third run, at 08:02:55Z, exited 0:
 
 ```
-$ node scripts/probe-pilot-readonly.mjs --out delivery/verification/pulse-re-probe-m5.md
-TARGET ThomasHendrickx/pulse refused -- record refused: ... answered HTTP 403; commits refused: ... answered HTTP 403
-TARGET ThomasHendrickx/pulse-fleet refused -- record refused: ... answered HTTP 403; commits refused: ... answered HTTP 403
-OVERALL refused
-exit 3
+$ NODE_USE_ENV_PROXY=1 node scripts/probe-pilot-readonly.mjs --out delivery/verification/pulse-re-probe-m5.md --force
+TARGET ThomasHendrickx/pulse satisfied -- record, newest commit and HEAD ref all read, and the two heads agree
+TARGET ThomasHendrickx/pulse-fleet satisfied -- record, newest commit and HEAD ref all read, and the two heads agree
+OVERALL satisfied
+exit 0
 ```
 
-The git protocol source read both heads. The REST sources were refused
-because this session does not have the pilot repositories attached; the 403
-body says so and two attached repositories answer 200 in the same shell. Full
-record, with the comparison against the earlier readings, at
-delivery/verification/pulse-re-probe-m5.md:35.
+Two things changed between the refused runs and the satisfied one.
 
-**Criterion p1-probe is NOT met.** It asks for exit 0 and the run exited 3.
-The document does name every target, its observed head over git, the
-transports tried and the excluded write operations, so the failing half is the
-exit code alone. That is a finding, not a pass.
+1. The orchestrator attached `pulse` and `pulse-fleet` to the session.
+2. `NODE_USE_ENV_PROXY=1` made Node's `fetch` go through the container's
+   proxy. Without it, the probe went straight to GitHub with no credentials
+   and got `403 API rate limit exceeded`, for the kernel repository too.
+
+`--force` was needed because the output path already held run 1's record.
+That record is in git at 618544b. The first version of this document said
+the refusal was the missing attach. That was based on `curl`, which takes the
+proxy path, and it was not shown for the probe's own requests. The
+correction, with the measurement, is at
+delivery/verification/pulse-re-probe-m5.md:47.
+
+**Criterion p1-probe is met by run 3.** The command is the criterion's, with
+`--force` and one environment variable, both stated above. The record names
+both targets, their heads, the three transports and the excluded writes.
 
 | target | head, 2026-09-16 | head, 2026-09-23 | last commit date |
 |---|---|---|---|
@@ -140,14 +150,17 @@ retirement beyond that arm.
    byte-matches tag `v0.1.0` was not checked here.
    Whether the exit test needs a new release first is a plan question, and it
    should be settled before A-14 is put to the owner, so the owner is asked
-   once.
-2. **Read-only REST access to the pilot.** The session refuses REST for the
-   pilot, and the remedy its 403 names is a push-scoped attach. Step 4's
-   read-only verification of a merged pull request, its post-merge push run
-   and its deploy is much stronger with REST than with git alone (git shows
-   commits, not check runs or deployments). Attaching with push credentials is
-   not a write, but it gives this session write authority over a repository
-   DR-0037 keeps out of reach. The implementer did not do it.
+   once. **Update 2026-09-23:** the orchestrator reports that A-14 waits on
+   kernel 0.2.0, which it is publishing. At 08:03:36Z,
+   `npm view @tiphys/kernel versions --json` still returned
+   `["0.0.0","0.1.0"]`, so 0.2.0 was not yet visible from here.
+2. **Read-only REST access to the pilot: ANSWERED 2026-09-23.** The
+   orchestrator attached `pulse` and `pulse-fleet` with push access, and REST
+   reads of both now answer 200. So step 4 can read check runs and
+   deployments. Those push credentials are held, but DR-0037 still forbids
+   any write to the pilot, and nothing in this phase uses them to write. Any
+   Node caller must set `NODE_USE_ENV_PROXY=1`, or it bypasses the proxy and
+   gets a rate-limit 403.
 3. **The fleet remote's default branch is `probe-lease-a`, not `main`**
    (`git ls-remote --symref`, exit 0). This is the known A-10 residue and
    needs nothing new; it is noted because a fresh clone of the fleet home

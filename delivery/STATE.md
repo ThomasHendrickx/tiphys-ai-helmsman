@@ -2734,8 +2734,11 @@ in first and resolves it by hand.
 
 **M5-P1, the pulse value proof, is waiting on the owner.** The trigger's four
 arms are satisfied against a copy of the kernel's fleet home, exit 0. The
-pilot re-probe exited 3: REST is refused for the pilot in this session, and
-git reads both heads unchanged since 2026-09-16. The next step is owner
-action A-14, the pilot reboot, in the register above. Evidence:
+pilot re-probe exited 0 on its third run, once the pilot repositories were
+attached and Node's `fetch` was routed through the proxy
+(`NODE_USE_ENV_PROXY=1`). Both heads are unchanged since 2026-09-16. The next
+step is owner action A-14, the pilot reboot, in the register above. The
+orchestrator reports that A-14 waits on kernel 0.2.0 being published.
+Evidence:
 delivery/verification/m4-exit-test-pulse.md:1 and
 delivery/verification/pulse-re-probe-m5.md:1.
