@@ -122,10 +122,18 @@ The Intent section puts the charter's `product-intent` next to the phase's
 `intent`, both verbatim. The charter is the one `--charter` names. Without the
 flag it is located in the current working directory by the same rule
 `tiphys doctor` uses: a project's `charter.yaml`, or the one
-`kind: charter` document in a fleet's `charter/` directory. Several charters,
-YAML in `charter/` that is not a charter, or a charter that cannot be read or
-has no product intent stop composition with a nonzero exit. With no charter at
-all, the section says so in one sentence rather than being left out.
+`kind: charter` document in a fleet's `charter/` directory (`.yaml` or
+`.yml`). These stop composition with a nonzero exit:
+
+- several charters, until `--charter` picks one;
+- YAML in `charter/` when none of it is a charter (YAML that is not a charter
+  beside exactly one charter is ignored, and that charter is read);
+- a `charter/` that exists and cannot be listed, such as a plain file;
+- an entry in `charter/` that is not a regular file or does not decode;
+- a charter that cannot be read or has no product intent.
+
+With no charter at all, the section says so in one sentence rather than being
+left out.
 
 The rendered phase is a COMPLETE projection: every required field of
 `schemas/plan.schema.json`'s phase definition is rendered under its own

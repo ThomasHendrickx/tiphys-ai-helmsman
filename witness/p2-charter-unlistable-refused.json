@@ -1,0 +1,24 @@
+{
+  "id": "p2-charter-unlistable-refused",
+  "behavior": "p2-charter-unlistable-refused",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "brief compose in a fleet refuses a charter path that cannot be listed, and doctor's retention check fails on it"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/charter.ts",
+      "find": "    if ((error as NodeJS.ErrnoException).code === \"ENOENT\") {",
+      "replace": "    if (true) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/charter.ts",
+      "find": "  if (reading.kind === \"unlistable\") {\n    return { kind: \"error\", reason: reading.reason };",
+      "replace": "  if (false) {\n    return { kind: \"error\", reason: reading.reason };"
+    }
+  ]
+}

@@ -669,3 +669,62 @@ test("brief compose in a fleet refuses several charters until --charter picks on
     /no charter declared: --charter was not given, .*charter\.yaml does not exist and .*charter holds no YAML document/,
   );
 });
+
+/* M5-P2 fix round 2 (CR-FR-01, CR-FR-02): the shared walker in src/charter.ts
+   has fail-closed branches, and each one is witnessed here through the real
+   CLI in a real `tiphys init` fleet. Where the dangerous state would compose
+   green, a VALID charter sits beside the bad entry, so failing open shows up
+   as a composed brief rather than as an absence. */
+
+test("brief compose in a fleet refuses a charter path that cannot be listed, and doctor's retention check fails on it", (t) => {
+  const fleet = initFleet(t);
+  /* A PLAIN FILE where charter/ should be: the listing fails with ENOTDIR,
+     which is not absence. */
+  rmSync(join(fleet, "charter"), { recursive: true, force: true });
+  writeFileSync(join(fleet, "charter"), "kind: charter\n");
+
+  const run = composeRoleIn(fleet, "implementer");
+  assert.equal(run.status, 1, run.stdout.slice(0, 200));
+  assert.equal(run.stdout, "");
+  assert.match(run.stderr, /charter: .*charter could not be listed: .*ENOTDIR/);
+
+  const doctor = runCliAt(cliEntry, ["doctor"], fleet);
+  assert.match(doctor.stdout, /^CHECK retention FAIL .*charter could not be listed: .*ENOTDIR/m);
+});
+
+test("brief compose in a fleet reads a charter named .yml, the same suffix doctor reads", (t) => {
+  const fleet = initFleet(t);
+  const path = writeFleetCharter(fleet, "only.yml", "A .yml charter intent.\n");
+  const run = composeRoleIn(fleet, "implementer");
+  assert.equal(run.status, 0, run.stderr);
+  const section = intentSection(run.stdout);
+  assert.ok(!section.includes("no charter declared"), "the .yml charter was not found");
+  assert.ok(section.includes(`charter: ${path}\n`), `the brief does not name ${path}`);
+  assert.ok(section.includes("\nA .yml charter intent.\n"), "the .yml charter's intent is not in the brief");
+});
+
+test("brief compose in a fleet refuses an undecodable document or a named pipe in charter/ even beside a valid charter", (t) => {
+  const fleet = initFleet(t);
+  writeFleetCharter(fleet, "alpha.yaml", "Alpha intent.\n");
+
+  /* UNDECODABLE: refused with the decoder's reason, not skipped as a
+     non-charter. */
+  const broken = join(fleet, "charter", "broken.yaml");
+  writeFileSync(broken, "kind: charter\nproduct-intent: [unclosed\n");
+  const undecodable = composeRoleIn(fleet, "implementer");
+  assert.equal(undecodable.status, 1, undecodable.stdout.slice(0, 200));
+  assert.equal(undecodable.stdout, "");
+  assert.ok(undecodable.stderr.includes(broken), undecodable.stderr);
+  rmSync(broken);
+
+  /* A NAMED PIPE: refused by type in bounded time, not opened, and not
+     counted as absent. */
+  const fifo = join(fleet, "charter", "pipe.yaml");
+  const made = spawnSync("mkfifo", [fifo], { encoding: "utf8" });
+  assert.equal(made.status, 0, `mkfifo failed: ${made.stderr}`);
+  const piped = composeRoleIn(fleet, "implementer");
+  assert.equal(piped.status, 1, piped.stdout.slice(0, 200));
+  assert.equal(piped.stdout, "");
+  assert.ok(piped.stderr.includes(fifo), piped.stderr);
+  assert.match(piped.stderr, /not a regular file/);
+});

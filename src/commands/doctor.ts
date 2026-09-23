@@ -750,6 +750,12 @@ function checkRetention(root: string): CheckResult {
       condition: "retention-not-applicable",
     };
   }
+  if (reading.kind === "unlistable") {
+    /* Something is at charter/ and it could not be listed (M5-P2 fix round 2,
+       CR-FR-02): retention paths cannot be established, so this is not the
+       not-applicable WARN above. */
+    return { name: "retention", status: "FAIL", detail: reading.reason };
+  }
   const declarations: { charter: string; paths: string[]; projectRoot?: string }[] = [];
   const candidates = reading.candidates;
   for (const entry of reading.entries) {

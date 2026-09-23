@@ -1,0 +1,24 @@
+{
+  "id": "p2-charter-bad-entry-refused",
+  "behavior": "p2-charter-bad-entry-refused",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "brief compose in a fleet refuses an undecodable document or a named pipe in charter/ even beside a valid charter"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/charter.ts",
+      "find": "        entries.push({ path, kind: \"undecodable\", reason: decoded.reason });",
+      "replace": "        entries.push({ path, kind: \"not-charter\" });"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/charter.ts",
+      "find": "      entries.push({ path, kind: \"refused\", reason: read.reason });",
+      "replace": "      entries.push({ path, kind: \"absent\" });"
+    }
+  ]
+}

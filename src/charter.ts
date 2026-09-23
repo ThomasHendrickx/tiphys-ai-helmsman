@@ -58,8 +58,11 @@ export type CharterDirectoryEntry =
   | { path: string; kind: "charter"; document: Record<string, unknown> };
 
 export type CharterDirectoryReading =
-  /** No listable `charter/` directory at all. */
+  /** Nothing at `charter/` (ENOENT): the one listing failure that means absent. */
   | { kind: "no-directory"; directory: string }
+  /** Something is at `charter/` and it could not be listed (a plain file, a
+      permission error, anything but ENOENT). Never read as "no charter". */
+  | { kind: "unlistable"; directory: string; reason: string }
   | {
       kind: "listed";
       directory: string;
@@ -73,8 +76,20 @@ export function readCharterDirectory(directory: string): CharterDirectoryReading
   let names: string[];
   try {
     names = readdirSync(directory).sort();
-  } catch {
-    return { kind: "no-directory", directory };
+  } catch (error) {
+    /* FAIL CLOSED (M5-P2 fix round 2, CR-FR-02). Only ENOENT means there is no
+       charter directory. A plain file named `charter`, a permission error or
+       any other listing failure means the contents could not be established,
+       and a reader that cannot establish them refuses rather than reporting
+       that nothing is declared. */
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      return { kind: "no-directory", directory };
+    }
+    return {
+      kind: "unlistable",
+      directory,
+      reason: `${directory} could not be listed: ${String(error)}`,
+    };
   }
   const entries: CharterDirectoryEntry[] = [];
   let candidates = 0;
@@ -123,7 +138,8 @@ export function readCharterDirectory(directory: string): CharterDirectoryReading
  * Where a charter is declared, seen from `root` (a fleet root or a project
  * root), without `--charter`.
  *
- * - `error`: something in `charter/` was refused or did not decode. A reader
+ * - `error`: `charter/` exists and could not be listed, or something in it
+ *   was refused or did not decode. A reader
  *   that cannot establish the directory's contents does not guess.
  * - `found`: the candidate paths, in order: the root file first when ANY entry
  *   exists at it (judged by lstat, so a dangling link or a named pipe counts
@@ -151,6 +167,9 @@ export function locateCharters(root: string): CharterLocation {
     found.push(rootFile);
   }
   const reading = readCharterDirectory(directory);
+  if (reading.kind === "unlistable") {
+    return { kind: "error", reason: reading.reason };
+  }
   let nonCharterYaml = 0;
   if (reading.kind === "listed") {
     for (const entry of reading.entries) {
