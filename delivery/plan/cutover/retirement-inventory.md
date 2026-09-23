@@ -109,7 +109,7 @@ because the scope gate reads the declaration from the merge base only.
 src/gates/scope.ts:110 records that M3-P11 changed exactly that: the
 declaration is read from BOTH the merge base and the head, an addition on the
 head is allowed, and the protection is that the addition is printed by name.
-Corrected in this phase at CLAUDE.md:794. Carried across uncritically, this
+Corrected in this phase at CLAUDE.md:795. Carried across uncritically, this
 would have become a false constraint inside a kernel brief, where no scope gate
 exists to contradict it.
 
@@ -375,6 +375,77 @@ checker also runs against scratch roots that hold almost none of the surface, so
 it cannot tell a renamed tree from a deliberately absent one, and the repository
 can.
 
+## M5-P5, the context diet: a disposition for every removed block
+
+- phase: M5-P5, 2026-09-23, diet baseline `6dc5b06`
+- the register: the `diet` array in the JSON, beside `rows` and `retired`
+- the guard: the diet tests in test/retirement-inventory.test.ts:882, not the
+  checker script
+
+The numbers in the sections above are as of M4-P23 and are left as that
+phase's record. At this phase's head the checker reports 318 rows against 318
+derived anchors and 9 retired. The JSON gives 212 PORTED, 102 GAP and 4 FALSE,
+and 212 PORT, 89 KEEP and 17 DELETE. By root: 136 in `CLAUDE.md`, 146 in
+`.claude/skills` and 36 in `.claude/orchestrator-next.mjs`. At `6dc5b06` the
+same command gave 323 rows: 214 PORTED, 105 GAP, 4 FALSE, and 20 DELETE. The
+difference is this phase: seven rows retired and two added.
+
+**Why a second register, and why it is not a PORT row.** M4-P23's rows track
+RULES and prove a port with a negative-witness command. That shape is weak for
+a pruned BLOCK. A block of history shares its keywords with a dozen other
+files, so a grep for one of them exits 0 whether the block's content survived
+or not. That is the sibling-keyword port the phase section forbids. So a diet
+entry names the baseline line range and its first and last lines, and it is
+evidenced by QUOTES, never by a command.
+
+The kinds, and what each must carry:
+
+| disposition | evidence the test checks |
+|---|---|
+| `exact-duplicate` | the WHOLE removed block, normalised, is in the named file |
+| `mechanically-enforced` | the enforcing script exists (or the gate is in the manifest), a test of that title exists, and a quote of the kept rule is in the current file |
+| `history-moved` | a quote of at least 8 words AT a named line range of a `delivery/` file that existed at the baseline and is not a pruned file, plus a quote of at least 6 words of the kept rule |
+| `corrected` | a quote AT the authority's line range, and the replacement text in the current file |
+| `superseded-status` | `delivery/STATE.md` only: a reason and the text that supersedes it |
+| `archived` | `delivery/STATE.md` only: a reason and the pointer left in the file |
+
+The refusal of a keyword is the word floor. An entry that carries
+`verified-by`, `probe` or `negative-witness` is refused outright, at
+test/retirement-inventory.test.ts:920. Two members of the dangerous class are
+witnessed, and each was shown red by disabling its own arm and nothing else:
+setting the floor to one word turns the one-keyword history test red, and
+emptying the probe-key list turns the keyword-grep test red. Both are green on
+the real register. The captured runs are in the work history.
+
+**Completeness, which the register alone does not give.** A register can be
+fully evidenced and still omit a block. So a second test takes every run of
+baseline lines of `CLAUDE.md` and `AGENTS.md` that no diet range covers, split
+at blank lines, and requires it to be in the current file. Whitespace is
+collapsed, and citation line numbers are masked so that a repointed citation
+does not count as a removal. See test/retirement-inventory.test.ts:1009.
+`delivery/STATE.md` is not under this check, because its point is to be
+rebuilt. It has its own shape check at test/retirement-inventory.test.ts:1034:
+the current standing comes first, no dated daily block survives, the M4
+closure and its residue and the history pointers are present, and every A-n id
+in the baseline is still present.
+
+This phase's register: eleven `CLAUDE.md` entries (seven `history-moved`,
+three `corrected`, one `mechanically-enforced`) and fifteen `delivery/STATE.md`
+entries (fourteen `superseded-status`, one `archived`). `AGENTS.md` is
+unchanged. It is the shipped orchestrator brief and 66 PORT rows name it as
+their destination, so thinning it is a brief change and not a diet.
+
+**What this does NOT reach.** The quote check shows the text is AT the named
+place. It does not show that the place is the right home, or that a history
+quote carries everything the block said. That is a reading, and it stays with
+the reviewer. The completeness test needs the baseline commit, so a shallow
+clone fails it rather than skipping it. The two `corrected` entries for
+DR-0044 retire five rows, and the test checks both directions of that link.
+It does not check that a replacement is true. For the DR-0044 rule the
+authority is the owner record, because the rule is about the harness and
+`src/` models no workflow cap. For the review-path row the authority is the
+M5-P3 contract in the plan. Both readings are in the work history.
+
 ## Re-running it
 
 ```
@@ -393,6 +464,7 @@ console.log("PORT",c(x=>x.disposition==="PORT"),"KEEP",c(x=>x.disposition==="KEE
 console.log("GAP groups",new Set(r.filter(x=>x.status==="GAP").map(x=>x.group)).size);'
 ```
 
-The inventory is a description and changes nothing in the three roots except the
-two corrections named above. M4-P25 performs the deletions, under the rollback
-note in section 4.3 of the plan.
+The M4-P23 inventory was a description and changed nothing in the three roots
+except the two corrections named above. M4-P25 performs the deletions, under
+the rollback note in section 4.3 of the plan. M5-P5 removed blocks under the
+diet register described above.
