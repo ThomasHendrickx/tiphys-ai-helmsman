@@ -2,11 +2,18 @@
 
 - date opened: 2026-09-23
 - phase: M5-P1 (delivery/plan/value-delivery-plan.yaml:27)
-- status: **NOT DISCHARGED.** A-14 is done (2026-09-24): the pilot ran pulse
-  M3-P4 on kernel 0.2.0 and merged it as pulse PR #22. Three rows of Part 2
-  fail the rules written for them in advance: the merged head was not the
-  reviewed head, pulse has no post-merge push run, and pulse has no deploy
-  verification. The next call is the orchestrator's.
+- status: **NOT DISCHARGED.** Re-run 2026-09-24 against pulse M3-P5 (pulse
+  PR #25, Part 3). Four of the five pre-written rules are now met, including
+  the two PR #22 failed on the merged head and the push run. ONE row still
+  fails: **deploy verification**. Pulse's charter still declares
+  `release-verification: mode: reserved`, and no pushed pilot file records a
+  deploy verification of the merged sha `35d2e55`. What would close it is in
+  Part 3. The PR #22 record (Part 2) is kept as it was.
+- earlier status (2026-09-24, PR #22): NOT DISCHARGED. A-14 is done: the
+  pilot ran pulse M3-P4 on kernel 0.2.0 and merged it as pulse PR #22. Three
+  rows of Part 2 failed the rules written for them in advance: the merged
+  head was not the reviewed head, pulse had no post-merge push run, and pulse
+  had no deploy verification.
 - procedure followed: delivery/plan/cutover/entry-trigger.md:1, which restates
   DR-0042 as steps. Where this document and the decision records differ, the
   records win.
@@ -22,9 +29,11 @@ DR-0042 permits reading the pilot and makes its reachability an owner reboot
 (delivery/decisions/DR-0042-reading-the-pilot-is-allowed-and-the-pilot-can-be-rebooted.md:60).
 DR-0037 stands: this orchestrator reads the pilot and never writes to it.
 
-This document has two parts. The first records what is known up to the
+This document has three parts. The first records what is known up to the
 reboot, from commands run on 2026-09-23. The second was filled on
-2026-09-24, after the reboot, and holds only what was observed.
+2026-09-24, after the reboot, and holds only what was observed of pulse
+M3-P4 (PR #22). The third, added the evening of 2026-09-24, applies the same
+pre-written rules to the next pulse phase, M3-P5 (PR #25).
 
 ## Part 1: known up to the reboot
 
@@ -304,3 +313,243 @@ phase that meets them, is not this phase's call. It goes to the orchestrator.
 A green kernel gate is not evidence for any row here. The hazard the plan
 names for this is green-without-delivery
 (delivery/plan/value-delivery-plan.yaml:89).
+
+## Part 3: the pulse M3-P5 run, observed 2026-09-24 (evening)
+
+Added by M5-P1 on 2026-09-24 between 18:43Z and 18:46Z, read-only, after the
+orchestrator reported that the owner had done A-17's steps in the pilot. The
+report was the trigger; every row below is from a REST GET, each of which
+answered HTTP 200. No clone was made this time; pilot files were read by
+`GET /repos/ThomasHendrickx/<repo>/contents/<path>?ref=<sha>`. Nothing was
+pushed to `pulse` or `pulse-fleet`, and no pilot ref, file, comment or pull
+request was created (DR-0037). Paths in backticks are PILOT paths or
+commands, quoted, and do not resolve here. Part 2 above is not changed; its
+rules are applied again, unchanged, to the new phase.
+
+### What the pilot did between Part 2 and Part 3
+
+| pulse PR | what | merge | merged at (UTC) |
+|---|---|---|---|
+| #23 | kernel pin 0.2.0 to 0.2.1 | `987b6da` (per A-17's register entry on `main`) | 2026-09-24 |
+| #24 | CI: `.github/workflows/ci.yml`, "fast gate" and "slow gate (Playwright)" on `pull_request` and on `push` to `main` | `dff0824` (its push run is below) | 2026-09-24, push run created 15:35:34Z |
+| #25 | **pulse M3-P5**, "share a PDF from the phone straight into the import flow" | `35d2e55`, head `98fbadc` | 2026-09-24T17:12:07Z |
+| #26 | records only: the round-two verdicts and the closing work-history entry | `1796ff8`, head `3055752` | 2026-09-24T17:39:41Z |
+
+Pulse's CI runs the pilot's own gates, not the kernel's: the fast gate is
+`npm ci`, `prisma generate`, typecheck, lint, `npm test`, `gate:privacy` and
+`gate:decisions`, and the slow gate is `npm run test:e2e` against a local
+Supabase stack. `ci.yml` at `1796ff8` names `@tiphys/kernel` only in a
+comment (`grep -n tiphys`, one hit, line 10) and never runs `tiphys gates`.
+The rules of this test ask for a post-merge push run, not for kernel gates
+in it, so this does not change a verdict; it is recorded so a reader does not
+assume the push run below ran kernel gates.
+
+One correction to the relay this run was dispatched with: `3055752` is PR
+#26's HEAD, not its merge. `GET /pulls/26` gives merge_commit_sha
+`1796ff8d5750ca185190e699daa24214dcf21bdd`, and `1796ff8` is pulse `main`
+now (`GET /branches/main`).
+
+`pulse-fleet` moved too: `main` is `8fa9a82` (its PR #1, 2026-09-24T17:13:22Z),
+and its `package.json` pins `"@tiphys/kernel": "0.2.1"` (it was `0.1.0` at
+`7656f67`). Its lock resolves `kernel-0.2.1.tgz` with integrity
+`sha512-ONgrxG3K...AQkqw==`, the same value that
+`npm view @tiphys/kernel@0.2.1 dist.integrity` prints. The Part 2 residue
+"pulse-fleet still pins 0.1.0" is closed.
+
+### The review verdicts for pulse M3-P5, all four
+
+Read at `1796ff8` from `delivery/review/m3-p5-*.json` with `jq` over `head`,
+`verdict`, `produced-by`, `framing`, `review-contract`, `tiphys-version` and
+the findings' severities:
+
+| pulse file | head | produced-by | contract / framing | verdict | severities |
+|---|---|---|---|---|---|
+| `m3-p5-criteria.json` | `98b4f0e` | claude | criteria / criteria-contract | FIX-ROUND-NEEDED | medium, low, low |
+| `m3-p5-hazard.json` | `98b4f0e` | claude | hazard / unauthenticated-write-and-cache-paths | FIX-ROUND-NEEDED | high, 4 low |
+| `m3-p5-criteria-round2.json` | **`98fbadc`** | claude | criteria / criteria-contract | **APPROVE** | 3 low |
+| `m3-p5-hazard-round2.json` | **`98fbadc`** | claude | hazard / unauthenticated-write-and-cache-paths | **APPROVE** | 3 low |
+
+All four carry `tiphys-version` `0.2.1`. The round-one pair names `98b4f0e`
+and asks for a fix round. A-17's 17:38 UTC progress note on `main` read only
+that pair and called step 3 unmet. That reading was incomplete: the
+round-two pair names `98fbadc` and approves, with no finding above low.
+
+### The rules, applied to pulse M3-P5
+
+The rules are the ones under "The rules, as written on 2026-09-23 before the
+result" in Part 2, unchanged.
+
+1. **Reboot happened: MET** (unchanged from Part 2). Pulse `main` has moved
+   again since, to `1796ff8`.
+
+2. **The phase ran on v1: MET, reading v1 as the first published release
+   carrying M4, or a later one.** Pulse at `35d2e55` pins
+   `"@tiphys/kernel": "0.2.1"` in `package.json` line 31, its lock integrity
+   equals the registry's for 0.2.1, `charter.yaml` line 9 reads
+   `kernel-version-pin: 0.2.1`, and every M3-P5 verdict says
+   `tiphys-version: 0.2.1`. In this repository the M4 closure head is an
+   ancestor of the 0.2.1 tag: `git rev-parse v0.2.1^{commit}` printed
+   `2c49ab3...`, and `git merge-base --is-ancestor de1664d v0.2.1` exited 0.
+   Open question 1 was answered with 0.2.0; 0.2.1 is its successor, and
+   A-17 asked for 0.2.1.
+
+3. **Reviewed head equals merged head: MET.**
+   - `GET /pulls/25`: merged true, merged_at 2026-09-24T17:12:07Z, head sha
+     `98fbadc46e7018abc6480a8914c4ef92aeeb24dc`, merge_commit_sha
+     `35d2e55798139604549a0dde26ada2cce4781feb`, base `main`, merged_by
+     `ThomasHendrickx`. `GET /pulls/25/commits` lists four commits ending at
+     `98fbadc` (`fada6fb`, `98b4f0e`, `31fd73d`, `98fbadc`).
+   - `GET /commits/35d2e55`: parents `dff0824` and `98fbadc`, tree
+     `8edba11701ff0f6c2eb2574091395ae02dcccfe5`. `GET /commits/98fbadc`:
+     tree `8edba11701ff0f6c2eb2574091395ae02dcccfe5`. The trees are equal,
+     so the merge brought in exactly the reviewed head and nothing else.
+   - Both round-two verdicts name `98fbadc` and read APPROVE, and no finding
+     in either is above low. The Part 2 failure (unreviewed code commits
+     after the reviewed head, and an open medium) does not recur.
+
+   **Were the round-two reviews produced before the merge?** The rule does
+   not ask this; it asks that the named reviewed head equal the merged head.
+   The ordering is recorded because it was asked, and it is NOT observable
+   from the pushed artifacts:
+   - The verdict files carry no timestamp. Their keys are `criteria`,
+     `deviations-judged`, `findings`, `framing`, `head`, `kind`, `phase`,
+     `produced-by`, `review-contract`, `tiphys-version` and `verdict`, plus
+     `hazard-classes-addressed` in the hazard pair.
+   - They were COMMITTED after the merge, by design. `3055752` ("land the
+     round two verdicts and the closing record") is dated
+     2026-09-24T17:12:44Z, 37 seconds after the merge. The pilot's work
+     history gives the reason in its first key decision: "committing the
+     verdict onto the branch makes a new commit that no verdict names", so
+     the verdicts land in a separate records change after the merge
+     (`delivery/work-history/m3-p5.yaml` in pulse, with its "CORRECTIONS
+     AFTER THE MERGE" entry, which says the round-one verdicts were
+     committed on the branch in `98fbadc` before round two).
+   - Its closing entry `C-5-merged-at-approved-head`, "written after the
+     merge", says both round-two verdicts read APPROVE at `98fbadc` and that
+     the PR "merged with its head pinned to 98fbadc". The `pulse-fleet`
+     ledger (commit `ad4538f`, 17:13:10Z) says the same.
+   - So that the reviews preceded the merge is the pilot's own recorded
+     claim. A 37-second gap between the merge and the verdict commit is too
+     short to have run two clean-room reviews after the merge, which makes
+     the claim plausible. That is a deduction, not an observation.
+
+   **Decorrelation.** Both round-two verdicts say `produced-by: claude`, one
+   model family. The rules of this test say nothing about decorrelation,
+   and neither do DR-0037, DR-0041 or DR-0042. This repository's DR-0012
+   governs this repository's merges, not the pilot's. The pilot's own rule
+   is its DR-0003 (`pulse-fleet` `decisions/DR-0003.yaml` at `8fa9a82`),
+   decided by the owner on 2026-08-17 as "same family, varied lenses": both
+   verdicts may be Claude-family provided review-contract and framing differ
+   across the pair. They do: `criteria` / `criteria-contract` against
+   `hazard` / `unauthenticated-write-and-cache-paths`. So the pair meets the
+   pilot's declared rule, and this test adds no rule of its own.
+
+4. **Post-merge push run observed to completion: MET, by T-009's
+   cancelled-run discharge, with the weaker claim stated.**
+
+   | pulse `main` head | run | event | status | conclusion | jobs |
+   |---|---|---|---|---|---|
+   | `35d2e55` (the M3-P5 merge) | 36032643312 | push | completed | **cancelled** | fast gate success, 17:12:13Z to 17:13:15Z; slow gate cancelled at 17:39:59Z, in step `npm run test:e2e` |
+   | `1796ff8` (PR #26 merge, `main` now) | 36035853808 | push | completed | **success** | fast gate success; slow gate (Playwright) success, 17:40:02Z to 18:12:49Z |
+
+   Read with `GET /actions/runs?head_sha=<sha>`, `GET /actions/runs/<id>/jobs`
+   and `GET /commits/<sha>/check-runs`. `GET /actions/runs?branch=main&event=push`
+   lists exactly three push runs: `dff0824` success, `35d2e55` cancelled,
+   `1796ff8` success, each at attempt 1.
+
+   Why `35d2e55`'s run was cancelled: pulse's `ci.yml` sets
+   `concurrency: group: ci-${{ github.ref }}` with `cancel-in-progress: true`.
+   The push of `1796ff8` created its run at 17:39:44Z, and the still-running
+   `35d2e55` run ended at 17:40:00Z. This is exactly the shape recorded at
+   CLAUDE.md:538.
+
+   The rule said "per T-009" and "a cancelled run is neither green nor red".
+   So `35d2e55`'s own run is NOT counted as green. What discharges the rule
+   is T-009's stated procedure for this case (CLAUDE.md:548): verify the
+   current `main` head's push run to completion, and say that head N's own
+   run was cancelled by head N+1. That run is `1796ff8`'s, observed
+   completed, conclusion success.
+
+   What that is evidence for, stated rather than inflated. `GET
+   /compare/35d2e55...1796ff8`: ahead 2, behind 0, three files, all records
+   (`delivery/review/m3-p5-criteria-round2.json` and
+   `m3-p5-hazard-round2.json` added, `delivery/work-history/m3-p5.yaml` +49
+   -0). So the green push run at `1796ff8` ran both gates over the M3-P5
+   code byte for byte. It is not a run whose head sha is `35d2e55`: there
+   the fast gate completed green and the slow gate did not complete. The
+   reviewed head `98fbadc` (same tree as `35d2e55`) also has a completed
+   `pull_request` run, 36028645734, success on both gates. That is a
+   different event and is not offered as the push run.
+
+5. **Deploy verification from the pilot's own pushed evidence: NOT MET.**
+
+   What exists:
+   - Vercel production deployments of both merges, each with deployment
+     status `success`, creator `vercel[bot]`: id 6643693281 for `35d2e55`
+     (17:13:31Z) and id 6644236912 for `1796ff8` (17:40:59Z)
+     (`GET /deployments?sha=<sha>`, `GET /deployments/<id>/statuses`). Each
+     commit's combined status is one context, `Vercel`, "Deployment has
+     completed".
+   - The check runs on `35d2e55` are only the two CI jobs above. There is
+     no deploy check run.
+   - A deploy-verify wrapper, `playwright.deploy.config.ts`, which says it is
+     "Used by the fleet's deploy-verify stage: PLAYWRIGHT_BASE_URL=<deployed
+     url> npx playwright test --config=playwright.deploy.config.ts". No CI
+     job runs it: `ci.yml` has only the fast and slow gates, both against a
+     local stack.
+
+   What is missing, which is what the rule asks for:
+   - **A deploy verification in the charter's sense.** Pulse `charter.yaml`
+     at `1796ff8`, and the fleet's copy `charter/pulse.yaml` at `8fa9a82`,
+     still read `release-verification: mode: reserved`. The note says the
+     owner has not decided its shape (pulse DR-0014), and that the working
+     candidate is "the Playwright golden journey plus the fast gate, green
+     on the release commit".
+   - **Pushed evidence of one for the merged sha.** No pushed file records a
+     verification of `35d2e55` or `1796ff8` against the deployed site.
+     `delivery/evidence/` in pulse holds only `.gitkeep` (recursive tree at
+     `1796ff8`, not truncated). The M3-P5 work history has no line matching
+     `deploy`, `vercel`, `production` or `release` (`grep -n -i`, no
+     output). `pulse-fleet` `notes/deployed-infrastructure.md` has
+     deploy-verify records for M1-P1 to M3-P2 only; no line in it names
+     `M3-P5`, `35d2e55` or `98fbadc`.
+
+   The near miss, so a reader does not have to find it. If the owner decided
+   the candidate as pulse's release verification, the completed green push
+   run at `1796ff8` (fast gate plus the Playwright slow gate, over the M3-P5
+   code) would come close to that check on a production-deployed release
+   commit. It is not offered as this row's evidence, for three reasons: the
+   candidate is not decided; the slow gate runs the e2e suite against a
+   local stack, not a golden journey against the deployment; and a CI run
+   is not the "pushed files" the rule names. Relabelling it would be the
+   green-without-delivery hazard (delivery/plan/value-delivery-plan.yaml:89).
+
+### What would close the last row
+
+Both steps are in the pilot, for the pilot's owner and session. This phase
+does not act there.
+
+1. Decide pulse's `release-verification` shape (pulse DR-0014), so the
+   charter's mode is no longer `reserved`.
+2. Run that verification against the deployed merge of a phase, and push its
+   record, naming the sha, into the pilot's files. `35d2e55` qualifies: its
+   production deployment 6643693281 exists, and rules 1 to 4 are met for it.
+
+A-17's register entry on `main` lists three steps and none of them is this.
+Registering it is the orchestrator's call, since the register allocates.
+
+### Part 3 verdict
+
+| rule | M3-P4 (PR #22, Part 2) | M3-P5 (PR #25, Part 3) |
+|---|---|---|
+| 1 reboot happened | met | met |
+| 2 ran on v1 | met (0.2.0) | met (0.2.1) |
+| 3 reviewed head equals merged head | NOT MET | **met** (`98fbadc`, trees equal) |
+| 4 post-merge push run | NOT MET (no CI) | **met** by T-009's cancelled-run discharge (`1796ff8` run 36035853808 success; the `35d2e55` run was cancelled by it) |
+| 5 deploy verification | NOT MET | **NOT MET** (charter `reserved`, no pushed record) |
+
+**M4 exit verdict: NOT DISCHARGED**, on row 5 alone. Criterion p1-value
+(delivery/plan/value-delivery-plan.yaml:73) asks the document to name one
+pulse phase, its reviewed head, merged pull request, post-merge push run and
+deploy verification. For M3-P5 it now names the first four, each tied to an
+API result. The fifth is named as an absence, which does not meet it.

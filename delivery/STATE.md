@@ -54,10 +54,13 @@ the merge gate rather than not-applicable.
 
 ### In flight
 
-- M5-P1, pulse value proof: `claude/m5-p1-pulse-value-proof`, at 5971cc4.
-  The M4 exit test on pulse ran and is NOT DISCHARGED; that branch's
-  `delivery/verification/m4-exit-test-pulse.md` records why. The next step is
-  owner action A-17.
+- M5-P1, pulse value proof: `claude/m5-p1-pulse-value-proof`. The M4 exit
+  test was re-run on 2026-09-24 against pulse M3-P5 (pulse PR #25) and is
+  still NOT DISCHARGED, now on ONE row: deploy verification. Pulse's charter
+  still leaves release verification `reserved`, and no pushed pilot file
+  verifies the merged sha. The other four rows are met, including merged
+  head equals reviewed head and the post-merge push run. Evidence:
+  delivery/verification/m4-exit-test-pulse.md:317.
 - M5-P6, scale-out proof: `claude/m5-p6-scale-out-proof`, wave D. The kernel
   half (conflicts command, DR-0058 init change, hemma intake) is reviewed:
   both clean-room reviews APPROVE at 45a0d54 after one fix round. Step 3 is
@@ -94,6 +97,21 @@ the merge gate rather than not-applicable.
   The two commits after 98b4f0e change source and tests, and no verdict
   covers them. That is the same failure as PR #22. pulse-fleet was not
   re-checked.
+  CORRECTED 18:46 UTC by M5-P1, read-only: the 17:38 reading was incomplete.
+  Pulse PR #26 (merge 1796ff8) landed the round-two verdicts
+  `m3-p5-criteria-round2.json` and `m3-p5-hazard-round2.json`; both name head
+  98fbadc and read APPROVE, lows only. PR #25's merge 35d2e55 has parents
+  dff0824 and 98fbadc, and its tree equals 98fbadc's. So step 3 IS met.
+  pulse-fleet now pins 0.2.1 (main 8fa9a82), so step 1 is met too. Step 2:
+  the push run at 35d2e55 was cancelled by the push of 1796ff8 (same
+  concurrency shape as this repository's T-009 note); the push run at
+  1796ff8 completed success. Pulse's `ci.yml` runs pulse's own fast gate
+  (typecheck, lint, tests, `gate:privacy`, `gate:decisions`) and Playwright
+  slow gate; it does not invoke `tiphys gates run`, so step 2's "runs the
+  Tiphys gates" is met only in the sense that a post-merge push run exists.
+  Closing A-17 is the orchestrator's call. The exit test still fails on
+  deploy verification, which no step here asks for; see
+  delivery/verification/m4-exit-test-pulse.md:317.
 - A-14: restart pulse and bump pulse-fleet to kernel 0.2.0. Its register
   entry was allocated on the M5-P1 branch and reaches this register when that
   phase merges; it is not yet on `main`. That branch records it done on
@@ -243,7 +261,7 @@ The full runnable text of every open action is in the register below.
     was known: the merged head is not the reviewed head, pulse has no CI
     workflow and so no post-merge push run, and its charter's release
     verification is still `reserved`. The rows, with the commands, are at
-    delivery/verification/m4-exit-test-pulse.md:180.
+    delivery/verification/m4-exit-test-pulse.md:189.
 
 **This section is the sole allocator of `A-n` ids** (CLAUDE.md identifier
 schemes). An `A-n` is an ACT the owner must perform because it needs access an
@@ -717,8 +735,9 @@ full closure block, with the six HIGH defects the sweep's fix round fixed, is at
 delivery/plan/kernel-plan-v1.md:366 is the pilot's next phase merged and
 deploy-verified entirely on v1. DR-0041 keeps it bound to the pilot, and DR-0042
 permits reading the pilot and rebooting it. M5-P1 carries it. A-14 is done, and
-the observed result, with the rows that do not meet their rule, is at
-delivery/verification/m4-exit-test-pulse.md:180.
+the observed result is at delivery/verification/m4-exit-test-pulse.md:189
+(pulse M3-P4) and delivery/verification/m4-exit-test-pulse.md:317 (pulse
+M3-P5, where only deploy verification still fails).
 
 ### Residue, carried deliberately rather than lost
 
