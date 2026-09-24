@@ -70,3 +70,25 @@ the change is a scope addition inside one phase, reversible before merge.
 - The phase-id pattern the conflicts command enforces (intake section 6a)
   suits hemma phases named M1-P1 and M1-P2. It is noted, not changed.
 - Push access to hemma remains an owner action. Step 3 cannot run without it.
+
+## Addendum, 2026-09-24: what the implementation found
+
+Recorded by the orchestrator after the kernel half and its fix round 1 (review
+finding CR-KH-005). The decision is unchanged. Its "What changes" section
+assumed init must produce or locate all of I-7 to I-10. Measurement showed
+that only one of them is really consumed from a user's tree:
+
+- I-7, `assurance-modes.yaml`: needed in the PROJECT repository, because the
+  merge regime reads it from the commit. `tiphys init --project` now writes
+  it as a byte copy of the kernel's file.
+- I-8, `schemas/`: not needed. Its only context read is src/checks.ts:746,
+  inside an assurance-modes check the merge regime does not run.
+- I-9, the gate registry: project-owned, from the shipped template.
+- I-10, the `.ctx-*/` ignore line: not needed. No kernel code produces or
+  reads it.
+
+The fleet home itself needs no kernel files. The evidence and the remaining
+post-init steps are in delivery/verification/m5-hemma-intake.md:244 (section
+4e). Known residue from the reviews: the project copy can drift after a kernel
+upgrade, the charter lives in two places with no agreement check, and the copy
+cannot be validated inside a project. Each is recorded there, not fixed here.
