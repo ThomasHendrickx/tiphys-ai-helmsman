@@ -1,13 +1,24 @@
 import { spawnSync } from "node:child_process";
 import {
+  closeSync,
+  constants as fsConstants,
   existsSync,
+  fstatSync,
+  lstatSync,
   mkdirSync,
+  openSync,
+  readFileSync,
   readdirSync,
+  realpathSync,
   statSync,
   writeFileSync,
 } from "node:fs";
+import type { Stats } from "node:fs";
 import { join, resolve } from "node:path";
 import { EX_USAGE } from "../cli.ts";
+import { CHARTER_DIRECTORY, ROOT_CHARTER_FILE } from "../charter.ts";
+import { MODES_FILENAME, packageRoot } from "../modes.ts";
+import { classifyEntry } from "../task.ts";
 import {
   DEFAULT_SHARED_REF,
   DEFAULT_SHARED_REMOTE,
@@ -87,17 +98,28 @@ function runGit(
  */
 const SHARED_EXCLUSION_FLAG = "--shared-exclusion";
 
+/** The project arm's flag (M5-P6, DR-0058); see `initProject` below. */
+export const PROJECT_FLAG = "--project";
+
+/** The shipped, project-owned gate registry starting point (DR-0058, I-9). */
+export const GATE_REGISTRY_TEMPLATE = join("templates", "gate-registry.example.yaml");
+
+const INIT_USAGE = `usage: tiphys init <dir> [${SHARED_EXCLUSION_FLAG}] | tiphys init ${PROJECT_FLAG} <repo>`;
+
 /**
  * tiphys init <dir> [--shared-exclusion]: create a fleet home in an empty or
  * absent directory (kernel plan v1, M1-P2 step 2). Substrate-neutral: pure
  * filesystem and git (DR-0007).
  */
 export function cmdInit(args: string[]): number {
+  if (args[0] === PROJECT_FLAG) {
+    return initProject(args.slice(1));
+  }
   const rest = args.filter((arg) => arg !== SHARED_EXCLUSION_FLAG);
   const sharedExclusion = args.length !== rest.length;
   const [dir, ...extra] = rest;
   if (dir === undefined || extra.length > 0) {
-    process.stderr.write(`usage: tiphys init <dir> [${SHARED_EXCLUSION_FLAG}]\n`);
+    process.stderr.write(`${INIT_USAGE}\n`);
     return EX_USAGE;
   }
   const root = resolve(dir);
@@ -209,5 +231,217 @@ export function cmdInit(args: string[]): number {
       `declared ${SHARED_EXCLUSION_FIELD} on ${DEFAULT_SHARED_REMOTE} at ${DEFAULT_SHARED_REF}\n`,
     );
   }
+  /* THE NEXT STEPS ARE PRINTED, NOT LEFT TO BE KNOWN (M5-P6, DR-0058). The
+     fleet home needs nothing more from the kernel: measured against this
+     layout, every fleet-scoped command resolves roles, schemas, checklists
+     and the mode document from the kernel's own install. What remains is the
+     project's charter and, in the PROJECT repository, the one kernel file the
+     merge gates read from a commit. Both are named here so that neither is an
+     undocumented manual step. */
+  process.stdout.write(
+    `next: write the project charter as ${join(root, CHARTER_DIRECTORY, "<project>.yaml")}\n`,
+  );
+  process.stdout.write(
+    `next: in the project repository run tiphys init ${PROJECT_FLAG} <repo>\n`,
+  );
+  return 0;
+}
+
+/**
+ * THE PROJECT ARM, `tiphys init --project <repo>` (M5-P6, DR-0058).
+ *
+ * WHY IT EXISTS. The fleet home is not where the kernel's configuration is
+ * consumed. The merge-authority regime reads `charter.yaml` AND
+ * `assurance-modes.yaml` from the COMMIT of the repository the gates run in
+ * (REGIME_DOCUMENTS and `missingRegimeDocument` in src/checks.ts; the merge
+ * gate's `--context` defaults to the working directory). The charter is the
+ * project's. `assurance-modes.yaml` is the KERNEL's closed vocabulary
+ * (DR-0020), and until this arm nothing produced it in a project: the only
+ * onboarded project carried hand-placed kernel files instead.
+ *
+ * A COPY, NOT A LINK, AND NOT A RESOLUTION THROUGH THE INSTALL. Measured for
+ * M5-P6: a committed symbolic link passes the regime's presence probe
+ * (`git cat-file -t` says `blob`) and then yields its TARGET PATH as the
+ * document body, so the regime would be present and wrong. Resolving the file
+ * from the operator's installed kernel instead would make a merge decision
+ * depend on the operator's machine rather than on the commit being merged,
+ * which is what the commit-sourced read exists to prevent. So the file is
+ * written as a byte-identical copy of the initializing kernel's own document,
+ * to be committed with the project.
+ *
+ * IT NEVER OVERWRITES. An identical copy is reported present. A differing one
+ * is refused, because replacing the vocabulary a project's merges are judged
+ * under is an upgrade and must be deliberate. A symbolic link at that path is
+ * refused by name, for the reason above. The project's own documents, the
+ * charter and the gate registry, are REPORTED and never written: a registry
+ * the kernel wrote would be predicates the project did not choose.
+ *
+ * Exit codes: 0 the kernel configuration is in place, 1 refused, 64 usage.
+ */
+/**
+ * Read the project's existing copy WITHOUT following a link, and only if the
+ * opened object is a regular file (fix round 1, CR-KH-003). The lstat in
+ * `initProject` established the type; this re-establishes it on the object
+ * actually read, so a link swapped in between the two fails the open with
+ * ELOOP rather than being read through. A read that fails for any reason
+ * returns an empty buffer, which differs from the kernel's bytes and is
+ * therefore REFUSED, never overwritten.
+ */
+export function readProjectCopy(target: string): Buffer {
+  let fd: number | undefined;
+  try {
+    fd = openSync(target, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+    if (!fstatSync(fd).isFile()) {
+      return Buffer.alloc(0);
+    }
+    return readFileSync(fd);
+  } catch {
+    return Buffer.alloc(0);
+  } finally {
+    if (fd !== undefined) {
+      closeSync(fd);
+    }
+  }
+}
+
+/**
+ * Create the project copy with O_CREAT|O_EXCL (`wx`), which fails with EEXIST
+ * when ANY entry is at the path, a dangling symbolic link included, and does
+ * not follow it (fix round 1, CR-KH-003). Returns undefined on success, or the
+ * error code. Without the exclusive flag a dangling link placed at the path
+ * would be followed and its target created.
+ */
+export function createCopyExclusively(target: string, bytes: Buffer): string | undefined {
+  try {
+    writeFileSync(target, bytes, { flag: "wx" });
+    return undefined;
+  } catch (error) {
+    return String((error as NodeJS.ErrnoException).code ?? error);
+  }
+}
+
+function initProject(args: string[]): number {
+  const [dir, ...extra] = args;
+  if (dir === undefined || extra.length > 0) {
+    process.stderr.write(`${INIT_USAGE}\n`);
+    return EX_USAGE;
+  }
+  const root = resolve(dir);
+  const rootType = classifyEntry(root);
+  if (rootType.kind === "absent") {
+    process.stderr.write(`tiphys init ${PROJECT_FLAG}: ${root} does not exist\n`);
+    return 1;
+  }
+  /* A SYMBOLIC LINK TO A REPOSITORY IS A REPOSITORY (fix round 1, CR-KH-002).
+     The root is resolved with the FOLLOWING stat and then used by its real
+     path from here on, so a checkout reached through a link is accepted and a
+     dangling link is named as what it is rather than as "not a directory". */
+  let realRoot: string;
+  let rootIsDirectory: boolean;
+  try {
+    realRoot = realpathSync(root);
+    rootIsDirectory = statSync(realRoot).isDirectory();
+  } catch (error) {
+    process.stderr.write(
+      `tiphys init ${PROJECT_FLAG}: ${root} could not be resolved (${String((error as NodeJS.ErrnoException).code ?? error)}); a symbolic link must point at an existing directory\n`,
+    );
+    return 1;
+  }
+  if (!rootIsDirectory) {
+    process.stderr.write(`tiphys init ${PROJECT_FLAG}: ${root} is not a directory\n`);
+    return 1;
+  }
+  const top = spawnSync("git", ["-C", realRoot, "rev-parse", "--show-toplevel"], {
+    encoding: "utf8",
+  });
+  if (top.status !== 0 || resolve(top.stdout.trim()) !== realRoot) {
+    process.stderr.write(
+      `tiphys init ${PROJECT_FLAG}: ${root} is not the top level of a git work tree; the merge gates read the kernel file from a commit of the project repository, so it must be written at that repository's root\n`,
+    );
+    return 1;
+  }
+
+  let kernelRoot: string;
+  try {
+    kernelRoot = packageRoot();
+  } catch (error) {
+    process.stderr.write(`tiphys init ${PROJECT_FLAG}: ${String((error as Error).message)}\n`);
+    return 1;
+  }
+  const source = join(kernelRoot, MODES_FILENAME);
+  /* The kernel's own copy is read under the same convention as every other
+     failure here (fix round 1, CR-KH-004): an attributed line and exit 1, not
+     an uncaught throw. */
+  let kernelBytes: Buffer;
+  try {
+    kernelBytes = readFileSync(source);
+  } catch (error) {
+    process.stderr.write(
+      `tiphys init ${PROJECT_FLAG}: the kernel's own ${source} could not be read: ${String(error)}\n`,
+    );
+    return 1;
+  }
+  const target = join(realRoot, MODES_FILENAME);
+  const version = readOwnVersion();
+
+  let existing: Stats | undefined;
+  try {
+    existing = lstatSync(target);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      process.stderr.write(
+        `tiphys init ${PROJECT_FLAG}: ${target} could not be examined: ${String(error)}\n`,
+      );
+      return 1;
+    }
+  }
+  if (existing === undefined) {
+    /* EXCLUSIVE CREATE (fix round 1, CR-KH-003). `wx` is O_CREAT|O_EXCL,
+       which fails with EEXIST if anything, a symbolic link included, appeared
+       at the path after the lstat above. It is never followed. */
+    const refused = createCopyExclusively(target, kernelBytes);
+    if (refused !== undefined) {
+      process.stderr.write(
+        `tiphys init ${PROJECT_FLAG}: ${target} could not be created exclusively (${refused}); something appeared at that path while init ran, and nothing was written\n`,
+      );
+      return 1;
+    }
+    process.stdout.write(
+      `wrote ${MODES_FILENAME}: a copy of kernel ${version}'s ${source}; commit it, the merge gates read it from the commit\n`,
+    );
+  } else if (existing.isSymbolicLink()) {
+    process.stderr.write(
+      `tiphys init ${PROJECT_FLAG}: ${target} is a symbolic link; a committed link carries its target path, not the document, so the merge gates would read the wrong bytes. Replace it with the file, not a link\n`,
+    );
+    return 1;
+  } else if (!existing.isFile()) {
+    process.stderr.write(
+      `tiphys init ${PROJECT_FLAG}: ${target} exists and is not a regular file, refusing\n`,
+    );
+    return 1;
+  } else if (!readProjectCopy(target).equals(kernelBytes)) {
+    process.stderr.write(
+      `tiphys init ${PROJECT_FLAG}: ${target} differs from kernel ${version}'s ${MODES_FILENAME} and was not overwritten; replacing it is an upgrade and must be deliberate\n`,
+    );
+    return 1;
+  } else {
+    process.stdout.write(
+      `present ${MODES_FILENAME}: identical to kernel ${version}'s copy\n`,
+    );
+  }
+
+  /* The project's own documents are REPORTED, never written. */
+  const charter = join(realRoot, ROOT_CHARTER_FILE);
+  process.stdout.write(
+    classifyEntry(charter).kind === "absent"
+      ? `project ${ROOT_CHARTER_FILE}: absent; the project writes its charter at ${charter} (read from the commit by the merge gates)\n`
+      : `project ${ROOT_CHARTER_FILE}: present\n`,
+  );
+  const registry = join(realRoot, "gate-registry.yaml");
+  process.stdout.write(
+    classifyEntry(registry).kind === "absent"
+      ? `project gate-registry.yaml: absent; the project writes its own, starting from ${join(kernelRoot, GATE_REGISTRY_TEMPLATE)}\n`
+      : `project gate-registry.yaml: present\n`,
+  );
   return 0;
 }

@@ -1,0 +1,31 @@
+{
+  "id": "init-project-kernel-read-attributed",
+  "behavior": "init-project-kernel-read-attributed",
+  "tests": [
+    "init --project reports an unreadable kernel assurance-modes.yaml as an attributed refusal, not a crash"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "    kernelBytes = readFileSync(source);\n  } catch (error) {\n",
+      "replace": "    kernelBytes = readFileSync(source);\n  } catch (error) {\n    throw error;\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "the kernel's own ${source} could not be read: ",
+      "replace": "failed: "
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git -C <dir> rev-parse --show-toplevel",
+    "captures": [
+      "witness/captures/init-project-rev-parse-toplevel.txt"
+    ],
+    "provenance": "src/commands/init.ts spawns git -C <dir> rev-parse --show-toplevel in the --project arm and PARSES it: <dir> is accepted only when the exit is 0 AND the trimmed stdout resolves to the same real path as <dir>. Red-witness rule (f) therefore binds every witness whose members touch that file. The cited capture is a real run taken 2026-09-24 against git 2.43.0 in a scratch directory, with only that directory's absolute path replaced by <scratch>, and the named test `the captured rev-parse contract init --project parses is reproduced live` re-runs each block and requires the live stdout and exit to equal the recorded ones. The fact that earns its place: a subdirectory of a repository exits 0 and prints the ROOT, so exit status alone would accept it; the stdout comparison is what refuses it."
+  },
+  "deterministic": true,
+  "repeats": 2
+}

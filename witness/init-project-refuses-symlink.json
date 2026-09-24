@@ -1,0 +1,31 @@
+{
+  "id": "init-project-refuses-symlink",
+  "behavior": "init-project-refuses-symlink",
+  "tests": [
+    "init --project refuses a symbolic link at assurance-modes.yaml and leaves it in place"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "    existing = lstatSync(target);\n",
+      "replace": "    existing = lstatSync(realpathSync(target));\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "  } else if (existing.isSymbolicLink()) {\n",
+      "replace": "  } else if (existing.isSymbolicLink() && false) {\n"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git -C <dir> rev-parse --show-toplevel",
+    "captures": [
+      "witness/captures/init-project-rev-parse-toplevel.txt"
+    ],
+    "provenance": "src/commands/init.ts spawns git -C <dir> rev-parse --show-toplevel in the --project arm and PARSES it: <dir> is accepted only when the exit is 0 AND the trimmed stdout resolves to the same real path as <dir>. Red-witness rule (f) therefore binds every witness whose members touch that file. The cited capture is a real run taken 2026-09-24 against git 2.43.0 in a scratch directory, with only that directory's absolute path replaced by <scratch>, and the named test `the captured rev-parse contract init --project parses is reproduced live` re-runs each block and requires the live stdout and exit to equal the recorded ones. The fact that earns its place: a subdirectory of a repository exits 0 and prints the ROOT, so exit status alone would accept it; the stdout comparison is what refuses it."
+  },
+  "deterministic": true,
+  "repeats": 2
+}

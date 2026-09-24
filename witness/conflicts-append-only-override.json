@@ -1,0 +1,18 @@
+{
+  "id": "conflicts-append-only-override",
+  "behavior": "conflicts-append-only-override-replaces-default",
+  "tests": [
+    "--append-only replaces the default registry list, so an unlisted shared registry is an overlap"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "      appendOnly: explicit.length > 0 ? explicit : [...DEFAULT_APPEND_ONLY],",
+      "replace": "      appendOnly: [...DEFAULT_APPEND_ONLY],"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

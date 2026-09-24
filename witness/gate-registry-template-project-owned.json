@@ -1,0 +1,30 @@
+{
+  "id": "gate-registry-template-project-owned",
+  "behavior": "gate-registry-template-project-owned",
+  "tests": [
+    "the shipped gate registry template validates and names no kernel command"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "templates/gate-registry.example.yaml",
+      "find": "    command: [node, scripts/tiphys-gates/unit-tests.mjs]\n",
+      "replace": "    command: [node, src/gates/suite.ts, --pin-root, src]\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "templates/gate-registry.example.yaml",
+      "find": "    command: [node, scripts/tiphys-gates/lint.mjs]\n",
+      "replace": "    command: [node, scripts/license-gate.mjs]\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "templates/gate-registry.example.yaml",
+      "find": "kind: gate-registry\n",
+      "replace": "kind: gate-registries\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

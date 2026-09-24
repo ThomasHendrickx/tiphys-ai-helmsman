@@ -58,7 +58,16 @@ the merge gate rather than not-applicable.
   The M4 exit test on pulse ran and is NOT DISCHARGED; that branch's
   `delivery/verification/m4-exit-test-pulse.md` records why. The next step is
   owner action A-17.
-- M5-P6, scale-out proof: `claude/m5-p6-scale-out-proof`, wave D.
+- M5-P6, scale-out proof: `claude/m5-p6-scale-out-proof`, wave D. The kernel
+  half (conflicts command, DR-0058 init change, hemma intake) is reviewed:
+  both clean-room reviews APPROVE at 45a0d54 after one fix round. Step 3 is
+  DONE: hemma and hemma-fleet were bootstrapped (hemma 456, hemma-fleet 1),
+  and hemma phases M1-P1 (457) and M1-P2 (458) ran concurrently, merged
+  serially, with every post-merge push run green. Step 4, the exit report, is
+  written: delivery/verification/m5-scale-out-exit.md. Verdicts: p6-prepass,
+  p6-parallel-value and p6-attribution MET; p6-charter-only NOT MET on
+  released 0.2.1 (H-6), met by this branch's `init --project` once released,
+  which is a follow-up release. Next: this phase's own pull request.
 
 ### Owner decisions open
 
@@ -146,6 +155,24 @@ The full runnable text of every open action is in the register below.
 
   workflow run: https://github.com/ThomasHendrickx/tiphys-ai-helmsman/actions/runs/35839356656"
   ```
+
+- **A-18: GIVE M5-P6 STEP 3 WRITE ACCESS TO HEMMA.** Opened 2026-09-24. DONE.
+  M5-P6 step 3 bootstraps hemma and merges two phases there. The intake,
+  delivery/verification/m5-hemma-intake.md:244, found two things missing:
+
+  - Push access to `ThomasHendrickx/hemma`. A read clone works; a push
+    attach was refused by this session's permission layer twice on
+    2026-09-24.
+  - A fleet-home repository for hemma, because `tiphys init` refuses a
+    non-empty directory and the fleet home is its own repository, as
+    pulse-fleet is for pulse. A suggested name is `hemma-fleet`.
+
+  Done when both are attached to the orchestrator session with push access.
+
+  DONE 2026-09-24. The owner created `ThomasHendrickx/hemma-fleet` (empty)
+  and approved, in the session, working with hemma and hemma-fleet. Both are
+  attached. Push authorization is confirmed only by the first real push,
+  because a dry-run does not probe it (CLAUDE.md standing warning 14).
 
 - **A-17: MAKE PULSE ABLE TO PASS THE M4 EXIT TEST.** Opened 2026-09-24. OPEN.
   The M4 exit test is NOT discharged. The evidence is on the M5-P1 branch, not
@@ -499,6 +526,12 @@ expectation row (present at scripts/m2-exit-test.sh:221).
 
 **Kernel 0.2.1 follow-ups, added 2026-09-24.** None is assigned. Each one names
 what is known and what is not.
+
+- **M5-P6 criterion p6-charter-only is met on the branch, not on a release
+  (DR-0059).** hemma received `assurance-modes.yaml` by hand because 0.2.1 has
+  no `init --project`. Closing it: after M5-P6 merges, publish a release that
+  carries `init --project` (owner approval needed), run it in hemma, and
+  record that it reports the copy as present and identical.
 
 - **merge-preconditions has no arm for a non-phase branch in the dual-review
   tier.** Condition 5 reads red whenever the scope record is not green
