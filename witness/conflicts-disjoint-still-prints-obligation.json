@@ -1,0 +1,24 @@
+{
+  "id": "conflicts-disjoint-still-prints-obligation",
+  "behavior": "conflicts-disjoint-exit-zero-with-obligation",
+  "tests": [
+    "conflicts exits 0 with zero overlaps for a disjoint pair and still prints the semantic coupling obligation"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "    out(SEMANTIC_COUPLING_OBLIGATION);\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "  return finish(overlappingPairs > 0 ? EXIT_OVERLAP : 0);",
+      "replace": "  return overlappingPairs > 0 ? finish(EXIT_OVERLAP) : 0;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

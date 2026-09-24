@@ -1,0 +1,91 @@
+{
+  "kind": "verdict",
+  "phase": "M5-P6",
+  "head": "8c17a5f469f7820de8101aca382f13e2d0212efc",
+  "tiphys-version": "0.2.1",
+  "verdict": "APPROVE",
+  "produced-by": "claude-opus-5-5",
+  "framing": "criteria-contract-re-verification-of-final-review-fixes-at-8c17a5f",
+  "review-contract": "criteria",
+  "findings": [
+    {
+      "id": "CR-006",
+      "severity": "low",
+      "evidence": [
+        "readProjectCopy in src/commands/init.ts maps every read failure to an empty buffer, which is reported as 'differs from kernel'. It fails safe (it refuses and writes nothing) but names the wrong cause",
+        "Unchanged in 903a3cd..8c17a5f (delivery/ only); accepted residue per the coordinator; not measured, because this container runs as uid 0"
+      ],
+      "concrete-fix": "Report a read failure of an existing project copy with its errno rather than as a content difference; tracked residue, not blocking."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "p6-prepass",
+      "quote": "The conflict command exits nonzero and names every overlapping literal path for an overlapping fixture pair, exits 0 with zero overlaps for a disjoint pair, and always prints that semantic coupling remains a review obligation.",
+      "evidence": [
+        "Delta 45a0d54..8c17a5f touches only delivery/ (45a0d54..903a3cd: 17 files; 903a3cd..8c17a5f: 6 files), so src/commands/conflicts.ts is as walked at 45a0d54",
+        "Walked by me on fixtures: overlap exit 1 naming all 3 paths including a directory-contains-path case; disjoint exit 0 with DISJOINT; usage exit 64; duplicate id exit 2 NO VERDICT; the semantic-coupling line printed on all runs",
+        "Non-canonical spellings (./src/a.ts, src//a.ts, src/./a.ts, src/b/../a.ts, /src/a.ts) each exit 2 NO VERDICT with no DISJOINT line; all 57 real declarations: 0 refusals, 1596 pairs",
+        "Mutations of conflicts.ts (6 in total across two rounds) each turned a named test red; controls green"
+      ],
+      "met": true
+    },
+    {
+      "id": "p6-charter-only",
+      "quote": "delivery/verification/m5-hemma-intake.md enumerates every bootstrap input and shows that no kernel-specific configuration beyond the project charter and project-owned predicates was hand-added before init.",
+      "evidence": [
+        "delivery/verification/m5-scale-out-exit.md:469: 18 inputs classified; B-8 / H-6, assurance-modes.yaml placed in hemma by hand, is kernel configuration, because released 0.2.1 has no init --project",
+        "The report states NOT MET plainly at delivery/verification/m5-scale-out-exit.md:469 and delivery/verification/m5-scale-out-exit.md:1027 and in delivery/STATE.md:70; I agree it is correct: hemma was bootstrapped with 0.2.1, and no run of this branch's init --project against hemma is recorded",
+        "The kernel-side remedy exists and was reviewed: src/commands/init.ts:323 (init --project), approved at 45a0d54",
+        "Accepted as not met by decision DR-0059 (delivery/decisions/DR-0059-m5-p6-merges-with-charter-only-met-on-the-branch-not-the-release.md:30): merge first, because a release is cut from main; then release init --project and prove it in hemma",
+        "Follow-up registered at delivery/STATE.md:526 under 'Tracked obligations, unowned'; intake pointer added at delivery/verification/m5-hemma-intake.md:215 (CR-008)"
+      ],
+      "met": false
+    },
+    {
+      "id": "p6-parallel-value",
+      "quote": "delivery/verification/m5-scale-out-exit.md names two concurrently active disjoint phases, their reviewed heads, serial merges, green post-merge push runs and final delivered outcomes, with resolvable evidence for each fact.",
+      "evidence": [
+        "GitHub MCP pull_request_read: hemma 457 head 8380ad0 base 16a5588 created 15:26:58Z merged 15:48:10Z; hemma 458 head a49d417 base 16a5588 created 15:36:42Z merged 15:58:41Z; both merged true",
+        "GitHub MCP list_commits at 5bf2e57: first phase commits bfe626e 15:01:46 and 86f95fb 15:01:55, so both phases had unmerged work 15:01:55 to 15:48:10 and both PRs were open 15:36:42 to 15:48:10",
+        "GitHub MCP get_workflow_run: all 12 runs named in section 2d completed success at the stated heads; post-merge push runs 36022844051 and 36022844293 on ccd658c completed 15:57:46 and 15:57:55, before 458 merged at 15:58:41; push runs 36024088802 and 36024088752 on 5bf2e57 completed success",
+        "Scratch clone of hemma at 5bf2e57, node v26.6.0: npm ci --ignore-scripts exit 0; npx eslint --max-warnings 0 on both specs exit 0; per-spec warnings 7 at 16a5588 (hemma-lint/no-untimed-clock-in-specs) and 0 at 5bf2e57",
+        "diff --stat 8380ad0 ccd658c empty; diff --name-only 16a5588 a49d417 and a49d417 5bf2e57 list disjoint two-file sets",
+        "Ten hemma review documents copied byte-identical (cmp and sha256 against the originals)"
+      ],
+      "met": true
+    },
+    {
+      "id": "p6-attribution",
+      "quote": "Every failure in the exit report is classified as kernel, project predicate, environment or owner action with the command or API result that establishes the class.",
+      "evidence": [
+        "delivery/verification/m5-scale-out-exit.md:984 onward: 30 rows, each with a class and the command or API result that establishes it; one row (A-30) is classified as not a failure with its reason",
+        "Spot-checked A-1 against GitHub: run 36007584690 Tiphys gates, pull_request, head 668f690, conclusion failure; A-15 matches H-6 at delivery/verification/m5-scale-out-exit.md:998"
+      ],
+      "met": true
+    },
+    {
+      "id": "p6-suite",
+      "quote": "npm run build and node --test both exit 0 with a nonzero test count.",
+      "evidence": [
+        "node v26.6.0, npm 11.18.0 at 903a3cd: npm ci exit 0, npm run build exit 0, status --short empty after build",
+        "bare node --test from the repository root, dist built: exit 0, tests 1515, pass 1515, fail 0, cancelled 0, skipped 0",
+        "npm test (node --test \"test/**/*.test.ts\"), dist built: exit 0, tests 1512, pass 1512, fail 0, skipped 0, matching the exit report's stated invocation and count",
+        "Delta 903a3cd..8c17a5f is one commit touching only delivery/ (6 files), so the suite result at 903a3cd carries to 8c17a5f unchanged"
+      ],
+      "met": true
+    }
+  ],
+  "deviations-judged": [
+    {
+      "deviation": "DR-0058 committed init to producing or locating I-7 to I-10; the shipped code produces only I-7 (into the project), shows I-8 and I-10 are not consumed, and replaces I-9 with a template.",
+      "serves-plan-intent": true,
+      "reasoning": "Independently derived in this review (section 6 of the report): no fleet-scoped command reads a kernel file from the fleet directory, and the regime read does not reach schemas/. The narrowing is recorded in the DR-0058 addendum and intake 4e, so nothing moved into an undocumented manual step."
+    },
+    {
+      "deviation": "The hemma bootstrap used released kernel 0.2.1 rather than this branch, so assurance-modes.yaml was hand-copied (H-6) and the gate-registry template was read from this branch.",
+      "serves-plan-intent": true,
+      "reasoning": "It was the only released kernel, and the handwork (H-6) is declared, not hidden. DR-0059 now records the decision to merge with p6-charter-only not met, with its reason: the producer reaches a release only through main. The closing work is registered in STATE. The phase's value, two concurrent disjoint phases delivered in an existing project, is shown with evidence I verified independently."
+    }
+  ]
+}

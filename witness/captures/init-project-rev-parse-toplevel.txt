@@ -1,0 +1,36 @@
+# captured 2026-09-24 with git version 2.43.0
+#
+# The one external program `tiphys init --project <repo>` spawns and PARSES:
+#
+#   git -C <dir> rev-parse --show-toplevel
+#
+# init --project accepts <dir> only when this exits 0 AND its stdout, trimmed,
+# resolves to the same real path as <dir>. Every block below is a real run in a
+# scratch directory, with that directory's absolute path replaced by the
+# literal text <scratch>, each line prefixed with its stream name, and one
+trailing space dropped from the empty `stdout:` line. Nothing else is changed.
+The named test
+# `the captured rev-parse contract init --project parses is reproduced live`
+# re-runs each block in a fresh scratch directory, applies the same
+# replacement, and requires the live stdout and exit status to equal the ones
+# recorded here. stderr is recorded for the reader and is not compared, because
+# its wording is git's and may differ between versions.
+#
+# THE FACT THAT EARNS ITS PLACE: a SUBDIRECTORY of a repository exits 0, the
+# same as the root, and prints the ROOT. So exit status alone accepts a
+# subdirectory, where a file written would be committed at the wrong path for
+# the merge gates' root-relative read. The stdout comparison is what refuses
+# it. Outside any repository the exit is 128 with an empty stdout.
+
+## repository root
+stdout: <scratch>/project
+exit=0
+
+## subdirectory of a repository
+stdout: <scratch>/project
+exit=0
+
+## directory outside any repository
+stdout:
+stderr: fatal: not a git repository (or any of the parent directories): .git
+exit=128

@@ -1,13 +1,17 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import {
+  cpSync,
   existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -248,4 +252,300 @@ test("init writes a fleet package.json depending on the published kernel at an e
     false,
     `the M1-P2 placeholder text survives beside the pin: ${String(manifest.description)}`,
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* M5-P6, DR-0058: init closes the charter-only gap                    */
+/* ------------------------------------------------------------------ */
+
+const { missingRegimeDocument } = (await import(
+  new URL("../src/checks.ts", import.meta.url).href
+)) as {
+  missingRegimeDocument: (dir: string) => { document: string } | undefined;
+};
+const { decodeDocument } = (await import(
+  new URL("../src/validate.ts", import.meta.url).href
+)) as {
+  decodeDocument: (
+    text: string,
+    label: string,
+  ) => { ok: true; value: unknown } | { ok: false; reason: string };
+};
+
+const kernelFile = (relative: string): string =>
+  fileURLToPath(new URL(`../${relative}`, import.meta.url));
+
+const SCRATCH_IDENTITY = {
+  GIT_AUTHOR_NAME: "Tiphys Test",
+  GIT_AUTHOR_EMAIL: "test@tiphys.invalid",
+  GIT_COMMITTER_NAME: "Tiphys Test",
+  GIT_COMMITTER_EMAIL: "test@tiphys.invalid",
+};
+
+/** A project repository the way a consumer has one: a git work tree with files. */
+function makeProject(t: { after(fn: () => void): void }): string {
+  const repo = join(makeTempDir(t), "project");
+  mkdirSync(repo);
+  assert.equal(gitIn(repo, ["init", "--quiet", "--initial-branch=main"]).status, 0);
+  writeFileSync(join(repo, "README.md"), "# a project that already exists\n");
+  return repo;
+}
+
+function commitAll(repo: string): void {
+  const env = { ...process.env, ...SCRATCH_IDENTITY };
+  assert.equal(gitIn(repo, ["add", "-A"], env).status, 0);
+  const made = gitIn(repo, ["commit", "--quiet", "-m", "project state"], env);
+  assert.equal(made.status, 0, made.stderr);
+}
+
+test("init --project writes a byte-identical copy of the kernel assurance-modes.yaml into the project root", (t) => {
+  const repo = makeProject(t);
+  const result = runCli(["init", "--project", repo]);
+  assert.equal(result.status, 0, result.stderr);
+  const written = join(repo, "assurance-modes.yaml");
+  /* A COPY, a regular file, not a link: a committed link carries its target
+     path rather than the document (measured for M5-P6). */
+  assert.equal(lstatSync(written).isSymbolicLink(), false, "init wrote a symbolic link");
+  assert.ok(lstatSync(written).isFile(), "assurance-modes.yaml is not a regular file");
+  assert.ok(
+    readFileSync(written).equals(readFileSync(kernelFile("assurance-modes.yaml"))),
+    "the project copy differs from the kernel's assurance-modes.yaml",
+  );
+  assert.match(result.stdout, /^wrote assurance-modes\.yaml: /m);
+  /* Idempotent on an identical copy. */
+  const again = runCli(["init", "--project", repo]);
+  assert.equal(again.status, 0, again.stderr);
+  assert.match(again.stdout, /^present assurance-modes\.yaml: identical/m);
+});
+
+test("a project prepared by init --project and its own charter satisfies the merge regime from the commit", (t) => {
+  /* THE DANGEROUS STATE this guards, asserted first as a precondition: a
+     project carrying only its charter, which is what charter-only onboarding
+     looked like before this phase, is MISSING a regime document, and the
+     missing one is the kernel's, not the project's. */
+  const bare = makeProject(t);
+  writeFileSync(join(bare, "charter.yaml"), readFileSync(kernelFile("templates/charter.example.yaml")));
+  commitAll(bare);
+  assert.equal(
+    missingRegimeDocument(bare)?.document,
+    "assurance-modes.yaml",
+    "precondition violated: a charter-only project already satisfies the regime",
+  );
+
+  const repo = makeProject(t);
+  writeFileSync(join(repo, "charter.yaml"), readFileSync(kernelFile("templates/charter.example.yaml")));
+  const result = runCli(["init", "--project", repo]);
+  assert.equal(result.status, 0, result.stderr);
+  commitAll(repo);
+  assert.equal(missingRegimeDocument(repo), undefined, "the regime still misses a document after init --project");
+  /* And the committed bytes ARE the modes document, which is what a link
+     would fail: git's own output, read back rather than assumed. */
+  const shown = gitIn(repo, ["show", "HEAD:./assurance-modes.yaml"]);
+  assert.equal(shown.status, 0, shown.stderr);
+  assert.equal(shown.stdout, readFileSync(kernelFile("assurance-modes.yaml"), "utf8"));
+});
+
+test("init --project refuses a symbolic link at assurance-modes.yaml and leaves it in place", (t) => {
+  const repo = makeProject(t);
+  const link = join(repo, "assurance-modes.yaml");
+  symlinkSync(kernelFile("assurance-modes.yaml"), link);
+  const result = runCli(["init", "--project", repo]);
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stderr, /symbolic link/);
+  assert.ok(lstatSync(link).isSymbolicLink(), "init replaced the link it refused");
+});
+
+test("init --project refuses a differing assurance-modes.yaml and does not overwrite it", (t) => {
+  const repo = makeProject(t);
+  const path = join(repo, "assurance-modes.yaml");
+  writeFileSync(path, "kind: assurance-modes\n# a project's older copy\n");
+  const before = readFileSync(path);
+  const result = runCli(["init", "--project", repo]);
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stderr, /differs from kernel .* was not overwritten/);
+  assert.ok(readFileSync(path).equals(before), "init overwrote a differing copy");
+});
+
+test("init --project reports the project charter and gate registry and never writes them", (t) => {
+  const repo = makeProject(t);
+  const result = runCli(["init", "--project", repo]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(existsSync(join(repo, "charter.yaml")), false, "init wrote a charter");
+  assert.equal(existsSync(join(repo, "gate-registry.yaml")), false, "init wrote a gate registry");
+  assert.match(result.stdout, /^project charter\.yaml: absent; /m);
+  const named = /^project gate-registry\.yaml: absent; the project writes its own, starting from (\S+)$/m.exec(
+    result.stdout,
+  );
+  assert.ok(named, `the template is not named: ${result.stdout}`);
+  assert.equal(named[1], kernelFile("templates/gate-registry.example.yaml"));
+  assert.ok(existsSync(named[1] as string), "the named template does not exist");
+});
+
+test("init --project refuses a directory that is not the top level of a git work tree", (t) => {
+  const plain = join(makeTempDir(t), "plain");
+  mkdirSync(plain);
+  const result = runCli(["init", "--project", plain]);
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stderr, /not the top level of a git work tree/);
+  assert.equal(existsSync(join(plain, "assurance-modes.yaml")), false, "init wrote outside a repository");
+
+  /* A SUBDIRECTORY of a repository is the quieter form: git works there, and a
+     file written there is committed, but the merge gates read the modes
+     document from the repository ROOT of the commit, so it would be missed. */
+  const repo = makeProject(t);
+  const nested = join(repo, "packages");
+  mkdirSync(nested);
+  const inner = runCli(["init", "--project", nested]);
+  assert.equal(inner.status, 1, inner.stdout);
+  assert.match(inner.stderr, /not the top level of a git work tree/);
+  assert.equal(existsSync(join(nested, "assurance-modes.yaml")), false, "init wrote below the repository root");
+});
+
+test("the shipped gate registry template validates and names no kernel command", () => {
+  const path = kernelFile("templates/gate-registry.example.yaml");
+  const validated = runCli(["validate", "--type", "gate-registry", path]);
+  assert.equal(validated.status, 0, validated.stdout + validated.stderr);
+  const decoded = decodeDocument(readFileSync(path, "utf8"), path);
+  assert.ok(decoded.ok, decoded.ok ? "" : decoded.reason);
+  const gates = (decoded.value as { gates?: { id: string; command?: string[] }[] }).gates ?? [];
+  assert.ok(gates.length > 0, "the template declares no gates");
+  /* THE DANGEROUS STATE is the pulse-fleet one: the kernel's own registry
+     standing in for the project's. The kernel's gate SCRIPTS are read from the
+     kernel's registry at run time, not hand-listed, and none of them may be
+     named by any template command. Gate ids are not compared: a project may
+     well have a gate called typecheck. */
+  const kernelRegistry = decodeDocument(
+    readFileSync(kernelFile("gate-registry.yaml"), "utf8"),
+    "gate-registry.yaml",
+  );
+  assert.ok(kernelRegistry.ok, kernelRegistry.ok ? "" : kernelRegistry.reason);
+  const kernelScripts = new Set(
+    ((kernelRegistry.value as { gates?: { command?: string[] }[] }).gates ?? [])
+      .flatMap((gate) => gate.command ?? [])
+      .filter((word) => /\.(ts|mjs|js)$/.test(word)),
+  );
+  assert.ok(kernelScripts.size > 0, "precondition violated: no kernel gate scripts were read");
+  for (const gate of gates) {
+    for (const word of gate.command ?? []) {
+      assert.equal(kernelScripts.has(word), false, `${gate.id} runs the kernel's ${word}`);
+    }
+  }
+});
+
+test("init prints the next steps naming the fleet charter location and the project arm", (t) => {
+  const fleet = join(makeTempDir(t), "fleet");
+  const result = runCli(["init", fleet]);
+  assert.equal(result.status, 0, result.stderr);
+  assert.ok(
+    result.stdout.split("\n").includes(`next: write the project charter as ${join(fleet, "charter", "<project>.yaml")}`),
+    result.stdout,
+  );
+  assert.match(result.stdout, /^next: in the project repository run tiphys init --project <repo>$/m);
+});
+
+test("the captured rev-parse contract init --project parses is reproduced live", (t) => {
+  /* init --project decides "is this the top level of a git work tree" from
+     git's own output. The capture below is a real run; this test re-runs each
+     block and requires the live stdout and exit to equal the recorded ones, so
+     the refusal tests above rest on git's behaviour rather than on strings
+     chosen to match the implementation. */
+  const capture = readFileSync(kernelFile("witness/captures/init-project-rev-parse-toplevel.txt"), "utf8");
+  const blocks = new Map<string, { stdout: string; exit: number }>();
+  for (const chunk of capture.split(/^## /m).slice(1)) {
+    const [label, ...lines] = chunk.split("\n");
+    const stdout = lines.find((line) => line.startsWith("stdout:"));
+    const exit = lines.find((line) => line.startsWith("exit="));
+    assert.ok(stdout !== undefined && exit !== undefined, `capture block ${label} is incomplete`);
+    blocks.set(label as string, { stdout: stdout.slice("stdout:".length).trim(), exit: Number(exit.slice(5)) });
+  }
+  const scratch = realpathSync(makeTempDir(t));
+  mkdirSync(join(scratch, "plain"));
+  mkdirSync(join(scratch, "project"));
+  assert.equal(gitIn(join(scratch, "project"), ["init", "--quiet", "--initial-branch=main"]).status, 0);
+  mkdirSync(join(scratch, "project", "packages"));
+  const dirs: Record<string, string> = {
+    "repository root": join(scratch, "project"),
+    "subdirectory of a repository": join(scratch, "project", "packages"),
+    "directory outside any repository": join(scratch, "plain"),
+  };
+  assert.deepEqual([...blocks.keys()].sort(), Object.keys(dirs).sort(), "the capture's blocks changed");
+  for (const [label, dir] of Object.entries(dirs)) {
+    const live = gitIn(dir, ["rev-parse", "--show-toplevel"]);
+    const recorded = blocks.get(label) as { stdout: string; exit: number };
+    assert.equal(live.status, recorded.exit, `${label}: exit`);
+    assert.equal(live.stdout.trim().split(scratch).join("<scratch>"), recorded.stdout, `${label}: stdout`);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M5-P6 fix round 1: CR-KH-002, CR-KH-003, CR-KH-004                   */
+/* ------------------------------------------------------------------ */
+
+const { readProjectCopy, createCopyExclusively } = (await import(
+  new URL("../src/commands/init.ts", import.meta.url).href
+)) as {
+  readProjectCopy: (target: string) => Buffer;
+  createCopyExclusively: (target: string, bytes: Buffer) => string | undefined;
+};
+
+test("init --project accepts a symbolic link to a repository top level and writes at the real path", (t) => {
+  const repo = makeProject(t);
+  const link = join(makeTempDir(t), "project-link");
+  symlinkSync(repo, link);
+  const result = runCli(["init", "--project", link]);
+  assert.equal(result.status, 0, result.stderr);
+  const written = join(realpathSync(repo), "assurance-modes.yaml");
+  assert.ok(lstatSync(written).isFile(), "the copy is not a regular file at the real repository path");
+  assert.ok(readFileSync(written).equals(readFileSync(kernelFile("assurance-modes.yaml"))));
+
+  /* A DANGLING link is named as one, not as "not a directory". */
+  const dangling = join(makeTempDir(t), "dangling-link");
+  symlinkSync(join(repo, "no-such-directory"), dangling);
+  const refused = runCli(["init", "--project", dangling]);
+  assert.equal(refused.status, 1, refused.stdout);
+  assert.match(refused.stderr, /could not be resolved \(ENOENT\)/);
+  assert.doesNotMatch(refused.stderr, /is not a directory/);
+});
+
+test("init --project reports an unreadable kernel assurance-modes.yaml as an attributed refusal, not a crash", (t) => {
+  /* A staged kernel whose own assurance-modes.yaml is a DIRECTORY: packageRoot
+     finds the name, and the read of it fails. */
+  const kernel = join(makeTempDir(t), "kernel");
+  mkdirSync(kernel);
+  for (const part of ["src", "bin", "package.json", "templates"]) {
+    cpSync(kernelFile(part), join(kernel, part), { recursive: true });
+  }
+  symlinkSync(kernelFile("node_modules"), join(kernel, "node_modules"));
+  mkdirSync(join(kernel, "assurance-modes.yaml"));
+  const repo = makeProject(t);
+  const result = spawnSync(process.execPath, [join(kernel, "bin", "tiphys.ts"), "init", "--project", repo], {
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /^tiphys init --project: the kernel's own .*assurance-modes\.yaml could not be read: /m);
+  assert.doesNotMatch(result.stderr, /^\s+at /m, `a stack trace was printed: ${result.stderr}`);
+  assert.equal(existsSync(join(repo, "assurance-modes.yaml")), false, "init wrote after failing to read the kernel copy");
+});
+
+test("the project copy is created exclusively and read without following a link", (t) => {
+  const dir = makeTempDir(t);
+  const kernelBytes = readFileSync(kernelFile("assurance-modes.yaml"));
+
+  /* Exclusive create: a DANGLING link at the path is not followed, so its
+     target is not created. A plain write would create it. */
+  const elsewhere = join(dir, "elsewhere.yaml");
+  const target = join(dir, "assurance-modes.yaml");
+  symlinkSync(elsewhere, target);
+  assert.equal(createCopyExclusively(target, kernelBytes), "EEXIST");
+  assert.equal(existsSync(elsewhere), false, "the exclusive create followed a dangling link");
+  rmSync(target);
+  assert.equal(createCopyExclusively(target, kernelBytes), undefined);
+  assert.ok(readFileSync(target).equals(kernelBytes));
+
+  /* No-follow read: a link to an IDENTICAL copy reads as nothing, so it is
+     refused as differing rather than accepted as present. */
+  const linked = join(dir, "linked.yaml");
+  symlinkSync(kernelFile("assurance-modes.yaml"), linked);
+  assert.equal(readProjectCopy(linked).length, 0, "the read followed a symbolic link");
+  assert.ok(readProjectCopy(target).equals(kernelBytes), "a regular copy did not read back");
 });

@@ -1,0 +1,24 @@
+{
+  "id": "init-project-rev-parse-contract-reproduced",
+  "behavior": "init-project-rev-parse-contract-reproduced",
+  "tests": [
+    "the captured rev-parse contract init --project parses is reproduced live"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "witness/captures/init-project-rev-parse-toplevel.txt",
+      "find": "stderr: fatal: not a git repository (or any of the parent directories): .git\nexit=128\n",
+      "replace": "stderr: fatal: not a git repository (or any of the parent directories): .git\nexit=0\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "witness/captures/init-project-rev-parse-toplevel.txt",
+      "find": "## subdirectory of a repository\nstdout: <scratch>/project\n",
+      "replace": "## subdirectory of a repository\nstdout: <scratch>/project/packages\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,24 @@
+{
+  "id": "conflicts-command-registered",
+  "behavior": "conflicts-command-registered",
+  "tests": [
+    "conflicts is registered in the CLI and its usage line names it"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cli.ts",
+      "find": "  [\"conflicts\", cmdConflicts],\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cli.ts",
+      "find": "  [\"conflicts\", cmdConflicts],",
+      "replace": "  [\"conflicts-disabled\", cmdConflicts],"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

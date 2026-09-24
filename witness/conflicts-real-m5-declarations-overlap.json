@@ -1,0 +1,24 @@
+{
+  "id": "conflicts-real-m5-declarations-overlap",
+  "behavior": "conflicts-real-m5-declarations-overlap",
+  "tests": [
+    "conflicts names roles/clean-room-reviewer.md for the real m5-p2 and m5-p3 declarations"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "      if (a === b) {",
+      "replace": "      if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "  return finish(overlappingPairs > 0 ? EXIT_OVERLAP : 0);",
+      "replace": "  return finish(0);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

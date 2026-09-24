@@ -1,0 +1,24 @@
+{
+  "id": "conflicts-usage-error-prints-obligation",
+  "behavior": "conflicts-usage-error-exit-64-with-obligation",
+  "tests": [
+    "conflicts with fewer than two declarations exits 64 and still prints the obligation"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "    return finish(EX_USAGE);",
+      "replace": "    return EX_USAGE;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "  if (paths.length < 2) {",
+      "replace": "  if (paths.length < 1) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

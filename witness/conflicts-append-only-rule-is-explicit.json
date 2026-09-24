@@ -1,0 +1,24 @@
+{
+  "id": "conflicts-append-only-rule-is-explicit",
+  "behavior": "conflicts-append-only-reported-not-counted",
+  "tests": [
+    "a shared append-only registry is reported on its own line and does not make a pair overlap"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "        appendOnly: !isDirectory(concrete) && exempt.has(concrete),",
+      "replace": "        appendOnly: false,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "        out(`APPEND-ONLY ${a.id} ${b.id} ${describe(entry)}`);\n",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

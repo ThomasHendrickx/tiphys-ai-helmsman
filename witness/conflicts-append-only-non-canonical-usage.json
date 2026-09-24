@@ -1,0 +1,24 @@
+{
+  "id": "conflicts-append-only-non-canonical-usage",
+  "behavior": "conflicts-append-only-non-canonical-usage",
+  "tests": [
+    "--append-only with a non-canonical path is a usage error rather than an exemption that matches nothing"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "      const why = nonCanonicalReason(value);\n",
+      "replace": "      const why = undefined;\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "(segment) => segment === \".\" || segment === \"..\"",
+      "replace": "(segment) => segment === \"..\""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
