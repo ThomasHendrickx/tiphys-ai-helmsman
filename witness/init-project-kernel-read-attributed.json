@@ -1,22 +1,22 @@
 {
-  "id": "init-project-satisfies-regime",
-  "behavior": "init-project-satisfies-regime",
+  "id": "init-project-kernel-read-attributed",
+  "behavior": "init-project-kernel-read-attributed",
   "tests": [
-    "a project prepared by init --project and its own charter satisfies the merge regime from the commit"
+    "init --project reports an unreadable kernel assurance-modes.yaml as an attributed refusal, not a crash"
   ],
   "class": "additive",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/commands/init.ts",
-      "find": "    const refused = createCopyExclusively(target, kernelBytes);\n",
-      "replace": "    const refused = undefined;\n"
+      "find": "    kernelBytes = readFileSync(source);\n  } catch (error) {\n",
+      "replace": "    kernelBytes = readFileSync(source);\n  } catch (error) {\n    throw error;\n"
     },
     {
       "kind": "mutation",
       "file": "src/commands/init.ts",
-      "find": "  const target = join(realRoot, MODES_FILENAME);\n",
-      "replace": "  const target = join(realRoot, \".git\", MODES_FILENAME);\n"
+      "find": "the kernel's own ${source} could not be read: ",
+      "replace": "failed: "
     }
   ],
   "consumesExternalOutput": {

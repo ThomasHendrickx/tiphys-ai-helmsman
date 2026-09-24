@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import {
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -474,4 +475,77 @@ test("the captured rev-parse contract init --project parses is reproduced live",
     assert.equal(live.status, recorded.exit, `${label}: exit`);
     assert.equal(live.stdout.trim().split(scratch).join("<scratch>"), recorded.stdout, `${label}: stdout`);
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* M5-P6 fix round 1: CR-KH-002, CR-KH-003, CR-KH-004                   */
+/* ------------------------------------------------------------------ */
+
+const { readProjectCopy, createCopyExclusively } = (await import(
+  new URL("../src/commands/init.ts", import.meta.url).href
+)) as {
+  readProjectCopy: (target: string) => Buffer;
+  createCopyExclusively: (target: string, bytes: Buffer) => string | undefined;
+};
+
+test("init --project accepts a symbolic link to a repository top level and writes at the real path", (t) => {
+  const repo = makeProject(t);
+  const link = join(makeTempDir(t), "project-link");
+  symlinkSync(repo, link);
+  const result = runCli(["init", "--project", link]);
+  assert.equal(result.status, 0, result.stderr);
+  const written = join(realpathSync(repo), "assurance-modes.yaml");
+  assert.ok(lstatSync(written).isFile(), "the copy is not a regular file at the real repository path");
+  assert.ok(readFileSync(written).equals(readFileSync(kernelFile("assurance-modes.yaml"))));
+
+  /* A DANGLING link is named as one, not as "not a directory". */
+  const dangling = join(makeTempDir(t), "dangling-link");
+  symlinkSync(join(repo, "no-such-directory"), dangling);
+  const refused = runCli(["init", "--project", dangling]);
+  assert.equal(refused.status, 1, refused.stdout);
+  assert.match(refused.stderr, /could not be resolved \(ENOENT\)/);
+  assert.doesNotMatch(refused.stderr, /is not a directory/);
+});
+
+test("init --project reports an unreadable kernel assurance-modes.yaml as an attributed refusal, not a crash", (t) => {
+  /* A staged kernel whose own assurance-modes.yaml is a DIRECTORY: packageRoot
+     finds the name, and the read of it fails. */
+  const kernel = join(makeTempDir(t), "kernel");
+  mkdirSync(kernel);
+  for (const part of ["src", "bin", "package.json", "templates"]) {
+    cpSync(kernelFile(part), join(kernel, part), { recursive: true });
+  }
+  symlinkSync(kernelFile("node_modules"), join(kernel, "node_modules"));
+  mkdirSync(join(kernel, "assurance-modes.yaml"));
+  const repo = makeProject(t);
+  const result = spawnSync(process.execPath, [join(kernel, "bin", "tiphys.ts"), "init", "--project", repo], {
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 1, result.stdout + result.stderr);
+  assert.match(result.stderr, /^tiphys init --project: the kernel's own .*assurance-modes\.yaml could not be read: /m);
+  assert.doesNotMatch(result.stderr, /^\s+at /m, `a stack trace was printed: ${result.stderr}`);
+  assert.equal(existsSync(join(repo, "assurance-modes.yaml")), false, "init wrote after failing to read the kernel copy");
+});
+
+test("the project copy is created exclusively and read without following a link", (t) => {
+  const dir = makeTempDir(t);
+  const kernelBytes = readFileSync(kernelFile("assurance-modes.yaml"));
+
+  /* Exclusive create: a DANGLING link at the path is not followed, so its
+     target is not created. A plain write would create it. */
+  const elsewhere = join(dir, "elsewhere.yaml");
+  const target = join(dir, "assurance-modes.yaml");
+  symlinkSync(elsewhere, target);
+  assert.equal(createCopyExclusively(target, kernelBytes), "EEXIST");
+  assert.equal(existsSync(elsewhere), false, "the exclusive create followed a dangling link");
+  rmSync(target);
+  assert.equal(createCopyExclusively(target, kernelBytes), undefined);
+  assert.ok(readFileSync(target).equals(kernelBytes));
+
+  /* No-follow read: a link to an IDENTICAL copy reads as nothing, so it is
+     refused as differing rather than accepted as present. */
+  const linked = join(dir, "linked.yaml");
+  symlinkSync(kernelFile("assurance-modes.yaml"), linked);
+  assert.equal(readProjectCopy(linked).length, 0, "the read followed a symbolic link");
+  assert.ok(readProjectCopy(target).equals(kernelBytes), "a regular copy did not read back");
 });

@@ -262,3 +262,58 @@ test("conflicts names roles/clean-room-reviewer.md for the real m5-p2 and m5-p3 
   assert.ok(run.lines.includes("APPEND-ONLY M5-P2 M5-P3 test/behaviors.json"), run.stdout);
   assertObligationLast(run);
 });
+
+/* M5-P6 fix round 1, CR-KH-001: A PATH COMPARED BEFORE IT IS CANONICAL. Each
+   spelling below names the file `src/a.ts` (or a path beside it) that the
+   other declaration names canonically, so before this round every one of them
+   read DISJOINT with exit 0. The dangerous state is that verdict. */
+const NON_CANONICAL_SPELLINGS: readonly string[] = [
+  "./src/a.ts",
+  "src//a.ts",
+  "src/./a.ts",
+  "src/x/../a.ts",
+  "/src/a.ts",
+  "src\\a.ts",
+  "src//",
+];
+
+test("a declared path spelled non-canonically exits 2 with no verdict naming the path and the phase", (t) => {
+  const dir = scratch(t);
+  const canonical = declaration(dir, "M9-P2", ["src/a.ts", "src/"]);
+  for (const spelling of NON_CANONICAL_SPELLINGS) {
+    for (const field of ["filesToTouch", "declaredExtras"] as const) {
+      const sub = join(dir, `${field}-${String(NON_CANONICAL_SPELLINGS.indexOf(spelling))}`);
+      mkdirSync(sub);
+      const odd =
+        field === "filesToTouch"
+          ? declaration(sub, "M9-P1", [spelling])
+          : declaration(sub, "M9-P1", ["docs/unrelated.md"], [spelling]);
+      const run = runConflicts([odd, canonical]);
+      const label = `${field} ${JSON.stringify(spelling)}`;
+      assert.equal(run.status, 2, `${label}: ${run.stdout}${run.stderr}`);
+      assert.ok(
+        run.stderr.includes(`(phase M9-P1): ${field} entry ${JSON.stringify(spelling)} is not a canonical path`),
+        `${label}: ${run.stderr}`,
+      );
+      assert.ok(run.lines.some((line) => line.startsWith("conflicts: NO VERDICT: 1 of 2")), `${label}: ${run.stdout}`);
+      assert.ok(!run.lines.some((line) => line.startsWith("DISJOINT ")), `${label}: ${run.stdout}`);
+      assertObligationLast(run);
+    }
+  }
+});
+
+test("--append-only with a non-canonical path is a usage error rather than an exemption that matches nothing", (t) => {
+  const dir = scratch(t);
+  const left = declaration(dir, "M9-P1", ["test/behaviors.json"]);
+  const right = declaration(dir, "M9-P2", ["test/behaviors.json"]);
+  for (const spelling of ["./test/behaviors.json", "test//behaviors.json"]) {
+    const run = runConflicts(["--append-only", spelling, left, right]);
+    assert.equal(run.status, 64, `${spelling}: ${run.stdout}${run.stderr}`);
+    assert.ok(
+      run.stderr.includes(`--append-only ${JSON.stringify(spelling)} is not a canonical path`),
+      `${spelling}: ${run.stderr}`,
+    );
+    assert.ok(!run.lines.some((line) => /^(DISJOINT|OVERLAP|APPEND-ONLY) /.test(line)), run.stdout);
+    assertObligationLast(run);
+  }
+});

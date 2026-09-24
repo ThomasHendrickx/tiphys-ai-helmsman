@@ -1,8 +1,12 @@
 import { spawnSync } from "node:child_process";
 import {
+  closeSync,
+  constants as fsConstants,
   existsSync,
+  fstatSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   readdirSync,
   realpathSync,
@@ -274,6 +278,48 @@ export function cmdInit(args: string[]): number {
  *
  * Exit codes: 0 the kernel configuration is in place, 1 refused, 64 usage.
  */
+/**
+ * Read the project's existing copy WITHOUT following a link, and only if the
+ * opened object is a regular file (fix round 1, CR-KH-003). The lstat in
+ * `initProject` established the type; this re-establishes it on the object
+ * actually read, so a link swapped in between the two fails the open with
+ * ELOOP rather than being read through. A read that fails for any reason
+ * returns an empty buffer, which differs from the kernel's bytes and is
+ * therefore REFUSED, never overwritten.
+ */
+export function readProjectCopy(target: string): Buffer {
+  let fd: number | undefined;
+  try {
+    fd = openSync(target, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));
+    if (!fstatSync(fd).isFile()) {
+      return Buffer.alloc(0);
+    }
+    return readFileSync(fd);
+  } catch {
+    return Buffer.alloc(0);
+  } finally {
+    if (fd !== undefined) {
+      closeSync(fd);
+    }
+  }
+}
+
+/**
+ * Create the project copy with O_CREAT|O_EXCL (`wx`), which fails with EEXIST
+ * when ANY entry is at the path, a dangling symbolic link included, and does
+ * not follow it (fix round 1, CR-KH-003). Returns undefined on success, or the
+ * error code. Without the exclusive flag a dangling link placed at the path
+ * would be followed and its target created.
+ */
+export function createCopyExclusively(target: string, bytes: Buffer): string | undefined {
+  try {
+    writeFileSync(target, bytes, { flag: "wx" });
+    return undefined;
+  } catch (error) {
+    return String((error as NodeJS.ErrnoException).code ?? error);
+  }
+}
+
 function initProject(args: string[]): number {
   const [dir, ...extra] = args;
   if (dir === undefined || extra.length > 0) {
@@ -286,20 +332,27 @@ function initProject(args: string[]): number {
     process.stderr.write(`tiphys init ${PROJECT_FLAG}: ${root} does not exist\n`);
     return 1;
   }
-  let isDirectory = false;
+  /* A SYMBOLIC LINK TO A REPOSITORY IS A REPOSITORY (fix round 1, CR-KH-002).
+     The root is resolved with the FOLLOWING stat and then used by its real
+     path from here on, so a checkout reached through a link is accepted and a
+     dangling link is named as what it is rather than as "not a directory". */
+  let realRoot: string;
   try {
-    isDirectory = lstatSync(root).isDirectory();
-  } catch {
-    isDirectory = false;
+    realRoot = realpathSync(root);
+  } catch (error) {
+    process.stderr.write(
+      `tiphys init ${PROJECT_FLAG}: ${root} could not be resolved (${String((error as NodeJS.ErrnoException).code ?? error)}); a symbolic link must point at an existing directory\n`,
+    );
+    return 1;
   }
-  if (!isDirectory) {
+  if (!statSync(realRoot).isDirectory()) {
     process.stderr.write(`tiphys init ${PROJECT_FLAG}: ${root} is not a directory\n`);
     return 1;
   }
-  const top = spawnSync("git", ["-C", root, "rev-parse", "--show-toplevel"], {
+  const top = spawnSync("git", ["-C", realRoot, "rev-parse", "--show-toplevel"], {
     encoding: "utf8",
   });
-  if (top.status !== 0 || resolve(top.stdout.trim()) !== realpathSync(root)) {
+  if (top.status !== 0 || resolve(top.stdout.trim()) !== realRoot) {
     process.stderr.write(
       `tiphys init ${PROJECT_FLAG}: ${root} is not the top level of a git work tree; the merge gates read the kernel file from a commit of the project repository, so it must be written at that repository's root\n`,
     );
@@ -314,8 +367,19 @@ function initProject(args: string[]): number {
     return 1;
   }
   const source = join(kernelRoot, MODES_FILENAME);
-  const kernelBytes = readFileSync(source);
-  const target = join(root, MODES_FILENAME);
+  /* The kernel's own copy is read under the same convention as every other
+     failure here (fix round 1, CR-KH-004): an attributed line and exit 1, not
+     an uncaught throw. */
+  let kernelBytes: Buffer;
+  try {
+    kernelBytes = readFileSync(source);
+  } catch (error) {
+    process.stderr.write(
+      `tiphys init ${PROJECT_FLAG}: the kernel's own ${source} could not be read: ${String(error)}\n`,
+    );
+    return 1;
+  }
+  const target = join(realRoot, MODES_FILENAME);
   const version = readOwnVersion();
 
   let existing: Stats | undefined;
@@ -330,7 +394,16 @@ function initProject(args: string[]): number {
     }
   }
   if (existing === undefined) {
-    writeFileSync(target, kernelBytes);
+    /* EXCLUSIVE CREATE (fix round 1, CR-KH-003). `wx` is O_CREAT|O_EXCL,
+       which fails with EEXIST if anything, a symbolic link included, appeared
+       at the path after the lstat above. It is never followed. */
+    const refused = createCopyExclusively(target, kernelBytes);
+    if (refused !== undefined) {
+      process.stderr.write(
+        `tiphys init ${PROJECT_FLAG}: ${target} could not be created exclusively (${refused}); something appeared at that path while init ran, and nothing was written\n`,
+      );
+      return 1;
+    }
     process.stdout.write(
       `wrote ${MODES_FILENAME}: a copy of kernel ${version}'s ${source}; commit it, the merge gates read it from the commit\n`,
     );
@@ -344,7 +417,7 @@ function initProject(args: string[]): number {
       `tiphys init ${PROJECT_FLAG}: ${target} exists and is not a regular file, refusing\n`,
     );
     return 1;
-  } else if (!readFileSync(target).equals(kernelBytes)) {
+  } else if (!readProjectCopy(target).equals(kernelBytes)) {
     process.stderr.write(
       `tiphys init ${PROJECT_FLAG}: ${target} differs from kernel ${version}'s ${MODES_FILENAME} and was not overwritten; replacing it is an upgrade and must be deliberate\n`,
     );
@@ -356,13 +429,13 @@ function initProject(args: string[]): number {
   }
 
   /* The project's own documents are REPORTED, never written. */
-  const charter = join(root, ROOT_CHARTER_FILE);
+  const charter = join(realRoot, ROOT_CHARTER_FILE);
   process.stdout.write(
     classifyEntry(charter).kind === "absent"
       ? `project ${ROOT_CHARTER_FILE}: absent; the project writes its charter at ${charter} (read from the commit by the merge gates)\n`
       : `project ${ROOT_CHARTER_FILE}: present\n`,
   );
-  const registry = join(root, "gate-registry.yaml");
+  const registry = join(realRoot, "gate-registry.yaml");
   process.stdout.write(
     classifyEntry(registry).kind === "absent"
       ? `project gate-registry.yaml: absent; the project writes its own, starting from ${join(kernelRoot, GATE_REGISTRY_TEMPLATE)}\n`

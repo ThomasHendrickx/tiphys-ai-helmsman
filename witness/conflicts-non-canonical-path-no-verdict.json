@@ -1,0 +1,30 @@
+{
+  "id": "conflicts-non-canonical-path-no-verdict",
+  "behavior": "conflicts-non-canonical-path-no-verdict",
+  "tests": [
+    "a declared path spelled non-canonically exits 2 with no verdict naming the path and the phase"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "  if (segments.some((segment) => segment === \"\")) {\n",
+      "replace": "  if (false) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "  if (segments.some((segment) => segment === \".\" || segment === \"..\")) {\n",
+      "replace": "  if (false) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "      const why = nonCanonicalReason(entry);\n",
+      "replace": "      const why = undefined;\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

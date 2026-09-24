@@ -29,7 +29,12 @@
     "witness/gate-registry-template-project-owned.json",
     "witness/init-prints-next-steps.json",
     "witness/init-project-rev-parse-contract-reproduced.json",
-    "witness/captures/init-project-rev-parse-toplevel.txt"
+    "witness/captures/init-project-rev-parse-toplevel.txt",
+    "witness/conflicts-non-canonical-path-no-verdict.json",
+    "witness/conflicts-append-only-non-canonical-usage.json",
+    "witness/init-project-accepts-symlinked-root.json",
+    "witness/init-project-kernel-read-attributed.json",
+    "witness/init-project-copy-exclusive-nofollow.json"
   ],
   "declaredExtras": [
     "test/behaviors.json",

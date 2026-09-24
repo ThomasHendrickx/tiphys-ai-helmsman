@@ -1,22 +1,22 @@
 {
-  "id": "init-project-satisfies-regime",
-  "behavior": "init-project-satisfies-regime",
+  "id": "init-project-accepts-symlinked-root",
+  "behavior": "init-project-accepts-symlinked-root",
   "tests": [
-    "a project prepared by init --project and its own charter satisfies the merge regime from the commit"
+    "init --project accepts a symbolic link to a repository top level and writes at the real path"
   ],
   "class": "additive",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/commands/init.ts",
-      "find": "    const refused = createCopyExclusively(target, kernelBytes);\n",
-      "replace": "    const refused = undefined;\n"
+      "find": "  if (!statSync(realRoot).isDirectory()) {\n",
+      "replace": "  if (!lstatSync(root).isDirectory()) {\n"
     },
     {
       "kind": "mutation",
       "file": "src/commands/init.ts",
-      "find": "  const target = join(realRoot, MODES_FILENAME);\n",
-      "replace": "  const target = join(realRoot, \".git\", MODES_FILENAME);\n"
+      "find": "could not be resolved (${String((error as NodeJS.ErrnoException).code ?? error)}); a symbolic link must point at an existing directory",
+      "replace": "is not a directory"
     }
   ],
   "consumesExternalOutput": {

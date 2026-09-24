@@ -102,6 +102,15 @@ function parseArgs(argv: string[]): { args?: Args; usageError?: string } {
       if (value === undefined || value.startsWith("--") || value === "") {
         return { usageError: "--append-only requires a path" };
       }
+      /* The exemption list is a set KEY compared with declared entries, so it
+         is held to the same canonical form (CR-KH-001): `./test/behaviors.json`
+         would otherwise exempt nothing, silently. */
+      const why = nonCanonicalReason(value);
+      if (why !== undefined) {
+        return {
+          usageError: `--append-only ${JSON.stringify(value)} is not a canonical path: ${why}`,
+        };
+      }
       explicit.push(value);
       index += 1;
       continue;
@@ -148,6 +157,48 @@ function declarationSchema(): SchemaDocument {
   return cachedSchema;
 }
 
+/**
+ * WHY A PATH MUST BE CANONICAL BEFORE IT IS COMPARED (M5-P6 fix round 1,
+ * CR-KH-001). Every comparison below is on the declared STRING: equality, a
+ * directory prefix, a set key. Two spellings of one file (`./src/a.ts` and
+ * `src/a.ts`, `src//a.ts` and `src/a.ts`) are different strings, so a
+ * comparison made before the path is canonical reports the same file as
+ * DISJOINT, which is the false-disjointness this command exists to prevent.
+ *
+ * The entry is REFUSED rather than normalised. The scope auditor matches a
+ * declared entry against git's own paths, which are always canonical
+ * (src/gates/scope.ts, `isAllowed`), so a non-canonical entry is one the scope
+ * gate would never match: the declaration itself is defective, and quietly
+ * normalising it here would give a verdict about a declaration the phase does
+ * not actually have. So this returns the reason, and the caller gives NO
+ * VERDICT.
+ *
+ * Canonical means: non-empty; relative (no leading `/`); forward slashes only
+ * (no `\`); no empty segment (so no `//`), except the single trailing `/` that
+ * marks a directory; no `.` or `..` segment (so no leading `./`). Case is not
+ * folded: git paths are case-sensitive, and so is this comparison.
+ */
+export function nonCanonicalReason(entry: string): string | undefined {
+  if (entry === "") {
+    return "it is empty";
+  }
+  if (entry.startsWith("/")) {
+    return "it is absolute (leading /); declared paths are relative to the repository root";
+  }
+  if (entry.includes("\\")) {
+    return "it contains a backslash; declared paths use forward slashes";
+  }
+  const body = entry.endsWith("/") ? entry.slice(0, -1) : entry;
+  const segments = body.split("/");
+  if (segments.some((segment) => segment === "")) {
+    return "it has an empty segment (a doubled /, or a / with nothing before it)";
+  }
+  if (segments.some((segment) => segment === "." || segment === "..")) {
+    return "it has a . or .. segment";
+  }
+  return undefined;
+}
+
 type DeclarationRead = { ok: true; declaration: Declaration } | { ok: false; reason: string };
 
 /** Read and shape-check one declaration. Never returns an empty edit set silently. */
@@ -173,6 +224,23 @@ export function readDeclaration(path: string): DeclarationRead {
     };
   }
   const document = parsed as { id: string; filesToTouch: string[]; declaredExtras: string[] };
+  for (const [field, list] of [
+    ["filesToTouch", document.filesToTouch],
+    ["declaredExtras", document.declaredExtras],
+  ] as const) {
+    for (const entry of list) {
+      const why = nonCanonicalReason(entry);
+      if (why !== undefined) {
+        return {
+          ok: false,
+          reason:
+            `${path} (phase ${document.id}): ${field} entry ${JSON.stringify(entry)} ` +
+            `is not a canonical path: ${why}. The scope gate would never match it, ` +
+            "and comparing it would read one file spelled two ways as disjoint",
+        };
+      }
+    }
+  }
   const entries = [...new Set([...document.filesToTouch, ...document.declaredExtras])];
   return { ok: true, declaration: { id: document.id, path, entries } };
 }

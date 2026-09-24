@@ -9,13 +9,13 @@
     {
       "kind": "mutation",
       "file": "src/commands/init.ts",
-      "find": "  if (top.status !== 0 || resolve(top.stdout.trim()) !== realpathSync(root)) {\n",
+      "find": "  if (top.status !== 0 || resolve(top.stdout.trim()) !== realRoot) {\n",
       "replace": "  if (false) {\n"
     },
     {
       "kind": "mutation",
       "file": "src/commands/init.ts",
-      "find": " || resolve(top.stdout.trim()) !== realpathSync(root)) {\n",
+      "find": " || resolve(top.stdout.trim()) !== realRoot) {\n",
       "replace": ") {\n"
     }
   ],

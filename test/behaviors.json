@@ -1380,5 +1380,10 @@
   "init-project-refuses-non-repo": "init --project refuses a directory that is not the top level of a git work tree",
   "gate-registry-template-project-owned": "the shipped gate registry template validates and names no kernel command",
   "init-prints-next-steps": "init prints the next steps naming the fleet charter location and the project arm",
-  "init-project-rev-parse-contract-reproduced": "the captured rev-parse contract init --project parses is reproduced live"
+  "init-project-rev-parse-contract-reproduced": "the captured rev-parse contract init --project parses is reproduced live",
+  "conflicts-non-canonical-path-no-verdict": "a declared path spelled non-canonically exits 2 with no verdict naming the path and the phase",
+  "conflicts-append-only-non-canonical-usage": "--append-only with a non-canonical path is a usage error rather than an exemption that matches nothing",
+  "init-project-accepts-symlinked-root": "init --project accepts a symbolic link to a repository top level and writes at the real path",
+  "init-project-kernel-read-attributed": "init --project reports an unreadable kernel assurance-modes.yaml as an attributed refusal, not a crash",
+  "init-project-copy-exclusive-nofollow": "the project copy is created exclusively and read without following a link"
 }

@@ -1,22 +1,22 @@
 {
-  "id": "init-project-satisfies-regime",
-  "behavior": "init-project-satisfies-regime",
+  "id": "init-project-copy-exclusive-nofollow",
+  "behavior": "init-project-copy-exclusive-nofollow",
   "tests": [
-    "a project prepared by init --project and its own charter satisfies the merge regime from the commit"
+    "the project copy is created exclusively and read without following a link"
   ],
   "class": "additive",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/commands/init.ts",
-      "find": "    const refused = createCopyExclusively(target, kernelBytes);\n",
-      "replace": "    const refused = undefined;\n"
+      "find": "    writeFileSync(target, bytes, { flag: \"wx\" });\n",
+      "replace": "    writeFileSync(target, bytes);\n"
     },
     {
       "kind": "mutation",
       "file": "src/commands/init.ts",
-      "find": "  const target = join(realRoot, MODES_FILENAME);\n",
-      "replace": "  const target = join(realRoot, \".git\", MODES_FILENAME);\n"
+      "find": "    fd = openSync(target, fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0));\n",
+      "replace": "    fd = openSync(target, fsConstants.O_RDONLY);\n"
     }
   ],
   "consumesExternalOutput": {

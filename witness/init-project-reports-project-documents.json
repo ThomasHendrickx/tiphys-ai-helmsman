@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "src/commands/init.ts",
-      "find": "  const registry = join(root, \"gate-registry.yaml\");\n",
-      "replace": "  const registry = join(root, \"gate-registry.yaml\");\n  writeFileSync(registry, readFileSync(join(kernelRoot, GATE_REGISTRY_TEMPLATE)));\n"
+      "find": "  const registry = join(realRoot, \"gate-registry.yaml\");\n",
+      "replace": "  const registry = join(realRoot, \"gate-registry.yaml\");\n  writeFileSync(registry, readFileSync(join(kernelRoot, GATE_REGISTRY_TEMPLATE)));\n"
     },
     {
       "kind": "mutation",

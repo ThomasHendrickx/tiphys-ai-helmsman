@@ -9,7 +9,7 @@
     {
       "kind": "mutation",
       "file": "src/commands/init.ts",
-      "find": "  } else if (!readFileSync(target).equals(kernelBytes)) {\n",
+      "find": "  } else if (!readProjectCopy(target).equals(kernelBytes)) {\n",
       "replace": "  } else if (false) {\n"
     },
     {

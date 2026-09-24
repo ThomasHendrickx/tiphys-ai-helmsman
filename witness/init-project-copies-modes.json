@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "src/commands/init.ts",
-      "find": "    writeFileSync(target, kernelBytes);\n",
-      "replace": "    writeFileSync(target, kernelBytes.subarray(1));\n"
+      "find": "    writeFileSync(target, bytes, { flag: \"wx\" });\n",
+      "replace": "    writeFileSync(target, bytes.subarray(1), { flag: \"wx\" });\n"
     },
     {
       "kind": "mutation",
