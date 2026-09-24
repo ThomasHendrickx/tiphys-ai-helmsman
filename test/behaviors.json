@@ -1357,5 +1357,6 @@
   "rules-since-malformed-since-is-internal-defect": "a RULES_SINCE row whose since is not a kernel version is an internal defect that names the row, for an unstamped document as much as a stamped one",
   "check-dual-review-headless-only-warns-without-base": "the bare check-dual-review script without --base, on a corpus whose every verdict declares no head, is not-applicable with a warning that names --base, and the same corpus with one anchored verdict carries no warning",
   "admission-headless-sibling-provenance-decides-history": "a head-less same-phase sibling that the change under audit adds or changes is current work and refused by both merge gates naming its verdict and blocking findings, and without a base the exclusion says provenance was not checked",
-  "validate-verdict-head-required-from-0-2-0": "tiphys validate --type verdict prints no INVALID line for an unstamped verdict that carries no head, refuses one stamped 0.2.0 that omits it, and refuses an abbreviated one naming head"
+  "validate-verdict-head-required-from-0-2-0": "tiphys validate --type verdict prints no INVALID line for an unstamped verdict that carries no head, refuses one stamped 0.2.0 that omits it, and refuses an abbreviated one naming head",
+  "test-no-repository-arms-ceiling-at-tmpdir": "a real repository above os.tmpdir() leaves the removed-.git, never-a-repository and GIT-stripped no-repository arms green, because git's ceiling stops discovery as the capture records"
 }

@@ -1598,6 +1598,441 @@ including test/history-compat.test.ts and test/verdict-head.test.ts): 260
 tests, 260 pass, 0 fail, 0 skipped; test/history-compat.test.ts alone: 21
 tests, 21 pass, 0 skipped.
 
+<!-- fix-round-3 -->
+## Fix round 3 (CI run 35946757118 on f39daae, test isolation only)
+
+The coordinator's brief: CI's `pull_request` run 35946757118 (gates job
+107466376655) on f39daae failed ONE test of 1484 (1483 pass, 1 fail, 0
+skipped, step "Run npm test"): the second, no-git arm of "a corpus-scoped
+refusal names the source that corpus was read from, on both arms"
+(test/single-family-exception.test.ts:1265 now; line 1244 at f39daae). It
+removes `.git` from a staged directory and expects "read from the WORKING
+TREE". CI printed instead:
+
+```
+check-dual-review: error (0 review verdicts examined for decorrelation)
+/tmp/tiphys-single-family-QRfyjc/assurance-modes.yaml does not exist in commit 3cb63cca05296ea360172c6a15e0b7048629eef8, resolved from HEAD, so the declared mode's merge-authority is unknown and no decorrelation verdict can be reached; a merge check that cannot determine the regime reports error, never green
+```
+
+No source file changed in this round. Only tests, one capture, one witness
+spec and the behaviors row.
+
+### The mechanism
+
+**A test asserts what the code does when NO repository is found, from a
+directory under os.tmpdir(), and relies on no repository existing ABOVE
+os.tmpdir().** Git discovery walks from the working directory up to the
+filesystem root, and it accepts either a directory holding `.git` or a
+directory that is itself a git directory. So a repository at or above the
+scratch root turns each such arm into a read of THAT repository's HEAD.
+`resolveCorpusSource` (src/checks.ts:3511) runs `git rev-parse HEAD^{commit}`
+in the context directory and falls back to the working tree only when that
+fails; `gitIn` (src/checks.ts:4967) spawns git with the inherited environment.
+The finding is one test; the mechanism is the missing ceiling, and it is not
+specific to the removed-`.git` shape.
+
+### Who created the ancestor: NOT FOUND
+
+I did not find the creator. The evidence for the ancestor-repository reading,
+and against the alternatives:
+
+- CI checked out f39daae (the log's `git log -1` prints f39daaea...).
+- 3cb63cc is in no repository this project owns: the GitHub `get_commit`
+  call returned "No commit found for SHA", and `git cat-file -t 3cb63cc`
+  failed in the local clone. A commit sha covers its timestamp, so it was a
+  commit made during or near that run by something.
+- The CI log has no stray "Initialized empty Git repository in /tmp/" line.
+- An inotify watcher (scratch fr3-watch.py) on `/` and `/tmp`, which are the
+  only ancestors of a `/tmp/tiphys-*` scratch directory, watching for the
+  creation of `.git`, `HEAD`, `objects`, `refs`, `config`, `index` or
+  `description`, logged ZERO such creations during two full local suites:
+  `npm test` (1484 tests, 1484 pass, 0 fail, 0 skipped) and
+  `node --test --test-concurrency=8 "test/**/*.test.ts"` (the same counts).
+  Its only event was my own probe `touch /tmp/HEAD` before the runs.
+- No test runs git with `cwd: tmpdir()`, and no test, source or script reads
+  `process.env.CI` or a `GITHUB_*` name, so there is no CI-only code path.
+- CI runs as `runner`, locally I run as root, and CI's git is 2.55.0 against
+  2.43.0 here. Neither was reproduced.
+
+**One fact the ancestor reading does not explain, stated rather than
+smoothed.** The CI message names `assurance-modes.yaml`, and
+`missingRegimeDocument` (src/checks.ts:4902) probes the two regime documents in
+the order of `REGIME_DOCUMENTS` (src/checks.ts:4881): `charter.yaml` first. So in
+CI `3cb63cc:./charter.yaml` WAS a blob and `3cb63cc:./assurance-modes.yaml` was
+not. Measured with git 2.43.0 (scratch fr3-bare.sh, fr3-bareshape.sh,
+fr3-gitdir.sh, and the red runs below), four shapes:
+
+| shape above the staged directory | first missing document printed |
+|---|---|
+| a repository with `.git` at the scratch root | `charter.yaml` (fr3-red.txt, member 0) |
+| a bare repository | neither probe resolves: "relative path syntax can't be used outside working tree", so `charter.yaml` |
+| a non-bare git directory laid into the parent (no `.git`) | the same as bare, so `charter.yaml` |
+| an inherited `GIT_DIR` naming a repository whose root holds `charter.yaml` only | `assurance-modes.yaml`: `blob` for charter, "exists on disk, but not in 'HEAD'" for modes, exactly CI's shape |
+
+The GIT_DIR row is the only one that reproduces CI's exact message here, and
+**GIT_CEILING_DIRECTORIES does not stop GIT_DIR** (fr3-gitdir.txt: the same
+commit resolves with the ceiling set). But nothing in the single-family file or
+in scripts/check-dual-review.mjs sets `GIT_DIR`: `grep -n process.env` on both
+prints only the ceiling lines and the two identity spreads, and node's test
+runner gives each file its own process. A repository whose HEAD tree held
+`tiphys-single-family-QRfyjc/charter.yaml` and not its `assurance-modes.yaml`
+would also give CI's message; `stage()` writes `assurance-modes.yaml` BEFORE
+`charter.yaml`, so a snapshot of the scratch root taken mid-staging would miss
+the other one. And git 2.55.0 may resolve `<rev>:./path` outside a work tree
+differently from 2.43.0, which I could not test. So the exact shape of CI's
+ancestor is OPEN, and what this round proves is the class below.
+
+### Derivation
+
+**By execution, which is the primary derivation**, because a grep for removed
+`.git` finds only one of the six files (below). scratch fr3-ancestor-suite.sh
+runs the whole suite (`npm test`, node v26.6.0, `dist/` built) with
+`TMPDIR=$S/fr3-anc/tmp`, where `$S/fr3-anc` is a real repository with one
+commit (arm `anc`), and the control with `TMPDIR=$S/fr3-ctl/tmp` in a plain
+directory (arm `ctl`). The probe line proves the state: from the `anc` scratch
+root `git rev-parse --show-toplevel HEAD` printed the ancestor and ea2688b
+(`probe=0`); from the `ctl` one it printed "fatal: not a git repository" (`probe=128`).
+
+| arm, at f39daae | tests | pass | fail | skipped |
+|---|---|---|---|---|
+| `anc` | 1484 | 1418 | 66 | 0 |
+| `ctl` | 1484 | 1482 | 2 | 0 |
+
+The two control failures are the known traversal traps of running a scratch
+toolchain under `/tmp/claude-0` (standing warning 1). scratch fr3-fails.py
+diffs the failing-test lists (file:line and title, parsed from the reporter's
+"failing tests" block; titles cut at about 110 characters by the script),
+full output:
+
+```
+control failures:
+  test/doctor.test.ts:2321 CHECK worktrees reports an unlistable pool as FAIL instead of letting the run abort
+  test/gates.test.ts:3582 a precondition command exiting nonzero is error, not a skip, whenever a path-shaped argv element cannot be ope
+ancestor-only failures: 64 (ancestor total 66)
+  test/dual-review.test.ts: 20
+  test/exit-test-local.test.ts: 1
+  test/kernel-charter.test.ts: 3
+  test/merge-preconditions.test.ts: 12
+  test/single-family-exception.test.ts: 1
+  test/verdict-head.test.ts: 27
+  test/dual-review.test.ts:191 two verdicts for one head with distinct produced-by and framing exit 0
+  test/dual-review.test.ts:203 two verdicts sharing a produced-by model family exit nonzero naming the duplicated value
+  test/dual-review.test.ts:215 two verdicts sharing a framing exit nonzero naming the duplicated value
+  test/dual-review.test.ts:229 one verdict for a head exits nonzero saying a delegated grant needs two
+  test/dual-review.test.ts:259 a mode whose merge-authority is owner exits 0 on the very pair that reddens under a delegated grant
+  test/dual-review.test.ts:290 deregistering dual-review-decorrelation makes the shared-family fixture pass, and restoring it makes it fail again
+  test/dual-review.test.ts:351 two verdicts whose produced-by and framing both differ and whose review-contract is the same exit nonzero
+  test/dual-review.test.ts:373 the same pair with one criteria contract and one hazard contract exits 0
+  test/dual-review.test.ts:431 a verdict that states no produced-by is refused rather than read as distinct from the other
+  test/dual-review.test.ts:458 two verdicts whose produced-by differs only by surrounding whitespace are not distinct
+  test/dual-review.test.ts:524 a lookalike or invisible character in produced-by does not make a shared model family distinct
+  test/dual-review.test.ts:561 a compatibility variant of a model family is folded onto it rather than refused
+  test/dual-review.test.ts:583 a lookalike character in merge-authority does not turn a delegated grant into no grant
+  test/dual-review.test.ts:620 a verdict whose kind is written in another case still counts toward the group it correlates with
+  test/dual-review.test.ts:660 a mode that states no merge-authority is refused rather than reported as not a delegated grant
+  test/dual-review.test.ts:684 a directory with no verdict document reports not-applicable with a reason rather than green
+  test/dual-review.test.ts:700 the precondition arm answers only whether a verdict document exists, and against this repository it acts on the count it
+  test/dual-review.test.ts:735 the merge-path caller refuses a directory that declares no regime, rather than treating the grant as absent
+  test/dual-review.test.ts:762 a charter that is PRESENT and wrong is a violation, which an absent one deliberately is not
+  test/dual-review.test.ts:813 a verdict that is not among the committed reviews cannot be cleared by the pair that is
+  test/exit-test-local.test.ts:1085 the stub payload refuses a bad mode and a working directory that is not a worktree
+  test/kernel-charter.test.ts:139 with a committed pair of verdicts the root charter is what lets the check reach a verdict
+  test/kernel-charter.test.ts:158 removing the root charter from that same context makes the merge check error rather than green
+  test/kernel-charter.test.ts:178 a root charter that is present and unusable fails loudly, and two different members do
+  test/merge-preconditions.test.ts:521 the merge-preconditions gate reports one row per DR-0012 condition plus the branch-protection encoding and the verdict s
+  test/merge-preconditions.test.ts:575 an unreachable API makes the gate report error with units zero and a reason naming the failure, where a catch-and-contin
+  test/merge-preconditions.test.ts:633 condition 4 is green only when the check run's head sha equals the head under evaluation and red when the newest green r
+  test/merge-preconditions.test.ts:686 condition 5 is red when the scope record reads red and red with a different reason when no record exists, and the gate w
+  test/merge-preconditions.test.ts:739 condition 6 is red for an arbitration document that names only one verdict and red for one naming a different head, and 
+  test/merge-preconditions.test.ts:820 an empty body from the ruleset API makes the gate report error rather than a default, where a mutant that defaults to pr
+  test/merge-preconditions.test.ts:866 the branch-protection row is red against a disabled ruleset and red against one whose required status checks do not name
+  test/merge-preconditions.test.ts:932 R-065a is reported as data on the green arm and never turns the branch-protection row red
+  test/merge-preconditions.test.ts:959 a head no committed verdict names is not-applicable with an evaluated unmet precondition rather than green
+  test/merge-preconditions.test.ts:994 deregistering the composed dual-review check makes its condition error rather than green, so a condition with no check b
+  test/merge-preconditions.test.ts:1029 a pair of verdicts in which one refuses the merge reddens condition 2 while condition 1 stays green
+  test/merge-preconditions.test.ts:1091 condition 4 is red when the API returns real check runs for this head and none of them is the required status check
+  test/single-family-exception.test.ts:1244 a corpus-scoped refusal names the source that corpus was read from, on both arms
+  test/verdict-head.test.ts:636 two verdicts carrying the SAME head are one group of two and the gate reports it green
+  test/verdict-head.test.ts:649 two verdicts carrying DIFFERENT heads are two groups of one and the condition is not reported satisfied
+  test/verdict-head.test.ts:708 RED WITNESS, criterion 3, member two: a sibling whose head cannot be read is refused, not silently dropped
+  test/verdict-head.test.ts:735 an abbreviated head is refused rather than becoming a second group of one
+  test/verdict-head.test.ts:759 an upper-case head is ONE key with its lower-case spelling, which is the other direction of the same hazard
+  test/verdict-head.test.ts:799 a pair in which ONE verdict reads FIX-ROUND-NEEDED reddens verdict-pair-approves
+  test/verdict-head.test.ts:842 the SHIPPED gate reddens that same both-refusing pair, which is what the pre-change green measures against
+  test/verdict-head.test.ts:863 a verdict carrying a blocking finding reddens the pair predicate, which since 0.2.1 is the only layer that refuses mediu
+  test/verdict-head.test.ts:888 a verdict spelled Approve is refused rather than read as an authorisation
+  test/verdict-head.test.ts:914 a severity outside the four-word vocabulary is refused rather than treated as non-blocking
+  test/verdict-head.test.ts:935 a low finding does NOT redden the pair predicate, which is the control the two refusals need
+  test/verdict-head.test.ts:950 deregistering verdict-pair-approves makes the one-refusing pair pass, and restoring it makes it fail again
+  test/verdict-head.test.ts:999 the gate prints each verdict's value, head and produced-by, not only how many it examined
+  test/verdict-head.test.ts:1024 the two registered-check counts are printed separately, so one absent guard is not hidden by the other
+  test/verdict-head.test.ts:1044 under an owner-authority mode neither check violates, and both say why rather than passing silently
+  test/verdict-head.test.ts:1151 a sibling whose YAML does not decode makes the gate error instead of reporting the pair clean
+  test/verdict-head.test.ts:1180 a sibling that cannot be read at all makes the gate error instead of reporting the pair clean
+  test/verdict-head.test.ts:1209 a verdict sibling that states no phase is reported rather than silently left out of the group
+  test/verdict-head.test.ts:1235 the phase-less sibling is reported through `tiphys validate` too, where only one instance is checked
+  test/verdict-head.test.ts:1310 a sibling whose kind is a one-element list makes the gate error instead of reporting the pair clean
+  test/verdict-head.test.ts:1310 a sibling whose kind is an invisible character makes the gate error instead of reporting the pair clean
+  test/verdict-head.test.ts:1345 the two unreadable-kind members fail through different readers and say so differently
+  test/verdict-head.test.ts:1362 a sibling that declares no kind at all is still skipped, and the pair still approves
+  test/verdict-head.test.ts:1382 the gate runner and the derived check select the same documents, so a kind differing only in case is counted
+  test/verdict-head.test.ts:1397 the precondition reports a directory whose only review document is unexaminable as APPLICABLE
+  test/verdict-head.test.ts:1428 an empty review directory is still NOT-APPLICABLE, which is the control the four arms above need
+  test/verdict-head.test.ts:1445 a prose review and a non-verdict document in the same directory are still skipped silently
+```
+
+Line numbers there are f39daae's. test/history-compat.test.ts, this PR's
+other new test file, is not in the list, and neither is any witness or capture
+script of mine: they run from the scratchpad and name every path absolutely.
+
+**Statically, as a cross-check**, the shape the brief named:
+
+```
+grep -rnE 'rmSync\(join\([^)]*"\.git"|not a git (repository|worktree)|WORKING TREE because' test --include=*.ts
+test/single-family-exception.test.ts:1296:  rmSync(join(noGit, ".git"), { recursive: true, force: true });
+test/single-family-exception.test.ts:1300:    /\(corpus: delivery\/review read from the WORKING TREE because/,
+test/resume.test.ts:336:test("resume in a directory that is not a git repository exits 1, names .git and creates nothing", (t) => {
+test/resume.test.ts:366:  rmSync(join(clone, ".git"), { recursive: true });
+test/resume.test.ts:389:  assert.equal(before, after, "resume rehydrated a directory that is not a git repository");
+test/resume.test.ts:441:  rmSync(join(decapitated, ".git"), { recursive: true });
+test/exit-test-local.test.ts:1126:    assert.match(notAWorktree.stderr, /is not a git worktree/);
+test/next.test.ts:596:    // A project directory that is not a git repository at all: no base ref
+```
+
+It finds two of the six victim files. The other four stage directories that
+were NEVER repositories, which no grep for a removed `.git` can see; that is
+why execution is the derivation. The resume and next sites passed in the `anc`
+arm: resume decides on `existsSync(.git)` itself, and test/next.test.ts:596 asks
+for "not the top level of its own git repository", which an ancestor does not
+change.
+
+**For the creator, statically**: every site that makes a git directory by a
+route other than a plain `init` of a fresh scratch directory, or names a git
+dir. Command and full output, `test/fixtures/` excluded:
+
+```
+grep -rnE 'cwd: *(os\.)?tmpdir\(\)|--bare|--separate-git-dir|"clone"|--git-dir|GIT_DIR' test src scripts bin plugin --include=*.ts --include=*.mjs --include=*.js --include=*.sh | grep -v '^test/fixtures/'
+test/payload-credentials.test.ts:198:  git(tmp, ["clone", "--quiet", upstream, clone]);
+test/cutover.test.ts:101:    git(root, ["init", "-q", "--bare", bare]);
+test/cutover.test.ts:2709:    git(root, ["init", "-q", "--bare", bare]);
+test/sweep-exclusion-sync.test.ts:158:    ["-C", remote, ...GIT_FLAGS, "init", "--bare", "--initial-branch=main", "--quiet"],
+test/sweep-exclusion-sync.test.ts:237:  assert.equal(git(root, ["clone", "--quiet", remote, homeB]).status, 0);
+test/sweep-exclusion-sync.test.ts:262:  assert.equal(git(root, ["clone", "--quiet", remote, homeC]).status, 0);
+test/sweep-exclusion-sync.test.ts:479:  assert.equal(git(root, ["clone", "--quiet", remote, homeB]).status, 0);
+test/sweep-exclusion-sync.test.ts:862:  gitOk(tmp, ["clone", "--quiet", upstream, clone]);
+test/doctor.test.ts:1199:  git(lab, ["init", "--bare", "--quiet", "--initial-branch=main", remote]);
+test/doctor.test.ts:2032:  git(lab, ["init", "--bare", "--quiet", "--initial-branch=main", remote]);
+test/adapter-load.test.ts:124:  gitOk(tmp, ["clone", "--quiet", upstream, clone]);
+test/sync.test.ts:140:  const bare = spawnSync("git", ["init", "--quiet", "--bare", "--initial-branch=main", remote], {
+test/resume.test.ts:196:  const clone = join(root, "clone");
+test/resume.test.ts:197:  const result = gitIn(root, ["clone", "--quiet", origin, clone]);
+test/work-history.test.ts:622:  gitOk(tmp, ["clone", "--quiet", upstream, clone]);
+test/exit-test-local.test.ts:936:    git(["init", "--bare", "--quiet", "--initial-branch=main", bare], {
+test/exit-test-local.test.ts:962:    const clone = join(root, "clone");
+test/exit-test-local.test.ts:963:    git(["clone", "--quiet", remote, clone], { cwd: root, env });
+test/exit-test-local.test.ts:982:    git(["init", "--bare", "--quiet", "--initial-branch=main", bare], {
+test/exit-test-local.test.ts:990:    const clone = join(root, "clone");
+test/exit-test-local.test.ts:991:    git(["clone", "--quiet", remote, clone], { cwd: root, env });
+test/exit-test-local.test.ts:1033:  git(["init", "--bare", "--quiet", "--initial-branch=main", bare], {
+test/exit-test-local.test.ts:1042:  git(["clone", "--quiet", remote, project], { cwd: root, env });
+test/spawn.test.ts:141:  gitOk(tmp, ["clone", "--quiet", upstream, clone]);
+test/spawn.test.ts:1420:      const probeClone = join(linkDir, "clone");
+test/spawn.test.ts:1421:      gitOk(live.tmp, ["clone", "--quiet", live.upstream, probeClone]);
+test/spawn.test.ts:2084:    ["-C", remote, ...REGISTER_GIT_FLAGS, "init", "--bare", "--initial-branch=main", "--quiet"],
+test/spawn.test.ts:2126:    ["-C", root, ...REGISTER_GIT_FLAGS, "clone", "--quiet", remote, target],
+test/spawn.test.ts:2339:  registerGitOk(root, ["clone", "--quiet", upstream, projectClone]);
+test/spawn.test.ts:2437:  registerGitOk(root, ["clone", "--quiet", upstream, projectClone]);
+test/license-gate.test.ts:2514:  assert.equal(labGit(root, ["init", "--bare", "--initial-branch=main", remote]).status, 0);
+test/status.test.ts:344:    const cloned = spawnSync("git", ["clone", "--quiet", root, clone], { encoding: "utf8" });
+test/init.test.ts:80:  const clone = join(root, "clone");
+test/init.test.ts:81:  const cloned = gitIn(root, ["clone", "--quiet", origin, clone], {
+test/liveness.test.ts:224:  gitOk(tmp, ["clone", "--quiet", upstream, clone]);
+test/credentials-gate.test.ts:231:  git(tmp, ["clone", "--quiet", upstream, clone]);
+test/cross-environment-lock.test.ts:152:    ["-C", remote, ...GIT_FLAGS, "init", "--bare", "--initial-branch=main", "--quiet"],
+test/cross-environment-lock.test.ts:195:    ["-C", root, ...GIT_FLAGS, "clone", "--quiet", remote, target],
+test/plugin-adapter.test.ts:385:  gitOk(tmp, ["clone", "--quiet", upstream, clone]);
+test/plugin-hooks.test.ts:842:  const bare = spawnSync("git", ["init", "--bare", "-q", remote], { encoding: "utf8" });
+test/watcher.test.ts:936:  gitOk(tmp, ["clone", "--quiet", upstream, clone]);
+test/orchestrator-next.test.ts:76:  git(origin, ["init", "-q", "--bare", "-b", "main"]);
+test/project-write-block.test.ts:287:    assert.equal(git(fleet, ["clone", "-q", upstream, project]).status, 0);
+test/project-write-block.test.ts:1029:    assert.equal(git(fleet, ["clone", "-q", upstream, project]).status, 0);
+test/next.test.ts:539:    git(parent, ["clone", "--quiet", "--bare", repo, remote]);
+test/next.test.ts:761:    git(parent, ["clone", "--quiet", upstream, join(fleet.projects, "cloned")]);
+test/next.test.ts:767:    git(parent, ["clone", "--quiet", upstream, elsewhere]);
+test/next.test.ts:846:    git(parent, ["clone", "--quiet", upstream, askew]);
+test/cutover-entry.test.ts:614:    () => probe.assertReadOnlyGit(["clone", "https://example.invalid/x.git", "/tmp/nope"]),
+test/cutover-entry.test.ts:618:    probe.assertReadOnlyGit(["clone", "--depth", "1", "https://example.invalid/x.git", "/tmp/ok"]),
+test/cutover-entry.test.ts:756:  assert.equal(git(base, ["clone", "--bare", "--quiet", seed, bare]).status, 0);
+test/cutover-entry.test.ts:1231:  const clone = join(cloneParent, "clone");
+test/cutover-entry.test.ts:1232:  fixtureGit(cloneParent, ["clone", "--quiet", source, clone]);
+test/cutover-entry.test.ts:1589: * `GIT_DIR` relocates the repository git answers about, so arm d's commit-order
+test/cutover-entry.test.ts:1595:test("an inherited GIT_DIR does not relocate the repository arm d dates", () => {
+test/cutover-entry.test.ts:1610:    const run = runCheckerWithEnv(root, { GIT_DIR: join(elsewhere, ".git") });
+test/cutover-entry.test.ts:1614:      `an inherited GIT_DIR must not change which repository is read, got: ${armD}\n${run.text}`,
+test/cutover-entry.test.ts:1632:    GIT_DIR: process.env.GIT_DIR,
+test/cutover-entry.test.ts:1638:    process.env.GIT_DIR = "/nowhere/.git";
+test/cutover-entry.test.ts:1650:      assert.equal(built.GIT_DIR, undefined);
+test/cutover-entry.test.ts:1667:    assert.equal(probe.gitChildEnv().GIT_DIR, undefined);
+test/cutover-entry.test.ts:1824:    "clone",
+test/cross-environment.test.ts:261:    ["-C", remote, ...GIT_FLAGS, "init", "--bare", "--initial-branch=main", "--quiet"],
+test/cross-environment.test.ts:288:    ["-C", root, ...GIT_FLAGS, "clone", "--quiet", remote, target],
+test/pool.test.ts:146:  gitOk(tmp, ["clone", "--quiet", upstream, clone]);
+test/pool.test.ts:1497:const OBJECT_TRANSFER_VERBS = new Set(["clone", "fetch", "pull", "push"]);
+test/witness.test.ts:2526:  git(local, "clone", "-q", upstream, localRepo);
+test/witness.test.ts:2590:    "clone",
+test/teardown.test.ts:152:  gitOk(tmp, ["clone", "--quiet", upstream, clone]);
+test/teardown.test.ts:776:  gitOk(tmp, ["clone", "--quiet", upstream, clone]);
+test/teardown.test.ts:1475:    ["-C", remote, ...REGISTER_GIT_FLAGS, "init", "--bare", "--initial-branch=main", "--quiet"],
+test/teardown.test.ts:1517:    ["-C", root, ...REGISTER_GIT_FLAGS, "clone", "--quiet", remote, target],
+test/teardown.test.ts:1724:  registerGitOk(root, ["clone", "--quiet", upstream, projectClone]);
+test/teardown.test.ts:1857:  registerGitOk(root, ["clone", "--quiet", upstream, projectClone]);
+src/witness/run.ts:984:  const cloned = gitIn(scratchRoot, ["clone", "--quiet", repoRoot, dir]);
+scripts/m1-exit-test.sh:496:    git init --bare --quiet --initial-branch=main "${toy_remote_path}"
+scripts/m1-exit-test.sh:536:  git init --bare --quiet --initial-branch=main "${fleet_remote_path}"
+scripts/probe-pilot-readonly.mjs:117:  if (operation === "clone") {
+scripts/probe-pilot-readonly.mjs:138: * inherited `GIT_DIR` make a read-only probe report on a repository that is not
+scripts/check-cutover-entry.mjs:199: *   every `GIT_*`           NOT carried. `GIT_DIR`, `GIT_WORK_TREE`,
+scripts/rehearse-cutover-rollback.mjs:194:  git(root, ["init", "-q", "--bare", bare]);
+scripts/probe-cas-ref.mjs:194:  gitOrThrow(remote, ["init", "--bare", "--initial-branch=main", "--quiet"]);
+scripts/probe-cas-ref.mjs:209:    gitOrThrow(absRoot, ["clone", "--quiet", remote, target]);
+```
+
+I read the target of every cwd-relative bare init in that list
+(test/orchestrator-next.test.ts:76, the five `makeBareRemote` helpers, and
+scripts/probe-cas-ref.mjs:194): each is a named subdirectory of a fresh scratch root,
+never os.tmpdir() itself. The two cutover-entry `/tmp/nope` and `/tmp/ok`
+paths are clone TARGETS below `/tmp`, not ancestors of anything.
+The only `process.env.GIT_DIR` write
+(test/cutover-entry.test.ts:1638) is in that file's own process. The earlier
+147-line list of plain `init` sites (scratch fr3-init-sites.txt) targets named
+scratch directories in the same way; it is not reproduced here because the
+watcher above measured the property those sites could break, directly, over
+two full suites.
+
+### The fix
+
+In each of the six victim files, right after the imports, a block that sets
+`process.env["GIT_CEILING_DIRECTORIES"]` to os.tmpdir() (its real path and its
+spelling), keeping any ceiling already inherited and dropping empty entries
+(an empty entry has its own meaning to git). Every child the file spawns
+inherits it: test/dual-review.test.ts:58, test/exit-test-local.test.ts:36,
+test/kernel-charter.test.ts:71, test/merge-preconditions.test.ts:77,
+test/single-family-exception.test.ts:76, test/verdict-head.test.ts:77.
+test/exit-test-local.test.ts:151 also puts the ceiling back into
+`identityLessEnv`, which strips every `GIT_*` name before it spawns; that
+victim is the one the process-level line alone does not reach.
+
+The ceiling stops git moving up INTO os.tmpdir(), so a repository a test
+stages INSIDE it is still found, including from a nested context. Measured and
+recorded as witness/captures/kernel-0-2-1-git-ceiling.json (git 2.43.0):
+
+| probe | status | stdout |
+|---|---|---|
+| no ceiling, from `<lab>/ctx` (plain) | 0 | `<lab>` |
+| ceiling `<lab>`, from `<lab>/ctx` | 128 | (stderr "fatal: not a git repository (or any of the parent directories): .git") |
+| ceiling `<lab>`, from `<lab>/ctx/deeper`, `ctx` now a repository | 0 | `<lab>/ctx` |
+
+After the fix, the same `anc` arm (scratch fr3-suite-anc-after.log): 1484
+tests, 1482 pass, 2 fail, 0 skipped, and fr3-fails.py printed:
+
+```
+control failures:
+  test/doctor.test.ts:2321 CHECK worktrees reports an unlistable pool as FAIL instead of letting the run abort
+  test/gates.test.ts:3582 a precondition command exiting nonzero is error, not a skip, whenever a path-shaped argv element cannot be ope
+ancestor-only failures: 0 (ancestor total 2)
+```
+
+64 to 0; the 2 remaining are the control's own two.
+
+### Red witness
+
+test/git-ceiling.test.ts:154, registered as
+`test-no-repository-arms-ceiling-at-tmpdir`, spec
+witness/kernel-0-2-1-no-repository-arms-ceiling.json. It first re-runs the
+three capture probes live and compares status, stdout and stderr with the
+record (test/git-ceiling.test.ts:180). Then, for TWO ancestor shapes (a
+repository with `.git`, and a git directory laid into the parent, built by
+test/git-ceiling.test.ts:85), it checks that HEAD really resolves from the
+nested scratch root, and runs one victim of each structurally different shape
+in a nested `node --test` with `TMPDIR` inside the ancestor and no inherited
+`GIT_*`, `NODE_OPTIONS` or `NODE_TEST*` name (test/git-ceiling.test.ts:118):
+
+- removed `.git`: the single-family arm CI failed;
+- never a repository: dual-review "two verdicts sharing a produced-by model
+  family exit nonzero naming the duplicated value";
+- `GIT_*` stripped from the child: exit-test-local "the stub payload refuses a
+  bad mode and a working directory that is not a worktree".
+
+Three members, each neutralising one file's ceiling line (`void GIT_CEILING;`).
+Hand trial (scratch try-members3.py), node v26.6.0:
+
+```
+kernel-0-2-1-no-repository-arms-ceiling HEAD (0, '1', '0')
+kernel-0-2-1-no-repository-arms-ceiling member 0 (1, '0', '1')
+kernel-0-2-1-no-repository-arms-ceiling member 1 (1, '0', '1')
+kernel-0-2-1-no-repository-arms-ceiling member 2 (1, '0', '1')
+kernel-0-2-1-no-repository-arms-ceiling RESTORED (0, '1', '0')
+```
+
+What each member's red said (scratch fr3-red.py, excerpts of the nested run's
+real output; ancestor and scratch names are mkdtemp's):
+
+```
+removed .git (single-family-exception.test.ts) failed under a repository with a .git directory:
+  .../tiphys-single-family-a8fzER/charter.yaml does not exist in commit 85dd1dc69dcf1894a9705a7e9bc8ab97d95c625f, resolved from HEAD, ...
+never a repository (dual-review.test.ts) failed under a repository with a .git directory:
+  .../tiphys-dual-review-eOk1LU/charter.yaml does not exist in commit 7a0535af6a2934ea2a78bd2bc47e007effe5211c, resolved from HEAD, ...
+GIT_* stripped from the child environment (exit-test-local.test.ts) failed under a repository with a .git directory:
+  The input did not match the regular expression /is not a git worktree/. Input:
+```
+
+The witness stops at the first ancestor shape that reddens, so the second
+shape was measured on its own (scratch fr3-gitdir-red.py, the same nested
+invocation under a git directory laid into the parent):
+
+```
+test/single-family-exception.test.ts ceiling neutralised: (1, '0', '1', ["<anc>/tmp/tiphys-single-family-Ifl43g/charter.yaml does not exist in commit 484bebb6..., resolved from HEAD, ..."])
+test/single-family-exception.test.ts ceiling restored:    (0, '1', '0', [])
+test/dual-review.test.ts ceiling neutralised: (1, '0', '1', ["<anc>/tmp/tiphys-dual-review-5SWoS9/charter.yaml does not exist in commit 484bebb6..., resolved from HEAD, ..."])
+test/dual-review.test.ts ceiling restored:    (0, '1', '0', [])
+test/exit-test-local.test.ts ceiling neutralised: (1, '0', '1', ['The input did not match the regular expression /is not a git worktree/. Input:'])
+test/exit-test-local.test.ts ceiling restored:    (0, '1', '0', [])
+```
+
+(Output trimmed after "resolved from HEAD" and the sha shortened to eight
+characters in that block only, marked with `...`; nothing else changed.)
+
+### What this round did NOT cover
+
+- **CI's exact ancestor.** Not found and not reproduced (above). The fix is
+  proven against discovery of an ancestor in both shapes discovery accepts. It
+  is NOT proven against an inherited `GIT_DIR`, the one shape that reproduces
+  CI's exact message here, because the ceiling does not stop `GIT_DIR`
+  (measured). No path that sets it in these test processes was found.
+- **git 2.55.0**, CI's version. Every measurement here is git 2.43.0. The
+  witness re-runs the capture live, so a different ceiling behaviour on CI's
+  git reddens that test there rather than passing unobserved.
+- **The runner image and uid.** Nothing outside this repository's code was
+  examined: the runner's `/tmp`, other jobs, or processes outside the test
+  run.
+- **Test files other than the six.** The execution derivation covers the
+  suite as it is at f39daae plus this round's file. A future test that asserts
+  "no repository" from under os.tmpdir() gets no ceiling unless it sets one;
+  nothing enforces that.
+- **scripts/check-cutover-entry.mjs** builds its git environment from an
+  allowlist that drops every `GIT_*` name, `GIT_CEILING_DIRECTORIES` included
+  by name (scripts/check-cutover-entry.mjs:199), so a ceiling a test sets does
+  not reach its git. Its no-git test passed in the `anc` arm; I did not change
+  the script.
+- **Test pollution of os.tmpdir() found on the way, not changed**:
+  test/authored-bytes.test.ts:74 writes the FILE
+  `/tmp/tiphys-authored-bytes-outside`, not a repository, directly under
+  os.tmpdir().
+
+### Gates for fix round 3
+
+To be filled from the runs at the committed head.
+
 ## Open questions
 
 1. **RESOLVED in fix round 1 (CR-001).** Was: **`headGroupFor` is unchanged.** In the derived checks, a same-phase
@@ -1658,6 +2093,14 @@ tests, 21 pass, 0 skipped.
    a date for "before the field existed" should close the first is for the
    orchestrator; DR-0054 gives none.
 
+13. **Fix round 3: what CI's ancestor was is open.** CI printed
+   `assurance-modes.yaml` as the first missing regime document, so its
+   `./charter.yaml` probe found a blob. Of the shapes measured here with git
+   2.43.0, only an inherited `GIT_DIR` reproduces that, and the ceiling does
+   not stop `GIT_DIR`. No code path that sets it in these test processes was
+   found. Whether to also strip `GIT_DIR` and `GIT_WORK_TREE` in the six files,
+   without a known source to witness against, is for the orchestrator.
+
 ## Claim grep
 
 ```
@@ -1701,10 +2144,10 @@ and what settles each:
 - 1144: "an unstamped document never reached the comparison" at b57bd7c: the
   new test is red there with `Missing expected exception: {}`, the `{}` being
   the unstamped record (captured above).
-- 1636: "needs a", inside open question 9, which is a question.
-- 1648: "cannot be decoded" describes an input (an undecodable file), not a
+- 2071 (1636 before fix round 3): "needs a", inside open question 9, which is a question.
+- 2083 (1648 before fix round 3): "cannot be decoded" describes an input (an undecodable file), not a
   claim about the code.
-- 1664: the grep command itself.
+- 2107 (1664 before fix round 3): the grep command itself.
 
 Fix round 2's section:
 
@@ -1727,7 +2170,23 @@ Fix round 2's section:
 - 997, 1303, 1306, 1330, 1349, 1375: lines of the derivation's
   captured grep output, unedited.
 
+Fix round 3's section (re-run after it was written; lines 1602 to 2033):
+
+- 1614: CI's captured output ("never green" is the check's own sentence).
+- 1710, 1737, 1749, 1757, 1771, 1941: test titles inside the captured
+  fr3-fails.py output, unedited.
+- 1803: "no grep for a removed `.git` can see" the never-a-repository victims:
+  the static grep printed just above finds two of the six victim files, and
+  the other four are in the execution list only.
+- 1903: each cwd-relative bare init targets a subdirectory, "never
+  os.tmpdir() itself": test/orchestrator-next.test.ts:71 makes `origin` as
+  `join(dir, "origin.git")` under a fresh mkdtemp, the five `makeBareRemote`
+  helpers make `join(root, name)`, and scripts/probe-cas-ref.mjs:192 makes
+  `join(absRoot, "remote.git")`.
+- 1961 and 1983: "never a repository" is the victim shape's name, and 1983 is
+  captured output.
+
 Occurrences, counted the same way in both forms after this section was
-written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 73, and the
-wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 73.
-Equal, so no hit was missed by wrapping. The hits after line 1664 are this section quoting the ones above it.
+written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 90, and the
+wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 90.
+Equal, so no hit was missed by wrapping. The hits after line 2107 are this section quoting the ones above it.

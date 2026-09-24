@@ -48,6 +48,27 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { realpathSync as ceilingRealpath } from "node:fs";
+import { tmpdir as ceilingTmpdir } from "node:os";
+import { delimiter as ceilingDelimiter } from "node:path";
+
+/*
+ * NO REPOSITORY ABOVE THE SCRATCH ROOT (kernel 0.2.1 fix round 3). Tests in
+ * this file stage context directories under os.tmpdir() that are NOT git
+ * repositories (or whose `.git` is removed) and assert what the code does
+ * when no repository is found. Git DISCOVERS a repository in any ancestor, so
+ * a repository at or above os.tmpdir() turns every such arm into a read of
+ * THAT repository's HEAD. Measured: the whole suite with os.tmpdir() inside a
+ * real repository failed 64 tests across six files, this one among them, and
+ * CI run 35946757118 failed one of them the same way. The ceiling stops
+ * discovery from climbing out of os.tmpdir(); repositories a test stages
+ * INSIDE it (and contexts nested in them) are still found. Every child
+ * process inherits it from here.
+ */
+const GIT_CEILING = [ceilingRealpath(ceilingTmpdir()), ceilingTmpdir(), process.env["GIT_CEILING_DIRECTORIES"] ?? ""]
+  .filter((entry) => entry !== "")
+  .join(ceilingDelimiter);
+process.env["GIT_CEILING_DIRECTORIES"] = GIT_CEILING;
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const cliEntry = join(repoRoot, "bin", "tiphys.ts");
