@@ -144,12 +144,66 @@ function runVictim(ancestor: string, file: string, title: string, inherited: Rec
   mkdirSync(scratchRoot, { recursive: true });
   env["TMPDIR"] = scratchRoot;
   Object.assign(env, inherited);
+  const traceDir = mkdtempSync(join(tmpdir(), "tiphys-git-ceiling-trace-log-"));
+  const traceFile = join(traceDir, "trace.log");
+  env["GIT_TRACE"] = traceFile;
+  env["GIT_TRACE_SETUP"] = traceFile;
   const run = spawnSync(
     process.execPath,
     ["--test", "--test-reporter=tap", "--test-name-pattern", `^${escapeRegExp(title)}$`, join(repoRoot, "test", file)],
     { cwd: repoRoot, encoding: "utf8", env },
   );
-  return { status: run.status, output: `${run.stdout ?? ""}${run.stderr ?? ""}` };
+  let trace = "";
+  try {
+    trace = readFileSync(traceFile, "utf8");
+  } catch {
+    trace = "(no trace written)";
+  }
+  rmSync(traceDir, { recursive: true, force: true });
+  return { status: run.status, output: `${run.stdout ?? ""}${run.stderr ?? ""}`, trace };
+}
+
+/**
+ * DIAGNOSTIC, printed on every run: what git does, from a removed-.git
+ * directory staged the way the victims stage one, under the ceiling the
+ * victims set. Kept so a CI-only difference is visible in the job log.
+ */
+function traceNoRepository(root: string): string[] {
+  const scratchRoot = join(root, "tmp");
+  mkdirSync(scratchRoot, { recursive: true });
+  const dir = mkdtempSync(join(scratchRoot, "tiphys-git-ceiling-trace-"));
+  const lines: string[] = [];
+  try {
+    mustGit(dir, ["init", "-q", "."]);
+    writeFileSync(join(dir, "charter.yaml"), "delivery-mode: full\n");
+    writeFileSync(join(dir, "assurance-modes.yaml"), "modes: {}\n");
+    mustGit(dir, ["add", "-A"]);
+    mustGit(dir, ["commit", "-q", "-m", "trace"]);
+    rmSync(join(dir, ".git"), { recursive: true, force: true });
+    const ceiling = [realpathSync(scratchRoot), scratchRoot].join(":");
+    lines.push(`uid=${String(process.getuid?.())} ${git(dir, ["--version"]).stdout.trim()} ceiling=${ceiling}`);
+    lines.push(`outer GIT_* names: ${Object.keys(process.env).filter((n) => n.startsWith("GIT_")).join(",") || "none"}`);
+    for (const withCeiling of [true, false]) {
+      for (const args of [
+        ["rev-parse", "HEAD^{commit}"],
+        ["rev-parse", "--git-dir", "--show-toplevel", "--show-prefix"],
+        ["cat-file", "-t", "HEAD:./charter.yaml"],
+        ["config", "--list", "--show-origin", "--show-scope"],
+      ]) {
+        const extra: Record<string, string> = { GIT_TRACE_SETUP: "1" };
+        if (withCeiling) {
+          extra["GIT_CEILING_DIRECTORIES"] = ceiling;
+        }
+        const run = git(dir, args, extra);
+        lines.push(
+          `ceiling=${String(withCeiling)} git ${args.join(" ")} -> ${String(run.status)}: ${`${run.stdout}${run.stderr}`.replace(/\n/g, " | ")}`,
+        );
+      }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  return lines;
 }
 
 const VICTIMS: Array<{ shape: string; file: string; title: string }> = [
@@ -227,6 +281,9 @@ test("a real repository above os.tmpdir() leaves the removed-.git, never-a-repos
       const head = git(join(ancestor.root, "tmp"), ["rev-parse", "HEAD^{commit}"], ancestor.inherited);
       assert.equal(head.status, 0, `${ancestor.kind}: HEAD must resolve from inside it: ${head.stderr}`);
       assert.match(head.stdout, /^[0-9a-f]{40}\n$/);
+      for (const line of traceNoRepository(ancestor.root)) {
+        console.log(`# trace [${ancestor.kind}] ${line}`);
+      }
 
       /* 3. Each shape's victim still passes with that repository reachable. */
       for (const victim of VICTIMS) {
@@ -234,7 +291,7 @@ test("a real repository above os.tmpdir() leaves the removed-.git, never-a-repos
         assert.equal(
           result.status,
           0,
-          `${victim.shape} (${victim.file}) failed under ${ancestor.kind}:\n${result.output}`,
+          `${victim.shape} (${victim.file}) failed under ${ancestor.kind}:\n${result.output}\n--- git trace ---\n${result.trace}`,
         );
         assert.match(result.output, /^# tests 1$/m, `${victim.shape}: the pattern must select exactly one test`);
         assert.match(result.output, /^# pass 1$/m);
