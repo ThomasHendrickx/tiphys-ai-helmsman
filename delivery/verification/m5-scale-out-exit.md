@@ -1,9 +1,11 @@
 # M5-P6 exit report: hemma scale-out proof
 
 Governing plan section: delivery/plan/value-delivery-plan.yaml:395. This
-document is written incrementally. This revision holds section 1, Bootstrap
-(step 3a). The parallel phases, merges and delivered outcomes (step 3b and
-criterion p6-parallel-value) are not written yet.
+document was written incrementally. Section 1 is the bootstrap (step 3a).
+Section 2 is the two parallel phases and their delivered outcome (step 3b,
+criterion p6-parallel-value). Section 3 classifies every failure met
+(criterion p6-attribution). Section 4 gives the verdict on every p6 criterion.
+Section 5 lists the environment events and what was not verified.
 
 Paths inside hemma and hemma-fleet are quoted in backticks, because neither
 repository is a citation root here.
@@ -12,14 +14,17 @@ repository is a citation root here.
 
 ### 1a. What was done, in one table
 
-| repository | branch | pull request | head |
-|---|---|---|---|
-| ThomasHendrickx/hemma-fleet | `tiphys/bootstrap` | https://github.com/ThomasHendrickx/hemma-fleet/pull/1 | `bba99ec82bc1108bed802f0ceb0428cef053b05b` |
-| ThomasHendrickx/hemma | `tiphys/bootstrap` | https://github.com/ThomasHendrickx/hemma/pull/456 | `668f69004238fb5620f4145c5c18c76439767605` |
+| repository | branch | pull request | reviewed and merged head | merge commit |
+|---|---|---|---|---|
+| ThomasHendrickx/hemma-fleet | `tiphys/bootstrap` | https://github.com/ThomasHendrickx/hemma-fleet/pull/1 | `bba99ec82bc1108bed802f0ceb0428cef053b05b` | `4fdd927f1885c0fe579666d8ef143462c8ed2797`, 2026-09-24T14:54:52Z |
+| ThomasHendrickx/hemma | `tiphys/bootstrap` | https://github.com/ThomasHendrickx/hemma/pull/456 | `8e84b4e464e6902bbecdc982242cd87c9cde24bd` (the first head was `668f690`; the fix round, 1j, moved it) | `16a5588a594abc3a7d2daf8ee18d1a1f27b1a50d`, 2026-09-24T14:55:03Z |
 
 Neither branch name matches `^claude/m[0-9]+-p[0-9]+-`, so neither is read as
-a phase branch by any scope gate. Nothing was merged. Nothing was pushed to
-either `main`. No migration ran against any remote database.
+a phase branch by any scope gate. This step (the implementer) merged nothing
+and pushed nothing to either `main`; both pull requests were merged afterwards
+by the orchestrator, at the heads both clean-room reviews approved (section 2).
+No migration ran against any remote database. (Table updated at exit-report
+time; the head column was stale after the fix round, finding CR-B-002.)
 
 Specification followed: the bootstrap inputs of intake section 4c
 (delivery/verification/m5-hemma-intake.md:186), the post-init steps of 4e
@@ -215,7 +220,10 @@ exit 0
 ```
 
 The conflict pre-pass on hemma's two real declarations, from this branch's
-checkout (0.2.1 has no `conflicts`, intake 4f):
+checkout (0.2.1 has no `conflicts`, intake 4f). **This first run was made
+WITHOUT `--append-only`**, so it printed the kernel's own three default
+registries, which intake 6a says hemma's run should replace with its own
+(finding CR-B-003). The corrected run follows the original:
 
 ```
 + node bin/tiphys.ts conflicts <hemma>/docs/tiphys/phase-declarations/m1-p1.json <hemma>/docs/tiphys/phase-declarations/m1-p2.json
@@ -226,6 +234,25 @@ conflicts: 0 overlapping pair(s), 1 disjoint pair(s), 0 overlapping path(s)
 semantic coupling: NOT CHECKED. Literal file overlap is the only thing this command computes; zero overlap is not proof of independence. A reviewer must still judge semantic coupling for EVERY pair, disjoint ones included (a test in one phase asserting on what another phase changes, related behaviour in disjoint files, merge order).
 exit 0
 ```
+
+Corrected, at exit-report time, with hemma's one append-only file and this
+branch's kernel (node v26.6.0). The declarations are byte-identical at
+`8e84b4e` and at hemma `main` `5bf2e57` (`git diff --quiet` exit 0):
+
+```
++ node bin/tiphys.ts conflicts --append-only package-lock.json <hemma>/docs/tiphys/phase-declarations/m1-p1.json <hemma>/docs/tiphys/phase-declarations/m1-p2.json
+conflicts: 2 declaration(s): M1-P1 (<hemma>/docs/tiphys/phase-declarations/m1-p1.json), M1-P2 (<hemma>/docs/tiphys/phase-declarations/m1-p2.json)
+append-only, union-resolved, never an overlap: package-lock.json
+DISJOINT M1-P1 M1-P2
+conflicts: 0 overlapping pair(s), 1 disjoint pair(s), 0 overlapping path(s)
+semantic coupling: NOT CHECKED. Literal file overlap is the only thing this command computes; zero overlap is not proof of independence. A reviewer must still judge semantic coupling for EVERY pair, disjoint ones included (a test in one phase asserting on what another phase changes, related behaviour in disjoint files, merge order).
+exit 0
+```
+
+The bootstrap criteria review reproduced the same verdict and its control
+(both declarations plus `tests/setup.ts`: `OVERLAP M1-P1 M1-P2 tests/setup.ts`,
+exit 1), and judged semantic coupling: neither spec path is referenced by any
+tracked non-doc file (delivery/review/m5-p6-hemma-review-bootstrap-criteria.md:74).
 
 The phase predicates are red at the branch point (node v24.21.0):
 
@@ -373,9 +400,9 @@ node v24.21.0, `CI=true` and the workflow-level env block of `ci.yml`
 | `npm run start` and the Inngest dev CLI 1.45.1 (installed to scratch with node v22.22.2's npm, which runs its install script) | ready | both answered within their timeouts |
 | `npx playwright test --list` | 0 | `Total: 237 tests in 57 files` |
 | `npx playwright test`, run 1 | **1** | `1 failed`, `6 skipped`, `4 did not run`, `226 passed (3.2m)`; the failure is `tests/e2e/budget-phase-aware-view.spec.ts:40`, `locator.click: Test timeout of 60000ms exceeded` on `budget-view-toggle-full`, which the call log shows `disabled`; the 4 did-not-run are the rest of that `serial`, `retries: 0` describe |
-| that spec file alone, 3 times | 0, 0, 0 | `5 passed` each time |
-| `npx playwright test`, run 2 | 0 | `1 flaky` (`tests/e2e/quote-budget-linking.spec.ts:178`, passed on retry), `6 skipped`, `230 passed (2.9m)` |
-| `npm run test:full -- --workers=3` | 0 | `Diff-scoped audit clean.`; `vitest [unit]: 8540 passed / 14 skipped / 7 todo / 8561 total`; `vitest [interaction]: 3 passed / 0 skipped / 0 todo / 3 total`; `playwright: 231 passed / 0 failed / 6 skipped / 0 did-not-run / 0 flaky -> accounted 237 of 237`; `Full test suite green.` |
+| that spec file alone, 3 times | 0, 0, 0 | `5 passed` each time (against run 1's leftover server; see 1k) |
+| `npx playwright test`, run 2 (against run 1's leftover server; see 1k) | 0 | `1 flaky` (`tests/e2e/quote-budget-linking.spec.ts:178`, passed on retry), `6 skipped`, `230 passed (2.9m)` |
+| `npm run test:full -- --workers=3` (its Playwright stage against run 1's leftover server; see 1k) | 0 | `Diff-scoped audit clean.`; `vitest [unit]: 8540 passed / 14 skipped / 7 todo / 8561 total`; `vitest [interaction]: 3 passed / 0 skipped / 0 todo / 3 total`; `playwright: 231 passed / 0 failed / 6 skipped / 0 did-not-run / 0 flaky -> accounted 237 of 237`; `Full test suite green.` |
 | credit concurrency specs, LOCAL `hemma_credit_test` | 0 | `Tests 7 passed (7)` |
 
 (`->` stands for U+2192 in the test:full line, 1 occurrence, transliterated.)
@@ -394,7 +421,8 @@ changes no application source; at `668f690` it did change one production
 transitive dependency version (F-5), which the fix round undid (1j). This is a judgment that the rule is met, stated with
 the red run beside it rather than instead of it, and the pull request
 description carries the same record. The control run on hemma `main` came
-after this, in the fix round (1j): the failure did not reproduce there either.
+after this, in the fix round (1j). **1k withdraws it as a control**: it ran
+against a server built from the branch, not from `main`.
 
 Not run: the direct-upload e2e against real Supabase storage (it needs the
 `supabase/storage-api` service container and there is no container runtime
@@ -426,9 +454,26 @@ configuration neither init nor the charter produces, placed by hand; each is a
 | B-15 | `docs/tiphys/phase-declarations/m1-p1.json`, `m1-p2.json` | hemma | PREDICATE, kernel-imposed naming | intake I-12; ids and branches follow the enforced pattern |
 | B-16 | `docs/work-history/2026-09-24.tiphys-bootstrap.md` | hemma | PREDICATE (hemma's own rule) | not a Tiphys input |
 | B-17 | `--phase` from the branch name, and `--base/--head/--phase` on push | hemma CI | PREDICATE | see F-4 |
+| B-18 | `--shared-exclusion` on `tiphys init` (intake I-2) | hemma-fleet | OPERATOR, a choice, NOT taken | init ran without it, so doctor reports `shared-lock PASS not-declared` (1b). It matters only when phases run from different environments; both M1 phases ran in one container (section 2). Added at exit-report time (CR-B-006 b) |
 
-**Summary.** 17 inputs: 2 CHARTER, 9 PREDICATE, 5 OPERATOR, **1 KERNEL-HANDWORK
+**Summary.** 18 inputs: 2 CHARTER, 9 PREDICATE, 6 OPERATOR, **1 KERNEL-HANDWORK
 (H-6)**.
+
+**Handwork numbering.** H-1 to H-4 are the intake's numbering
+(delivery/verification/m5-hemma-intake.md:700). H-5 was allocated in this
+step's first draft to the three ignored fleet directories created with `mkdir`,
+and withdrawn before push when `tiphys resume` was found to produce them (F-2,
+and the step 3a work history). The id stays retired and is not reused. H-6 is
+the one hand-placed kernel item (CR-B-006 c).
+
+**Verdict on p6-charter-only: NOT MET on released kernel 0.2.1.** The
+criterion requires that no kernel-specific configuration beyond the charter
+and project-owned predicates was hand-added. H-6, `assurance-modes.yaml`
+copied into hemma by hand, is exactly such configuration, and 0.2.1 has no
+command that produces it. This branch's `tiphys init --project`
+(src/commands/init.ts:323, DR-0058) produces that file byte-identically
+(F-3), so the criterion is met by this branch ONCE A RELEASE CARRIES IT. That
+release is a follow-up; it has not happened (CR-B-006 a).
 
 ### 1h. Findings from the bootstrap
 
@@ -600,8 +645,10 @@ all under `node_modules/@tiphys/kernel/`. What else was checked:
 - A hemma developer who runs a plain `npm install <pkg>` with npm 11 will
   still flip `fsevents`, exactly as on `main` today.
 
-**Item 3, the E2E control on `main`.** hemma `main` at `a6141d7`, in its own
-worktree. Same method as 1f: node v24.21.0, `CI=true`, the `ci.yml` env block,
+**Item 3, the E2E control on `main`. WITHDRAWN AS A CONTROL, see 1k: every
+Playwright run below was served by the server left over from 1f's run 1, which
+was built from the bootstrap branch, not from `main`.** As recorded at the
+time: hemma `main` at `a6141d7`, in its own worktree. Same method as 1f: node v24.21.0, `CI=true`, the `ci.yml` env block,
 a freshly recreated LOCAL `hemma_e2e`, `prisma migrate deploy`, a production
 build and the Inngest dev CLI. Results:
 
@@ -612,13 +659,15 @@ build and the Inngest dev CLI. Results:
 | `npx playwright test`, full 2 | exit 0: `6 skipped`, `231 passed (2.8m)` |
 | `tests/e2e/budget-phase-aware-view.spec.ts` alone, 5 times | exit 0 each, `5 passed` each |
 
-So `budget-phase-aware-view.spec.ts:40` passed in all 7 executions on `main`.
-On the bootstrap branch it failed once (run 1) and then passed 5 times (1f).
-hemma's own CI `build-and-e2e` job on `668f690` also passed. That is one
-failure in 13 local executions, and it is on the branch side. The branch
-changes no application source. This is not enough to call the failure
-pre-existing flakiness, and not enough to attribute it to the branch. It stays
-an open item, with this evidence beside it.
+As first written: "`budget-phase-aware-view.spec.ts:40` passed in all 7
+executions on `main`." That sentence is FALSE as a statement about `main`, and
+is left here struck by this note rather than deleted. What those 7 executions
+show is that the spec, with `main`'s spec files (identical to the branch's),
+passed 7 times against the BRANCH build. Corrected count: 1 failure in 13
+local executions, all 13 against branch builds (1 against a fresh server, 12
+against the leftover one); 0 valid local executions on `main`. hemma's own CI
+`build-and-e2e` job passed on `668f690`, on `8e84b4e`, and on every later head
+(section 2). Whether the failure predates the branch is still NOT established.
 
 **CI on the new head `8e84b4e`**, read with the GitHub REST API and the GitHub
 MCP tools:
@@ -646,6 +695,65 @@ gates: every applicable gate is green
 
 The job uploaded its `summary.json` as artifact 10812739530.
 
+### 1k. Correction at exit-report time: a leftover production server served 4 of 5 local E2E runs
+
+Found while writing this report. A `next-server (v16.2.5)` process was still
+running with its working directory in this step's hemma clone:
+
+```
+$ ps -o pid,ppid,lstart,cmd -p 26960
+  PID  PPID                  STARTED CMD
+26960     1 Thu Sep 24 13:28:08 2026 next-server (v16.2.5)
+$ ls -l /proc/26960/cwd
+lrwxrwxrwx 1 root root 0 Sep 24 14:40 /proc/26960/cwd -> <scratch>/m5p6-step3/hemma
+```
+
+(The scratch directory's absolute path is shortened to `<scratch>` in the
+second capture; nothing else in either capture is changed.)
+
+Its start time is the moment 1f's run 1 brought its servers up (the step's
+beacon log reads `2026-09-24T13:28:12Z e2e servers up`). Every later local E2E
+script tried to start its own server on port 3000 and could not:
+
+| local run (evidence directory) | `EADDRINUSE` lines in its `nextjs.log` | which server answered |
+|---|---|---|
+| 1f run 1 (`e2e`) | 0 (`Ready in 147ms`) | its own, fresh |
+| 1f spec alone x3, run 2 (`e2e-branch-rerun`, `e2e-full-rerun`) | 3 each | run 1's |
+| 1f `test:full` (`e2e-test-full`) | 3 | run 1's |
+| 1j item 3, "control on `main`" (`e2e-main`) | 3 | run 1's, built from the branch |
+
+hemma's Playwright config reuses an existing server
+(`reuseExistingServer: true`), so each run proceeded against the old one and
+reported green without saying so. The Inngest dev server logged no bind error
+in any run.
+
+- **Mechanism: a cleanup that did not test the property that matters.** The E2E
+  scripts' exit trap killed the recorded `npm run start` pid and ran
+  `pkill -f "next start"`. Next.js renames its server process to
+  `next-server (vX)`, which that pattern does not match, and the npm wrapper's
+  death does not stop its child. The trap reported nothing either way.
+- **Derivation:** `grep -c EADDRINUSE` over the `nextjs.log` of every local
+  E2E run this step made (the table above; five runs, one per evidence
+  directory). Not covered: the M1-P1 and M1-P2 implementers' own local E2E
+  runs. M1-P1 used ports 3101 and 8301 (its pull request body says so). For
+  M1-P2 the port is not stated, so whether its local run met the same server is
+  not known from here.
+- **Consequences:** the bootstrap's local E2E evidence reduces to run 1 (one
+  failure) plus 12 green executions against the same branch build. The E2E rule
+  verdict in 1f rested on run 2 and `test:full`, which are still green runs of
+  the branch's code, but they are not independent server starts. The "control on
+  `main`" is withdrawn (1j). The independent E2E evidence on every merged head is
+  hemma CI's `build-and-e2e` job (section 2).
+- **The process is still running at the time of writing.** Stopping it was
+  refused by this agent's permission layer ("Interfere With Workloads"), and the
+  orchestrator reports the same refusal. It is an ENVIRONMENT item for the owner
+  or orchestrator: pid 26960, cwd `<scratch>/m5p6-step3/hemma`, connected to the
+  LOCAL `hemma_e2e` only (its environment's `DATABASE_URL` host is
+  `localhost:5432`).
+- **Lesson for the next bootstrap:** give each E2E run its own port pair and
+  assert the port is free before starting, or kill by the port's owner, never by
+  a process-name pattern.
+
 ### 1i. What this step did NOT cover
 
 - The `push` arm of the new workflow has not run; it runs only after a merge
@@ -657,3 +765,312 @@ The job uploaded its `summary.json` as artifact 10812739530.
   (step 3b).
 - Whether a repository ruleset governs hemma `main` (intake Q-3) was not
   re-probed.
+
+## 2. Two parallel phases in hemma (step 3b, criterion p6-parallel-value)
+
+Every fact in this section was read from GitHub with the GitHub MCP tools
+(pull request reads, commit listings and workflow-run reads) at exit-report
+time, or measured in a hemma clone; each row names its source. Commit times are
+the commits' own author timestamps, which the committing machine sets; pull
+request and run times are GitHub's.
+
+### 2a. The phases
+
+Both are in hemma's own plan, `docs/tiphys/plan.yaml`, and each has its own
+declaration under `docs/tiphys/phase-declarations/`, merged to hemma `main`
+with the bootstrap at `16a5588`. Both are test-only. Each removes the 7
+`no-untimed-clock-in-specs` warnings from one spec by freezing the clock in
+file-level hooks, with no assertion changed.
+
+| phase | branch | pull request | reviewed head | merge commit |
+|---|---|---|---|---|
+| M1-P1 | `claude/m1-p1-site-shed-frozen-clock` | https://github.com/ThomasHendrickx/hemma/pull/457 | `8380ad0d6470964b00903e42a8300b64cfe53bd7` | `ccd658c03cc3d900a1d956a7ee0b453c54716423` |
+| M1-P2 | `claude/m1-p2-google-calendar-oauth-frozen-clock` | https://github.com/ThomasHendrickx/hemma/pull/458 | `a49d417c9b37a8d12445d2791de034089d61cda7` | `5bf2e57afa34f5be984b37339b5e315d02ca6b13` |
+
+Both pull requests have base `16a5588` (the pull request reads' `base.sha`),
+so both branches were cut from the same `main`.
+
+**Merged at exactly the reviewed heads**, measured in a hemma clone:
+
+```
++ git log --format='%h %p' -1 ccd658c      -> ccd658c 16a5588 8380ad0
++ git log --format='%h %p' -1 5bf2e57      -> 5bf2e57 ccd658c a49d417
++ git diff --quiet 8380ad0 ccd658c          -> exit 0 (tree of the merge equals the reviewed head)
++ git diff --name-only a49d417 5bf2e57      -> only M1-P1's two files
++ git diff --quiet a49d417 5bf2e57 -- <M1-P2's two files>   -> exit 0
++ git diff --name-only 16a5588 ccd658c      -> docs/work-history/2026-09-24.site-shed-frozen-clock.md, domain/site-shed/site-shed.service.spec.ts
++ git diff --name-only ccd658c 5bf2e57      -> docs/work-history/2026-09-24.google-calendar-oauth-frozen-clock.md, integrations/google-calendar/oauth.spec.ts
+```
+
+(Each output is shown after `->` on the command's line. This is a layout
+change for width, not a change to the output.)
+
+The two changed sets are disjoint, as the pre-pass said they would be (1c,
+corrected run).
+
+### 2b. Concurrently active
+
+Both implementers were dispatched in one orchestrator turn. The timeline shows
+that the two branches were in work at the same time, and that both pull
+requests were open before either merged:
+
+| time (UTC) | event | source |
+|---|---|---|
+| 15:01:46 | M1-P1 first commit `bfe626e` | commit listing of hemma `main` |
+| 15:01:55 | M1-P2 first commit `86f95fb` | same |
+| 15:21:58 | M1-P1 head `8380ad0` | same |
+| 15:26:58 | pull request 457 (M1-P1) opened | pull request read, `created_at` |
+| 15:30:32 | M1-P2 commit `0dd4c8b` | commit listing |
+| 15:35:31 | M1-P2 head `a49d417` | commit listing |
+| 15:36:42 | pull request 458 (M1-P2) opened | pull request read, `created_at` |
+| 15:48:10 | pull request 457 merged as `ccd658c` | pull request read, `merged_at` |
+| 15:57:46, 15:57:55 | M1-P1's two push runs complete | run reads, `updated_at` |
+| 15:58:41 | pull request 458 merged as `5bf2e57` | pull request read, `merged_at` |
+
+So from 15:01:55 to 15:48:10 both phases had unmerged work, and from 15:36:42
+to 15:48:10 both pull requests were open.
+
+### 2c. Reviews, two per unit
+
+Each document is copied byte for byte into this repository (all ten files are
+pure ASCII with no control characters, so nothing was transliterated;
+`sha256sum` and `cmp` against the originals were run at copy time).
+
+| unit | criteria review | hazard review | verdicts |
+|---|---|---|---|
+| bootstrap, hemma 456 at `8e84b4e` and hemma-fleet 1 at `bba99ec` | delivery/review/m5-p6-hemma-review-bootstrap-criteria.md:191 | delivery/review/m5-p6-hemma-review-bootstrap-hazard.md:315 | APPROVE, APPROVE, for both pull requests |
+| M1-P1 at `8380ad0` | delivery/review/m5-p6-hemma-review-m1p1-criteria.md:1, verdict JSON `m5-p6-hemma-m1-p1-criteria.json` | delivery/review/m5-p6-hemma-review-m1p1-hazard.md:1, verdict JSON `m5-p6-hemma-m1-p1-hazard.json` | APPROVE, APPROVE |
+| M1-P2 at `a49d417` | delivery/review/m5-p6-hemma-review-m1p2-criteria.md:1, verdict JSON `m5-p6-hemma-m1-p2-criteria.json` | delivery/review/m5-p6-hemma-review-m1p2-hazard.md:1, verdict JSON `m5-p6-hemma-m1-p2-hazard.json` | APPROVE, APPROVE, no findings |
+
+Model families. The four M1 verdict JSONs record `produced-by` `claude-opus`
+for the criteria reviews and `claude-sonnet` for the hazard reviews. The
+kernel's dual-review check compares `produced-by` as a string
+(scripts/check-dual-review.mjs:642), so these count as different families
+there. Whether two tiers from one vendor meet the intent of DR-0012
+condition 1 is not judged here. The two bootstrap review documents do not
+record a family at all. That they ran on different families is the
+orchestrator's statement, and it cannot be checked from the files.
+
+Two review-evidence limits, recorded rather than smoothed over:
+
+- **The M1-P1 hazard review is a condensed persistence, not the reviewer's
+  file.** The disk was full (ENOSPC) when that reviewer tried to write, so the
+  orchestrator wrote the markdown from the reviewer's final report, and states
+  so in the file's own header. Its verdict JSON is verbatim. That reviewer
+  could not execute its own tests or its mutation witness (its finding
+  HZ-M1P1-001). The M1-P1 criteria review of the same head DID execute its own
+  probes. It ran a frozen-clock probe (22 tests and 90 real-clock reads in the
+  control arm, 0 with the hooks), a failing-test leak check and five shuffle
+  seeds.
+- **The M1-P1 criteria reviewer's raw probe JSON is gone.** Its report cites
+  `/dev/shm/rp-probe.json` and `/dev/shm/rp-control.json`. Both were deleted
+  during the orchestrator's disk cleanup. Measured at exit-report time:
+  `ls -la /dev/shm` lists no `rp-` file. The report text, with its summarised
+  output, survives. The raw data does not.
+
+### 2d. CI on every head, and the post-merge push runs
+
+All read with the GitHub MCP tools (`get_workflow_run`); every conclusion is
+`success` and every run is `completed`.
+
+| unit | event | head | CI run | Tiphys gates run |
+|---|---|---|---|---|
+| bootstrap | pull_request | `8e84b4e` | https://github.com/ThomasHendrickx/hemma/actions/runs/36011488314 | https://github.com/ThomasHendrickx/hemma/actions/runs/36011488311 |
+| bootstrap | push to `main` | `16a5588` | https://github.com/ThomasHendrickx/hemma/actions/runs/36016296883 | https://github.com/ThomasHendrickx/hemma/actions/runs/36016295861 |
+| M1-P1 | pull_request | `8380ad0` | https://github.com/ThomasHendrickx/hemma/actions/runs/36020272922 | https://github.com/ThomasHendrickx/hemma/actions/runs/36020272918 |
+| M1-P1 | push to `main` | `ccd658c` | https://github.com/ThomasHendrickx/hemma/actions/runs/36022844051 | https://github.com/ThomasHendrickx/hemma/actions/runs/36022844293 |
+| M1-P2 | pull_request | `a49d417` | https://github.com/ThomasHendrickx/hemma/actions/runs/36021445913 | https://github.com/ThomasHendrickx/hemma/actions/runs/36021445984 |
+| M1-P2 | push to `main` | `5bf2e57` | https://github.com/ThomasHendrickx/hemma/actions/runs/36024088802 | https://github.com/ThomasHendrickx/hemma/actions/runs/36024088752 |
+
+**Serial merges.** M1-P2 merged at 15:58:41, after both of M1-P1's push runs
+on `ccd658c` had completed green (15:57:46 and 15:57:55). The M1-P2 pull
+request's own runs tested the union with `16a5588`, not with `ccd658c`. The
+union with M1-P1 was first run in CI by the push runs on `5bf2e57`, and both
+were green. Before the merge, the M1-P2 criteria review's
+`git merge-tree --write-tree origin/main HEAD` (exit 0, tree `4a384e7`, each
+side's blobs unaltered) was a deduction about that union, not a run.
+
+Unlike the kernel's own workflow (T-009), hemma's `ci.yml` and the new
+`tiphys-gates.yml` key the concurrency group on `run_id` for pushes to `main`.
+So no push run here was cancelled by a later merge. The bootstrap hazard review
+confirmed this by reading the `concurrency:` block
+(delivery/review/m5-p6-hemma-review-bootstrap-hazard.md:86).
+
+The M1 pull-request Tiphys runs are the first CI runs where hemma's `scope` gate
+was APPLICABLE. The M1-P1 pull request body quotes its local gate run at
+`8380ad0`:
+`scope: green: 2 changed path(s) audited against declaration
+docs/tiphys/phase-declarations/m1-p1.json at merge base 16a5588`. This report
+did not read the CI job logs of runs 36020272918 and 36021445984, so the
+per-gate CI line for scope is not quoted here. What is observed is that each
+run concluded `success` (see section 5).
+
+### 2e. Delivered outcome in hemma
+
+The outcome the phases promised is that both specs lint clean with no clock
+warnings, and that their tests run on a frozen clock. Measured at exit-report
+time, in a temporary worktree of hemma `main` at `5bf2e57` (removed
+afterwards). The toolchain was node v26.6.0 and npm 11.18.0, after
+`npm ci --ignore-scripts` (exit 0):
+
+```
++ npx eslint --max-warnings 0 domain/site-shed/site-shed.service.spec.ts
+exit 0
++ npx eslint --max-warnings 0 integrations/google-calendar/oauth.spec.ts
+exit 0
+  16a5588 domain/site-shed/site-shed.service.spec.ts: 7 no-untimed-clock-in-specs, 7 warnings, 0 errors
+  16a5588 integrations/google-calendar/oauth.spec.ts: 7 no-untimed-clock-in-specs, 7 warnings, 0 errors
+  5bf2e57 domain/site-shed/site-shed.service.spec.ts: 0 no-untimed-clock-in-specs, 0 warnings, 0 errors
+  5bf2e57 integrations/google-calendar/oauth.spec.ts: 0 no-untimed-clock-in-specs, 0 warnings, 0 errors
+```
+
+The last four lines come from `git show <rev>:<file> | npx eslint --stdin
+--stdin-filename <file> -f json`, counted by a node one-liner that the script
+printed. So the 14 warnings are gone: 7 per spec at the branch point, and 0 at
+`main`. The repository-wide count reported by the implementers moved from 795
+(bootstrap, 1d) to 788 after M1-P1 (the pull request 457 body) and to 781
+after M1-P2 (the M1-P2 addendum). This report did not re-run the
+repository-wide count.
+
+**Re-run it yourself** on any clone of hemma at `5bf2e57`, after `npm ci`:
+
+```
+npx eslint --max-warnings 0 domain/site-shed/site-shed.service.spec.ts integrations/google-calendar/oauth.spec.ts; echo "exit $?"
+```
+
+That the specs are FROZEN, not just lint-silent (CR-B-004 is the gap between
+the two), rests on the reviewers' executed probes. For M1-P1, the criteria
+review found 0 real-clock reads in 43 tests with the hooks, against 90 without
+them. For M1-P2, it found 0 in-test reads from `oauth.ts` or the spec, against
+33 in the control arm. The hazard review's two structurally different mutation
+witnesses each reddened exactly one targeted test.
+
+### 2f. After the merge: two commits on the M1-P2 branch that are not landed
+
+After pull request 458 merged, the M1-P2 implementer pushed two commits to its
+phase branch:
+
+- `0a77e7e`: a merge of `main` at `ccd658c`, author date 15:48:50.
+- `ee36392`: a work-history addendum, author date 16:00:41. It records a local
+  re-run: gates 4/4 green at base `ccd658c`, lint 781 warnings, E2E 231 passed,
+  0 failed.
+
+Source: the commit listing of that branch.
+
+These commits are on the branch only. They are in no pull request and have no
+CI run, and they are deliberately not landed. `main` records the merged work,
+and the addendum adds no acceptance evidence that `main` lacks. Class: an
+orchestration timing event (a message reached the implementer after the merge),
+NOT a failure. The push time itself cannot be read from commit data, only the
+author dates.
+
+**Verdict on p6-parallel-value: MET.** Two disjoint phases were active at the
+same time (2b). Each was reviewed twice at a named head and merged at exactly
+that head (2a, 2c). The merges were serial, the second after the first's push
+runs completed green (2d). Every post-merge push run is green (2d). The
+delivered outcome is measured on hemma `main` with a command anyone can re-run
+(2e).
+
+## 3. Every failure met, classified (criterion p6-attribution)
+
+Classes: KERNEL (this repository's code or evidence), PROJECT PREDICATE
+(hemma-owned configuration, code or tests), ENVIRONMENT (this container,
+toolchain or harness), OWNER ACTION (needs a decision or access only the owner
+or orchestrator holds). Severity is the finder's.
+
+| # | failure | class | what establishes the class |
+|---|---|---|---|
+| A-1 | `Tiphys gates` red on the first bootstrap head (run 36007584690): `prisma generate` found no `DATABASE_URL` | PROJECT PREDICATE (hemma's new workflow lacked the env), made invisible by the ENVIRONMENT (the operator shell exported both) | `env -i` reproduction: red with no database variables, green with the job env (1j) |
+| A-2 | the kernel's exact `yaml: 2.9.0` pin replaced hemma's production `yaml` 2.8.4 (F-5) | KERNEL | the non-dev lockfile diff: 2 differences at `668f690`, 0 after `--install-strategy=nested` (1j); the pin is in the kernel's own `package.json` |
+| A-3 | npm 11 flips `fsevents`' `dev` flag in hemma `main`'s own lockfile on a no-op install | ENVIRONMENT (npm major), with a stale PROJECT lockfile underneath | no-op `npm install --package-lock-only` on `main`: 1 difference on npm 11.19.0 and 11.18.0, 0 on 10.9.7 (1j) |
+| A-4 | local E2E run 1: `budget-phase-aware-view.spec.ts:40` timed out on a disabled toggle | PROJECT PREDICATE (a hemma E2E test), cause NOT established between the test and the environment | the bootstrap changes no application source (`git diff --stat`, 14 files, none of them application source: delivery/review/m5-p6-hemma-review-bootstrap-criteria.md:22); hemma CI `build-and-e2e` green on every head (2d); no valid local control on `main` (1k) |
+| A-5 | a leftover `next-server` from run 1 served 4 of 5 later local E2E runs; the "control on `main`" was not one | ENVIRONMENT (this step's cleanup trap) | `EADDRINUSE` counts per run and the process's start time and cwd (1k) |
+| A-6 | the leftover server could not be stopped | ENVIRONMENT (permission layer); OWNER ACTION to stop it | the permission refusal, "Interfere With Workloads" (1k) |
+| A-7 | disk full, about 15:40Z; ENOSPC for reviewers and implementers | ENVIRONMENT | the M1-P1 criteria review's environment note and HZ-M1P1-001; cleared by the orchestrator deleting stale clones |
+| A-8 | the M1-P1 hazard reviewer could not run its own tests | ENVIRONMENT (A-7) | HZ-M1P1-001 in `m5-p6-hemma-m1-p1-hazard.json` |
+| A-9 | the M1-P1 criteria reviewer's raw probe JSON was deleted | ENVIRONMENT (disk cleanup) | `ls -la /dev/shm`: no `rp-` file (2c) |
+| A-10 | Postgres was installed but stopped, and read as absent | ENVIRONMENT | tuition T-047, `delivery/tuition/T-047-postgres-is-installed-and-stopped-not-absent.md` on branch `claude/m5-orchestrator-paperwork-6` (`git ls-tree` at `a765ae7`; quoted, because it is not on this branch) |
+| A-11 | the ambient `DATABASE_URL` and `E2E_DATABASE_URL` point at a REMOTE database | ENVIRONMENT | every hemma script printed `+ db-like var present: DATABASE_URL` and then forced each variable to `localhost:5432`, refusing to run otherwise (1e) |
+| A-12 | npm 11.19.0 ran no dependency install scripts, so the Inngest CLI needed npm 10 | ENVIRONMENT | npm's own `npm warn install-scripts` lines in the install logs (1f) |
+| A-13 | `tiphys init` refuses a non-empty directory (F-1) | KERNEL (low) | exit 1 with the refusal at src/commands/init.ts:151 (1b) |
+| A-14 | a clone of a fleet home fails doctor `layout` until `tiphys resume` (F-2); doctor does not name `resume` | KERNEL (low, a message gap); the step itself is OPERATOR | fresh-clone run: doctor FAIL, `resume` exit 0, doctor PASS (1b) |
+| A-15 | `assurance-modes.yaml` placed by hand, H-6 (F-3) | KERNEL (0.2.1 has no `init --project`) | `cmp` against the installed kernel's copy, exit 0; src/commands/init.ts:323 is the unreleased producer |
+| A-16 | a gate with declared parameters errors before its precondition is read (F-4) | KERNEL (a design fact every project CI must know; not a defect) | runs F and F2 (1d); src/gates/run.ts:1413 |
+| A-17 | `review-families` absent from the charter (F-6) | OWNER ACTION (only the orchestrator or owner knows which families are available) | `validate --type charter` exit 0 without it; the field is optional (schemas/charter.schema.json:161) |
+| A-18 | declarations name dated work-history files (F-7) | PROJECT PREDICATE (hemma's naming) meeting a KERNEL rule (literal paths) | the declarations' `filesToTouch`; amendment is additive (src/gates/scope.ts:110) |
+| A-19 | HZ-B-001, medium: the scope gate's standing extras (`test/behaviors.json`, `delivery/work-history/<phase>.md`, `delivery/review/`, `delivery/verification/`) admit undeclared files in ANY project | KERNEL | the hazard reviewer's committed run: two undeclared files under those paths, scope GREEN, exit 0 (delivery/review/m5-p6-hemma-review-bootstrap-hazard.md:157); the lists at src/gates/scope.ts:565 and src/gates/scope.ts:979 |
+| A-20 | CR-B-001, low: the workflow runs the registry from the pull request's HEAD, so a phase can delete its own scope gate | PROJECT PREDICATE (hemma wiring; a design residue the kernel shares) | the criteria reviewer's run F: scope entry deleted plus an undeclared path, green, exit 0 (delivery/review/m5-p6-hemma-review-bootstrap-criteria.md:117) |
+| A-21 | CR-B-005, low: `${{ github.head_ref }}` interpolated straight into the shell | PROJECT PREDICATE (hemma workflow; this step wrote the line) | the `--phase` line of `.github/workflows/tiphys-gates.yml` in hemma (delivery/review/m5-p6-hemma-review-bootstrap-criteria.md:178) |
+| A-22 | HZ-B-002, low-medium: the fleet `.gitignore` does not exclude `node_modules/` | KERNEL (`tiphys init` writes it) | `npm ci` in a fleet clone, then `git status` shows `?? node_modules/`; init's list at src/fleet.ts:29 |
+| A-23 | HZ-B-004, informational: the registry's per-gate `events` field is declared and never enforced | KERNEL | `grep -rn events` over the runner source (delivery/review/m5-p6-hemma-review-bootstrap-hazard.md:108) |
+| A-24 | CR-B-004, low: hemma's clock lint rule is file-level; one `vi.useFakeTimers()` silences it for the whole file | PROJECT PREDICATE (hemma's lint rule and plan) | the rule source, `infrastructure/lint/no-untimed-clock-in-specs.mjs` in hemma; both phases' reviewers closed the gap with executed probes (2e) |
+| A-25 | HZ-M1P1-003, low: roster fixtures sit far from the 7 and 28 day thresholds, so mutation sensitivity is weak | PROJECT PREDICATE (pre-existing in hemma, outside M1-P1's scope) | the M1-P1 hazard verdict JSON |
+| A-26 | CR-M1P1-001, low: stale line numbers in the M1-P1 work history's claim-grep section | PROJECT PREDICATE (hemma document) | the M1-P1 criteria verdict JSON |
+| A-27 | CR-B-002, CR-B-003, CR-B-006: stale head, a pre-pass run without `--append-only`, no p6-charter-only verdict, a missing I-2 row, an H-5 gap | KERNEL (this repository's evidence) | fixed in this revision (1a, 1c, 1g) |
+| A-28 | local unit counts 8541 passed and 13 skipped against CI's 8540 and 14 | ENVIRONMENT, explained | one test, `hierarchy-parser.flow.run.spec.ts`, is `it.skipIf(process.env.CI)`; a per-test diff of the two vitest reports names only it (1j) |
+| A-29 | this agent's harness refused `git` with variable paths, `su`, and stopping a process | ENVIRONMENT | the refusals themselves; worked round with literal paths and scripts (step 3a work history) |
+| A-30 | the M1-P2 branch gained two commits after its merge | NOT A FAILURE: an orchestration timing event | 2f |
+
+Not in the table because no failure occurred: the commit AUTHOR identity. The
+commits this step made in hemma carry the git identity configured in this
+container, `Claude <noreply@anthropic.com>` (doctor prints it, 1b). This
+repository's convention 7 is about commit MESSAGES, and those carry no model or
+tool name. Recorded so that no reader mistakes the author field for a message
+breach, or the reverse.
+
+## 4. Verdict on every p6 criterion
+
+| criterion | verdict | evidence |
+|---|---|---|
+| p6-prepass | MET | the kernel half, APPROVED by both clean-room reviews at `45a0d54` (delivery/review/clean-room-m5-p6-kernel-criteria.md:775); used for real on hemma's declarations (1c, corrected run) |
+| p6-charter-only | **NOT MET on released 0.2.1**, because of H-6. MET by this branch's `tiphys init --project` once a release carries it; that release is a follow-up | 1g |
+| p6-parallel-value | MET | section 2 |
+| p6-attribution | MET | section 3, 30 rows, each with its class and what establishes it |
+| p6-suite | MET: `npm run build` exit 0, `npm test` exit 0, 1512 tests, 1512 pass, 0 skipped, node v26.6.0 | 4a |
+
+### 4a. p6-suite
+
+Run at exit-report time on this branch at `e1f2bda` (this report's content
+does not touch `src/` or `test/`). Toolchain: node v26.6.0, npm 11.18.0, with
+`dist/` built by the first command. Invocation: `npm test`.
+
+```
++ npm run build
+exit 0
++ git status --porcelain (after build)
++ npm test
+exit 0
+i tests 1512
+i pass 1512
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+```
+
+(Node's reporter prints U+2139 at the head of each summary line; it is
+rendered `i` here, 6 occurrences. The `suites 0` and `duration_ms` lines are
+omitted. Nothing else is changed. `git status --porcelain` printed nothing.)
+
+**p6-suite: MET.** Both commands exit 0, and 1512 tests pass with 0 failed and
+0 skipped.
+
+## 5. Environment events, and what this report did not verify
+
+- Disk full at about 15:40Z (A-7), cleared by the orchestrator deleting stale
+  clones. The same cleanup deleted this step's hemma and kernel
+  `node_modules`. The kernel's were reinstalled for this report's gate runs, and
+  hemma's only in a temporary worktree that has since been removed.
+- Postgres installed but stopped (A-10). The ambient remote `DATABASE_URL`
+  (A-11) was never used: every hemma command in this step forced local URLs.
+- The npm 11 `fsevents` flip (A-3). hemma developers on npm 11 will see it on
+  any install.
+- The leftover `next-server`, pid 26960 (A-5, A-6). Still running.
+- NOT verified here:
+  - the per-gate CI log lines of the two M1 pull-request Tiphys runs (only
+    their `success` conclusions were read);
+  - the repository-wide lint total on `5bf2e57` (the 781 is the implementer's
+    number);
+  - whether M1-P2's local E2E run met the leftover server;
+  - that the bootstrap reviews ran on different model families (2c);
+  - the push time of the two post-merge M1-P2 commits (2f).

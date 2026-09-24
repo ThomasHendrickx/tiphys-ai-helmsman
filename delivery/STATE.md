@@ -60,10 +60,14 @@ the merge gate rather than not-applicable.
   owner action A-17.
 - M5-P6, scale-out proof: `claude/m5-p6-scale-out-proof`, wave D. The kernel
   half (conflicts command, DR-0058 init change, hemma intake) is reviewed:
-  both clean-room reviews APPROVE at 45a0d54 after one fix round. Step 3, the
-  two hemma phases, is unblocked: the owner approved work in hemma and
-  hemma-fleet on 2026-09-24 and both are attached. Intake Q-9 and Q-5 are
-  answered in section 4f, and no kernel release is needed first.
+  both clean-room reviews APPROVE at 45a0d54 after one fix round. Step 3 is
+  DONE: hemma and hemma-fleet were bootstrapped (hemma 456, hemma-fleet 1),
+  and hemma phases M1-P1 (457) and M1-P2 (458) ran concurrently, merged
+  serially, with every post-merge push run green. Step 4, the exit report, is
+  written: delivery/verification/m5-scale-out-exit.md. Verdicts: p6-prepass,
+  p6-parallel-value and p6-attribution MET; p6-charter-only NOT MET on
+  released 0.2.1 (H-6), met by this branch's `init --project` once released,
+  which is a follow-up release. Next: this phase's own pull request.
 
 ### Owner decisions open
 
