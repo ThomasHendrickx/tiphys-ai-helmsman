@@ -1,0 +1,12 @@
+# git version 2.55.0, strace -- version 6.8
+# command: strace -f -tt -e trace=openat,unlink,execve,exit_group git commit -q -m stage
+# selection: only lines naming execve, exit_group, or a path containing maintenance.lock; the
+# repository path /tmp/fr3c-capture-repo/ is spelled <repo>/ and the git prefix /tmp/fr3c-g255 is
+# spelled <git>; the environment-pointer column of execve lines is cut after the argv array.
+30286 05:53:30.510067 execve("<git>/bin/git", ["<git>/bin/git", "commit", "-q", "-m", "stage"], ...) = 0
+30287 05:53:30.539933 execve("<git>/libexec/git-core/git", ["<git>/libexec/git-core/"..., "maintenance", "run", "--auto", "--quiet", "--detach"], ...) = 0
+30287 05:53:30.547775 openat(AT_FDCWD, "<repo>/.git/objects/maintenance.lock", O_RDWR|O_CREAT|O_EXCL|O_CLOEXEC, 0666) = 3
+30287 05:53:30.551285 exit_group(0)     = ?
+30286 05:53:30.552018 exit_group(0)     = ?
+30288 05:53:30.554315 unlink("<repo>/.git/objects/maintenance.lock") = 0
+30288 05:53:30.554577 exit_group(0)     = ?

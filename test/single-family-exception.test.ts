@@ -53,6 +53,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, sep } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { removeGitDirectory } from "./support/remove-git-directory.ts";
 import { realpathSync as ceilingRealpath } from "node:fs";
 import { tmpdir as ceilingTmpdir } from "node:os";
 import { delimiter as ceilingDelimiter } from "node:path";
@@ -1312,7 +1313,9 @@ test("a corpus-scoped refusal names the source that corpus was read from, on bot
      it prints there. ONE verdict, because the corpus-scoped sentence on this
      arm is the pair refusal, and a pair refusal needs a corpus of one. */
   const noGit = stage({ verdicts: [{ file: "decorrelated-criteria.yaml" }] });
-  rmSync(join(noGit, ".git"), { recursive: true, force: true });
+  /* RENAMED OUT, NOT rmSync-ED IN PLACE: see test/support/remove-git-directory.ts.
+     A partial .git left by a recursive remove is a repository again. */
+  removeGitDirectory(noGit, scratch());
   const fromTree = runScript(noGit, { anchor: false });
   assert.match(
     fromTree.stdout,
