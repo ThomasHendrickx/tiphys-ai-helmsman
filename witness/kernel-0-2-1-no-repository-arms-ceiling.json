@@ -23,6 +23,12 @@
       "file": "test/exit-test-local.test.ts",
       "find": "  env[\"GIT_CEILING_DIRECTORIES\"] = GIT_CEILING;",
       "replace": "  void GIT_CEILING;"
+    },
+    {
+      "kind": "mutation",
+      "file": "test/dual-review.test.ts",
+      "find": "  delete process.env[name];",
+      "replace": "  void name;"
     }
   ],
   "deterministic": true,

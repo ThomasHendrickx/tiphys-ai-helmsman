@@ -11,10 +11,16 @@
  * itself and every child it spawns (test/exit-test-local.test.ts also puts it
  * back into the identity-less environment that strips every GIT_* name).
  *
- * This file is the red witness. It stages an ancestor in each of the two
- * shapes discovery accepts (a directory holding `.git`, and a directory that
- * IS a git directory), points TMPDIR inside it, and runs one victim test from
- * each STRUCTURALLY DIFFERENT shape of the class in a nested `node --test`:
+ * The same files also remove inherited GIT_DIR, GIT_WORK_TREE,
+ * GIT_COMMON_DIR, GIT_INDEX_FILE, GIT_OBJECT_DIRECTORY and
+ * GIT_ALTERNATE_OBJECT_DIRECTORIES (the orchestrator's decision on the fix
+ * round's open question 13), because the ceiling does not stop GIT_DIR.
+ *
+ * This file is the red witness. It makes a repository reachable by three
+ * routes (a directory holding `.git` above TMPDIR, a directory that IS a git
+ * directory above TMPDIR, and an inherited GIT_DIR), and under each runs one
+ * victim test from each STRUCTURALLY DIFFERENT shape of the class in a nested
+ * `node --test`:
  *
  *   - a staged repository whose `.git` is REMOVED (single-family-exception);
  *   - a context that was NEVER a repository (dual-review);
@@ -83,17 +89,28 @@ function stageAncestor(prefix: string): string {
  * as "relative path syntax can't be used outside working tree".
  */
 function stageGitDirAncestor(): string {
-  const source = stageAncestor("tiphys-git-ceiling-gitdir-source-");
+  const source = stageCharterOnlyRepository("tiphys-git-ceiling-gitdir-source-");
   try {
-    writeFileSync(join(source, "charter.yaml"), "delivery-mode: full\n");
-    mustGit(source, ["add", "charter.yaml"]);
-    mustGit(source, ["commit", "-q", "-m", "charter only"]);
     const root = realpathSync(mkdtempSync(join(tmpdir(), "tiphys-git-ceiling-gitdir-")));
     cpSync(join(source, ".git"), root, { recursive: true });
     return root;
   } finally {
     rmSync(source, { recursive: true, force: true });
   }
+}
+
+/**
+ * A repository whose HEAD tree holds `charter.yaml` at its root and no
+ * `assurance-modes.yaml`: the tree CI's message describes, where the charter
+ * probe found a blob and the modes probe did not.
+ */
+function stageCharterOnlyRepository(prefix: string): string {
+  const root = realpathSync(mkdtempSync(join(tmpdir(), prefix)));
+  mustGit(root, ["init", "-q"]);
+  writeFileSync(join(root, "charter.yaml"), "delivery-mode: full\n");
+  mustGit(root, ["add", "charter.yaml"]);
+  mustGit(root, ["commit", "-q", "-m", "charter only"]);
+  return root;
 }
 
 interface CeilingProbe {
@@ -112,10 +129,11 @@ function escapeRegExp(text: string): string {
 /**
  * Run ONE named test of `file` in a nested `node --test` whose os.tmpdir()
  * lies inside `ancestor`. The nested run inherits no NODE_OPTIONS, no
- * NODE_TEST_* name and no GIT_* name, so the only ceiling it can have is the
- * one the victim file sets for itself.
+ * NODE_TEST_* name and no GIT_* name except those in `inherited`, so the only
+ * ceiling it can have, and the only strip, are the ones the victim file sets
+ * for itself.
  */
-function runVictim(ancestor: string, file: string, title: string) {
+function runVictim(ancestor: string, file: string, title: string, inherited: Record<string, string> = {}) {
   const env: Record<string, string> = {};
   for (const [name, value] of Object.entries(gitFreeEnv())) {
     if (name !== "NODE_OPTIONS" && !name.startsWith("NODE_TEST")) {
@@ -125,6 +143,7 @@ function runVictim(ancestor: string, file: string, title: string) {
   const scratchRoot = join(ancestor, "tmp");
   mkdirSync(scratchRoot, { recursive: true });
   env["TMPDIR"] = scratchRoot;
+  Object.assign(env, inherited);
   const run = spawnSync(
     process.execPath,
     ["--test", "--test-reporter=tap", "--test-name-pattern", `^${escapeRegExp(title)}$`, join(repoRoot, "test", file)],
@@ -182,25 +201,36 @@ test("a real repository above os.tmpdir() leaves the removed-.git, never-a-repos
     rmSync(lab, { recursive: true, force: true });
   }
 
-  /* 2. TWO ancestor shapes, because discovery accepts two: a directory holding
-     `.git`, and a directory that IS a git directory (HEAD, objects and refs
-     laid straight into it, here copied from a repository whose only commit
-     holds a root `charter.yaml`). For each, the dangerous state is shown to be
-     real before the victims run: HEAD resolves from the nested scratch root. */
-  const ancestors = [
-    { kind: "a repository with a .git directory", root: stageAncestor("tiphys-git-ceiling-ancestor-") },
-    { kind: "a git directory laid into the parent", root: stageGitDirAncestor() },
+  /* 2. THREE routes to a repository the test did not stage. Two are the
+     shapes discovery accepts: a directory holding `.git`, and a directory that
+     IS a git directory (HEAD, objects and refs laid straight into it). The
+     third is the ENVIRONMENT: an inherited GIT_DIR naming a repository whose
+     HEAD tree holds only `charter.yaml`, which no ceiling stops and which is
+     the one route measured to reproduce CI's exact message. For each, the
+     dangerous state is shown to be real before the victims run: HEAD resolves
+     from the nested scratch root under that route. */
+  const charterOnly = stageCharterOnlyRepository("tiphys-git-ceiling-charter-only-");
+  const ancestors: Array<{ kind: string; root: string; inherited: Record<string, string> }> = [
+    { kind: "a repository with a .git directory", root: stageAncestor("tiphys-git-ceiling-ancestor-"), inherited: {} },
+    { kind: "a git directory laid into the parent", root: stageGitDirAncestor(), inherited: {} },
+    {
+      kind: "an inherited GIT_DIR naming a charter-only repository",
+      root: realpathSync(mkdtempSync(join(tmpdir(), "tiphys-git-ceiling-plain-"))),
+      inherited: { GIT_DIR: join(charterOnly, ".git") },
+    },
   ];
   try {
+    const modes = git(charterOnly, ["cat-file", "-t", "HEAD:assurance-modes.yaml"]);
+    assert.notEqual(modes.status, 0, "the charter-only repository must hold no assurance-modes.yaml");
     for (const ancestor of ancestors) {
       mkdirSync(join(ancestor.root, "tmp"), { recursive: true });
-      const head = git(join(ancestor.root, "tmp"), ["rev-parse", "HEAD^{commit}"]);
+      const head = git(join(ancestor.root, "tmp"), ["rev-parse", "HEAD^{commit}"], ancestor.inherited);
       assert.equal(head.status, 0, `${ancestor.kind}: HEAD must resolve from inside it: ${head.stderr}`);
       assert.match(head.stdout, /^[0-9a-f]{40}\n$/);
 
-      /* 3. Each shape's victim still passes with that repository above it. */
+      /* 3. Each shape's victim still passes with that repository reachable. */
       for (const victim of VICTIMS) {
-        const result = runVictim(ancestor.root, victim.file, victim.title);
+        const result = runVictim(ancestor.root, victim.file, victim.title, ancestor.inherited);
         assert.equal(
           result.status,
           0,
@@ -216,5 +246,6 @@ test("a real repository above os.tmpdir() leaves the removed-.git, never-a-repos
     for (const ancestor of ancestors) {
       rmSync(ancestor.root, { recursive: true, force: true });
     }
+    rmSync(charterOnly, { recursive: true, force: true });
   }
 });

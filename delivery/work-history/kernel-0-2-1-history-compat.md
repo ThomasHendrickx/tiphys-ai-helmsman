@@ -1605,7 +1605,7 @@ The coordinator's brief: CI's `pull_request` run 35946757118 (gates job
 107466376655) on f39daae failed ONE test of 1484 (1483 pass, 1 fail, 0
 skipped, step "Run npm test"): the second, no-git arm of "a corpus-scoped
 refusal names the source that corpus was read from, on both arms"
-(test/single-family-exception.test.ts:1265 now; line 1244 at f39daae). It
+(test/single-family-exception.test.ts:1284 now; line 1244 at f39daae). It
 removes `.git` from a staged directory and expects "read from the WORKING
 TREE". CI printed instead:
 
@@ -1681,6 +1681,14 @@ would also give CI's message; `stage()` writes `assurance-modes.yaml` BEFORE
 the other one. And git 2.55.0 may resolve `<rev>:./path` outside a work tree
 differently from 2.43.0, which I could not test. So the exact shape of CI's
 ancestor is OPEN, and what this round proves is the class below.
+
+**The environment route is now closed as well, by the orchestrator's decision
+on open question 13** (below, "The fix", second half). The witness reproduces
+CI's exact message through that route: with the strip disabled, a nested run
+given `GIT_DIR` naming a charter-only repository printed
+`assurance-modes.yaml does not exist in commit ...` (member 3, below). That
+shows the route produces CI's message. It does not show that an inherited
+`GIT_DIR` is what happened in CI, and the creator is still not found.
 
 ### Derivation
 
@@ -1918,9 +1926,44 @@ spelling), keeping any ceiling already inherited and dropping empty entries
 inherits it: test/dual-review.test.ts:58, test/exit-test-local.test.ts:36,
 test/kernel-charter.test.ts:71, test/merge-preconditions.test.ts:77,
 test/single-family-exception.test.ts:76, test/verdict-head.test.ts:77.
-test/exit-test-local.test.ts:151 also puts the ceiling back into
+test/exit-test-local.test.ts:170 also puts the ceiling back into
 `identityLessEnv`, which strips every `GIT_*` name before it spawns; that
 victim is the one the process-level line alone does not reach.
+
+**Second half, the orchestrator's decision on open question 13**: "A test of
+'no repository' must not inherit a repository by ANY route, discovery or
+environment, and your table shows the environment route is the only one that
+reproduces CI's exact message." So in the same six files, next to the ceiling
+line, a loop deletes the inherited names that relocate the repository, its
+objects or its index: `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`,
+`GIT_INDEX_FILE`, `GIT_OBJECT_DIRECTORY` and `GIT_ALTERNATE_OBJECT_DIRECTORIES`
+(test/dual-review.test.ts:67 and :76, test/exit-test-local.test.ts:45,
+test/kernel-charter.test.ts:80, test/merge-preconditions.test.ts:86,
+test/single-family-exception.test.ts:85, test/verdict-head.test.ts:86). The
+ceiling alone does not do this: measured (scratch fr3-gitdir.txt), a commit
+named by `GIT_DIR` resolves with the ceiling set.
+
+Before the strip, with `GIT_DIR` naming a charter-only repository and TMPDIR in
+a plain directory (scratch fr3b-gitdir-try.py, one nested run per victim):
+
+```
+test/single-family-exception.test.ts 1 0 1
+test/dual-review.test.ts 1 0 1
+    <tmp>/tiphys-dual-review-PnGpeD/assurance-modes.yaml does not exist in commit 37c17070bd5cded9521d3a86d73753e709e654ad, resolved from HEAD, so the declared mode's merge-authority is unknown and no decorrelation verdict can be reached; a merge check that cannot determine the regime
+test/exit-test-local.test.ts 0 1 0
+```
+
+(Exit, pass, fail. The block joins two runs of that script: the first printed
+the three result lines, and the second, for dual-review alone, printed the
+reason line, which the script cut at 260 characters. `<tmp>` stands for the
+mkdtemp path, replaced by a sed in the command; nothing else changed.) The
+single-family arm failed differently: its own staging ran `git init` and
+`git commit` under the inherited `GIT_DIR` too, so the commit it read held
+every staged file, and it printed `not-applicable ... no verdict document was
+found`. dual-review stages no repository at all, so its check read the
+charter-only HEAD and printed CI's exact sentence. exit-test-local passed
+because `identityLessEnv` already strips every `GIT_*` name. After the strip,
+the same script printed `0 1 0` for all three.
 
 The ceiling stops git moving up INTO os.tmpdir(), so a repository a test
 stages INSIDE it is still found, including from a nested context. Measured and
@@ -1946,16 +1989,19 @@ ancestor-only failures: 0 (ancestor total 2)
 
 ### Red witness
 
-test/git-ceiling.test.ts:154, registered as
+test/git-ceiling.test.ts:173, registered as
 `test-no-repository-arms-ceiling-at-tmpdir`, spec
 witness/kernel-0-2-1-no-repository-arms-ceiling.json. It first re-runs the
 three capture probes live and compares status, stdout and stderr with the
-record (test/git-ceiling.test.ts:180). Then, for TWO ancestor shapes (a
-repository with `.git`, and a git directory laid into the parent, built by
-test/git-ceiling.test.ts:85), it checks that HEAD really resolves from the
-nested scratch root, and runs one victim of each structurally different shape
-in a nested `node --test` with `TMPDIR` inside the ancestor and no inherited
-`GIT_*`, `NODE_OPTIONS` or `NODE_TEST*` name (test/git-ceiling.test.ts:118):
+record (test/git-ceiling.test.ts:199). Then, for THREE routes to a repository
+the test did not stage (a repository with `.git` above TMPDIR, a git directory
+laid into the parent, built by test/git-ceiling.test.ts:91, and an inherited
+`GIT_DIR` naming a repository whose HEAD holds only `charter.yaml`, built by
+test/git-ceiling.test.ts:107), it checks that HEAD really resolves from the
+nested scratch root under that route, and runs one victim of each structurally
+different shape in a nested `node --test` with `TMPDIR` inside the root and no
+inherited `GIT_*`, `NODE_OPTIONS` or `NODE_TEST*` name other than the route's
+own `GIT_DIR` (test/git-ceiling.test.ts:136):
 
 - removed `.git`: the single-family arm CI failed;
 - never a repository: dual-review "two verdicts sharing a produced-by model
@@ -1963,19 +2009,38 @@ in a nested `node --test` with `TMPDIR` inside the ancestor and no inherited
 - `GIT_*` stripped from the child: exit-test-local "the stub payload refuses a
   bad mode and a working directory that is not a worktree".
 
-Three members, each neutralising one file's ceiling line (`void GIT_CEILING;`).
-Hand trial (scratch try-members3.py), node v26.6.0:
+Four members. Members 0 to 2 each neutralise one file's ceiling line
+(`void GIT_CEILING;`). Member 3 neutralises dual-review's strip line
+(`delete process.env[name];` becomes `void name;`), which is a different
+mechanism from the other three: the ceiling is still set, and only the
+environment route is left open. Hand trial (scratch try-members3.py), node
+v26.6.0, after the strip was added:
 
 ```
 kernel-0-2-1-no-repository-arms-ceiling HEAD (0, '1', '0')
 kernel-0-2-1-no-repository-arms-ceiling member 0 (1, '0', '1')
 kernel-0-2-1-no-repository-arms-ceiling member 1 (1, '0', '1')
 kernel-0-2-1-no-repository-arms-ceiling member 2 (1, '0', '1')
+kernel-0-2-1-no-repository-arms-ceiling member 3 (1, '0', '1')
 kernel-0-2-1-no-repository-arms-ceiling RESTORED (0, '1', '0')
 ```
 
-What each member's red said (scratch fr3-red.py, excerpts of the nested run's
-real output; ancestor and scratch names are mkdtemp's):
+Member 3's red, from the same run of scratch fr3-red.py as the three below
+(real output, the reason line cut after "decorrelation verd" by the script):
+
+```
+never a repository (dual-review.test.ts) failed under an inherited GIT_DIR naming a charter-only repository:
+  /tmp/tiphys-git-ceiling-plain-PnuTGd/tmp/tiphys-dual-review-0yEg5B/assurance-modes.yaml does not exist in commit 36ac8683f865689998692097d4571aa13497e5f5, resolved from HEAD, so the declared mode's merge-authority is unknown and no decorrelation verd
+```
+
+That is CI's sentence, naming `assurance-modes.yaml`. It fails on the third
+route only: the witness runs the routes in order and stops at the first red,
+and this member's red names the third.
+
+What members 0 to 2 said (scratch fr3-red.py, excerpts of the nested run's
+real output; ancestor and scratch names are mkdtemp's; this block is from the
+run before the strip was added, and the run after it printed the same shape
+for all three):
 
 ```
 removed .git (single-family-exception.test.ts) failed under a repository with a .git directory:
@@ -2004,11 +2069,14 @@ characters in that block only, marked with `...`; nothing else changed.)
 
 ### What this round did NOT cover
 
-- **CI's exact ancestor.** Not found and not reproduced (above). The fix is
-  proven against discovery of an ancestor in both shapes discovery accepts. It
-  is NOT proven against an inherited `GIT_DIR`, the one shape that reproduces
-  CI's exact message here, because the ceiling does not stop `GIT_DIR`
-  (measured). No path that sets it in these test processes was found.
+- **CI's exact ancestor.** Not found. The fix is now proven against three
+  routes: discovery of an ancestor in both shapes discovery accepts, and an
+  inherited `GIT_DIR` (member 3, which reproduces CI's exact message when the
+  strip is disabled). Whether any of them is what happened in CI is not shown.
+  No code path that sets `GIT_DIR` in these test processes was found. The
+  strip names six variables; other `GIT_*` names that change what git reads
+  (for example `GIT_CONFIG_GLOBAL`, `GIT_CONFIG_PARAMETERS` or `GIT_NAMESPACE`)
+  are not removed, and only `GIT_DIR` has a witness.
 - **git 2.55.0**, CI's version. Every measurement here is git 2.43.0. The
   witness re-runs the capture live, so a different ceiling behaviour on CI's
   git reddens that test there rather than passing unobserved.
@@ -2118,13 +2186,16 @@ own probe.
    a date for "before the field existed" should close the first is for the
    orchestrator; DR-0054 gives none.
 
-13. **Fix round 3: what CI's ancestor was is open.** CI printed
-   `assurance-modes.yaml` as the first missing regime document, so its
-   `./charter.yaml` probe found a blob. Of the shapes measured here with git
-   2.43.0, only an inherited `GIT_DIR` reproduces that, and the ceiling does
-   not stop `GIT_DIR`. No code path that sets it in these test processes was
-   found. Whether to also strip `GIT_DIR` and `GIT_WORK_TREE` in the six files,
-   without a known source to witness against, is for the orchestrator.
+13. **DECIDED by the orchestrator: yes, strip.** Was: whether to also strip
+   `GIT_DIR` and `GIT_WORK_TREE` in the six files, because CI's message named
+   `assurance-modes.yaml`, only an inherited `GIT_DIR` reproduced that here,
+   and the ceiling does not stop `GIT_DIR`. The orchestrator's reason: "A test
+   of 'no repository' must not inherit a repository by ANY route, discovery or
+   environment, and your table shows the environment route is the only one
+   that reproduces CI's exact message." Done in fix round 3 for six names
+   (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_INDEX_FILE`,
+   `GIT_OBJECT_DIRECTORY`, `GIT_ALTERNATE_OBJECT_DIRECTORIES`), with witness
+   member 3. What CI's ancestor actually was is still not known.
 
 ## Claim grep
 
