@@ -40,7 +40,9 @@
     "test/behaviors.json",
     "delivery/plan/phase-declarations/m5-p6.json",
     "delivery/plan/value-delivery-plan.yaml",
-    "delivery/decisions/DR-0058-m5-p6-closes-the-charter-only-gap-in-init.md"
+    "delivery/decisions/DR-0058-m5-p6-closes-the-charter-only-gap-in-init.md",
+    "delivery/review/clean-room-m5-p6-kernel-criteria.md",
+    "delivery/review/clean-room-m5-p6-kernel-hazard.md"
   ],
   "citations": [
     "DR-0029",
