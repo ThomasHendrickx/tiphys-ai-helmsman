@@ -1,0 +1,37 @@
+{
+  "id": "kernel-0-2-1-headless-sibling-provenance",
+  "behavior": "admission-headless-sibling-provenance-decides-history",
+  "tests": [
+    "a head-less same-phase sibling that the change under audit adds or changes is current work and refused by both merge gates naming its verdict and blocking findings, and without a base the exclusion says provenance was not checked"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (atHead !== undefined && atBase === atHead) {",
+      "replace": "      if (atHead !== undefined) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  if (base === undefined) {",
+      "replace": "  if (base === undefined || base !== \"\") {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      const atBase = blobAt(contextDirectory, provenance.mergeBase, candidate.path);",
+      "replace": "      const atBase = blobAt(contextDirectory, provenance.refSha, candidate.path);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/kernel-0-2-1-history-git.json"
+    ],
+    "provenance": "Real output of the git commands the named test consumes, captured 2026-09-24 with git 2.43.0 against scratch repositories laid out as test/history-compat.test.ts stages them: git diff -z --no-renames --name-only base...head (budget-name-list-m3-p3-sibling: the change touches pulse's m3-p3-criteria-round4.yaml, by adding it or by editing it) and git rev-parse --verify --quiet base:./<path>, the blob probe blobAt in src/checks.ts runs (sibling-blob-absent-at-base, exit 1 and nothing printed, for the ADDED member; sibling-blob-at-base, exit 0 with pulse's blob id, for the CHANGED member). The test stages each again and compares git's live output and exit with the record, commit shas spelled by staging name, before trusting either gate."
+  }
+}

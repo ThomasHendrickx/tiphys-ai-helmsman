@@ -33,7 +33,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { decodeDocument, readOperatorPath } from "./validate.ts";
 import type { Diagnostic } from "./validate.ts";
 /* M3-P8. The two tuition checks resolve operator-supplied paths against the
@@ -95,7 +95,21 @@ export interface DerivedCheck {
    * with a nonzero exit rather than a silent pass.
    */
   requiresContext: boolean;
-  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome;
+  run(instance: unknown, contextDirectory: string | undefined, options?: CheckRunOptions): CheckOutcome;
+}
+
+/**
+ * What a caller that knows the CHANGE UNDER AUDIT can tell a derived check.
+ *
+ * KERNEL 0.2.1 fix round 2 (CR-KH-003, CR-007). `base` is the ref the change
+ * is measured from, the one the merge gates already take as `--base`. The two
+ * merge checks use it to decide whether a head-less sibling is HISTORY (it is
+ * at the merge base with the same bytes) or CURRENT WORK (the change adds or
+ * edits it). A caller with no base, `tiphys validate --context` and the bare
+ * script, gets the exclusion on shape alone and a line that says so.
+ */
+export interface CheckRunOptions {
+  base?: string;
 }
 
 /** Every artifact type one check runs on, `type` first and then `alsoTypes`. */
@@ -3939,16 +3953,123 @@ interface HeadGroup {
   members: LoadedVerdict[];
   unkeyed: Diagnostic[];
   /**
-   * KERNEL 0.2.1 (DR-0054): same-phase siblings that declare NO head at all,
-   * by path. History, excluded by name and never a member; the caller prints
-   * each one so the exclusion is never silent.
+   * KERNEL 0.2.1 (DR-0054): same-phase siblings that declare NO head at all
+   * and were excluded as history, each with the ground it was excluded on.
+   * Never a member; the caller prints each one so the exclusion is never
+   * silent. A head-less sibling the change under audit adds or edits is NOT
+   * here: it is in `unkeyed`, refused (fix round 2).
    */
-  headless: string[];
+  headless: HeadlessSibling[];
+}
+
+/** A head-less sibling excluded as history, and on what ground. */
+interface HeadlessSibling {
+  path: string;
+  record: Record<string, unknown>;
+  /**
+   * `at-base`: the same bytes exist at the merge base, so the change under
+   * audit did not write it. `unchecked`: the caller gave no base, so the
+   * exclusion rests on the document's shape alone, and the line says so.
+   */
+  ground: { kind: "at-base"; mergeBase: string } | { kind: "unchecked" };
+}
+
+/**
+ * How a head-less sibling's provenance is judged for one run (fix round 2).
+ *
+ * `unchecked` when the caller gave no base. `error` when a base was given
+ * and the merge base could not be established: every head-less sibling is
+ * then refused, because "could not tell whether this is history" must not
+ * shrink the group (the fail-closed direction).
+ */
+type HistoryProvenance =
+  | { kind: "unchecked" }
+  | { kind: "checked"; mergeBase: string; refSha: string }
+  | { kind: "error"; reason: string };
+
+function establishHistoryProvenance(
+  contextDirectory: string,
+  source: VerdictCorpusSource,
+  base: string | undefined,
+): HistoryProvenance {
+  if (base === undefined) {
+    return { kind: "unchecked" };
+  }
+  if (source.kind !== "commit") {
+    return {
+      kind: "error",
+      reason: `a base (${base}) was given but the verdicts were read from the working tree (${source.reason}), so whether it predates the change under audit could not be established`,
+    };
+  }
+  const merged = gitIn(["merge-base", base, source.refSha], contextDirectory);
+  if (!merged.ok) {
+    return {
+      kind: "error",
+      reason: `the merge base of ${base} and ${source.refSha} could not be established (${merged.reason}), so whether it predates the change under audit is unknown`,
+    };
+  }
+  return { kind: "checked", mergeBase: merged.stdout.trim(), refSha: source.refSha };
+}
+
+/**
+ * The blob id of a loaded verdict's `path` at `rev`, or undefined when absent.
+ *
+ * `path` is as the corpus loader returns it, `join(contextDirectory, <path in
+ * the commit>)`, so it is ABSOLUTE when the caller's context directory is (the
+ * merge-preconditions gate) and relative when it is not (the bare script). It
+ * is taken back to the context directory first, because `rev:./<path>` names
+ * a path relative to the current directory and an absolute one is never found:
+ * measured on the first run of this code, every sibling read as ADDED at
+ * merge-preconditions while check-dual-review read the same one correctly.
+ */
+function blobAt(contextDirectory: string, rev: string, path: string): string | undefined {
+  const inContext = relative(contextDirectory, path);
+  const shown = gitIn(["rev-parse", "--verify", "--quiet", `${rev}:./${inContext}`], contextDirectory);
+  return shown.ok ? shown.stdout.trim() : undefined;
+}
+
+/**
+ * A head-less document's verdict value and every finding at a blocking
+ * severity, for the line that excludes or refuses it. Never a judgement: the
+ * words are printed so a reader sees what was excluded (CR-KH-003).
+ */
+function describeVerdictAndBlocking(record: Record<string, unknown>): string {
+  const verdict = typeof record["verdict"] === "string" ? `verdict ${record["verdict"]}` : "no readable verdict";
+  const raw = record["findings"];
+  if (raw === undefined) {
+    return `${verdict} and no findings list`;
+  }
+  if (!Array.isArray(raw)) {
+    return `${verdict} and a findings value that is not a list, so its blocking findings could not be read`;
+  }
+  const blocking: string[] = [];
+  let unreadable = 0;
+  for (const entry of raw) {
+    const finding = asRecord(entry);
+    const severity = finding?.["severity"];
+    if (typeof severity !== "string" || !SEVERITY_VOCABULARY.includes(severity)) {
+      unreadable += 1;
+      continue;
+    }
+    if (BLOCKING_SEVERITIES.includes(severity)) {
+      const id = typeof finding?.["id"] === "string" ? (finding["id"] as string) : "(no id)";
+      blocking.push(`${id} (${severity})`);
+    }
+  }
+  const named =
+    blocking.length === 0
+      ? `no finding at ${BLOCKING_SEVERITIES.join(", ")}`
+      : `blocking finding(s) ${blocking.join(", ")}`;
+  return `${verdict}, ${named}${unreadable > 0 ? `, and ${String(unreadable)} finding(s) whose severity could not be read` : ""}`;
 }
 
 /** The line a derived check prints for each head-less sibling it excluded. */
-function headlessSiblingReport(checkId: string, path: string, phase: string, headKey: string): string {
-  return `REPORT ${checkId} ${path} declares no head, so it is history (DR-0054): excluded by name from the group for phase ${phase} at head ${headKey}, never counted toward it and never refusing it`;
+function headlessSiblingReport(checkId: string, sibling: HeadlessSibling, phase: string, headKey: string): string {
+  const ground =
+    sibling.ground.kind === "at-base"
+      ? `is unchanged since the merge base ${sibling.ground.mergeBase}, so it is history (DR-0054)`
+      : "is excluded as history (DR-0054) on its SHAPE ALONE: provenance was NOT checked, because no base was given (the merge gates' --base), so whether the change under audit wrote it is unknown";
+  return `REPORT ${checkId} ${sibling.path} declares no head and ${ground}: excluded by name from the group for phase ${phase} at head ${headKey}, never counted toward it and never refusing it; it reads ${describeVerdictAndBlocking(sibling.record)}`;
 }
 
 /**
@@ -3971,20 +4092,30 @@ function headlessSiblingReport(checkId: string, path: string, phase: string, hea
  * Refusing it made a phase whose old reviews predate the field unreviewable
  * for ever without editing history, which is measured against pulse's paused
  * M3-P3. So it is EXCLUDED BY NAME (`headless`, printed by every caller) and
- * the fail-open worry above does not apply to it: a document that does not say
- * what it reviewed was never part of the set for this head. A sibling whose
- * head is PRESENT and unusable tried to name a head and named it wrongly, so it
- * keeps the refusal. Both readers use `declaresNoHead`, so they cannot disagree
- * about which documents are history.
+ * the fail-open worry above is answered by PROVENANCE, not by shape (fix
+ * round 2, CR-KH-003 and CR-007). Shape alone cannot tell history from a
+ * current review that omitted the field: a document written today with no
+ * `head` would get history's exemption, and two clean reviews plus a fresh
+ * head-less refusal carrying a high finding read green. So with a base, a
+ * head-less sibling is history ONLY when the same bytes exist at the merge
+ * base; one the change under audit ADDS or CHANGES is refused, naming its
+ * verdict and blocking findings. With no base the exclusion stays, on shape
+ * alone, and every excluded line says provenance was not checked and names
+ * the verdict and blocking findings. RESIDUAL, stated rather than hidden: a
+ * head-less blocker already on the base is still history. A sibling whose head
+ * is PRESENT and unusable tried to name a head and named it wrongly, so it
+ * keeps the refusal. Both readers use `declaresNoHead` for the shape test.
  */
 function headGroupFor(
   verdicts: readonly LoadedVerdict[],
   phaseKey: string,
   headKey: string,
+  contextDirectory: string,
+  provenance: HistoryProvenance,
 ): HeadGroup {
   const members: LoadedVerdict[] = [];
   const unkeyed: Diagnostic[] = [];
-  const headless: string[] = [];
+  const headless: HeadlessSibling[] = [];
   for (const candidate of verdicts) {
     /* BOTH SIDES CANONICAL. `phaseKey` is already canonical; the sibling's is
        read through the same function so the two are compared in one form
@@ -4011,7 +4142,31 @@ function headGroupFor(
       continue;
     }
     if (declaresNoHead(candidate.record)) {
-      headless.push(candidate.path);
+      if (provenance.kind === "unchecked") {
+        headless.push({ path: candidate.path, record: candidate.record, ground: { kind: "unchecked" } });
+        continue;
+      }
+      if (provenance.kind === "error") {
+        unkeyed.push({
+          pointer: "#/head",
+          message: `${candidate.path} declares no head and ${provenance.reason}, so it can neither be excluded as history nor be allowed to shrink the group for phase ${phaseKey}; it reads ${describeVerdictAndBlocking(candidate.record)}`,
+        });
+        continue;
+      }
+      const atHead = blobAt(contextDirectory, provenance.refSha, candidate.path);
+      const atBase = blobAt(contextDirectory, provenance.mergeBase, candidate.path);
+      if (atHead !== undefined && atBase === atHead) {
+        headless.push({
+          path: candidate.path,
+          record: candidate.record,
+          ground: { kind: "at-base", mergeBase: provenance.mergeBase },
+        });
+        continue;
+      }
+      unkeyed.push({
+        pointer: "#/head",
+        message: `${candidate.path} declares no head, and the change under audit ${atBase === undefined ? "ADDS" : "CHANGES"} it (merge base ${provenance.mergeBase}), so it is current work and not history: DR-0054 exempts only a document that predates the change. It reads ${describeVerdictAndBlocking(candidate.record)}. Add the full forty-character head it reviewed, or remove it from ${REVIEW_DIRECTORY}`,
+      });
       continue;
     }
     const key = headKeyOf(candidate.record, candidate.path);
@@ -4215,8 +4370,10 @@ export type HeadRelation =
  * KERNEL 0.2.1 (DR-0053, DR-0054). ABSENCE ONLY, and the narrowness is the
  * point. A document with no `head` key is the shape every verdict written
  * before M4-P10 has, so it is HISTORY: it is excluded from every merge corpus
- * by name and is never admitted, and it no longer reddens a gate by merely
- * existing. A document whose `head` is PRESENT and unusable (null, empty, an
+ * by name and is never admitted. SHAPE IS NOT PROVENANCE (fix round 2): this
+ * function says only that the key is absent; whether an absent-head sibling is
+ * HISTORY is decided in `headGroupFor` from the merge base, because a current
+ * review can omit the field too. A document whose `head` is PRESENT and unusable (null, empty, an
  * abbreviation, a list) is a document that tried to state its head and stated
  * it wrongly, which the schema still refuses for a current document, so it
  * keeps the M4-P10 treatment in `partitionByAuditedHead` and `headGroupFor`:
@@ -4500,7 +4657,8 @@ export function describeOffHeadVerdicts(
       if (entry.relation.kind === "no-head") {
         return (
           `${entry.path} declares no head, so it does not say which commit it reviewed and is never admitted ` +
-          `toward a merge; a verdict written before the field existed is history (DR-0054) and ${tail}`
+          `toward a merge, and ${tail}; whether it is history (DR-0054) or current work is decided by the ` +
+          `merge checks from its provenance, and one the change under audit adds or edits is refused there`
         );
       }
       const head = `${entry.path} declares head ${entry.declared}, which`;
@@ -5412,7 +5570,7 @@ export const dualReviewDecorrelation: DerivedCheck = {
   id: "dual-review-decorrelation",
   type: "verdict",
   requiresContext: true,
-  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+  run(instance: unknown, contextDirectory: string | undefined, options?: CheckRunOptions): CheckOutcome {
     if (contextDirectory === undefined) {
       /* Unreachable through `runChecks`, which SKIPS first. Fail closed rather
          than trusting a caller that reaches the check directly. */
@@ -5557,7 +5715,13 @@ export const dualReviewDecorrelation: DerivedCheck = {
       };
     }
     const headKey = ownHead.value;
-    const grouped = headGroupFor(committed.verdicts, phaseKey, headKey);
+    const grouped = headGroupFor(
+      committed.verdicts,
+      phaseKey,
+      headKey,
+      contextDirectory,
+      establishHistoryProvenance(contextDirectory, committed.source, options?.base),
+    );
     const group = grouped.members;
 
     /* MEMBERSHIP FIRST. DR-0012 condition 1 says the two reviews are WRITTEN TO
@@ -5650,8 +5814,8 @@ export const dualReviewDecorrelation: DerivedCheck = {
     const compared = DECORRELATION_DIMENSIONS.filter(
       (dimension) => !exemptDimensions.has(dimension),
     );
-    const headlessReports = grouped.headless.map((path) =>
-      headlessSiblingReport("dual-review-decorrelation", path, phase, headKey),
+    const headlessReports = grouped.headless.map((sibling) =>
+      headlessSiblingReport("dual-review-decorrelation", sibling, phase, headKey),
     );
     return {
       violations,
@@ -5768,7 +5932,7 @@ export const verdictPairApproves: DerivedCheck = {
   id: "verdict-pair-approves",
   type: "verdict",
   requiresContext: true,
-  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+  run(instance: unknown, contextDirectory: string | undefined, options?: CheckRunOptions): CheckOutcome {
     if (contextDirectory === undefined) {
       /* Unreachable through `runChecks`, which SKIPS first. Fail closed rather
          than trusting a caller that reaches the check directly. */
@@ -5826,7 +5990,13 @@ export const verdictPairApproves: DerivedCheck = {
         reports: [],
       };
     }
-    const grouped = headGroupFor(committed.verdicts, phaseKey, headKey);
+    const grouped = headGroupFor(
+      committed.verdicts,
+      phaseKey,
+      headKey,
+      contextDirectory,
+      establishHistoryProvenance(contextDirectory, committed.source, options?.base),
+    );
     const group = grouped.members;
 
     /* SAME TWO SOURCES AS THE SIBLING CHECK, AND THE REASON IS SHARPER HERE.
@@ -5864,8 +6034,8 @@ export const verdictPairApproves: DerivedCheck = {
       violations.push(...blockingFindings(candidate, phase, headKey));
     }
 
-    const headlessReports = grouped.headless.map((path) =>
-      headlessSiblingReport("verdict-pair-approves", path, phase, headKey),
+    const headlessReports = grouped.headless.map((sibling) =>
+      headlessSiblingReport("verdict-pair-approves", sibling, phase, headKey),
     );
     return {
       violations,

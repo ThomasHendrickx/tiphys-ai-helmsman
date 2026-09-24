@@ -1,11 +1,11 @@
 {
-  "provenance": "Real output of the git commands the kernel 0.2.1 history-compatibility paths consume, captured 2026-09-23 with git 2.43.0 against the scratch repositories test/history-compat.test.ts stages. budget-name-list, budget-name-list-pulse and budget-name-list-m3-p3-sibling (captured in fix round 1 the same way) are the name list classifyReviewBudget in src/gates/merge-preconditions.ts reads to decide that the change is dual-tier; charter-history is the path-limited log firstDeclarationCommit in src/checks.ts reads to date the review-families declaration and find its parent. Commit shas carry the staging time, so each is spelled by the name the staging gives its commit, <name>, and the test translates git's live output the same way before comparing; no other byte is rewritten. The charter-history line for the declaration commit names <unrelated>, the real parent, and not <history>, the previous commit that touched charter.yaml: that is the property the capture pins, because rewritten parents would put the 0.1.0-era verdicts after the declaration. JSON escapes NUL as \\u0000, so this file is ASCII.",
+  "provenance": "Real output of the git commands the kernel 0.2.1 history-compatibility paths consume, captured 2026-09-23 with git 2.43.0 against the scratch repositories test/history-compat.test.ts stages. budget-name-list, budget-name-list-pulse and budget-name-list-m3-p3-sibling (captured in fix round 1 the same way) are the name list classifyReviewBudget in src/gates/merge-preconditions.ts reads to decide that the change is dual-tier; sibling-blob-at-base and sibling-blob-absent-at-base are the rev-parse blobAt in src/checks.ts runs to decide whether a head-less sibling exists at the merge base (fix round 2): exit 0 with the blob id when it does, which is the blob id of pulse's file, and exit 1 with nothing printed when it does not; charter-history is the path-limited log firstDeclarationCommit in src/checks.ts reads to date the review-families declaration and find its parent. Commit shas carry the staging time, so each is spelled by the name the staging gives its commit, <name>, and the test translates git's live output the same way before comparing; no other byte is rewritten. The charter-history line for the declaration commit names <unrelated>, the real parent, and not <history>, the previous commit that touched charter.yaml: that is the property the capture pins, because rewritten parents would put the 0.1.0-era verdicts after the declaration. JSON escapes NUL as \\u0000, so this file is ASCII.",
   "git": "git version 2.43.0",
   "staging": {
     "budget": [
       "base: assurance-modes.yaml, charter.yaml, src/feature.ts",
       "the change under review: modify src/feature.ts",
-      "the reviews: add two documents under delivery/review/ (three for budget-name-list-m3-p3-sibling: the resumed pair and pulse's m3-p3-criteria-round4.yaml)"
+      "the reviews: add two documents under delivery/review/ (three for budget-name-list-m3-p3-sibling: the resumed pair and pulse's m3-p3-criteria-round4.yaml; for budget-name-list-m3-p3-resumed and sibling-blob-at-base, captured in fix round 2, pulse's m3-p3-criteria-round4.yaml is committed in base byte for byte and the reviews add only the resumed pair; sibling-blob-absent-at-base is the budget-name-list-m3-p3-sibling staging)"
     ],
     "charter-history": [
       "project: assurance-modes.yaml, charter.yaml without review-families",
@@ -34,6 +34,24 @@
       "argv": ["git", "diff", "-z", "--no-renames", "--name-only", "<base>...<head>", "--"],
       "exit": 0,
       "stdout": "delivery/review/m3-p3-criteria-round4.yaml\u0000delivery/review/m3-p3-resumed-criteria.yaml\u0000delivery/review/m3-p3-resumed-hazard.yaml\u0000src/feature.ts\u0000"
+    },
+    {
+      "name": "budget-name-list-m3-p3-resumed",
+      "argv": ["git", "diff", "-z", "--no-renames", "--name-only", "<base>...<head>", "--"],
+      "exit": 0,
+      "stdout": "delivery/review/m3-p3-resumed-criteria.yaml\u0000delivery/review/m3-p3-resumed-hazard.yaml\u0000src/feature.ts\u0000"
+    },
+    {
+      "name": "sibling-blob-at-base",
+      "argv": ["git", "rev-parse", "--verify", "--quiet", "<base>:./delivery/review/m3-p3-criteria-round4.yaml"],
+      "exit": 0,
+      "stdout": "33aa03f31bf8a5bbe85ddb72cfdcbb9d800b2b71\n"
+    },
+    {
+      "name": "sibling-blob-absent-at-base",
+      "argv": ["git", "rev-parse", "--verify", "--quiet", "<base>:./delivery/review/m3-p3-criteria-round4.yaml"],
+      "exit": 1,
+      "stdout": ""
     },
     {
       "name": "charter-history",

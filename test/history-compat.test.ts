@@ -218,6 +218,17 @@ interface ReviewedRepo {
   head: string;
 }
 
+/** A staged document's text with its `phase:` line rewritten when asked. */
+function rephased(entry: { from: string; phase?: string }): string {
+  const body = readFileSync(entry.from, "utf8");
+  if (entry.phase === undefined) {
+    return body;
+  }
+  const rewritten = body.replace(/^phase: .*$/m, `phase: ${entry.phase}`);
+  assert.notEqual(rewritten, body, `${entry.from} has no single-line phase to rewrite`);
+  return rewritten;
+}
+
 /**
  * A dual-tier change (one `src/` file) whose reviews are the given documents.
  * `stripHead` removes the `head:` line from a document that has one; any
@@ -237,6 +248,14 @@ function stageReviewedChange(
     verbatim?: boolean;
     /** Give a head-less document a PRESENT but abbreviated head of the reviewed commit. */
     abbreviatedHead?: boolean;
+    /**
+     * Commit the (verbatim) document in the BASE, so the change under audit
+     * did not write it (fix round 2). Without `edit` the branch leaves it
+     * byte for byte; with `edit` the branch changes it.
+     */
+    atBase?: boolean;
+    /** Rewrite the branch's copy of a verbatim document; the edit must change it. */
+    edit?: (body: string) => string;
   }[],
 ): ReviewedRepo {
   const dir = scratch("tiphys-history-compat-gate-");
@@ -246,19 +265,28 @@ function stageReviewedChange(
   writeFileSync(join(dir, "charter.yaml"), charter);
   mkdirSync(join(dir, "src"), { recursive: true });
   writeFileSync(join(dir, "src", "feature.ts"), "export const feature = 1;\n");
+  for (const entry of verdicts) {
+    if (entry.atBase === true) {
+      assert.equal(entry.verbatim, true, `${entry.as}: only a verbatim document is staged at the base`);
+      mkdirSync(join(dir, "delivery", "review"), { recursive: true });
+      writeFileSync(join(dir, "delivery", "review", entry.as), rephased(entry));
+    }
+  }
   git(dir, ["init", "-q", "."]);
   const base = commit(dir, "base");
   writeFileSync(join(dir, "src", "feature.ts"), "export const feature = 2;\n");
   const reviewed = commit(dir, "the change under review");
   mkdirSync(join(dir, "delivery", "review"), { recursive: true });
   for (const entry of verdicts) {
-    let body = readFileSync(entry.from, "utf8");
-    if (entry.phase !== undefined) {
-      const rephased = body.replace(/^phase: .*$/m, `phase: ${entry.phase}`);
-      assert.notEqual(rephased, body, `${entry.from} has no single-line phase to rewrite`);
-      body = rephased;
-    }
+    let body = rephased(entry);
     if (entry.verbatim === true) {
+      if (entry.edit !== undefined) {
+        const edited = entry.edit(body);
+        assert.notEqual(edited, body, `${entry.as}: the edit did not change the document`);
+        body = edited;
+      } else if (entry.atBase === true) {
+        continue;
+      }
       writeFileSync(join(dir, "delivery", "review", entry.as), body);
       continue;
     }
@@ -934,8 +962,14 @@ test("an old-stamped verdict that breaks a current rule is excluded by name for 
  * green without editing history (DR-0054). The sibling here is pulse's own
  * m3-p3-criteria-round4.yaml byte for byte; the pair is the decorrelated
  * fixture pair re-phased to M3-P3 and anchored to the reviewed commit.
+ *
+ * FIX ROUND 2 (CR-KH-003, CR-007): history is decided by PROVENANCE. The
+ * sibling is committed at the BASE, which is where pulse's round-4 review
+ * really is when the resumed pair is written, so the change under audit did
+ * not write it. The next test is the other side: the same document ADDED or
+ * CHANGED by the change under audit is refused.
  */
-test("a same-phase sibling verdict with no head is history: a real pulse M3-P3 round-4 review beside an anchored approving pair is excluded by name and both merge gates clear the review conditions, while a sibling whose head is present and unusable still reddens both", () => {
+test("a same-phase sibling verdict with no head that is unchanged since the merge base is history: a real pulse M3-P3 round-4 review committed at the base beside an anchored approving pair is excluded by name and both merge gates clear the review conditions, while a sibling whose head is present and unusable still reddens both", () => {
   const anchoredM3P3 = ANCHORED_APPROVING_PAIR.map((entry) => ({
     ...entry,
     as: entry.as.replace("m3-p9", "m3-p3-resumed"),
@@ -947,12 +981,16 @@ test("a same-phase sibling verdict with no head is history: a real pulse M3-P3 r
   assert.equal(siblingRecord["phase"], "M3-P3");
   assert.equal("head" in siblingRecord, false, "the pulse sibling carries a head, so it does not exercise the change");
 
-  /* Arm 1: history. Green at check-dual-review, the sibling named. */
+  /* Arm 1: history, committed at the base. Green at check-dual-review, the
+     sibling named with its verdict and its blocking finding. */
   const history = stageReviewedChange([
     ...anchoredM3P3,
-    { from: pulseSibling, as: "m3-p3-criteria-round4.yaml", verbatim: true },
+    { from: pulseSibling, as: "m3-p3-criteria-round4.yaml", verbatim: true, atBase: true },
   ]);
-  assertGitMatchesCapture(history.dir, "budget-name-list-m3-p3-sibling", { base: history.base, head: history.head });
+  /* The budget no longer sees the sibling (the change did not touch it), and
+     blobAt's rev-parse finds pulse's exact blob at the base. */
+  assertGitMatchesCapture(history.dir, "budget-name-list-m3-p3-resumed", { base: history.base, head: history.head });
+  assertGitMatchesCapture(history.dir, "sibling-blob-at-base", { base: history.base });
   assert.equal(
     readFileSync(join(history.dir, "delivery", "review", "m3-p3-criteria-round4.yaml"), "utf8"),
     readFileSync(pulseSibling, "utf8"),
@@ -963,11 +1001,16 @@ test("a same-phase sibling verdict with no head is history: a real pulse M3-P3 r
   for (const check of ["dual-review-decorrelation", "verdict-pair-approves"]) {
     assert.ok(
       dual.gateStdout.includes(
-        `REPORT ${check} delivery/review/m3-p3-criteria-round4.yaml declares no head, so it is history (DR-0054)`,
+        `REPORT ${check} delivery/review/m3-p3-criteria-round4.yaml declares no head and is unchanged since the merge base ${history.base}, so it is history (DR-0054)`,
       ),
       `${check} did not name the excluded sibling:\n${dual.gateStdout}`,
     );
   }
+  assert.match(
+    dual.gateStdout,
+    /m3-p3-criteria-round4\.yaml declares no head and is unchanged since the merge base [0-9a-f]{40}, so it is history \(DR-0054\): .* it reads verdict APPROVE, blocking finding\(s\) CR4-M3P3-01 \(medium\)/,
+    dual.gateStdout,
+  );
   const merge = runGate(history, "merge-preconditions");
   assert.equal(merge.record.status, "error", merge.output);
   assert.match(merge.record.detail ?? "", /no repository could be established/, merge.output);
@@ -989,6 +1032,126 @@ test("a same-phase sibling verdict with no head is history: a real pulse M3-P3 r
   );
   const mergeUnusable = runGate(unusable, "merge-preconditions");
   assert.equal(mergeUnusable.record.status, "red", mergeUnusable.output);
+});
+
+/*
+ * KERNEL 0.2.1 FIX ROUND 2 (CR-KH-003, CR-007): SHAPE IS NOT PROVENANCE.
+ * `declaresNoHead` alone let a head-less verdict written TODAY take history's
+ * exemption, so two clean reviews plus a fresh head-less refusal carrying a
+ * high finding read green. Two structurally different members of that class,
+ * each built from pulse's own round-4 review: (a) the change ADDS it,
+ * rewritten to a refusal with a high finding, which is CR-KH-003 exactly; (b)
+ * it is committed at the base and the change EDITS it from APPROVE to
+ * FIX-ROUND-NEEDED. Both gates refuse both, naming the path, the verdict and
+ * the blocking findings. The control, the same document unchanged at the
+ * base, is the test above. Without a base the bare script cannot tell, keeps
+ * the exclusion, and says so on the line (the last arm).
+ */
+test("a head-less same-phase sibling that the change under audit adds or changes is current work and refused by both merge gates naming its verdict and blocking findings, and without a base the exclusion says provenance was not checked", () => {
+  const anchoredM3P3 = ANCHORED_APPROVING_PAIR.map((entry) => ({
+    ...entry,
+    as: entry.as.replace("m3-p9", "m3-p3-resumed"),
+    phase: "M3-P3",
+  }));
+  const pulseSibling = join(pulseDir, "m3-p3-criteria-round4.yaml");
+  const refusing = (body: string): string => {
+    const edited = body.replace(/^verdict: APPROVE$/m, "verdict: FIX-ROUND-NEEDED");
+    assert.notEqual(edited, body, "the pulse sibling no longer reads verdict: APPROVE");
+    return edited;
+  };
+  const withHigh = (body: string): string => {
+    const refused = refusing(body);
+    const edited = refused.replace(/^( {2}- id: CR4-M3P3-01\n {4}severity: )medium$/m, "$1high");
+    assert.notEqual(edited, refused, "the pulse sibling's CR4-M3P3-01 is no longer medium");
+    return edited;
+  };
+  const members = [
+    {
+      name: "(a) added with a high finding",
+      verb: "ADDS",
+      reads: "verdict FIX-ROUND-NEEDED, blocking finding(s) CR4-M3P3-01 (high)",
+      repo: stageReviewedChange([
+        ...anchoredM3P3,
+        { from: pulseSibling, as: "m3-p3-criteria-round4.yaml", verbatim: true, edit: withHigh },
+      ]),
+      baseBlob: "sibling-blob-absent-at-base",
+    },
+    {
+      name: "(b) at the base, changed to FIX-ROUND-NEEDED",
+      verb: "CHANGES",
+      reads: "verdict FIX-ROUND-NEEDED, blocking finding(s) CR4-M3P3-01 (medium)",
+      repo: stageReviewedChange([
+        ...anchoredM3P3,
+        { from: pulseSibling, as: "m3-p3-criteria-round4.yaml", verbatim: true, atBase: true, edit: refusing },
+      ]),
+      baseBlob: "sibling-blob-at-base",
+    },
+  ];
+  for (const member of members) {
+    const { repo } = member;
+    /* Both touch the sibling, so the budget's name list is the sibling one;
+       the base blob is pulse's for (b) and absent for (a). */
+    assertGitMatchesCapture(repo.dir, "budget-name-list-m3-p3-sibling", { base: repo.base, head: repo.head });
+    assertGitMatchesCapture(repo.dir, member.baseBlob, { base: repo.base });
+    const refusal = `delivery/review/m3-p3-criteria-round4.yaml declares no head, and the change under audit ${member.verb} it (merge base ${repo.base}), so it is current work and not history`;
+    const dual = runGate(repo, "check-dual-review");
+    assert.equal(dual.record.status, "red", `${member.name}: ${dual.output}`);
+    assert.notEqual(dual.exit, 0, `${member.name}: ${dual.output}`);
+    /* At least one refusal per derived check that groups by head (each check
+       runs once per anchored verdict, so the script prints it more often). */
+    const refusals = dual.gateStdout.split("\n").filter((line) => line.includes(refusal));
+    assert.ok(refusals.length >= 2, `${member.name}: expected a refusal from each of the two checks:\n${dual.gateStdout}`);
+    for (const line of refusals) {
+      assert.ok(line.includes(`It reads ${member.reads}.`), `${member.name}:\n${line}`);
+      assert.ok(line.includes("Add the full forty-character head it reviewed, or remove it from delivery/review"), line);
+    }
+    assert.doesNotMatch(dual.gateStdout, /m3-p3-criteria-round4\.yaml declares no head and is (unchanged|excluded)/, dual.gateStdout);
+    const merge = runGate(repo, "merge-preconditions");
+    const mergeText = `${merge.record.detail ?? ""}\n${merge.gateStdout}`;
+    assert.equal(merge.record.status, "red", `${member.name}: ${merge.output}`);
+    assert.notEqual(merge.exit, 0, `${member.name}: ${merge.output}`);
+    assert.ok(mergeText.includes(refusal), `${member.name}: merge-preconditions did not refuse the sibling:\n${mergeText}`);
+    /* EACH CHECK BY NAME: condition 1 is dual-review-decorrelation and
+       condition 2 is verdict-pair-approves, and each row carries its own. */
+    for (const condition of ["condition-1", "condition-2"]) {
+      assert.ok(
+        merge.gateStdout.split("\n").some((line) => line.includes(`${condition} (`) && line.includes(": red -- ") && line.includes(refusal)),
+        `${member.name}: ${condition} did not refuse the sibling:\n${merge.gateStdout}`,
+      );
+    }
+    assert.ok(mergeText.includes(`It reads ${member.reads}.`), `${member.name}:\n${mergeText}`);
+  }
+
+  /* NO BASE: the bare script, hand-wired without --base, cannot tell (a) from
+     history. It keeps the exclusion (the residual the work history states)
+     and its line says so, naming the verdict and the high finding. */
+  const added = members[0];
+  assert.ok(added !== undefined);
+  const recordPath = join(added.repo.dir, "bare-result.json");
+  const bare = spawnSync(
+    process.execPath,
+    [scriptPath, added.repo.dir, "--head", added.repo.reviewed, "--result", recordPath, "--evidence", join(added.repo.dir, "bare-evidence")],
+    { cwd: repoRoot, encoding: "utf8" },
+  );
+  const bareRecord = JSON.parse(readFileSync(recordPath, "utf8")) as { status: string; detail?: string };
+  const bareText = `${bare.stdout ?? ""}${bare.stderr ?? ""}\n${bareRecord.detail ?? ""}`;
+  assert.equal(bareRecord.status, "green", bareText);
+  for (const check of ["dual-review-decorrelation", "verdict-pair-approves"]) {
+    /* The script was given an absolute directory, so it prints absolute paths. */
+    assert.ok(
+      bareText
+        .split("\n")
+        .some(
+          (line) =>
+            line.includes(`REPORT ${check} `) &&
+            line.includes(
+              "delivery/review/m3-p3-criteria-round4.yaml declares no head and is excluded as history (DR-0054) on its SHAPE ALONE: provenance was NOT checked, because no base was given",
+            ),
+        ),
+      `${check}:\n${bareText}`,
+    );
+  }
+  assert.ok(bareText.includes("it reads verdict FIX-ROUND-NEEDED, blocking finding(s) CR4-M3P3-01 (high)"), bareText);
 });
 
 test("a composed clean-room-reviewer brief and a gate bundle's summary.json are stamped with the running kernel version", () => {

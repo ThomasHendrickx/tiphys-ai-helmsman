@@ -334,14 +334,24 @@ function runGate(dir: string, tree = repoRoot): { status: number; output: string
 /* Criterion 2: head is required, and a document without one is refused */
 /* ------------------------------------------------------------------ */
 
-test("the shipped schema declares head as optional and as forty lowercase hexadecimal digits when present", () => {
-  /* KERNEL 0.2.1 (DR-0053). M4-P10 made `head` REQUIRED here, which also
-     judged every verdict written before the field existed. The requirement is
-     now an ADMISSION rule enforced by the merge gates (the gate-side tests in
-     test/history-compat.test.ts), and the schema keeps only the SHAPE: a head
-     that is present must be the full forty-character form. */
+test("the shipped schema requires head for a document stamped 0.2.0 or later, RULES_SINCE lifts that one entry for history, and a present head is forty lowercase hexadecimal digits", async () => {
+  /* KERNEL 0.2.1. M4-P10 made `head` REQUIRED here, which also judged every
+     verdict written before the field existed, so 0.2.1's first round dropped
+     it (DR-0053). Fix round 2 (the criteria review's CR-007) puts it back and
+     gates it by stamp: `required` holds `head`, and RULES_SINCE's
+     `verdict-head-required` row lifts exactly that entry for a document
+     stamped before 0.2.0 or not stamped, so history stays well formed. */
   const schema = shippedSchema();
-  assert.ok(!(schema["required"] as string[]).includes("head"), "head is still required by the schema");
+  assert.ok((schema["required"] as string[]).includes("head"), "head is not required by the schema");
+  const stampModule = (await import(new URL("../src/stamp.ts", import.meta.url).href)) as {
+    RULES_SINCE: { id: string; type: string; since: string; schemaPath?: string; entry?: string }[];
+  };
+  const row = stampModule.RULES_SINCE.find((rule) => rule.id === "verdict-head-required");
+  assert.ok(row !== undefined, "RULES_SINCE has no verdict-head-required row");
+  assert.deepEqual(
+    { type: row.type, since: row.since, schemaPath: row.schemaPath, entry: row.entry },
+    { type: "verdict", since: "0.2.0", schemaPath: "/required", entry: "head" },
+  );
   const head = (schema["properties"] as Record<string, unknown>)["head"] as Record<
     string,
     unknown
@@ -350,21 +360,37 @@ test("the shipped schema declares head as optional and as forty lowercase hexade
   assert.equal(head["pattern"], "^[0-9a-f]{40}$");
 });
 
-test("tiphys validate --type verdict prints no INVALID line for a verdict that carries no head, and refuses an abbreviated one naming head", () => {
-  /* BOTH ARMS, because the change is a narrowing and not a removal. ABSENT is
-     a well-formed document (every verdict written before M4-P10 has that
-     shape); PRESENT AND ABBREVIATED is a document that tried to state its head
-     and stated it wrongly, and that is still refused at the boundary. */
+test("tiphys validate --type verdict prints no INVALID line for an unstamped verdict that carries no head, refuses one stamped 0.2.0 that omits it, and refuses an abbreviated one naming head", () => {
+  /* THREE ARMS. ABSENT AND UNSTAMPED is history (every verdict written before
+     M4-P10 has that shape) and well formed. ABSENT AND STAMPED 0.2.0 is a
+     current review that omitted the field, INVALID since fix round 2 (CR-007).
+     PRESENT AND ABBREVIATED tried to state its head and stated it wrongly. */
   const dir = mkdtempSync(join(tmpdir(), "tiphys-no-head-"));
   try {
     const path = join(dir, "no-head.yaml");
-    writeFileSync(path, fixture("decorrelated-criteria.yaml", [[`head: ${FIXTURE_HEAD}\n`, ""]]));
+    writeFileSync(
+      path,
+      fixture("decorrelated-criteria.yaml", [
+        [`head: ${FIXTURE_HEAD}\n`, ""],
+        ["tiphys-version: 0.2.0\n", ""],
+      ]),
+    );
     const run = spawnSync(process.execPath, [cliEntry, "validate", "--type", "verdict", path], {
       cwd: repoRoot,
       encoding: "utf8",
     });
     const output = `${run.stdout}${run.stderr}`;
     assert.doesNotMatch(output, /INVALID/, output);
+    assert.match(output, /^HISTORY verdict-head-required applies from tiphys-version 0\.2\.0/m, output);
+    const stamped = join(dir, "no-head-stamped.yaml");
+    writeFileSync(stamped, fixture("decorrelated-criteria.yaml", [[`head: ${FIXTURE_HEAD}\n`, ""]]));
+    const stampedRun = spawnSync(process.execPath, [cliEntry, "validate", "--type", "verdict", stamped], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    });
+    const stampedOutput = `${stampedRun.stdout}${stampedRun.stderr}`;
+    assert.match(stampedOutput, /^INVALID #\/head required property head is missing/m, stampedOutput);
+    assert.notEqual(stampedRun.status, 0, stampedOutput);
     const short = join(dir, "short-head.yaml");
     writeFileSync(
       short,
@@ -405,7 +431,7 @@ test("the same document carrying a head produces no head diagnostic, and none at
   }
 });
 
-test("a head-less document validates clean against the pre-M4-P10 schema AND the shipped one, so 0.1.0-era history is well formed again", () => {
+test("a head-less unstamped document validates clean against the pre-M4-P10 schema and, through RULES_SINCE, against the shipped one, so 0.1.0-era history is well formed again", async () => {
   /* KERNEL 0.2.1 (DR-0053). Until 0.2.1 the shipped arm of this test asserted
      exactly one diagnostic, `#/head required property head is missing`, and
      that assertion is what judged every consumer's history. What protects a
@@ -427,8 +453,22 @@ test("a head-less document validates clean against the pre-M4-P10 schema AND the
   const before = validateModule.validateToLines(reconstructedPreHeadSchema(), instance);
   assert.deepEqual(before, [], "the pre-change schema was expected to accept a head-less verdict");
 
-  const after = validateModule.validateToLines(shippedSchema(), instance);
-  assert.deepEqual(after, [], "the shipped schema refuses a head-less verdict, which judges history (DR-0054)");
+  /* Since fix round 2 the shipped schema requires `head` (for current
+     documents), so the history arm is the schema AS `tiphys validate` applies
+     it to an unstamped document: with RULES_SINCE's rules for that stamp
+     lifted. */
+  const stampModule = (await import(new URL("../src/stamp.ts", import.meta.url).href)) as {
+    rulesNotYetInForce: (type: string, stamp: unknown) => { schemaPath?: string; entry?: string }[];
+    readStamp: (record: unknown) => unknown;
+  };
+  const lifted = structuredClone(shippedSchema());
+  for (const rule of stampModule.rulesNotYetInForce("verdict", stampModule.readStamp(instance))) {
+    if (rule.schemaPath === "/required" && rule.entry !== undefined) {
+      lifted["required"] = (lifted["required"] as string[]).filter((name) => name !== rule.entry);
+    }
+  }
+  const after = validateModule.validateToLines(lifted, instance);
+  assert.deepEqual(after, [], "the shipped schema, as validate applies it to history, refuses a head-less verdict (DR-0054)");
 });
 
 test("the reconstructed pre-change schema agrees with the one in git, so the reconstruction is not a convenience", () => {

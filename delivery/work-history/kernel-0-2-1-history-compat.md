@@ -1182,6 +1182,378 @@ inside a rewritten comment) moved to the start of the rewritten block, and
 - It did not add a spec for `verdict-pair-blocking-finding-refused` (above).
 - It did not re-examine any consumer other than pulse.
 
+<!-- fix-round-2 -->
+## Fix round 2 (re-verifications of 1e48bff)
+
+Inputs: the hazard re-verification (FIX-ROUND-NEEDED, one new high,
+CR-KH-003) and the criteria re-verification (APPROVE, one new low, CR-007).
+The orchestrator ruled they are one mechanism and fixed the design; this
+round implements it and does not reopen DR-0054 or DR-0055. All runs are
+node v26.6.0 (the scratch toolchain, `node --version` printed `v26.6.0`).
+
+### The mechanism
+
+`headGroupFor` decided "this sibling is history" from the document's SHAPE
+alone (`declaresNoHead`), never from WHEN it was written. Shape is not
+provenance: a verdict written today that omits `head` got the exemption
+DR-0054 grants to documents that predate the field. CR-KH-003: two clean
+APPROVE verdicts at the audited head plus a freshly committed head-less
+FIX-ROUND-NEEDED verdict with a high finding, and check-dual-review was green
+at exit 0. CR-007: the same exemption let a stamped current review omit the
+field and still validate.
+
+The general form: **an exemption for history, keyed on a property the
+present can also have.** The fix keys it on a property only the past has:
+the same bytes at the merge base.
+
+### Pulse checked first: a "head-less with a blocking finding refuses" rule would judge history
+
+Read with the yaml package over every file in /home/user/pulse/delivery/review
+(scratch fr2-pulse.mjs):
+
+```
+verdicts=42 headless=42 headless-with-blocking-finding=29 headless-not-APPROVE=19
+```
+
+The M3-P3 files the CR-001 test stages:
+
+```
+m3-p3-criteria-round3.yaml phase=M3-P3 head=NO verdict=APPROVE blocking=[]
+m3-p3-criteria-round4.yaml phase=M3-P3 head=NO verdict=APPROVE blocking=[CR4-M3P3-01(medium)]
+```
+
+(m3-p3-hazard-round3.yaml and m3-p3-hazard-round4.yaml are not `kind:
+verdict`.) So 29 of pulse's 42 committed verdicts carry a finding at medium
+or above, round4 among them. A shape rule keyed on findings would refuse
+pulse's paused M3-P3 phase again, which is what CR-001 fixed and DR-0054
+forbids. The survey is why provenance, not content, is the discriminator,
+and no such rule was added.
+
+### What changed
+
+1. **Provenance decides history** (src/checks.ts:4109). With a base, a
+   head-less same-phase sibling is excluded as history only when
+   `git rev-parse --verify --quiet <rev>:./<path>` gives the same blob at the
+   audited commit and at the merge base (src/checks.ts:4158). One the change
+   ADDS or CHANGES goes to `unkeyed` and is a violation in both
+   `dual-review-decorrelation` and `verdict-pair-approves`, naming the path,
+   ADDS or CHANGES, the merge base, the verdict, every blocking finding with
+   its severity, and the remedy (src/checks.ts:4168). The provenance is
+   established once per run (src/checks.ts:3990): `unchecked` with no base,
+   `error` when a base was given and the merge base could not be found or the
+   corpus came from the working tree. `error` refuses every head-less sibling,
+   because "could not tell" must not shrink the group.
+2. **The base is threaded through.** `DerivedCheck.run` takes an optional
+   `{ base }`. merge-preconditions passes `flags.base`
+   (src/gates/merge-preconditions.ts:810); check-dual-review passes
+   `--base` (scripts/check-dual-review.mjs:527).
+3. **No base: the exclusion stays and says so.** The REPORT line
+   (src/checks.ts:4067) reads "is excluded as history (DR-0054) on its SHAPE
+   ALONE: provenance was NOT checked, because no base was given ... it reads
+   verdict X, blocking finding(s) ID (severity)". The at-base line reads "is
+   unchanged since the merge base <sha>, so it is history (DR-0054)" and names
+   the verdict and findings too (src/checks.ts:4036 builds that phrase).
+4. **`tiphys validate` requires `head` from 0.2.0 on** (CR-007, option 1).
+   `head` is back in the schema's `required`, and a new RULES_SINCE row,
+   `verdict-head-required` (src/stamp.ts:153), lifts exactly that entry for a
+   document stamped before 0.2.0 or not stamped. A stamped 0.2.0 head-less
+   verdict now prints `INVALID #/head required property head is missing` and
+   exits nonzero; an unstamped one prints the HISTORY line and no INVALID.
+   Admission still does not read the stamp (DR-0055 correction, unchanged).
+5. **The header sentence is corrected.** "the fail-open worry above does not
+   apply to it" is gone; the `headGroupFor` header (src/checks.ts:4089 to
+   src/checks.ts:4108) now states the provenance rule, the no-base arm and
+   the residual. The `partitionByAuditedHead` exclusion wording no longer
+   asserts "is history"; it says the merge checks decide that from provenance
+   (src/checks.ts:4660).
+
+### A defect the control arm found in this round's own first draft
+
+The first run of the control (pulse's round4 committed at the base, unchanged)
+was green at check-dual-review and RED at merge-preconditions, condition 1:
+
+```
+condition-1 (...) red -- #/head /tmp/tiphys-history-compat-gate-1coNUV/delivery/review/m3-p3-criteria-round4.yaml declares no head, and the change under audit ADDS it (merge base cad1676...)
+```
+
+The corpus loader returns `join(contextDirectory, <path>)`, so the path is
+ABSOLUTE when the context directory is (merge-preconditions resolves it) and
+relative when it is not (the script was given a relative one). `rev:./<abs>`
+is never found, so every sibling read as ADDED at one gate only. `blobAt` now
+takes the path back to the context directory first (src/checks.ts:4026), and
+that line is a member of the history witness below: reverting it reddens
+the control test (member 3 in the trial output). Without the control arm
+this would have shipped as a refusal of pulse's real history at the gate
+that carries the merge grant.
+
+### Derivation
+
+Every site that decides history or excludes a verdict from a group, before
+and after. Command (run from the worktree root):
+
+```
+grep -rnE 'headless|declaresNoHead\(|headGroupFor\(|excluded by name|is history|no-head' src scripts bin --include=*.ts --include=*.mjs | cut -c1-200
+```
+
+Before the fix (at 1e48bff's code, 37 lines):
+
+```
+src/gates/merge-preconditions.ts:1239:    if (declaresNoHead(entry.record)) {
+src/gates/merge-preconditions.ts:1240:      excluded.push({ path: entry.path, declared: "", relation: { kind: "no-head" } });
+src/checks.ts:3943:   * by path. History, excluded by name and never a member; the caller prints
+src/checks.ts:3946:  headless: string[];
+src/checks.ts:3950:function headlessSiblingReport(checkId: string, path: string, phase: string, headKey: string): string {
+src/checks.ts:3951:  return `REPORT ${checkId} ${path} declares no head, so it is history (DR-0054): excluded by name from the group for phase ${phase} at head ${headKey}, never counted toward it and 
+src/checks.ts:3968: * MAKES. A sibling that declares NO head key is history, written before
+src/checks.ts:3973: * M3-P3. So it is EXCLUDED BY NAME (`headless`, printed by every caller) and
+src/checks.ts:3980:function headGroupFor(
+src/checks.ts:3987:  const headless: string[] = [];
+src/checks.ts:4013:    if (declaresNoHead(candidate.record)) {
+src/checks.ts:4014:      headless.push(candidate.path);
+src/checks.ts:4026:  return { members, unkeyed, headless };
+src/checks.ts:4210:  | { kind: "no-head" };
+src/checks.ts:4225:export function declaresNoHead(record: Record<string, unknown> | undefined): boolean {
+src/checks.ts:4460:    if (declaresNoHead(candidate.record)) {
+src/checks.ts:4461:      offHead.push({ path: candidate.path, declared: "", relation: { kind: "no-head" } });
+src/checks.ts:4500:      if (entry.relation.kind === "no-head") {
+src/checks.ts:4503:          `toward a merge; a verdict written before the field existed is history (DR-0054) and ${tail}`
+src/checks.ts:5560:    const grouped = headGroupFor(committed.verdicts, phaseKey, headKey);
+src/checks.ts:5653:    const headlessReports = grouped.headless.map((path) =>
+src/checks.ts:5654:      headlessSiblingReport("dual-review-decorrelation", path, phase, headKey),
+src/checks.ts:5664:            [...exceptionReports, ...headlessReports]
+src/checks.ts:5667:              ...headlessReports,
+src/checks.ts:5829:    const grouped = headGroupFor(committed.verdicts, phaseKey, headKey);
+src/checks.ts:5867:    const headlessReports = grouped.headless.map((path) =>
+src/checks.ts:5868:      headlessSiblingReport("verdict-pair-approves", path, phase, headKey),
+src/checks.ts:5874:          ? headlessReports
+src/checks.ts:5876:              ...headlessReports,
+scripts/check-dual-review.mjs:261: * as `no-head` and it arrives here in `offHead`, never admitted.
+scripts/check-dual-review.mjs:619:       corpus is history only, and without --base this run cannot tell a
+scripts/check-dual-review.mjs:621:    headlessOnly:
+scripts/check-dual-review.mjs:622:      (found.offHead ?? []).length > 0 && (found.offHead ?? []).every((entry) => entry.relation.kind === "no-head"),
+scripts/check-dual-review.mjs:911:        (run.headlessOnly === true ? `; ${HEADLESS_ONLY_WARNING}` : ""),
+scripts/check-dual-review.mjs:916:        ...(run.headlessOnly === true ? [HEADLESS_ONLY_WARNING] : []),
+scripts/check-cutover-entry.mjs:929: *   2. A path git cannot date (untracked, no commit in this history, no git, no
+scripts/check-cutover-entry.mjs:1045:      reason: `no commit in this history records a change to ${relativePath}`,
+```
+
+After the fix (40 lines):
+
+```
+src/gates/merge-preconditions.ts:1242:    if (declaresNoHead(entry.record)) {
+src/gates/merge-preconditions.ts:1243:      excluded.push({ path: entry.path, declared: "", relation: { kind: "no-head" } });
+src/checks.ts:3962:  headless: HeadlessSibling[];
+src/checks.ts:3982: * then refused, because "could not tell whether this is history" must not
+src/checks.ts:4067:function headlessSiblingReport(checkId: string, sibling: HeadlessSibling, phase: string, headKey: string): string {
+src/checks.ts:4070:      ? `is unchanged since the merge base ${sibling.ground.mergeBase}, so it is history (DR-0054)`
+src/checks.ts:4072:  return `REPORT ${checkId} ${sibling.path} declares no head and ${ground}: excluded by name from the group for phase ${phase} at head ${headKey}, never counted toward it and never 
+src/checks.ts:4089: * MAKES. A sibling that declares NO head key is history, written before
+src/checks.ts:4094: * M3-P3. So it is EXCLUDED BY NAME (`headless`, printed by every caller) and
+src/checks.ts:4100: * head-less sibling is history ONLY when the same bytes exist at the merge
+src/checks.ts:4109:function headGroupFor(
+src/checks.ts:4118:  const headless: HeadlessSibling[] = [];
+src/checks.ts:4144:    if (declaresNoHead(candidate.record)) {
+src/checks.ts:4146:        headless.push({ path: candidate.path, record: candidate.record, ground: { kind: "unchecked" } });
+src/checks.ts:4159:        headless.push({
+src/checks.ts:4181:  return { members, unkeyed, headless };
+src/checks.ts:4365:  | { kind: "no-head" };
+src/checks.ts:4382:export function declaresNoHead(record: Record<string, unknown> | undefined): boolean {
+src/checks.ts:4617:    if (declaresNoHead(candidate.record)) {
+src/checks.ts:4618:      offHead.push({ path: candidate.path, declared: "", relation: { kind: "no-head" } });
+src/checks.ts:4657:      if (entry.relation.kind === "no-head") {
+src/checks.ts:4660:          `toward a merge, and ${tail}; whether it is history (DR-0054) or current work is decided by the ` +
+src/checks.ts:5718:    const grouped = headGroupFor(
+src/checks.ts:5817:    const headlessReports = grouped.headless.map((sibling) =>
+src/checks.ts:5818:      headlessSiblingReport("dual-review-decorrelation", sibling, phase, headKey),
+src/checks.ts:5828:            [...exceptionReports, ...headlessReports]
+src/checks.ts:5831:              ...headlessReports,
+src/checks.ts:5993:    const grouped = headGroupFor(
+src/checks.ts:6037:    const headlessReports = grouped.headless.map((sibling) =>
+src/checks.ts:6038:      headlessSiblingReport("verdict-pair-approves", sibling, phase, headKey),
+src/checks.ts:6044:          ? headlessReports
+src/checks.ts:6046:              ...headlessReports,
+scripts/check-dual-review.mjs:261: * as `no-head` and it arrives here in `offHead`, never admitted.
+scripts/check-dual-review.mjs:621:       corpus is history only, and without --base this run cannot tell a
+scripts/check-dual-review.mjs:623:    headlessOnly:
+scripts/check-dual-review.mjs:624:      (found.offHead ?? []).length > 0 && (found.offHead ?? []).every((entry) => entry.relation.kind === "no-head"),
+scripts/check-dual-review.mjs:913:        (run.headlessOnly === true ? `; ${HEADLESS_ONLY_WARNING}` : ""),
+scripts/check-dual-review.mjs:918:        ...(run.headlessOnly === true ? [HEADLESS_ONLY_WARNING] : []),
+scripts/check-cutover-entry.mjs:929: *   2. A path git cannot date (untracked, no commit in this history, no git, no
+scripts/check-cutover-entry.mjs:1045:      reason: `no commit in this history records a change to ${relativePath}`,
+```
+
+Classified. Three kinds of site, and only one exempts:
+
+- **Exempts a head-less sibling from a group** (the mechanism): the
+  `headGroupFor` branch at src/checks.ts:4144, reached from exactly two
+  callers, src/checks.ts:5718 (`dual-review-decorrelation`) and
+  src/checks.ts:5993 (`verdict-pair-approves`). Both now pass a provenance.
+  Fixed.
+- **Refuses to admit a head-less verdict** (fail-closed, not the mechanism):
+  src/gates/merge-preconditions.ts:1242 and src/checks.ts:4617 put it in
+  `excluded` / `offHead`, never counted toward the two reviews. Only the
+  wording at src/checks.ts:4660 changed.
+- **Warns** (not the mechanism): the `headlessOnly` warning in
+  scripts/check-dual-review.mjs:623 fires only when no verdict is admitted;
+  the CR-006 test (test/history-compat.test.ts:419) asserts that corpus is
+  not-applicable, not green.
+- scripts/check-cutover-entry.mjs:929 and :1045 are grep noise ("history" of
+  a file's commits).
+
+A second derivation, for who reaches the checks and whether a base can arrive:
+
+```
+grep -rnE '(check|entry|derived|c)\.run\(' src scripts bin plugin/src --include=*.ts --include=*.mjs | cut -c1-200
+src/gates/merge-preconditions.ts:810:      const outcome = check.run(verdict.record, contextDirectory, { base });
+src/checks.ts:6350:    const outcome = check.run(instance, contextDirectory);
+scripts/check-dual-review.mjs:527:      const outcome = check.run(instance, directory, { base: options.base });
+```
+
+The third, `runChecks`, is `tiphys validate --context`, which has no base
+flag: it runs the checks unchecked and its REPORT line says provenance was
+not checked. It is not a merge gate.
+
+### What the derivation did not cover
+
+- **Only `src`, `scripts`, `bin`** (and `plugin/src` for the second grep). A
+  separate grep over plugin, .claude, templates, roles and schemas printed
+  only two unrelated "the log is history" comments in plugin/src/hooks
+  (tool-call-observer.ts and project-write-block.ts) and their plugin/dist
+  copies. `test/` was not classified as sites: two test files name
+  `headGroupFor` or `declaresNoHead`, and they are the tests below.
+- **A reader that decides "history" without any of these words.** The
+  review-families falsifiers (`firstDeclarationCommit`, `singleFamilyException`)
+  already date history by commit (fix round 1, CR-004) and use no shape test;
+  I read that code and did not re-derive it here. Any other exemption spelled
+  differently would be missed by this grep.
+- **Provenance through renames.** The blob comparison is per path. A head-less
+  verdict renamed in the change is ADDED at its new path and is refused. I
+  did not treat a pure rename as history; that is the fail-closed direction
+  and is stated rather than tested.
+
+### Residual, stated and not fixed
+
+A head-less verdict with a blocking finding that is ALREADY ON THE BASE is
+still history, excluded by name from the group. If one reached `main`
+before this round (written after the field existed but merged without it),
+the gates keep excluding it. The REPORT line names its verdict and blocking
+findings, so it is visible, never silent. Closing that needs a date for
+"before the field existed", which DR-0054 does not give.
+
+The no-base arm is the same exemption on shape alone: a consumer who wires
+check-dual-review by hand without `--base` still gets CR-KH-003's green, now
+with a line saying provenance was not checked and naming the high finding.
+This repository's own workflow has such a step: .github/workflows/gates.yml
+runs `node scripts/check-dual-review.mjs .` with no `--base` (its line 225,
+labelled informational), so on CR-KH-003's shape that step reads green with
+the provenance line. The enforcing arm is merge-preconditions, which
+scripts/m2-exit-test.sh runs through the gate runner with `--base`; the gate
+runner forwards `--base` to both gates, which is how every refusal in the
+tests below was produced.
+
+### Tests, red at 1e48bff and green after
+
+Scratch fr2-base-red.py extracts 1e48bff with `git archive`, copies in this
+round's test files and the capture, and runs each test by exact name in both
+trees. `ARM` selects one member of the class and `ARMS_ONLY` stops before the
+no-base arm, in a copy of the test file only. Captured:
+
+```
+(a) added, high | 1e48bff exit=1 pass=0 fail=1 AssertionError [ERR_ASSERTION]: (a) added with a high finding: gates: run e2809490b4cb3473ae709ebb
+(a) added, high | fix-round-2 exit=0 pass=1 fail=0 
+(b) at base, changed | 1e48bff exit=1 pass=0 fail=1 AssertionError [ERR_ASSERTION]: (b) at the base, changed to FIX-ROUND-NEEDED: gates: run cdeab39565ead229e414976e
+(b) at base, changed | fix-round-2 exit=0 pass=1 fail=0 
+whole test | 1e48bff exit=1 pass=0 fail=1 AssertionError [ERR_ASSERTION]: (a) added with a high finding: gates: run 1c2f05a90e80b7bce4684c7e
+whole test | fix-round-2 exit=0 pass=1 fail=0 
+control, at base unchanged | 1e48bff exit=1 pass=0 fail=1 AssertionError [ERR_ASSERTION]: dual-review-decorrelation did not name the excluded sibling:
+control, at base unchanged | fix-round-2 exit=0 pass=1 fail=0 
+validate stamped head-less | 1e48bff exit=1 pass=0 fail=1 AssertionError [ERR_ASSERTION]: HISTORY verdict-head-full-sha applies from tiphys-version 0.2.0 (a present head is the full forty-character lowercase sha (M4-P10)); this document carries no tiphys-version, so it is pre-stamp history held to the 0.1.0 rules
+validate stamped head-less | fix-round-2 exit=0 pass=1 fail=0 
+```
+
+At 1e48bff both members are the dangerous state itself, green at the gate
+that carries the merge grant (same run, `grep -aE "!==|check-dual-review"`):
+
+```
+  gates: check-dual-review: green: 2 verdict(s) for the commit under audit 52b75bb... examined by 1 registered check(s) named dual-review-decorrelation and 1 named verdict-pair-approves; no decorrelation violation and the pair approves; 2 of 2 v
+  'green' !== 'red'
+```
+
+(the same two lines for member (b), commit f04b02b...). The control is red at
+1e48bff only on the REPORT wording, as it should be: it was history there too.
+
+The tests:
+
+- test/history-compat.test.ts:1050, new: members (a) and (b), each red at
+  both gates with the ADDS or CHANGES refusal once per check (condition 1
+  and condition 2 named separately at merge-preconditions), and the no-base
+  arm, green with the "provenance was NOT checked" line naming
+  `verdict FIX-ROUND-NEEDED, blocking finding(s) CR4-M3P3-01 (high)`.
+- test/history-compat.test.ts:972, retitled: the control, pulse's round4
+  committed AT THE BASE byte for byte (the staging's new `atBase` option,
+  test/history-compat.test.ts:239), both gates clear the review conditions,
+  the REPORT line names the merge base, `verdict APPROVE, blocking
+  finding(s) CR4-M3P3-01 (medium)`. The abbreviated-head arm is unchanged.
+- test/verdict-head.test.ts:337, :363 and :434: the schema requires `head`
+  and the RULES_SINCE row exists; validate's three arms (unstamped head-less
+  valid with a HISTORY line, stamped 0.2.0 head-less INVALID and nonzero,
+  abbreviated refused); the history document validates against the shipped
+  schema as validate applies it, RULES_SINCE's entry lifted.
+
+Every git output the new arms consume is compared with a real capture before
+either gate is trusted. Three captures were added to
+witness/captures/kernel-0-2-1-history-git.json, by scratch fr2-capture.py
+against scratch repositories laid out as the test stages them, git 2.43.0:
+`budget-name-list-m3-p3-resumed` (the diff name list when round4 is at the
+base), `sibling-blob-at-base` (exit 0, `33aa03f31bf8a5bbe85ddb72cfdcbb9d800b2b71`,
+which `git hash-object` gives for pulse's file) and
+`sibling-blob-absent-at-base` (exit 1, nothing printed).
+
+Behavior rows: `admission-headless-sibling-provenance-decides-history` and
+`validate-verdict-head-required-from-0-2-0` added;
+`admission-headless-sibling-is-history` now names the retitled test.
+
+### Witnesses, every member tried by hand
+
+New: witness/kernel-0-2-1-headless-sibling-provenance.json, three members
+of one class ("a head-less sibling the change wrote is treated as history"),
+each structurally different: the blob comparison dropped (`atHead !==
+undefined`), provenance never established (`base === undefined || base !==
+""`), and the base read at the wrong revision (`provenance.refSha`). Updated:
+witness/kernel-0-2-1-headless-sibling-is-history.json (member 0 now refuses
+history through the comparison, member 2 finds the new REPORT text, member 3
+is the absolute-path fix), witness/kernel-0-2-1-history-well-formed.json
+(member 0 was a patch that put `head` back in `required`; that is now the
+shipped state, so it is a mutation of the RULES_SINCE row's entry and the
+patch file is deleted), and
+witness/merge-preconditions-composed-check-violations-are-red.json (its find
+is the `check.run` call, which now passes `{ base }`). Every mutation find
+in witness/ was re-checked for presence by scratch fr2-finds.py; the three
+stale finds above were the only ones this round made stale.
+
+Scratch try-members3.py, each member applied, the named test run, restored:
+
+```
+kernel-0-2-1-headless-sibling-provenance HEAD (0, '1', '0')
+kernel-0-2-1-headless-sibling-provenance member 0 (1, '0', '1')
+kernel-0-2-1-headless-sibling-provenance member 1 (1, '0', '1')
+kernel-0-2-1-headless-sibling-provenance member 2 (1, '0', '1')
+kernel-0-2-1-headless-sibling-provenance RESTORED (0, '1', '0')
+kernel-0-2-1-headless-sibling-is-history HEAD (0, '1', '0')
+kernel-0-2-1-headless-sibling-is-history member 0 (1, '0', '1')
+kernel-0-2-1-headless-sibling-is-history member 1 (1, '0', '1')
+kernel-0-2-1-headless-sibling-is-history member 2 (1, '0', '1')
+kernel-0-2-1-headless-sibling-is-history member 3 (1, '0', '1')
+kernel-0-2-1-headless-sibling-is-history RESTORED (0, '1', '0')
+kernel-0-2-1-history-well-formed HEAD (0, '1', '0')
+kernel-0-2-1-history-well-formed member 0 (1, '0', '1')
+kernel-0-2-1-history-well-formed member 1 (1, '0', '1')
+kernel-0-2-1-history-well-formed RESTORED (0, '1', '0')
+```
+
+(tuples are exit, pass, fail). The red-witness gate over the bundle is under
+Gates below.
+
 ## Open questions
 
 1. **RESOLVED in fix round 1 (CR-001).** Was: **`headGroupFor` is unchanged.** In the derived checks, a same-phase
@@ -1235,13 +1607,20 @@ inside a rewritten comment) moved to the start of the rewritten block, and
 7. **Only pulse was examined.** Seven of its 49 verdicts are fixtures; no
    other consumer's history was read.
 
+12. **Fix round 2 residual, stated not fixed.** A head-less verdict with a
+   blocking finding that is already on the base is still history at both
+   merge gates, and the bare script without `--base` still excludes on shape.
+   Both print the verdict and blocking findings on the REPORT line. Whether
+   a date for "before the field existed" should close the first is for the
+   orchestrator; DR-0054 gives none.
+
 ## Claim grep
 
 ```
 grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/kernel-0-2-1-history-compat.md
 ```
 
-Re-run after fix round 1, before this list was rewritten. Hits by line,
+Re-run after fix round 2, before this list was rewritten. Hits by line,
 and what settles each:
 
 - 6: the owner's rule, quoted.
@@ -1278,12 +1657,33 @@ and what settles each:
 - 1144: "an unstamped document never reached the comparison" at b57bd7c: the
   new test is red there with `Missing expected exception: {}`, the `{}` being
   the unstamped record (captured above).
-- 1220: "needs a", inside open question 9, which is a question.
-- 1232: "cannot be decoded" describes an input (an undecodable file), not a
+- 1592: "needs a", inside open question 9, which is a question.
+- 1604: "cannot be decoded" describes an input (an undecodable file), not a
   claim about the code.
-- 1241: the grep command itself.
+- 1620: the grep command itself.
+
+Fix round 2's section:
+
+- 1197: the old code "never" read when a sibling was written: the
+  before-derivation shows the whole branch was `declaresNoHead` then
+  `headless.push(candidate.path)` (src/checks.ts:4013 and :4014 at 1e48bff),
+  and the 1e48bff run above is green on both members.
+- 1282: `rev:./<absolute path>` "is never found": the captured
+  condition-1 line above (ADDS, for a file committed at the base) is that
+  failure, and the control test is green only with the fix (member 3 of the
+  history witness reddens it).
+- 1394: `excluded` / `offHead` "never counted": the existing test
+  "merge-preconditions excludes a verdict that declares no head by name and
+  never counts it toward the two reviews" asserts `0 of 2 are admitted`.
+- 1440: an at-base head-less blocker is "never silent": the
+  control test asserts its REPORT line with the merge base, verdict and
+  blocking finding, and the no-base arm asserts the provenance line.
+- 1521: "provenance never established" describes a mutation; the
+  hand trial (member 1) settles it.
+- 997, 1303, 1306, 1330, 1349, 1375: lines of the derivation's
+  captured grep output, unedited.
 
 Occurrences, counted the same way in both forms after this section was
-written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 55, and the
-wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 55.
-Equal, so no hit was missed by wrapping. The hits after line 1241 are this section quoting the ones above it.
+written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 73, and the
+wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 73.
+Equal, so no hit was missed by wrapping. The hits after line 1620 are this section quoting the ones above it.

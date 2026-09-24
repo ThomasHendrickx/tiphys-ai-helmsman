@@ -791,6 +791,7 @@ function runRegisteredCheck(
   id: string,
   verdicts: readonly VerdictForHead[],
   contextDirectory: string,
+  base: string | undefined,
 ): { status: RowStatus; sentence: string } {
   const selected: DerivedCheck[] = registeredChecks().filter((check) => check.id === id);
   if (selected.length === 0) {
@@ -804,7 +805,9 @@ function runRegisteredCheck(
   const messages = new Set<string>();
   for (const verdict of verdicts) {
     for (const check of selected) {
-      const outcome = check.run(verdict.record, contextDirectory);
+      /* The base goes in so a head-less sibling is judged on its provenance
+         (kernel 0.2.1 fix round 2): history only if it is on the base. */
+      const outcome = check.run(verdict.record, contextDirectory, { base });
       for (const violation of outcome.violations) {
         messages.add(`${violation.pointer} ${violation.message}`);
       }
@@ -1293,9 +1296,10 @@ function reviewRows(
   review: Extract<ReviewCorpus, { ok: true }>,
   head: string,
   contextDirectory: string,
+  base: string | undefined,
 ): ConditionRow[] {
   const rows: ConditionRow[] = [];
-  const condition1 = runRegisteredCheck(DECORRELATION_CHECK_ID, review.forHead, contextDirectory);
+  const condition1 = runRegisteredCheck(DECORRELATION_CHECK_ID, review.forHead, contextDirectory, base);
   rows.push({
     id: "condition-1",
     clause: "DR-0012:22 two decorrelated clean-room reviews of this head",
@@ -1304,7 +1308,7 @@ function reviewRows(
     sentence: condition1.sentence,
   });
 
-  const condition2 = runRegisteredCheck(PAIR_CHECK_ID, review.forHead, contextDirectory);
+  const condition2 = runRegisteredCheck(PAIR_CHECK_ID, review.forHead, contextDirectory, base);
   rows.push({
     id: "condition-2",
     clause: "DR-0012:23 no unresolved finding at medium or above",
@@ -1446,7 +1450,7 @@ export async function runGate(flags: Flags): Promise<number> {
         rows,
       );
     }
-    rows.push(...reviewRows(review, head, contextDirectory));
+    rows.push(...reviewRows(review, head, contextDirectory, flags.base));
     const reviewStatus = gateStatusForRows(rows);
     if (reviewStatus !== "green") {
       return emit(
@@ -1559,7 +1563,7 @@ export async function runGate(flags: Flags): Promise<number> {
       );
     }
     rows.push(selectionRow(review, head, budget));
-    rows.push(...reviewRows(review, head, contextDirectory));
+    rows.push(...reviewRows(review, head, contextDirectory, flags.base));
   }
 
   const checkRunsUrl = `${apiBase}/repos/${slug}/commits/${head}/check-runs`;

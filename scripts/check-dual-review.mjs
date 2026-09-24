@@ -522,7 +522,9 @@ export function evaluate(directory, requestedHead, options = {}) {
   const violations = new Set();
   for (const { path, instance } of found.paths) {
     for (const check of running) {
-      const outcome = check.run(instance, directory);
+      /* The base goes in so a head-less sibling is judged on its provenance
+         (kernel 0.2.1 fix round 2); without one the check says it did not. */
+      const outcome = check.run(instance, directory, { base: options.base });
       for (const violation of outcome.violations) {
         const line = `INVALID ${violation.pointer} ${violation.message} (check: ${check.id}) [${path}]`;
         violations.add(`${violation.pointer} ${violation.message}`);

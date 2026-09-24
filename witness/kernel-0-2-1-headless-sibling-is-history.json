@@ -2,15 +2,15 @@
   "id": "kernel-0-2-1-headless-sibling-is-history",
   "behavior": "admission-headless-sibling-is-history",
   "tests": [
-    "a same-phase sibling verdict with no head is history: a real pulse M3-P3 round-4 review beside an anchored approving pair is excluded by name and both merge gates clear the review conditions, while a sibling whose head is present and unusable still reddens both"
+    "a same-phase sibling verdict with no head that is unchanged since the merge base is history: a real pulse M3-P3 round-4 review committed at the base beside an anchored approving pair is excluded by name and both merge gates clear the review conditions, while a sibling whose head is present and unusable still reddens both"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "      headless.push(candidate.path);",
-      "replace": "      unkeyed.push({ pointer: \"#/head\", message: `${candidate.path} declares no head` });"
+      "find": "      if (atHead !== undefined && atBase === atHead) {",
+      "replace": "      if (false) {"
     },
     {
       "kind": "mutation",
@@ -21,8 +21,14 @@
     {
       "kind": "mutation",
       "file": "src/checks.ts",
-      "find": "  return `REPORT ${checkId} ${path} declares no head, so it is history (DR-0054): excluded by name from the group for phase ${phase} at head ${headKey}, never counted toward it and never refusing it`;",
-      "replace": "  return `REPORT ${checkId} a sibling was left out of the group for phase ${phase} at head ${headKey}`;"
+      "find": "      ? `is unchanged since the merge base ${sibling.ground.mergeBase}, so it is history (DR-0054)`",
+      "replace": "      ? \"was left out\""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  const inContext = relative(contextDirectory, path);",
+      "replace": "  const inContext = path;"
     }
   ],
   "deterministic": true,
@@ -32,6 +38,6 @@
     "captures": [
       "witness/captures/kernel-0-2-1-history-git.json"
     ],
-    "provenance": "Real output of git diff -z --no-renames --name-only base...head (the name list classifyReviewBudget reads), captured 2026-09-23 with git 2.43.0 against a scratch repository laid out as test/history-compat.test.ts stages the resumed M3-P3 pair beside pulse's m3-p3-criteria-round4.yaml; the named test stages it again and compares git's live output with the recorded stdout, commit shas spelled by staging name, before trusting either gate."
+    "provenance": "Real output of the git commands the named test's control arm consumes, captured with git 2.43.0 against scratch repositories laid out as test/history-compat.test.ts stages them: git diff -z --no-renames --name-only base...head (the name list classifyReviewBudget reads; budget-name-list-m3-p3-resumed, fix round 2, where pulse's m3-p3-criteria-round4.yaml is committed at the base and the reviews add only the resumed pair) and git rev-parse --verify --quiet base:./<path> (the blob probe blobAt in src/checks.ts runs to decide that a head-less sibling is unchanged since the merge base; sibling-blob-at-base, exit 0 with pulse's blob id). The test stages it again and compares git's live output with the recorded stdout and exit, commit shas spelled by staging name, before trusting either gate."
   }
 }

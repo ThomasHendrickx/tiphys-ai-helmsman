@@ -114,8 +114,11 @@ export function readStamp(record: unknown): StampReading {
  * WHAT IS DELIBERATELY NOT HERE, so an absence is not read as an oversight:
  * - A NEW OPTIONAL FIELD is not a rule an older document can fail, so the
  *   fields added since 0.1.0 are not listed; only their constraints are.
- * - `verdict.head` REQUIRED and the MEDIUM escalation are not rules any more
- *   (0.2.1 moved them to the merge gates), so they have no shape row.
+ * - The MEDIUM escalation is not a shape rule any more (0.2.1 moved it to the
+ *   merge gates), so it has no row. `verdict.head` REQUIRED was in this list
+ *   too until fix round 2 put it back, below, gated by stamp: the merge gates
+ *   judge a head-less verdict by provenance, and this row makes `validate`
+ *   refuse a current stamped one (the criteria review's CR-007, option 1).
  * - `dual-review-decorrelation` existed in 0.1.0 and is not gated as a whole.
  */
 export interface RuleSince {
@@ -142,6 +145,18 @@ export interface RuleSince {
 }
 
 export const RULES_SINCE: readonly RuleSince[] = [
+  {
+    /* KERNEL 0.2.1 fix round 2 (CR-007). M4-P10 required `head`; 0.2.1's
+       first round dropped it from the schema for pulse's history. It is
+       required again, from 0.2.0, so a stamped current review that omits it
+       is INVALID at validate while an unstamped one stays valid. */
+    id: "verdict-head-required",
+    type: "verdict",
+    since: "0.2.0",
+    schemaPath: "/required",
+    entry: "head",
+    statement: "a verdict names the head it reviewed (M4-P10)",
+  },
   {
     id: "verdict-head-full-sha",
     type: "verdict",

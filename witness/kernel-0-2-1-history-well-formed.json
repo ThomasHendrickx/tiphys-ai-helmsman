@@ -7,8 +7,10 @@
   "class": "classification",
   "dangerousStates": [
     {
-      "kind": "patch",
-      "patch": "witness/patches/kernel-0-2-1-verdict-head-required-again.patch"
+      "kind": "mutation",
+      "file": "src/stamp.ts",
+      "find": "    entry: \"head\",",
+      "replace": "    entry: \"phase\","
     },
     {
       "kind": "mutation",
