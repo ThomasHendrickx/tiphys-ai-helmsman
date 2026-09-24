@@ -82,7 +82,7 @@ Branch `claude/m5-orchestrator-paperwork-5`, cut from `origin/main` at 2c49ab3
   fails closed to dual), and condition 5's red arm from
   src/gates/merge-preconditions.ts:533.
 - STATE.md: standing header to 2c49ab3; #217, #216 and #218 rows; a release
-  paragraph; the 0.2.1 item left "In flight"; M5-P1 now points at A-17; A-17
+  paragraph; the 0.2.1 item removed from "In flight"; M5-P1 now points at A-17; A-17
   in the standing list and as a register item after A-15; A-15's absence
   re-read; seven follow-ups under "Tracked obligations, unowned". No other
   section was rewritten.
@@ -117,10 +117,14 @@ With the item present: green, see Checks.
   documents are delivery/STATE.md and the DR-0057 record; this work history
   is not among the documents it lints.
 - `node --test test/retirement-inventory.test.ts`: 56 tests, 56 pass, 0 fail,
-  0 cancelled, 0 skipped, 0 todo. `dist/` was not built; this file does not
-  exercise the built CLI.
-- Claim grep over this work history: line-based, no hit; wrap-insensitive, no
-  hit. Over DR-0057: one hit, "whenever" (matches `never`), adjacent to the
-  citation src/gates/merge-preconditions.ts:533 that settles it. Over the
-  STATE.md additions: "whenever" (same citation), and "never writes to it",
-  which restates DR-0037's rule rather than claiming a measurement.
+  0 cancelled, 0 skipped, 0 todo. `dist/` was not built; the test file
+  contains no `dist/` string (grep count 0), and it reported 0 skipped.
+- Claim grep over DR-0057: one hit, "whenever" (matches the `never`
+  alternative), adjacent to the citation src/gates/merge-preconditions.ts:533
+  that settles it. Over the STATE.md additions: "whenever" (same citation),
+  and the DR-0037 rule that the orchestrator "never writes" to the pilot,
+  which restates a decided rule rather than a measurement. Over this work
+  history: the only hits are the quotations of those two phrases in this
+  bullet.
+- Re-run at 04431ba after this section was first written: citations gate
+  exit 0 (captured directly, not through a pipe), "22 citation(s) resolved".
