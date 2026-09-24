@@ -1,0 +1,68 @@
+# A PROJECT-OWNED gate registry starting point (kernel plan M5-P6, DR-0058).
+#
+# Copy this file to `gate-registry.yaml` at the root of YOUR project and
+# replace every command with your own. It validates against
+# schemas/gate-registry.schema.json as shipped, and nothing in it is a kernel
+# command. DR-0029 Part 1: the kernel owns the gate CONTRACT; the project owns
+# every gate COMMAND and every threshold.
+#
+# `tiphys init --project <repo>` reports whether your project has a
+# gate-registry.yaml and names this template when it does not. It never writes
+# the registry for you, because a registry the kernel wrote would be predicates
+# your project did not choose.
+#
+# THE SUBPROCESS CONTRACT every `script` gate must honour (src/gates/run.ts):
+#
+#   invocation  <command...> --result <abs path> --evidence <abs dir>
+#               plus --base/--head/--phase for each declared parameter
+#   output      exactly ONE GateResult JSON document at --result
+#   exit codes  0 green, 1 red, 20 not-applicable, 21 error, 64 usage
+#
+# A green result with zero units is recorded as VACUOUS, not green. So a plain
+# `npm test` is NOT a gate command: it writes no result and counts nothing. Each
+# command below names a small adapter script the project writes, which runs the
+# project's own tool and reports what it asserted. The paths under
+# `scripts/tiphys-gates/` are placeholders for those adapters.
+
+kind: gate-registry
+version: 1
+
+# Steps run before the gates. Use your own install and build commands.
+preflight:
+  - command: [npm, ci]
+    note: install exactly the lockfile
+  - command: [npm, run, build]
+    note: the project's own build
+
+gates:
+  # correctness: the project's unit tests. The adapter runs them and reports
+  # the number of tests executed as units.
+  - id: unit-tests
+    command: [node, scripts/tiphys-gates/unit-tests.mjs]
+    unitLabel: tests executed
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr, local-only]
+    events: [pull_request, push]
+
+  # correctness: the project's type check. Units are files checked.
+  - id: typecheck
+    command: [node, scripts/tiphys-gates/typecheck.mjs]
+    unitLabel: source files type-checked
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr, local-only]
+    events: [pull_request]
+
+  # The project's lint, with its own threshold. Units are files linted.
+  - id: lint
+    command: [node, scripts/tiphys-gates/lint.mjs]
+    unitLabel: files linted
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr, local-only]
+    events: [pull_request]
+
+# Commands or module paths in this project whose operations can destroy work.
+# Empty is a valid answer; say so deliberately rather than by omission.
+destructiveCommands: []
