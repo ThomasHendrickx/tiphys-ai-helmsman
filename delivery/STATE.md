@@ -67,7 +67,10 @@ the merge gate rather than not-applicable.
   written: delivery/verification/m5-scale-out-exit.md. Verdicts: p6-prepass,
   p6-parallel-value and p6-attribution MET; p6-charter-only NOT MET on
   released 0.2.1 (H-6), met by this branch's `init --project` once released,
-  which is a follow-up release. Next: this phase's own pull request.
+  which is a follow-up release. MERGED 2026-09-24 as PR #220 (merge
+  de2f999, verdict commit 5110bb7, both verdicts APPROVE at 8c17a5f,
+  merge-preconditions green on all 8). Follow-up per DR-0059: a release
+  carrying `init --project`, then a hemma run.
 
 ### Owner decisions open
 
@@ -83,6 +86,14 @@ the merge gate rather than not-applicable.
   pulse-fleet still pins 0.1.0 (its package.json at 7656f67), and pulse has
   no `.github/workflows/`. The owner says pulse's own session is adding CI
   and merging the next phase; this session does not act in pulse.
+  Read-only check at 17:38 UTC: step 2 is done (pulse PR #24 adds CI; runs
+  on main report success). Step 3 is NOT met by pulse PR #25 (M3-P5). It
+  merged head 98fbadc, but both committed verdicts
+  (`delivery/review/m3-p5-criteria.json` and `m3-p5-hazard.json` in pulse)
+  name head 98b4f0e with verdict FIX-ROUND-NEEDED, one medium and one high.
+  The two commits after 98b4f0e change source and tests, and no verdict
+  covers them. That is the same failure as PR #22. pulse-fleet was not
+  re-checked.
 - A-14: restart pulse and bump pulse-fleet to kernel 0.2.0. Its register
   entry was allocated on the M5-P1 branch and reaches this register when that
   phase merges; it is not yet on `main`. That branch records it done on
