@@ -1,3 +1,4 @@
+<!-- Copied from the reviewer's file by the orchestrator. One change: at line 340 (339 in the original) a single U+2014 em dash in the reviewer's own prose, not captured output, is replaced by a comma, per the no-em-dash rule (1 replacement). Nothing else is altered. -->
 # Clean-room HAZARD review: M5-P6 kernel half
 
 Reviewer: clean-room hazard subagent (no authorship of this branch).
@@ -786,3 +787,148 @@ defect was found in the three areas this re-verification was asked to probe
 the original repro fixtures and fresh probes (dangling symlink root, plain
 file root, a new path spelling, 57 real declarations). The item-3 statement
 in the work history is honest and matches independent re-derivation.
+
+## Final review at 903a3cd
+
+Head 903a3cd75e17b99b4b7427773bc2269e67ebc3e9 on claude/m5-p6-scale-out-proof,
+fetched and checked out detached. Gating check run first: `git diff --stat
+45a0d54 903a3cd -- ':!delivery'` is empty, confirming the delta touches only
+delivery/ (17 files, `git diff --name-only 45a0d54 903a3cd` lists them, all
+under delivery/review, delivery/verification, delivery/work-history,
+delivery/STATE.md, delivery/plan/phase-declarations/m5-p6.json).
+
+### Self-hosted-success
+
+Read section 2 of delivery/verification/m5-scale-out-exit.md in full (2a-2f,
+lines 769-974) and section 4a (p6-suite, lines 1022-1057) separately. Every
+"delivered" sentence in section 2 cites a hemma fact: GitHub pull-request and
+workflow-run reads, git log/diff against hemma commits, and a live `npx
+eslint --max-warnings 0` run in a temporary hemma worktree at hemma main
+5bf2e57, with the exact re-run command given (m5-scale-out-exit.md:936-940).
+The kernel's own `node --test` count (1512 tests, section 4a) appears only
+under p6-suite, its own row, and is never used to back p6-parallel-value. No
+substitution found.
+
+### Hidden-bootstrap-handwork
+
+Read section 1g (lines 431-477) and 1h (lines 478-531) in full. 18 bootstrap
+inputs classified: 2 CHARTER, 9 PREDICATE, 6 OPERATOR, 1 KERNEL-HANDWORK. H-6
+(assurance-modes.yaml copied by hand into hemma because released kernel 0.2.1
+has no `init --project`) is named consistently in three places: the
+inventory row (1g), finding F-3 (1h), and section 3's attribution row A-15.
+H-5 was allocated then explicitly withdrawn in writing (the three fleet
+directories turned out to be produced by `tiphys resume`, not handwork); the
+id is retired, not reused, matching CLAUDE.md's identifier-scheme rule.
+**The p6-charter-only verdict reads NOT MET on released kernel 0.2.1**
+(m5-scale-out-exit.md:469, repeated in the section 4 verdict table), because
+of H-6, and MET only by this branch's unreleased `init --project`. This is
+the honest reading the task asked me to check for, and the report does not
+soften it to MET.
+
+### False-disjointness
+
+The conflicts.ts output, quoted verbatim in section 1c
+(m5-scale-out-exit.md:230-236), always carries the
+`SEMANTIC_COUPLING_OBLIGATION` line even on hemma's real DISJOINT verdict for
+M1-P1/M1-P2. Section 2a additionally states a real reviewer judgement for
+that pair ("neither spec path is referenced by any" other phase's changed
+files) rather than treating the DISJOINT verdict alone as sufficient. The
+bootstrap criteria review's own control fixture (both real declarations plus
+`tests/setup.ts`) reproduces OVERLAP, exit 1, showing the command can go red
+and was not just run in the one direction that stays green. No place treats
+zero literal overlap as zero semantic coupling.
+
+### Over-claims (claim grep, both forms)
+
+```
+grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/verification/m5-scale-out-exit.md
+```
+5 hits: lines 231, 245 (`never an overlap`, literal stdout of the conflicts
+command, quoted verbatim, not an authored claim), line 387 (`the PR cannot be
+created or updated`, a verbatim quote of hemma's own CLAUDE.md E2E rule, in
+quotes, with its em dash declared transliterated 1 occurrence), line 481
+(`cannot be made by tiphys init in place`, finding F-1, immediately followed
+by the adjacent measured exit codes that settle it), line 979 (`needs a
+decision`, inside the OWNER ACTION class definition, not a claim about this
+work). The wrap-insensitive form (`tr '\n' ' ' | grep -o ...`) also counts 5,
+so nothing is hidden by a line wrap.
+
+```
+grep -nEi '...' delivery/verification/m5-hemma-intake.md
+```
+8 hits, all either literal conflicts-command stdout quoted verbatim (`never
+an overlap`, 3 occurrences) or captured merge-preconditions gate error/red
+text quoted verbatim (2 occurrences) or plan-clause prose describing what a
+future step needs (`needs a plan amendment`, `needs a decision`, both about
+open follow-up work, not a claim this work settled something it did not).
+None of the 8 is an unattributed over-claim.
+
+Section 1k's E2E-control correction was re-checked with a full sweep of every
+"control on"/"e2e-main"/"as a control" mention across the whole document
+(lines 423-424, 537, 648, 723, 744, 987, 988, plus the fresh read of sections
+1g/1h/2/3/4 done in this pass): zero places restate the withdrawn control as
+valid, including section 3's failure rows A-4 and A-5, which both cite "no
+valid local control on main (1k)" rather than the withdrawn claim.
+
+### Copied hemma review documents, byte comparison
+
+```
+cmp <scratchpad>/m5p6-bootreview/review-bootstrap-criteria.md delivery/review/m5-p6-hemma-review-bootstrap-criteria.md   -> OK, no output
+cmp <scratchpad>/m5p6-bootreview/review-bootstrap-hazard.md delivery/review/m5-p6-hemma-review-bootstrap-hazard.md       -> OK
+cmp <scratchpad>/m5p6-rev-m1p1/review-m1p1-criteria.md delivery/review/m5-p6-hemma-review-m1p1-criteria.md               -> OK
+cmp <scratchpad>/m5p6-rev-m1p1/review-m1p1-hazard.md delivery/review/m5-p6-hemma-review-m1p1-hazard.md                   -> OK
+cmp <scratchpad>/m5p6-rev-m1p1/m1-p1-criteria.json delivery/review/m5-p6-hemma-m1-p1-criteria.json                       -> OK
+cmp <scratchpad>/m5p6-rev-m1p1/m1-p1-hazard.json delivery/review/m5-p6-hemma-m1-p1-hazard.json                           -> OK
+cmp <scratchpad>/m5p6-rev-m1p2/review-m1p2-criteria.md delivery/review/m5-p6-hemma-review-m1p2-criteria.md               -> OK
+cmp <scratchpad>/m5p6-rev-m1p2/review-m1p2-hazard.md delivery/review/m5-p6-hemma-review-m1p2-hazard.md                   -> OK
+cmp <scratchpad>/m5p6-rev-m1p2/m1-p2-criteria.json delivery/review/m5-p6-hemma-m1-p2-criteria.json                       -> OK
+cmp <scratchpad>/m5p6-rev-m1p2/m1-p2-hazard.json delivery/review/m5-p6-hemma-m1-p2-hazard.json                          -> OK
+```
+All 10 named hemma review documents are byte-identical to their originals,
+exit 0 on every `cmp`. Nothing altered.
+
+As a bonus check, the branch's own copy of this reviewer's own report
+(delivery/review/clean-room-m5-p6-kernel-hazard.md) was compared against this
+scratchpad file's state at copy time: 1 difference, char 18193 line 339, an
+em dash in my own draft text replaced with a comma in the committed copy. The
+substance is unchanged; someone fixed a CLAUDE.md convention-3 violation I
+had left in my own prose. Not a finding.
+
+### Citations (CLAUDE.md rule 3b)
+
+`git diff --name-only 45a0d54 903a3cd` shows this delta is delivery-only, but
+`git diff --name-only origin/main...903a3cd` (the whole PR) also changes
+src/, test/, witness/ and templates/ files, so a citation into one of those
+from a new delivery/ document could in principle resolve against a stale
+version if this were a paperwork-only branch cut from main. It is not: the
+kernel changes and the paperwork are on the SAME branch and will land in ONE
+pull request (DR-0031), so the citations gate lints them together at this
+exact head, not against main. Ran the gate directly rather than reasoning
+about it:
+
+```
+node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+  --only citations --evidence <scratch-dir> --base origin/main --head HEAD
+gates: citations: green: linted 4 changed document(s) at 903a3cd...: 117 citation(s) resolved, 0 self-citation(s), 0 unverifiable-external
+gates: every applicable gate is green
+exit (implicit 0, "every applicable gate is green")
+```
+117 citations resolved against this exact head, 0 unresolved, 0
+unverifiable. The rule 3b trap (an evidence-only branch cut from main citing
+a sibling branch's line numbers) does not apply to this PR's shape, and the
+gate itself confirms nothing resolves silently wrong at this head.
+
+### Verdict
+
+**APPROVE for M5-P6 at 903a3cd.** The delta is delivery-only paperwork on top
+of an already-approved kernel half. Every hazard-class check the coordinator
+named came back clean: self-hosted-success evidence points at hemma
+throughout section 2, hidden-bootstrap-handwork names its one item (H-6) and
+reports the honest NOT-MET verdict on the released kernel rather than
+smoothing it away, false-disjointness is never conflated with zero semantic
+coupling, the claim grep finds no unattributed over-claim in either document,
+the ten copied hemma review documents are byte-identical to their originals,
+and the citations gate is green at this exact head with no stale-resolution
+risk given the PR's single-branch shape. The verdict JSON is at
+m5-p6-hazard.json, validated with `node bin/tiphys.ts validate --type
+verdict`, exit 0.

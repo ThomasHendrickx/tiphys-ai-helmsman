@@ -369,3 +369,203 @@ stay NOT-YET until step 3 and the exit report exist. Step 3 must settle Q-9
 before hemma's registry is written.
 
 Re-verification status: COMPLETE
+
+# Final review at 903a3cd
+
+Head: 903a3cd75e17b99b4b7427773bc2269e67ebc3e9 (fetched, checked out
+detached); base origin/main 1eb41bf. Delta 45a0d54..903a3cd: 17 files, 3815
+insertions, 3 deletions, all under `delivery/` (read from `diff --stat`). No
+src/, test/, witness/ or template change, so the kernel code I approved at
+45a0d54 is unchanged.
+
+Status: IN PROGRESS
+
+## F1. Copied review documents, byte for byte
+
+Script scratchpad/m5p6-review/cmpcopies.sh, `cmp -s` plus sha256 against the
+originals:
+
+| committed file | original | result |
+|---|---|---|
+| m5-p6-hemma-review-bootstrap-criteria.md | m5p6-bootreview/review-bootstrap-criteria.md | IDENTICAL 4e5f7af9f178 |
+| m5-p6-hemma-review-bootstrap-hazard.md | m5p6-bootreview/review-bootstrap-hazard.md | IDENTICAL f536803f16f9 |
+| m5-p6-hemma-review-m1p1-criteria.md | m5p6-rev-m1p1/review-m1p1-criteria.md | IDENTICAL d2a5787d21d9 |
+| m5-p6-hemma-review-m1p1-hazard.md | m5p6-rev-m1p1/review-m1p1-hazard.md | IDENTICAL b6dc624ad180 |
+| m5-p6-hemma-m1-p1-criteria.json | m5p6-rev-m1p1/m1-p1-criteria.json | IDENTICAL 45320fedeb75 |
+| m5-p6-hemma-m1-p1-hazard.json | m5p6-rev-m1p1/m1-p1-hazard.json | IDENTICAL c3a046e328bf |
+| m5-p6-hemma-review-m1p2-criteria.md | m5p6-rev-m1p2/review-m1p2-criteria.md | IDENTICAL 2dc319e6fd27 |
+| m5-p6-hemma-review-m1p2-hazard.md | m5p6-rev-m1p2/review-m1p2-hazard.md | IDENTICAL 88fcd6878226 |
+| m5-p6-hemma-m1-p2-criteria.json | m5p6-rev-m1p2/m1-p2-criteria.json | IDENTICAL d61927106d56 |
+| m5-p6-hemma-m1-p2-hazard.json | m5p6-rev-m1p2/m1-p2-hazard.json | IDENTICAL 3ed1a124edae |
+| clean-room-m5-p6-kernel-criteria.md (mine) | m5p6-review/ | IDENTICAL 5a08cd3c678b (as it stood before this section) |
+| clean-room-m5-p6-kernel-hazard.md | m5p6-review/ | **DIFFERS**: one line, 339. The original has an em dash (U+2014); the committed copy has `), meaning` in its place |
+
+All ten hemma documents are byte-identical, as the exit report claims. The
+kernel hazard review was transliterated, which is correct under convention 3,
+but the change is NOT DECLARED anywhere. `grep -n -i 'U+2014|em dash|transliterat'`
+over the work history, the exit report, STATE and the committed file finds no
+note about this file. CR-007.
+
+## F2. GitHub facts, read by me with the GitHub MCP tools
+
+Pull requests (`pull_request_read get`):
+
+| PR | head.sha | base.sha | created_at | merged_at | merged |
+|---|---|---|---|---|---|
+| hemma 456 | 8e84b4e464e6902bbecdc982242cd87c9cde24bd | a6141d7 | 13:43:03Z | 14:55:04Z | true |
+| hemma-fleet 1 | bba99ec82bc1108bed802f0ceb0428cef053b05b | 7efd572 | 13:26:46Z | 14:54:52Z | true |
+| hemma 457 (M1-P1) | 8380ad0d6470964b00903e42a8300b64cfe53bd7 | 16a5588 | 15:26:58Z | 15:48:10Z | true |
+| hemma 458 (M1-P2) | a49d417c9b37a8d12445d2791de034089d61cda7 | 16a5588 | 15:36:42Z | 15:58:41Z | true |
+
+All match the exit report's section 1a, 2a and 2b. One trivial difference: the
+report gives 456's merge time as 14:55:03Z, which is the merge COMMIT's author
+date (commit listing). merged_at is 14:55:04Z. Not a finding.
+
+Workflow runs (`actions_get get_workflow_run`). All 12 runs named in 2d:
+status completed, conclusion success, head_sha as the report states.
+
+| run | workflow | event | head | updated_at |
+|---|---|---|---|---|
+| 36011488314 / 36011488311 | CI / Tiphys gates | pull_request | 8e84b4e | 14:28:12 / 14:24:33 |
+| 36016296883 / 36016295861 | CI / Tiphys gates | push | 16a5588 | 15:06:41 / 15:04:13 |
+| 36020272922 / 36020272918 | CI / Tiphys gates | pull_request | 8380ad0 | 15:36:37 / 15:34:23 |
+| 36022844051 / 36022844293 | CI / Tiphys gates | push | ccd658c | 15:57:46 / 15:57:55 |
+| 36021445913 / 36021445984 | CI / Tiphys gates | pull_request | a49d417 | 15:47:34 / 15:44:30 |
+| 36024088802 / 36024088752 | CI / Tiphys gates | push | 5bf2e57 | 16:09:17 / 16:07:01 |
+
+A-1's red run 36007584690: Tiphys gates, pull_request, head 668f690,
+conclusion failure. This matches the report.
+
+Commit listing of hemma at 5bf2e57 (`list_commits`): bfe626e 15:01:46 and
+86f95fb 15:01:55 (the two first phase commits), 8380ad0 15:21:58, 0dd4c8b
+15:30:32, a49d417 15:35:31, merges ccd658c 15:48:10 and 5bf2e57 15:58:41.
+This matches the 2b timeline. Both phases had unmerged work from 15:01:55 to
+15:48:10. Both PRs were open from 15:36:42 to 15:48:10. M1-P2 merged after
+both of M1-P1's push runs completed green (15:57:55 < 15:58:41).
+
+## F3. Delivered outcome on hemma main, measured by me
+
+Fresh scratch clone from GitHub, detached at 5bf2e57 (parents ccd658c and
+a49d417). node v26.6.0, npm 11.18.0, `npm ci --ignore-scripts` exit 0
+(script scratchpad/m5p6-review/hemma-lint.sh, clone deleted afterwards):
+
+```
+npx eslint --max-warnings 0 domain/site-shed/site-shed.service.spec.ts integrations/google-calendar/oauth.spec.ts
+eslint both specs exit=0
+16a5588 site-shed.service.spec.ts: warnings=7 errors=0
+5bf2e57 site-shed.service.spec.ts: warnings=0 errors=0
+16a5588 oauth.spec.ts: warnings=7 errors=0
+5bf2e57 oauth.spec.ts: warnings=0 errors=0
+```
+
+The 7 base warnings are all rule `hemma-lint/no-untimed-clock-in-specs`,
+checked on the oauth spec. Tree checks in the same clone:
+
+- `diff --stat 8380ad0 ccd658c` is empty, so M1-P1 was merged at exactly its reviewed head.
+- `diff --name-only a49d417 5bf2e57` lists only M1-P1's two files.
+- `diff --name-only 16a5588 a49d417` lists only M1-P2's two files, which are disjoint from M1-P1's.
+
+## F4. Scope gate at 903a3cd
+
+Scratch clone on the branch name, `--phase m5-p6 --base origin/main --head HEAD`:
+`scope: green: 50 changed path(s) audited ... 42 entry/entries ADDED at head 903a3cd`.
+The 42 are the 30 I signed off at 45a0d54 plus 12 new declaredExtras, which
+are the ten hemma review copies and the two kernel review files under
+delivery/review/. Each is a file in the 45a0d54..903a3cd diff stat, and none
+was removed. I SIGN OFF all 42. STATE.md and m5-scale-out-exit.md, the two
+previously untouched declared paths, are now touched.
+
+`node scripts/check-id-collisions.mjs`: no collisions (next free T-048,
+DR-0059). `node scripts/check-authored-bytes.mjs`: exit 0. The new A-18 in
+STATE has history only in this branch's own two commits (`log --all -S'A-18:'`),
+so it is not a reused id.
+
+## F5. Suite (p6-suite) at 903a3cd
+
+node v26.6.0, npm 11.18.0. `npm ci` exit 0; `npm run build` exit 0;
+`status --short` empty after the build.
+
+| invocation | tests | pass | fail | cancelled | skipped | exit |
+|---|---|---|---|---|---|---|
+| bare `node --test` from the repository root, dist built | 1515 | 1515 | 0 | 0 | 0 | 0 |
+| `npm test` (`node --test "test/**/*.test.ts"`), dist built | 1512 | 1512 | 0 | 0 | 0 | 0 |
+
+The exit report's 1512 is the `npm test` figure, and it names that
+invocation (4a), so it is correct. The difference between the two lines is the
+invocation axis of standing warning 12. Two of the three extra tests are the
+sandbox fixture; I did not name the third. `node_modules` and `dist` were
+deleted afterwards.
+
+## F6. The five criteria at 903a3cd
+
+| criterion | met | evidence |
+|---|---|---|
+| p6-prepass | YES | No src or test change since 45a0d54, where I walked it with fixtures, real declarations and mutations (sections 3 and R3). The exit report records it being used for real on hemma's declarations. |
+| p6-charter-only | **NO** | The exit report 1g lists 18 bootstrap inputs, and one of them, B-8 / H-6, is kernel configuration placed by hand: `assurance-modes.yaml` was copied into hemma because released 0.2.1 has no `init --project`. The report says NOT MET plainly, in 1g, in the table in section 4 and in STATE. I agree that this is correct, for two reasons. The criterion is about what the bootstrap did, and hemma was bootstrapped with 0.2.1. And no run of this branch's `init --project` against hemma is recorded; F-3 argues byte identity with its output rather than showing it. |
+| p6-parallel-value | YES | F2 and F3. Two disjoint phases, M1-P1 and M1-P2, each changing its own spec and work history, had unmerged work concurrently from 15:01:55 to 15:48:10, and both PRs were open together from 15:36:42. Each was reviewed at a named head (four verdict JSONs, byte-identical copies) and merged at exactly that head. The merges were serial, the second 46 s after the first's push runs completed. All four post-merge push runs completed with conclusion success. The delivered outcome was re-measured by me: eslint `--max-warnings 0` on both specs exits 0 on 5bf2e57, against 7 warnings each at 16a5588. |
+| p6-attribution | YES | Exit report section 3 has 30 rows, each with a class (KERNEL, PROJECT PREDICATE, ENVIRONMENT, OWNER ACTION, or NOT A FAILURE) and the command or API result that establishes it. I checked A-1 against GitHub (run 36007584690: failure, head 668f690). A-15 corresponds to H-6. |
+| p6-suite | YES | F5. |
+
+## F7. Findings at 903a3cd
+
+CR-009 (medium). **p6-charter-only is not met, and nothing records a
+decision to deliver M5-P6 in that state.** The exit report and STATE call the
+fix "a follow-up release". That release, plus a run of `init --project` in
+hemma, is not registered. The "Kernel 0.2.1 follow-ups" list in STATE does
+not carry it (`grep -n -i 'follow-up|0\.2\.2|next release' delivery/STATE.md`
+gives lines 70 and 523, and neither is a registered item). DR-0058 and its
+addendum do not accept the criterion as unmet. Under the plan's binding rule,
+merging a phase whose acceptance criterion reads NOT MET is a choice somebody
+has to take and write down. It is not a default. Concrete fix, either of:
+(a) a decision record (DR-0059, under DR-0016) that accepts p6-charter-only
+as not met for M5-P6 and records its reasoning, together with a registered
+follow-up in STATE: release a kernel that carries `init --project`, run it in
+hemma, and show `present assurance-modes.yaml: identical` (or remove the hand
+copy and show `wrote ...` with an empty diff); or (b) do that release and
+run before merging. Paperwork only for (a); no kernel change either way.
+
+CR-008 (low). The criterion names delivery/verification/m5-hemma-intake.md as
+the document that enumerates the bootstrap inputs. The as-performed inventory
+and the NOT MET verdict are in delivery/verification/m5-scale-out-exit.md
+section 1g, and the intake does not point there: `grep -n 'scale-out-exit'`
+over the intake gives no hits. Fix: one line in intake 4e or 4g pointing at
+exit report 1g.
+
+CR-007 (low). The committed delivery/review/clean-room-m5-p6-kernel-hazard.md
+differs from the reviewer's original at line 339. An em dash was replaced by
+`), `. Replacing it is right under convention 3, but it is not declared, and
+CLAUDE.md names silent transliteration as the failure mode, since it cannot be
+told apart from an edit. Fix: a transliteration note in the work history, for
+example "clean-room-m5-p6-kernel-hazard.md: U+2014 replaced by a comma, 1
+occurrence, line 339; nothing else changed".
+
+CR-006 (low, from 45a0d54) is still open as residue. No src change was made,
+as expected.
+
+The earlier CR-001 to CR-005 and CR-KH-001 to CR-KH-005 stand as disposed at
+45a0d54.
+
+## Verdict at 903a3cd: FIX-ROUND-NEEDED
+
+The evidence is sound and I verified it independently: GitHub facts, the
+delivered outcome, byte-identical copies, the suite and the scope gate. The
+report's own verdicts are honest, and I agree with each one. The round needed
+is paperwork. Its core is CR-009: record the decision to deliver M5-P6 with
+p6-charter-only not met, and register its follow-up, or discharge the
+criterion. CR-007 and CR-008 are one line each. A change limited to delivery/
+does not reopen any other part of this review.
+
+Verdict JSON: scratchpad/m5p6-review/m5-p6-criteria.json. It has phase
+M5-P6, head 903a3cd75e17b99b4b7427773bc2269e67ebc3e9, tiphys-version 0.2.1,
+verdict FIX-ROUND-NEEDED, review-contract criteria, 4 findings, 5 criteria and
+2 deviations judged.
+
+`node bin/tiphys.ts validate --type verdict <file>` exits 0 and prints no
+INVALID line (5 context checks SKIPPED, no context).
+
+With `--context .` it exits 1. That is expected for an uncommitted verdict in
+this repository: there is no plan.yaml or work-history.yaml at the root, and
+the corpus checks find 0 committed verdicts for M5-P6 at this head.
+
+Final review status: COMPLETE
+

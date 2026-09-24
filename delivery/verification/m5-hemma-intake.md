@@ -212,6 +212,11 @@ have to place by hand; each is a `hidden-bootstrap-handwork` hazard).
 
 ### 4d. Verdict on p6-charter-only, as the kernel stood at `cb262fb`
 
+**Pointer (added at the final review, finding CR-008):** the as-performed
+input inventory and the final verdict on p6-charter-only are in the exit
+report, delivery/verification/m5-scale-out-exit.md:431 (section 1g), and the
+decision to merge with it not met is DR-0059.
+
 **SUPERSEDED BY 4e.** The verdict below was true at `cb262fb`, before DR-0058,
 and is kept as written so the record shows what the kernel change closed.
 Option 1 below is what DR-0058 chose.

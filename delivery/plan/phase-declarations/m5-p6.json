@@ -52,7 +52,10 @@
     "delivery/review/m5-p6-hemma-review-m1p1-criteria.md",
     "delivery/review/m5-p6-hemma-review-m1p1-hazard.md",
     "delivery/review/m5-p6-hemma-review-m1p2-criteria.md",
-    "delivery/review/m5-p6-hemma-review-m1p2-hazard.md"
+    "delivery/review/m5-p6-hemma-review-m1p2-hazard.md",
+    "delivery/decisions/DR-0059-m5-p6-merges-with-charter-only-met-on-the-branch-not-the-release.md",
+    "delivery/review/m5-p6-criteria.json",
+    "delivery/review/m5-p6-hazard.json"
   ],
   "citations": [
     "DR-0029",
@@ -61,7 +64,8 @@
     "R-026a",
     "R-072",
     "R-097",
-    "DR-0058"
+    "DR-0058",
+    "DR-0059"
   ],
   "gateClasses": {
     "correctness": {

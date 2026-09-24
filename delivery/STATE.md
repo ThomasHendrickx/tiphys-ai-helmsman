@@ -523,6 +523,12 @@ expectation row (present at scripts/m2-exit-test.sh:221).
 **Kernel 0.2.1 follow-ups, added 2026-09-24.** None is assigned. Each one names
 what is known and what is not.
 
+- **M5-P6 criterion p6-charter-only is met on the branch, not on a release
+  (DR-0059).** hemma received `assurance-modes.yaml` by hand because 0.2.1 has
+  no `init --project`. Closing it: after M5-P6 merges, publish a release that
+  carries `init --project` (owner approval needed), run it in hemma, and
+  record that it reports the copy as present and identical.
+
 - **merge-preconditions has no arm for a non-phase branch in the dual-review
   tier.** Condition 5 reads red whenever the scope record is not green
   (src/gates/merge-preconditions.ts:533), and the scope gate is not-applicable
