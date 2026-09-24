@@ -87,13 +87,17 @@ the merge gate rather than not-applicable.
   no `.github/workflows/`. The owner says pulse's own session is adding CI
   and merging the next phase; this session does not act in pulse.
   Read-only check at 17:38 UTC: step 2 is done (pulse PR #24 adds CI; runs
-  on main report success). Step 3 is NOT met by pulse PR #25 (M3-P5). It
-  merged head 98fbadc, but both committed verdicts
-  (`delivery/review/m3-p5-criteria.json` and `m3-p5-hazard.json` in pulse)
-  name head 98b4f0e with verdict FIX-ROUND-NEEDED, one medium and one high.
-  The two commits after 98b4f0e change source and tests, and no verdict
-  covers them. That is the same failure as PR #22. pulse-fleet was not
-  re-checked.
+  on main report success). CORRECTED 18:40 UTC: the 17:38 reading, that
+  step 3 was not met, was WRONG. It read only the round-one verdicts, which
+  name 98b4f0e as FIX-ROUND-NEEDED. Pulse PR #26 (merge 3055752, after the
+  merge) adds the round-two verdicts, `m3-p5-criteria-round2.json` and
+  `m3-p5-hazard-round2.json`: both APPROVE head 98fbadc with low findings
+  only, and PR #25 merged exactly 98fbadc. Pulse's work history records that
+  the verdicts land after the merge by design, so the reviewed head is the
+  merged head. Step 3 therefore looks MET. Open for the M4 exit-test re-run
+  to judge: both verdicts are one model family (pulse cites its DR-0003), and
+  pulse-fleet was not re-checked. The lesson: read every verdict file in the
+  merged tree and the records that follow, not only the ones in the PR.
 - A-14: restart pulse and bump pulse-fleet to kernel 0.2.0. Its register
   entry was allocated on the M5-P1 branch and reaches this register when that
   phase merges; it is not yet on `main`. That branch records it done on
