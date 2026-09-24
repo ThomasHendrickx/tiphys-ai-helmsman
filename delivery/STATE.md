@@ -70,6 +70,10 @@ the merge gate rather than not-applicable.
 
 - A-17: bump pulse and pulse-fleet to kernel 0.2.1, add CI to pulse, and run
   one phase merged at exactly its reviewed head. Opened 2026-09-24.
+  Progress 2026-09-24: pulse is on 0.2.1 (pulse PR #23, merge 987b6da).
+  pulse-fleet still pins 0.1.0 (its package.json at 7656f67), and pulse has
+  no `.github/workflows/`. The owner says pulse's own session is adding CI
+  and merging the next phase; this session does not act in pulse.
 - A-14: restart pulse and bump pulse-fleet to kernel 0.2.0. Its register
   entry was allocated on the M5-P1 branch and reaches this register when that
   phase merges; it is not yet on `main`. That branch records it done on
