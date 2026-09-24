@@ -1,0 +1,24 @@
+{
+  "id": "init-project-copies-modes",
+  "behavior": "init-project-copies-modes",
+  "tests": [
+    "init --project writes a byte-identical copy of the kernel assurance-modes.yaml into the project root"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "    writeFileSync(target, kernelBytes);\n",
+      "replace": "    writeFileSync(target, kernelBytes.subarray(1));\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "  const source = join(kernelRoot, MODES_FILENAME);\n",
+      "replace": "  const source = join(kernelRoot, \"gate-registry.yaml\");\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

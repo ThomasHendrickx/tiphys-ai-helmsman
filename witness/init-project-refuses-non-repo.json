@@ -1,0 +1,24 @@
+{
+  "id": "init-project-refuses-non-repo",
+  "behavior": "init-project-refuses-non-repo",
+  "tests": [
+    "init --project refuses a directory that is not the top level of a git work tree"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "  if (top.status !== 0 || resolve(top.stdout.trim()) !== realpathSync(root)) {\n",
+      "replace": "  if (false) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": " || resolve(top.stdout.trim()) !== realpathSync(root)) {\n",
+      "replace": ") {\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

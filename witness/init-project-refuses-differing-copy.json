@@ -1,0 +1,24 @@
+{
+  "id": "init-project-refuses-differing-copy",
+  "behavior": "init-project-refuses-differing-copy",
+  "tests": [
+    "init --project refuses a differing assurance-modes.yaml and does not overwrite it"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "  } else if (!readFileSync(target).equals(kernelBytes)) {\n",
+      "replace": "  } else if (false) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "replacing it is an upgrade and must be deliberate\\n`,\n    );\n    return 1;\n",
+      "replace": "replacing it is an upgrade and must be deliberate\\n`,\n    );\n    writeFileSync(target, kernelBytes);\n    return 1;\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

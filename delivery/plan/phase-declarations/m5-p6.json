@@ -19,7 +19,15 @@
     "witness/conflicts-append-only-override.json",
     "witness/conflicts-duplicate-phase-id-refused.json",
     "witness/conflicts-command-registered.json",
-    "witness/conflicts-real-m5-declarations-overlap.json"
+    "witness/conflicts-real-m5-declarations-overlap.json",
+    "witness/init-project-copies-modes.json",
+    "witness/init-project-satisfies-regime.json",
+    "witness/init-project-refuses-symlink.json",
+    "witness/init-project-refuses-differing-copy.json",
+    "witness/init-project-reports-project-documents.json",
+    "witness/init-project-refuses-non-repo.json",
+    "witness/gate-registry-template-project-owned.json",
+    "witness/init-prints-next-steps.json"
   ],
   "declaredExtras": [
     "test/behaviors.json",

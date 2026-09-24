@@ -1,0 +1,30 @@
+{
+  "id": "init-project-reports-project-documents",
+  "behavior": "init-project-reports-project-documents",
+  "tests": [
+    "init --project reports the project charter and gate registry and never writes them"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "  const registry = join(root, \"gate-registry.yaml\");\n",
+      "replace": "  const registry = join(root, \"gate-registry.yaml\");\n  writeFileSync(registry, readFileSync(join(kernelRoot, GATE_REGISTRY_TEMPLATE)));\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "join(\"templates\", \"gate-registry.example.yaml\")",
+      "replace": "join(\"templates\", \"gate-registry.yaml\")"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "starting from ${join(kernelRoot, GATE_REGISTRY_TEMPLATE)}",
+      "replace": "starting from the kernel's template"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

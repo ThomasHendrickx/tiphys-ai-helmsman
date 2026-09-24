@@ -386,6 +386,17 @@ test("init --project refuses a directory that is not the top level of a git work
   assert.equal(result.status, 1, result.stdout);
   assert.match(result.stderr, /not the top level of a git work tree/);
   assert.equal(existsSync(join(plain, "assurance-modes.yaml")), false, "init wrote outside a repository");
+
+  /* A SUBDIRECTORY of a repository is the quieter form: git works there, and a
+     file written there is committed, but the merge gates read the modes
+     document from the repository ROOT of the commit, so it would be missed. */
+  const repo = makeProject(t);
+  const nested = join(repo, "packages");
+  mkdirSync(nested);
+  const inner = runCli(["init", "--project", nested]);
+  assert.equal(inner.status, 1, inner.stdout);
+  assert.match(inner.stderr, /not the top level of a git work tree/);
+  assert.equal(existsSync(join(nested, "assurance-modes.yaml")), false, "init wrote below the repository root");
 });
 
 test("the shipped gate registry template validates and names no kernel command", () => {

@@ -1,0 +1,24 @@
+{
+  "id": "init-project-satisfies-regime",
+  "behavior": "init-project-satisfies-regime",
+  "tests": [
+    "a project prepared by init --project and its own charter satisfies the merge regime from the commit"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "    writeFileSync(target, kernelBytes);\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/init.ts",
+      "find": "  const target = join(root, MODES_FILENAME);\n",
+      "replace": "  const target = join(root, \".git\", MODES_FILENAME);\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

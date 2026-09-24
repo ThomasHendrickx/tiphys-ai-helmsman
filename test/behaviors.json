@@ -1371,5 +1371,13 @@
   "admission-headless-sibling-provenance-decides-history": "a head-less same-phase sibling that the change under audit adds or changes is current work and refused by both merge gates naming its verdict and blocking findings, and without a base the exclusion says provenance was not checked",
   "validate-verdict-head-required-from-0-2-0": "tiphys validate --type verdict prints no INVALID line for an unstamped verdict that carries no head, refuses one stamped 0.2.0 that omits it, and refuses an abbreviated one naming head",
   "test-no-repository-arms-ceiling-at-tmpdir": "a real repository above os.tmpdir() leaves the removed-.git, never-a-repository and GIT-stripped no-repository arms green, because git's ceiling stops discovery as the capture records",
-  "test-removed-git-leaves-no-repository": "a .git removed while another process unlinks inside it leaves no repository behind, where a recursive rmSync in place can leave one"
+  "test-removed-git-leaves-no-repository": "a .git removed while another process unlinks inside it leaves no repository behind, where a recursive rmSync in place can leave one",
+  "init-project-copies-modes": "init --project writes a byte-identical copy of the kernel assurance-modes.yaml into the project root",
+  "init-project-satisfies-regime": "a project prepared by init --project and its own charter satisfies the merge regime from the commit",
+  "init-project-refuses-symlink": "init --project refuses a symbolic link at assurance-modes.yaml and leaves it in place",
+  "init-project-refuses-differing-copy": "init --project refuses a differing assurance-modes.yaml and does not overwrite it",
+  "init-project-reports-project-documents": "init --project reports the project charter and gate registry and never writes them",
+  "init-project-refuses-non-repo": "init --project refuses a directory that is not the top level of a git work tree",
+  "gate-registry-template-project-owned": "the shipped gate registry template validates and names no kernel command",
+  "init-prints-next-steps": "init prints the next steps naming the fleet charter location and the project arm"
 }
