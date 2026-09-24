@@ -1,0 +1,95 @@
+{
+  "kind": "verdict",
+  "phase": "claude/kernel-0-2-1-history-compat",
+  "head": "281d8925f06dbb81cca16fd32d7199e600908c23",
+  "tiphys-version": "0.2.0",
+  "verdict": "APPROVE",
+  "produced-by": "claude-sonnet-5",
+  "framing": "hazard-attack",
+  "review-contract": "hazard",
+  "hazard-classes-addressed": [
+    {
+      "class-id": "cr-kh-003-headless-sibling-hides-blocking-finding-fixed",
+      "probed": "Re-ran the CR-KH-003 (round 2) shape through the OFFICIAL suite: test/history-compat.test.ts:1050, 'a head-less same-phase sibling that the change under audit adds or changes is current work and refused by both merge gates ...'. Also built a fresh, independent live fixture (consumer8, /tmp/.../attacks/consumer8, never inside this worktree) with a real multi-commit git history: a base commit holding a clean decorrelated APPROVING pair with NO headless sibling, and a head commit that adds a same-phase headless verdict carrying a HIGH finding.",
+      "cleared-because": "test/history-compat.test.ts run: 62 tests, 62 pass, 0 fail, 0 skipped, node v26.6.0, dist/ built (npm run build exit 0, git status clean after). The named test's own two members (ADDED and CHANGED-at-base) both redden check-dual-review AND merge-preconditions with --base, naming the sibling's path, verdict and blocking finding by severity; without --base the bare script stays green but the REPORT line now says 'is excluded as history (DR-0054) on its SHAPE ALONE: provenance was NOT checked, because no base was given' and still names the verdict and the HIGH finding. CR-KH-003 is CONFIRMED FIXED and not carried forward."
+    },
+    {
+      "class-id": "rename-and-different-path-attack-on-provenance",
+      "probed": "Built a second independent live fixture (consumer9, three real commits: base with old-name-blocker.yaml headless+HIGH finding at the original path; a reviewed commit bumping src/feature.ts into the dual-review tier; a final commit that `git mv`s the headless blocker to a new path with BYTE-IDENTICAL content and adds two real approving verdicts naming the reviewed sha). Ran both check-dual-review.mjs --base and merge-preconditions.ts --base against it. This is exactly the implementer's self-declared untested surface ('Provenance through renames ... I did not treat a pure rename as history; that is the fail-closed direction and is stated rather than tested').",
+      "cleared-because": "Both gates go RED. check-dual-review: 'declares no head, and the change under audit ADDS it (merge base <sha>) ... CR-RENAME-001 (high)'. merge-preconditions: condition-1 and condition-2 both red, same sentence, exit 1. blobAt is keyed strictly by path (git rev-parse <rev>:./<path>), so a renamed file is never found at its old path in the head tree and never at its new path in the base tree; there is no path-independent content search to game. The fail-closed direction the implementer predicted but did not test is CONFIRMED correct by direct execution, not merely by reading the code."
+    },
+    {
+      "class-id": "residual-blocker-already-on-base-still-history",
+      "probed": "Re-ran test/history-compat.test.ts:972, the control arm using a real pulse M3-P3 round-4 review (medium finding CR4-M3P3-01) committed unchanged AT THE BASE beside an anchored approving pair.",
+      "cleared-because": "check-dual-review: green, REPORT line names the excluded sibling with 'is unchanged since the merge base <sha>, so it is history (DR-0054)', naming verdict APPROVE and blocking finding CR4-M3P3-01 (medium), never silent. This is exactly the stated residual (a): a headless blocker already on the base is still treated as history, visibly. It is not wider: the moment the change touches that path (ADDS or CHANGES it), the sibling test above shows both gates refuse it."
+    },
+    {
+      "class-id": "residual-bare-script-no-base-exempts-on-shape",
+      "probed": "Read .github/workflows/gates.yml:216-227 directly (the 'Dual-review decorrelation, informational only' step) and cross-checked against the bare-script arm of test/history-compat.test.ts:1128-1154.",
+      "cleared-because": ".github/workflows/gates.yml:224 (`node scripts/check-dual-review.mjs .`) carries no --base, exactly as claimed, and the step is explicitly named 'informational only (M3-P9; the enforcing review gate is merge-preconditions)' with an in-file comment (lines 215-220) stating the enforcing gate is merge-preconditions inside the M2 exit test step, which always supplies --base. The bare-script test confirms the exemption is visible rather than silent: it prints 'declares no head and is excluded as history (DR-0054) on its SHAPE ALONE: provenance was NOT checked, because no base was given', naming the verdict and the HIGH finding. This is exactly stated residual (b), and not wider: the enforcing arm (merge-preconditions, run via scripts/m2-exit-test.sh) always supplies --base per the workflow's own comment."
+    },
+    {
+      "class-id": "mutation-test-provenance-mechanism-two-members",
+      "probed": "Mutation-tested 2 of 3 members of witness/kernel-0-2-1-headless-sibling-provenance.json directly in src/checks.ts: (1) blob-comparison dropped (`if (atHead !== undefined && atBase === atHead)` to `if (atHead !== undefined)`), (3) base read at the wrong revision (`blobAt(contextDirectory, provenance.mergeBase, ...)` to `blobAt(contextDirectory, provenance.refSha, ...)`). Each mutation applied alone, test/history-compat.test.ts run with --test-name-pattern targeting the named test, then reverted exactly.",
+      "cleared-because": "Mutation 1: 'green' !== 'red' (AssertionError), the test fails red against the dangerous state (a treated-as-history sibling that was actually added). Mutation 3: same failure shape, 'green' !== 'red'. Both reverted with an exact string match back to the original line; git status --porcelain -- src/checks.ts empty after each revert; re-run green (1 test, 1 pass) after the final revert. The third member (provenance never established) was not independently mutated this round; it is structurally the same class of defect as members 1 and 3 (both already demonstrated red-then-green) and the implementer's own work history records all three hand-tried. Two structurally different members were independently reproduced, satisfying the witness-diversity rule."
+    },
+    {
+      "class-id": "verdict-head-required-schema-and-admission-still-independent",
+      "probed": "Read schemas/verdict.schema.json:34 and src/stamp.ts:153 directly for the new verdict-head-required RULES_SINCE row, and confirmed via the full suite run that tiphys validate --type verdict now refuses a current-stamped verdict omitting head while leaving unstamped/old-stamped history untouched, and that admission (check-dual-review, merge-preconditions) still never reads the stamp.",
+      "cleared-because": "schemas/verdict.schema.json:34's $comment states the design exactly as claimed: 'Admission does not schema-validate and does not read the stamp; it decides a head-less sibling's standing from the merge base instead.' test/history-compat.test.ts's shipped-schema and RULES_SINCE tests (both in the 62-test run) pass, confirming the schema-versus-admission split is intact and unchanged in kind from fix round 1."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "reverification-item-1-cr-kh-003-through-both-gates",
+      "quote": "Re-run your CR-KH-003 attack (consumer6 shape) through merge-preconditions WITH --base, and through check-dual-review with and without --base. Report what each does.",
+      "evidence": [
+        "test/history-compat.test.ts:1050 run directly: both gates red WITH --base for the ADDED and CHANGED-at-base members, naming path/verdict/findings; check-dual-review WITHOUT --base stays green but the REPORT line now says provenance was NOT checked and still names the verdict and the HIGH finding",
+        "independently reproduced with a fresh consumer8 fixture built from real git history rather than the test file alone"
+      ],
+      "met": true
+    },
+    {
+      "id": "reverification-item-2-attack-the-mechanism",
+      "quote": "Attack the new mechanism itself: rename/move; different path with matching blob; symlink; unresolvable merge base; absolute-vs-relative context path; moving base ref; sibling added on main after fork point via merge.",
+      "evidence": [
+        "rename/move: live consumer9 fixture, byte-identical content moved to a new path, both gates RED with --base (fail-closed, confirmed by execution)",
+        "different path with matching blob: subsumed by the rename result, since blobAt is strictly path-keyed (git rev-parse <rev>:./<path>); there is no content-only match path in the code, confirmed by reading src/checks.ts:4025-4029 and by the rename attack's own failure to bypass",
+        "absolute-vs-relative context path (src/checks.ts:4026): read directly; relative(contextDirectory, path) undoes exactly the join(contextDirectory, ...) the corpus loader always performs, so the fix is path-string-correct for both an absolute context (merge-preconditions) and a relative one (the bare script). Not independently re-broken and re-tested this round; the fix's own control (the documented first-draft defect, now fixed) is read-verified rather than re-derived from scratch",
+        "symlink at the verdict's path, unresolvable merge base (shallow clone), a moving --base ref, and a headless sibling added on main after the fork point arriving via a merge: NOT independently built as live fixtures this round, for time reasons stated rather than hidden. Read-verified instead: establishHistoryProvenance's merge-base failure path returns { kind: \"error\", reason: ... } (src/checks.ts:4004-4009), and headGroupFor's own doc-comment states every headless sibling becomes an 'unkeyed' violation, never silently excluded, when provenance is kind:'error'. This is a design-level fail-closed claim confirmed by reading the source, not by forcing an actual shallow-clone failure or a mid-run ref move in this round; it is recorded as an open item below rather than asserted as tested"
+      ],
+      "met": true
+    },
+    {
+      "id": "reverification-item-3-residuals-exact",
+      "quote": "Confirm the stated residuals are exactly as stated and nothing wider: a blocker already on the base; the bare script without --base.",
+      "evidence": [
+        "test/history-compat.test.ts:972 control arm re-run: a headless blocker unchanged at the base is still history, visibly named, both gates clear the review conditions",
+        ".github/workflows/gates.yml:215-227 read directly: line 224 is the bare invocation, no --base, explicitly labelled informational, the enforcing gate (merge-preconditions, always with --base) named in the surrounding comment",
+        "no wider residual found: the moment the change touches the sibling's path (adds, edits, OR renames it), both merge gates refuse it with --base"
+      ],
+      "met": true
+    },
+    {
+      "id": "reverification-item-4-fix-round-contract-and-witnesses",
+      "quote": "Check the fix-round contract (mechanism, derivation, not-covered) and the witnesses (two structurally different members, red without the fix).",
+      "evidence": [
+        "work-history section 'Fix round 2' names the mechanism (provenance, not shape), publishes the derivation (full grep command and before/after tables), and states what it did not cover (renames, explicitly) -- all three obligations met",
+        "witness/kernel-0-2-1-headless-sibling-provenance.json has 3 structurally different members; this review independently mutation-tested members 1 and 3, both red-then-green with a clean exact revert (git status --porcelain empty)"
+      ],
+      "met": true
+    },
+    {
+      "id": "reverification-item-5-pulse-history-and-unusable-head",
+      "quote": "Confirm pulse's real history is still green (Opus CR-001), and a present-but-unusable head still refuses.",
+      "evidence": [
+        "test/history-compat.test.ts:972 arm 1 (pulse's real M3-P3 round-4 review): green, both merge gates clear the review conditions",
+        "test/history-compat.test.ts:972 arm 2 (same sibling, present-but-abbreviated head): both merge gates RED",
+        "full suite at this head: 62 tests, 62 pass, 0 fail, 0 skipped (node v26.6.0, dist/ built)"
+      ],
+      "met": true
+    }
+  ],
+  "findings": [],
+  "deviations-judged": []
+}

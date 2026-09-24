@@ -1,0 +1,111 @@
+{
+  "kind": "verdict",
+  "phase": "claude/kernel-0-2-1-history-compat",
+  "head": "281d8925f06dbb81cca16fd32d7199e600908c23",
+  "tiphys-version": "0.2.0",
+  "verdict": "APPROVE",
+  "produced-by": "claude-opus-5-5",
+  "framing": "criteria-contract",
+  "review-contract": "criteria",
+  "findings": [
+    {
+      "id": "CR-008",
+      "severity": "low",
+      "evidence": [
+        "test/behaviors.json row validate-verdict-head-required-from-0-2-0 (added in fix round 2, work history line 1513) resolves to a test in test/verdict-head.test.ts; no spec under witness/ names that test (scan of every witness spec's tests by title).",
+        "The fix round 2 witness section lists the new and reworked specs and does not mention this row; unlike CR-005's row, no reason is given. schemas/verdict.schema.json and src/stamp.ts have 0 spawn-grep hits, src/stamp.ts is new on the branch, and the schema file is changed, so a spec was possible.",
+        "Reviewer red run by exact title: HEAD exit 0 (1 pass); head removed from required in the schema exit 1 (0 pass 1 fail); the verdict-head-required row's since set to 9.9.9 exit 1 (0 pass 1 fail); restored byte-equal."
+      ],
+      "concrete-fix": "Add a witness spec for validate-verdict-head-required-from-0-2-0 with a patch removing head from required in schemas/verdict.schema.json and a mutation of the RULES_SINCE row in src/stamp.ts, or record the red run in the work history as was done for CR-005."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "1",
+      "quote": "Pulse's 49 real verdicts must validate with no INVALID line and exit 0, except genuinely malformed ones, which must each carry a stated reason.",
+      "evidence": [
+        "At 281d892: 42 of 49 no INVALID and exit 0; 7 INVALID and exit 1, the same seven kind: finding files. Zero #/head INVALID lines: the head-required rule prints HISTORY for unstamped history."
+      ],
+      "met": true
+    },
+    {
+      "id": "2",
+      "quote": "The pulse fixture is red on main and green on the branch.",
+      "evidence": [
+        "Branch: node --test test/history-compat.test.ts, v26.6.0, 21 tests 21 pass 0 fail 0 skipped.",
+        "Main red measured at b16f200 in the first review; origin/main 3eeccb9 has changed no src, schemas or scripts since (deduced)."
+      ],
+      "met": true
+    },
+    {
+      "id": "3",
+      "quote": "head is optional in the schema but required for admission.",
+      "evidence": [
+        "head is required in the shipped schema again and RULES_SINCE verdict-head-required lifts it for unstamped and pre-0.2.0 documents, so it is optional for history as tiphys validate applies the schema (judged deviation).",
+        "Mutations M1 and M1b (head-less exclusion at each admission reader) exit 1, 0 pass 1 fail.",
+        "Probe: abbreviated present head red at both gates."
+      ],
+      "met": true
+    },
+    {
+      "id": "4",
+      "quote": "A real-shaped 0.2.0 verdict (head, no stamp) is ADMITTED by merge-preconditions and check-dual-review.",
+      "evidence": [
+        "Branch test passes within the 21.",
+        "Probe: pulse round3 and round4 committed at the base beside an anchored pair: check-dual-review green, merge-preconditions clears the review conditions (exit 21 at the network condition)."
+      ],
+      "met": true
+    },
+    {
+      "id": "5",
+      "quote": "An old stamp never escapes a current admission rule.",
+      "evidence": [
+        "Old-stamp tests pass within the 21; admission reads no stamp. Probe: a 0.2.0-stamped head-less FIX-ROUND-NEEDED review with a high finding ADDED by the change is red at check-dual-review and at merge-preconditions (condition-1 and condition-2)."
+      ],
+      "met": true
+    },
+    {
+      "id": "6",
+      "quote": "review-families reads from the declaration commit onward.",
+      "evidence": [
+        "Mutation M2 (every verdict history) exit 1, 0 pass 1 fail; the three branch tests pass."
+      ],
+      "met": true
+    },
+    {
+      "id": "7",
+      "quote": "Skipped-only validate exits 0, and a real INVALID still exits 1.",
+      "evidence": [
+        "Pulse loop: 42 skipped-only exit 0, 7 INVALID exit 1. Mutation M3 exit 1, 0 pass 1 fail. A 0.2.0-stamped head-less verdict prints INVALID #/head and exits 1."
+      ],
+      "met": true
+    },
+    {
+      "id": "8",
+      "quote": "Every new behavior has a red witness.",
+      "evidence": [
+        "24 changed rows resolve by name, none removed. The provenance witness has three structurally different members (comparison dropped, provenance never established, base read at the wrong revision).",
+        "Red-witness gate at 281d892, local: green, 113 witness(es) evaluated (22 own, 91 stored), every witness red against every declared dangerous state and green at head, exit 0.",
+        "validate-verdict-head-required-from-0-2-0 has no spec (CR-008); its test reddens under two reviewer mutations."
+      ],
+      "met": true
+    }
+  ],
+  "deviations-judged": [
+    {
+      "deviation": "A head-less same-phase sibling is history only if its blob at the audited commit equals its blob at the merge base; one the change adds or changes is refused (fix round 2, orchestrator design).",
+      "serves-plan-intent": true,
+      "reasoning": "Serves DR-0054 by provenance instead of shape: pulse's real history clears both gates, a current head-less refusing review added or edited by the change is red at both. Residuals stated: a head-less blocker already on the base, and the no-base informational step."
+    },
+    {
+      "deviation": "head is required in the shipped schema again, lifted by RULES_SINCE for unstamped and pre-0.2.0 documents.",
+      "serves-plan-intent": true,
+      "reasoning": "tiphys validate keeps pulse's history valid and refuses a stamped current review without head. A generic JSON Schema tool reading the raw file would refuse pulse's history; no kernel reader does that."
+    },
+    {
+      "deviation": "verdict-pair-blocking-finding-refused keeps a recorded red run instead of a witness spec (CR-005).",
+      "serves-plan-intent": true,
+      "reasoning": "Unchanged from the previous pass: rules (c), (d) and (f) make a spec artificial there."
+    }
+  ]
+}
