@@ -90,17 +90,17 @@ the merge gate rather than not-applicable.
   no `.github/workflows/`. The owner says pulse's own session is adding CI
   and merging the next phase; this session does not act in pulse.
   Read-only check at 17:38 UTC: step 2 is done (pulse PR #24 adds CI; runs
-  on main report success). Step 3 is NOT met by pulse PR #25 (M3-P5). It
-  merged head 98fbadc, but both committed verdicts
-  (`delivery/review/m3-p5-criteria.json` and `m3-p5-hazard.json` in pulse)
-  name head 98b4f0e with verdict FIX-ROUND-NEEDED, one medium and one high.
-  The two commits after 98b4f0e change source and tests, and no verdict
-  covers them. That is the same failure as PR #22. pulse-fleet was not
-  re-checked.
-  CORRECTED 18:46 UTC by M5-P1, read-only: the 17:38 reading was incomplete.
-  Pulse PR #26 (merge 1796ff8) landed the round-two verdicts
-  `m3-p5-criteria-round2.json` and `m3-p5-hazard-round2.json`; both name head
-  98fbadc and read APPROVE, lows only. PR #25's merge 35d2e55 has parents
+  on main report success). CORRECTED 18:40 UTC: the 17:38 reading, that
+  step 3 was not met, was WRONG. It read only the round-one verdicts, which
+  name 98b4f0e as FIX-ROUND-NEEDED. Pulse PR #26 (head 3055752, merge
+  1796ff8, after the merge) adds the round-two verdicts,
+  `m3-p5-criteria-round2.json` and `m3-p5-hazard-round2.json`: both APPROVE
+  head 98fbadc with low findings only, and PR #25 merged exactly 98fbadc.
+  Pulse's work history records that the verdicts land after the merge by
+  design, so the reviewed head is the merged head. The lesson: read every
+  verdict file in the merged tree and the records that follow, not only the
+  ones in the PR.
+  Confirmed 18:46 UTC by M5-P1, read-only: PR #25's merge 35d2e55 has parents
   dff0824 and 98fbadc, and its tree equals 98fbadc's. So step 3 IS met.
   pulse-fleet now pins 0.2.1 (main 8fa9a82), so step 1 is met too. Step 2:
   the push run at 35d2e55 was cancelled by the push of 1796ff8 (same
@@ -109,6 +109,7 @@ the merge gate rather than not-applicable.
   (typecheck, lint, tests, `gate:privacy`, `gate:decisions`) and Playwright
   slow gate; it does not invoke `tiphys gates run`, so step 2's "runs the
   Tiphys gates" is met only in the sense that a post-merge push run exists.
+  Both round-two verdicts are one model family (pulse cites its DR-0003).
   Closing A-17 is the orchestrator's call. The exit test still fails on
   deploy verification, which no step here asks for; see
   delivery/verification/m4-exit-test-pulse.md:317.

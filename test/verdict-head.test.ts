@@ -248,8 +248,16 @@ function preHeadCommit(): string | undefined {
      this: the staged tree had no `scripts/` entry for the gate and every
      witness died with MODULE_NOT_FOUND. What is wanted is the newest ancestor
      whose TREE does not carry the change, which is the commit this branch was
-     cut from. */
-  const listed = git(["rev-list", "--max-count=200", "HEAD"]);
+     cut from.
+
+     AND NO CAP ON THE WALK, because the distance only grows. This line once
+     read `--max-count=200`, a fixed window over a history that every merge
+     lengthens: the target sat at position 194 on `main` and 210 on the M5-P1
+     branch, where it fell outside the window and three witnesses below
+     reddened with "no pre-head commit was found". The loop still stops at the
+     first match, so the cost is the distance to the target, not the length of
+     history. */
+  const listed = git(["rev-list", "HEAD"]);
   if (listed.status !== 0) {
     return undefined;
   }
