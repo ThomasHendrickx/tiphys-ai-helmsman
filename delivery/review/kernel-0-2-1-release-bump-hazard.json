@@ -1,0 +1,47 @@
+{
+  "kind": "verdict",
+  "phase": "claude/kernel-0-2-1-release-bump",
+  "head": "95d1ede537d528243aad9e3a90d1366570301ef0",
+  "tiphys-version": "0.2.1",
+  "verdict": "APPROVE",
+  "produced-by": "claude-sonnet-5",
+  "framing": "hazard-attack",
+  "review-contract": "hazard",
+  "hazard-classes-addressed": [
+    {
+      "class-id": "delta-since-0571bc6-is-exactly-the-witness-fix",
+      "probed": "git diff 0571bc621cbb3e6bc4ee269ab1acd4c9e6c0d756 95d1ede537d528243aad9e3a90d1366570301ef0, run directly.",
+      "cleared-because": "One commit, one file, one hunk: witness/kernel-0-2-1-final-report-template-stamped.json's mutation `find` text moves from \"tiphys-version: 0.2.0\\n\" to \"tiphys-version: 0.2.1\\n\". Exactly the claimed delta and nothing wider."
+    },
+    {
+      "class-id": "no-other-stored-witness-finds-text-the-bump-changed",
+      "probed": "grep for every stored witness whose `file` target is one of the four bumped files (package.json, package-lock.json, plugin/package.json, templates/final-report.example.yaml), then read each candidate's `find` field directly.",
+      "cleared-because": "Two other witnesses target package.json (witness/kernel-exports-do-not-widen-package.json: find is the `./package.json` self-export line; witness/release-manifest-names-the-provenance-repository.json: find is the `repository` block and its url), neither of which the version bump touched. One witness targets plugin/package.json (witness/plugin-runtime-packages-declared-for-consumers.json: find is the peerDependencies `^0.2.0` range), which the release bump deliberately left unchanged (only the exact devDependency pin moved). No stored witness targets package-lock.json. So witness/kernel-0-2-1-final-report-template-stamped.json was the ONLY stored witness whose find text the bump broke, and 95d1ede is the complete fix."
+    },
+    {
+      "class-id": "red-witness-gate-green-locally-reproducing-cis-applicability",
+      "probed": "node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --only red-witness --base fc44f28e0cf473fecf6de6bf443fa04d0853d37b --head HEAD, node v26.6.0. Chose fc44f28 (the release-bump branch's true fork point, before it merged main) as --base, because --base 0571bc6 (this review's own earlier head) yields no src/bin/plugin diff and the gate's own diff-touches precondition reports not-applicable there, which does not reproduce what CI evaluates; fc44f28 pulls in the same real src/ changes CI's own base comparison would see.",
+      "cleared-because": "gates: red-witness: green: 4 witness(es) evaluated (1 own, 3 stored re-evaluated in 20141ms); every witness red against every declared dangerous state and green at head. declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0. The single applicable gate in this narrow run is fully green, confirming the fix; the earlier CI failure the coordinator described (error on 0571bc6) is not reproduced at 95d1ede."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "quick-item-1-confirm-delta",
+      "quote": "Quickly ... confirm that delta.",
+      "evidence": [
+        "git diff 0571bc6 95d1ede: one file, one hunk, find text 0.2.0 -> 0.2.1, matching the coordinator's description exactly"
+      ],
+      "met": true
+    },
+    {
+      "id": "quick-item-2-no-other-witness-affected",
+      "quote": "check whether any other stored witness finds text that the bump changed (package.json, the lockfile, plugin/package.json, the template)",
+      "evidence": [
+        "grep across witness/*.json for file targets equal to each of the four bumped files, every candidate's find field read directly, none references content the bump altered except the one already fixed in 95d1ede"
+      ],
+      "met": true
+    }
+  ],
+  "findings": [],
+  "deviations-judged": []
+}

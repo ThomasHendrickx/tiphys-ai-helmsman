@@ -15,7 +15,7 @@
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "      const outcome = check.run(verdict.record, contextDirectory);",
+      "find": "      const outcome = check.run(verdict.record, contextDirectory, { base });",
       "replace": "      const outcome = { violations: [], reports: [] };"
     }
   ],

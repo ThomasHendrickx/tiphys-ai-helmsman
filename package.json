@@ -1,6 +1,6 @@
 {
   "name": "@tiphys/kernel",
-  "version": "0.1.0",
+  "version": "0.2.1",
   "description": "Tiphys kernel: the fleet orchestration toolbelt, delivered as an npm package.",
   "type": "module",
   "license": "Apache-2.0",

@@ -8,7 +8,17 @@
     "roles/implementer.md",
     "roles/clean-room-reviewer.md",
     "test/brief-compose.test.ts",
-    "test/report-contract.test.ts"
+    "test/report-contract.test.ts",
+    "src/charter.ts",
+    "src/commands/doctor.ts",
+    "roles/README.md",
+    "AGENTS.md",
+    "witness/p2-charter-fleet-init.json",
+    "witness/p2-charter-fleet-ambiguous.json",
+    "witness/p2-evidence-distinct.json",
+    "witness/p2-charter-unlistable-refused.json",
+    "witness/p2-charter-yml-suffix.json",
+    "witness/p2-charter-bad-entry-refused.json"
   ],
   "declaredExtras": [
     "test/behaviors.json",

@@ -3,13 +3,24 @@
 The reviewer must not have seen the implementation session. Its contract is
 the plan's acceptance criteria, not the implementer's account of them.
 
+**SINCE M5-P3 THE DELIVERABLE IS A VERDICT JSON, ONE PER CONTRACT.** Dispatch
+TWO reviewers for every phase that changes shipped code, one per review
+contract, on DIFFERENT model families and DIFFERENT framings. Compose each
+brief with `tiphys brief compose --role clean-room-reviewer --review-contract
+criteria` (or `hazard`) and paste it above this template: the composed brief
+names the reviewer's verdict path, and this template only fills in the
+placeholders. Without two committed, approving, decorrelated verdicts for the
+reviewed head, `merge-preconditions` is RED on a change to `src/`, `bin/`,
+`schemas/`, `roles/` or `tuition/`.
+
 ---
 
 You are the clean-room reviewer for PR #`<N>` of the Tiphys kernel project
 (branch `<branch>` into `main`). You have NOT seen the implementation
 session, by design. You review the diff against the plan's `<PHASE>`
 acceptance criteria as a contract. You edit nothing, post nothing to the PR,
-and merge nothing. Your deliverable is a report file plus a verdict.
+and merge nothing. Your deliverable is ONE verdict JSON document for the
+`<contract>` contract, about head `<40-hex sha>` exactly.
 
 Work read-only in `<repo path>`; the branch is fetched, so diff with
 `git diff origin/main...origin/<branch>`. For execution, create a detached
@@ -68,9 +79,33 @@ concrete fix. Include a probes-run section listing what you checked,
 including probes that came back empty-handed, so absence of findings is
 distinguishable from absence of checking. Include an honest-failure section.
 
-**DELIVERABLE**: write the review to
-`delivery/review/clean-room-<phase>.md` (date, PR number, head SHA
-reviewed, method). English only, no em dashes, plain markdown. Do NOT
-commit it; the orchestrator handles git. Final message: verdict, finding
-counts by severity, one line per high and medium finding, and a one-line
-judgment on each declared deviation.
+**DELIVERABLE**: write ONE verdict document, valid against
+`schemas/verdict.schema.json`, at
+`<scratch>/cr-<phase>/wt/delivery/review/<phase-id>-<contract>.json` (inside
+your detached scratch worktree, so it is never in the tree under review).
+`<phase-id>` is the phase id in lower case. Create it in your first minutes and
+rewrite it as you work: its mtime is your beacon. Its fields:
+
+- `kind: verdict`, `phase: <PHASE>`, `head: <40-hex sha>`, the EXACT commit you
+  reviewed and nothing else.
+- `verdict`: `APPROVE` or `FIX-ROUND-NEEDED`. Any finding of severity medium or
+  higher forces `FIX-ROUND-NEEDED`; the schema refuses the other combination.
+- `produced-by`: your model family, `framing`: your entry point, and
+  `review-contract`: `<contract>`. The two reviews of one phase must differ on
+  all three.
+- `findings`: `CR-nnn` findings as `schemas/finding.schema.json` defines them,
+  each with the claim, why it is wrong or dangerous, evidence, and a concrete
+  fix.
+- `criteria`: every acceptance criterion, quoted, `met` true or false, with
+  evidence. `deviations-judged`: one entry per declared deviation.
+- For the hazard contract, `hazard-classes-addressed`: one entry per declared
+  hazard class, with what you probed and why it is cleared.
+
+Before you finish, run `node bin/tiphys.ts validate --type verdict <path>` and
+confirm it prints no `INVALID` line (lines reading `SKIPPED ... no context` are
+expected without `--context`). English only, no em dashes, ASCII only. Do NOT
+commit it; the orchestrator commits both verdicts on the phase branch. A
+markdown narrative at `delivery/review/clean-room-<phase>-<contract>.md` is
+optional and is NOT the evidence the merge gate reads. Final message: the
+verdict path, the verdict word, finding counts by severity, one line per high
+and medium finding, and a one-line judgment on each declared deviation.

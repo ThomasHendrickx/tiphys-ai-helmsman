@@ -3,7 +3,7 @@
   "$id": "https://tiphys.dev/schemas/final-report.schema.json",
   "title": "Tiphys final report",
   "$comment": "R-089a. Kernel plan M3, M3-P4 step 2. THE FINAL REPORT IS A PROJECTION, NOT A SUMMARY, and that property is load-bearing beyond this phase. Every field here is DERIVED from records that already exist (findings, verdicts, decisions, work histories), which is the same relation M3-P8's mechanism index has to the tuition feed. That relation is what makes a dense read layer possible on top of a verbose archive: the projections are consumed at every dispatch and must stay dense, while the raw entries are read only in dispute. M3 BUILDS NO COMPACTOR AND THIS SCHEMA PROPOSES NONE; what it does is make the distinction structural, so a later compaction is a question about which layer a file is in rather than a judgement about which files look like filler. SILENCE AND EMPTINESS ARE DISTINGUISHABLE: each of the four enumerable sections is a two-branch oneOf, so `none: true` carries NO entries key at all and `none: false` carries at least one entry. That closes BOTH directions of the relation rather than one: an empty list without a marker is a rejection, and a `none: true` marker sitting on top of real entries is also a rejection. THE PARITY BETWEEN `inputs[]` AND `input-findings[]` IS NOT HERE: cross-array completeness is not a keyword property (M3R-002), so it is the derived check `final-report-finding-parity` in src/checks.ts, and it is checked a second time by the M2-P6 coverage checker's finding-to-outcome parity mode because the artifact should be self-checking AND the independent checker is the one the pipeline runs.",
-  "description": "One document per delivery. Every input finding mapped to an outcome, plus the decisions owed, the owner verifications outstanding, the infrastructure left behind, and anything done out of band.",
+  "description": "One document per delivery. Every input finding mapped to an outcome, whether the phase delivered its intended outcome and on what evidence, plus the decisions owed, the owner verifications outstanding, the infrastructure left behind, and anything done out of band.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -11,6 +11,7 @@
     "subject",
     "inputs",
     "input-findings",
+    "delivered-outcome",
     "decisions-owed",
     "owner-verification",
     "infrastructure-left",
@@ -21,6 +22,11 @@
       "description": "The artifact type, so `tiphys validate --type auto` resolves this document without being told.",
       "type": "string",
       "const": "final-report"
+    },
+    "tiphys-version": {
+      "$comment": "KERNEL 0.2.1 (DR-0055): THE KERNEL VERSION WHOSE RULES THIS REPORT WAS WRITTEN TO. Optional in shape: an unstamped report is pre-stamp history, and `tiphys validate` holds it to the 0.1.0 rules only (RULES_SINCE in src/stamp.ts; `delivered-outcome` is required from 0.2.0). The shipped template carries the package version, so a report written from it is held to every current rule. Same grammar as the verdict's stamp, the one parseKernelVersion in src/stamp.ts reads.",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
     },
     "subject": {
       "description": "What this report is the final report OF.",
@@ -44,6 +50,65 @@
         "properties": {
           "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
           "outcome": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    },
+    "delivered-outcome": {
+      "$comment": "M5-P2 step 2, hazard ceremonial-intent. THE ONE JOIN FROM PHASE INTENT TO DELIVERED OUTCOME. The plan carries a phase intent and brief composition hands it to every agent beside the charter's product intent; without this object no completion artifact answers it, so intent is printed and never closed. EXACTLY FOUR FIELDS AND A CLOSED KEY SET, deliberately: the phase intent restated, a yes-or-no delivered, the evidence, and an explanation. NO SCORE, NO CONFIDENCE PERCENTAGE, NO COST RATIO, NO RISK MATRIX AND NO NUMERIC FIELD OF ANY KIND (hazard goodhart-score): a number becomes a target an agent optimizes instead of an outcome it reports. `additionalProperties: false` is what keeps it four, and test/report-contract.test.ts asserts the closed set through the validator rather than a list of forbidden words. THE EVIDENCE COUPLING: `delivered: true` requires at least one evidence entry, so a delivery claim with nothing behind it is a rejection by the schema, not by a reviewer's attention. `delivered: false` may carry an empty evidence list, because an undelivered outcome's case is made in the explanation; the key itself is still required, so an author must write the empty list rather than omit the field. WHAT THIS DOES NOT REACH, stated rather than left to be found: nothing here compares `phase-intent` with the plan's text or checks that an evidence entry resolves. It closes the internal contradiction (delivered with no evidence) and the silence (no answer at all); a false answer with plausible evidence is a reviewer's finding.",
+      "description": "Whether the phase delivered the outcome its intent names, and the evidence for that answer.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "phase-intent",
+        "delivered",
+        "evidence",
+        "explanation"
+      ],
+      "properties": {
+        "phase-intent": {
+          "description": "The phase intent this report answers, as the plan states it.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        },
+        "delivered": {
+          "description": "Whether that intended outcome was delivered. A boolean, never a degree.",
+          "type": "boolean"
+        },
+        "evidence": {
+          "$comment": "M5-P2 fix round 1, CR-M5P2-01. TWO MECHANICAL RULES, NEITHER A JUDGEMENT OF QUALITY. `uniqueItems`: the same string cited twice is one piece of evidence, so a list of one claim repeated cannot satisfy `minItems` for `delivered: true`. The item `pattern` requires at least one ASCII letter or digit: every form this field names (a path with a line number, a command, an exit code, a run URL, a sentence) contains one, and a string of only punctuation and spaces refers to nothing. WHAT THEY DO NOT REACH: `uniqueItems` compares exact strings, so `a` and `a ` are two items; a single alphanumeric character such as `x` passes; and nothing checks that an entry resolves or is true. Those are a reviewer's.",
+          "description": "What shows the answer is true: paths with line numbers, commands with exit codes, run URLs.",
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "[A-Za-z0-9]"
+          }
+        },
+        "explanation": {
+          "description": "Why the answer is what it is, in plain words, including what was not delivered.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "\\S"
+        }
+      },
+      "if": {
+        "required": [
+          "delivered"
+        ],
+        "properties": {
+          "delivered": {
+            "const": true
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "evidence": {
+            "type": "array",
+            "minItems": 1
+          }
         }
       }
     },

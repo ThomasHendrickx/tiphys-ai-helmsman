@@ -913,30 +913,6 @@
       }
     },
     {
-      "id": "claude-md:and-the-newest-mtime-under-the-agent-s-working-d",
-      "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:484",
-      "kind": "bold-lead",
-      "text": "**AND \"THE NEWEST MTIME UNDER THE AGENT'S WORKING DIRECTORY\" IS NOT MECHANICAL",
-      "group": "watchdog-three-questions",
-      "status": "PORTED",
-      "disposition": "PORT",
-      "destination": "AGENTS.md",
-      "note": "Where does it write, what is the baseline, what does silence mean: all three port into one paragraph.",
-      "probe": "THREE THINGS TO ANSWER IN WRITING",
-      "verified-by": {
-        "command": "grep -c 'THREE THINGS TO ANSWER IN WRITING' AGENTS.md",
-        "exit": 0,
-        "output": "1"
-      },
-      "negative-witness": {
-        "kind": "sibling",
-        "command": "grep -c 'THREE THINGS TO ANSWER IN WRITING' roles/implementer.md",
-        "exit": 1,
-        "output": "0"
-      }
-    },
-    {
       "id": "claude-md:where-does-this-agent-write-measure-it-do-not-pr",
       "root": "CLAUDE.md",
       "rule": "CLAUDE.md:495",
@@ -1004,30 +980,6 @@
       "negative-witness": {
         "kind": "sibling",
         "command": "grep -c 'THREE THINGS TO ANSWER IN WRITING' roles/implementer.md",
-        "exit": 1,
-        "output": "0"
-      }
-    },
-    {
-      "id": "claude-md:and-an-unisolated-agent-takes-your-clone-measure",
-      "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:524",
-      "kind": "bold-lead",
-      "text": "**AND AN UNISOLATED AGENT TAKES YOUR CLONE, measured 2026-09-15.** Six",
-      "group": "agent-isolation",
-      "status": "PORTED",
-      "disposition": "PORT",
-      "destination": "AGENTS.md",
-      "note": "Every lens in its own clone, never a shared worktree.",
-      "probe": "verification-dispatch-isolation",
-      "verified-by": {
-        "command": "grep -c 'verification-dispatch-isolation' AGENTS.md",
-        "exit": 0,
-        "output": "2"
-      },
-      "negative-witness": {
-        "kind": "sibling",
-        "command": "grep -c 'verification-dispatch-isolation' roles/implementer.md",
         "exit": 1,
         "output": "0"
       }
@@ -1222,6 +1174,24 @@
         "command": "grep -c 'A green BUNDLE is not' roles/implementer.md",
         "exit": 1,
         "output": "0"
+      }
+    },
+    {
+      "id": "claude-md:updated-by-m5-p4-summary-json-is-now-uploaded-so",
+      "root": "CLAUDE.md",
+      "rule": "CLAUDE.md:628",
+      "kind": "bold-lead",
+      "text": "**UPDATED BY M5-P4: `summary.json` IS NOW UPLOADED, so read it first.** The",
+      "group": "four-printed-facts",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "where this repository's gates workflow uploads summary.json, and under which artifact names and retention, is a property of this repository's CI, not of the kernel; the kernel's own answer is summary.json itself, which a consumer reads wherever its own CI keeps it",
+      "dr0029-side": "predicate",
+      "note": "Added by M5-P4 fix round 1 (CR-003), when the gates workflow gained the summary upload the section below it was written around. Same disposition as the four printed facts it supersedes.",
+      "verified-by": {
+        "command": "grep -c 'IS NOW UPLOADED' AGENTS.md roles/implementer.md checklists/clean-room.yaml",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / checklists/clean-room.yaml:0"
       }
     },
     {
@@ -2419,57 +2389,6 @@
       }
     },
     {
-      "id": "claude-md:agent-concurrency-is-per-workflow-and-the-fix-is",
-      "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1183",
-      "kind": "heading",
-      "text": "## Agent concurrency is PER WORKFLOW, and the fix is more workflows (binding)",
-      "group": "harness-tool-rules",
-      "status": "GAP",
-      "disposition": "DELETE",
-      "reason": "The rule is about the harness this process runs on. Retiring the process retires it; the kernel's watchdog clauses carry the property that mattered.",
-      "gap": "these name harness tools (Monitor, CronCreate, ListAgents, workflow agent caps) that the kernel does not have and does not model",
-      "verified-by": {
-        "command": "grep -c 'CronCreate' AGENTS.md roles/implementer.md roles/_shared-dispatch-contract.md templates/warnings.md",
-        "exit": 1,
-        "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/_shared-dispatch-contract.md:0 / templates/warnings.md:0"
-      }
-    },
-    {
-      "id": "claude-md:measured-2026-09-15-nproc-returns-4-and-the-work",
-      "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1188",
-      "kind": "bold-lead",
-      "text": "**Measured 2026-09-15: `nproc` returns 4, and the workflow cap is",
-      "group": "harness-tool-rules",
-      "status": "GAP",
-      "disposition": "DELETE",
-      "reason": "The rule is about the harness this process runs on. Retiring the process retires it; the kernel's watchdog clauses carry the property that mattered.",
-      "gap": "these name harness tools (Monitor, CronCreate, ListAgents, workflow agent caps) that the kernel does not have and does not model",
-      "verified-by": {
-        "command": "grep -c 'CronCreate' AGENTS.md roles/implementer.md roles/_shared-dispatch-contract.md templates/warnings.md",
-        "exit": 1,
-        "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/_shared-dispatch-contract.md:0 / templates/warnings.md:0"
-      }
-    },
-    {
-      "id": "claude-md:the-fix-is-n-workflows-of-2-not-one-workflow-of",
-      "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1194",
-      "kind": "bold-lead",
-      "text": "**The fix is N workflows of 2, not one workflow of 2N.** Each workflow gets its",
-      "group": "harness-tool-rules",
-      "status": "GAP",
-      "disposition": "DELETE",
-      "reason": "The rule is about the harness this process runs on. Retiring the process retires it; the kernel's watchdog clauses carry the property that mattered.",
-      "gap": "these name harness tools (Monitor, CronCreate, ListAgents, workflow agent caps) that the kernel does not have and does not model",
-      "verified-by": {
-        "command": "grep -c 'CronCreate' AGENTS.md roles/implementer.md roles/_shared-dispatch-contract.md templates/warnings.md",
-        "exit": 1,
-        "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/_shared-dispatch-contract.md:0 / templates/warnings.md:0"
-      }
-    },
-    {
       "id": "claude-md:write-the-script-once-with-an-args-filter-so-one",
       "root": "CLAUDE.md",
       "rule": "CLAUDE.md:1199",
@@ -2492,40 +2411,6 @@
       "rule": "CLAUDE.md:1206",
       "kind": "numbered",
       "text": "2. Launch it inline the first time. The tool result returns a `scriptPath`.",
-      "group": "harness-tool-rules",
-      "status": "GAP",
-      "disposition": "DELETE",
-      "reason": "The rule is about the harness this process runs on. Retiring the process retires it; the kernel's watchdog clauses carry the property that mattered.",
-      "gap": "these name harness tools (Monitor, CronCreate, ListAgents, workflow agent caps) that the kernel does not have and does not model",
-      "verified-by": {
-        "command": "grep -c 'CronCreate' AGENTS.md roles/implementer.md roles/_shared-dispatch-contract.md templates/warnings.md",
-        "exit": 1,
-        "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/_shared-dispatch-contract.md:0 / templates/warnings.md:0"
-      }
-    },
-    {
-      "id": "claude-md:re-invoke-with-scriptpath-args-once-per-pair-fou",
-      "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1207",
-      "kind": "numbered",
-      "text": "3. Re-invoke with `{scriptPath, args: [...]}` once per PAIR. Four extra calls",
-      "group": "harness-tool-rules",
-      "status": "GAP",
-      "disposition": "DELETE",
-      "reason": "The rule is about the harness this process runs on. Retiring the process retires it; the kernel's watchdog clauses carry the property that mattered.",
-      "gap": "these name harness tools (Monitor, CronCreate, ListAgents, workflow agent caps) that the kernel does not have and does not model",
-      "verified-by": {
-        "command": "grep -c 'CronCreate' AGENTS.md roles/implementer.md roles/_shared-dispatch-contract.md templates/warnings.md",
-        "exit": 1,
-        "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/_shared-dispatch-contract.md:0 / templates/warnings.md:0"
-      }
-    },
-    {
-      "id": "claude-md:before-dispatching-any-fan-out-state-in-writing",
-      "root": "CLAUDE.md",
-      "rule": "CLAUDE.md:1210",
-      "kind": "bold-lead",
-      "text": "**Before dispatching any fan-out, state in writing: how many agents, in how many",
       "group": "harness-tool-rules",
       "status": "GAP",
       "disposition": "DELETE",
@@ -4317,9 +4202,177 @@
       }
     },
     {
+      "id": "skill-phase-delivery:the-review-produces-committed-verdicts-m5-p3-and",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:87",
+      "kind": "bold-lead",
+      "text": "**THE REVIEW PRODUCES COMMITTED VERDICTS (M5-P3), and the merge gate reads",
+      "group": "review-verdict-committed",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "src/gates/merge-preconditions.ts",
+      "note": "M5-P3: a shipped-tree change owes two committed, approving, decorrelated verdicts, and merge-preconditions is red without them.",
+      "probe": "review-budget-requires-dual-review",
+      "verified-by": {
+        "command": "grep -c 'review-budget-requires-dual-review' src/gates/merge-preconditions.ts",
+        "exit": 0,
+        "output": "1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'review-budget-requires-dual-review' src/gates/scope.ts",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
+      "id": "skill-phase-delivery:record-the-reviewed-head-as-a-full-forty-charact",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:93",
+      "kind": "numbered",
+      "text": "1. Record the reviewed head as a full forty-character sha, H.",
+      "group": "review-verdict-committed",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "schemas/verdict.schema.json",
+      "note": "The verdict schema refuses any head that is not forty lowercase hex characters.",
+      "probe": "{40}",
+      "verified-by": {
+        "command": "grep -c '{40}' schemas/verdict.schema.json",
+        "exit": 0,
+        "output": "1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c '{40}' schemas/tuition.schema.json",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
+      "id": "skill-phase-delivery:dispatch-two-reviewers-on-h-one-per-contract-rev",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:94",
+      "kind": "numbered",
+      "text": "2. Dispatch TWO reviewers on H, one per contract (`--review-contract criteria`",
+      "group": "review-verdict-committed",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "roles/clean-room-reviewer.md",
+      "note": "The reviewer role names one verdict path per contract, so two contracts write two files.",
+      "probe": "criteria.json",
+      "verified-by": {
+        "command": "grep -c 'criteria.json' roles/clean-room-reviewer.md",
+        "exit": 0,
+        "output": "2"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'criteria.json' roles/implementer.md",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
+      "id": "skill-phase-delivery:validate-each-node-bin-tiphys-ts-validate-type-v",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:98",
+      "kind": "numbered",
+      "text": "3. Validate each: `node bin/tiphys.ts validate --type verdict <file>` prints no",
+      "group": "review-verdict-committed",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "roles/clean-room-reviewer.md",
+      "note": "The reviewer role mandates the verdict schema the orchestrator validates against.",
+      "probe": "verdict.schema.json",
+      "verified-by": {
+        "command": "grep -c 'verdict.schema.json' roles/clean-room-reviewer.md",
+        "exit": 0,
+        "output": "2"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'verdict.schema.json' roles/implementer.md",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
+      "id": "skill-phase-delivery:copy-both-into-the-phase-worktree-and-commit-the",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:100",
+      "kind": "numbered",
+      "text": "4. Copy both into the phase worktree and commit them together in ONE commit",
+      "group": "review-verdict-committed",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "scripts/check-dual-review.mjs",
+      "note": "Verdicts committed after the reviewed head are admitted by ancestry when the gap is delivery/ only.",
+      "probe": "ANCESTRY",
+      "verified-by": {
+        "command": "grep -c 'ANCESTRY' scripts/check-dual-review.mjs",
+        "exit": 0,
+        "output": "2"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'ANCESTRY' src/gates/scope.ts",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
+      "id": "skill-phase-delivery:what-ci-shows-so-nobody-reads-it-as-a-defect-on",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:104",
+      "kind": "numbered",
+      "text": "5. What CI shows, so nobody reads it as a defect: on H, before the reviews,",
+      "group": "review-verdict-committed",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "src/gates/merge-preconditions.ts",
+      "note": "The gate is not-applicable, naming the in-flight run, while its own head CI has not concluded.",
+      "probe": "merge-preconditions-ci-concluded-for-this-head",
+      "verified-by": {
+        "command": "grep -c 'merge-preconditions-ci-concluded-for-this-head' src/gates/merge-preconditions.ts",
+        "exit": 0,
+        "output": "1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'merge-preconditions-ci-concluded-for-this-head' src/gates/scope.ts",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
+      "id": "skill-phase-delivery:a-later-commit-that-touches-anything-outside-del",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:110",
+      "kind": "numbered",
+      "text": "6. A later commit that touches anything outside `delivery/` makes both",
+      "group": "review-verdict-committed",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "scripts/check-dual-review.mjs",
+      "note": "A verdict whose gap to the head adds bytes outside delivery/ is excluded and named.",
+      "probe": "offHead",
+      "verified-by": {
+        "command": "grep -c 'offHead' scripts/check-dual-review.mjs",
+        "exit": 0,
+        "output": "17"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'offHead' src/gates/scope.ts",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
       "id": "skill-phase-delivery:6-fix-rounds",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:92",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:120",
       "kind": "heading",
       "text": "## 6. Fix rounds",
       "group": "loop-same-implementer",
@@ -4343,7 +4396,7 @@
     {
       "id": "skill-phase-delivery:dispute-is-allowed-with-concrete-evidence-surfac",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:96",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:124",
       "kind": "bullet",
       "text": "- Dispute is allowed with concrete evidence, surfaced for the orchestrator",
       "group": "loop-dispute",
@@ -4367,7 +4420,7 @@
     {
       "id": "skill-phase-delivery:record-the-observed-ci-conclusion-in-the-work-hi",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:98",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:126",
       "kind": "bullet",
       "text": "- **\"RECORD THE OBSERVED CI CONCLUSION IN THE WORK HISTORY\" IS SELF-INVALIDATING",
       "group": "ci-record-recursion",
@@ -4385,7 +4438,7 @@
     {
       "id": "skill-phase-delivery:one-push-per-fix-round-not-six-a-fix-round-is-1",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:111",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:139",
       "kind": "bullet",
       "text": "- One push per fix round, not six. A fix round is 1 to 2 pushes.",
       "group": "loop-fix-rounds",
@@ -4409,7 +4462,7 @@
     {
       "id": "skill-phase-delivery:every-new-regression-test-must-be-red-on-the-pre",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:132",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:160",
       "kind": "bullet",
       "text": "- Every new regression test must be red on the pre-fix code and green after.",
       "group": "regression-red-first",
@@ -4433,7 +4486,7 @@
     {
       "id": "skill-phase-delivery:applying-a-fix-must-not-break-what-already-passe",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:133",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:161",
       "kind": "bullet",
       "text": "- Applying a fix must not break what already passed review; completeness",
       "group": "fix-round-risk",
@@ -4457,7 +4510,7 @@
     {
       "id": "skill-phase-delivery:a-fix-round-is-not-lower-risk-than-the-work-it-f",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:136",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:164",
       "kind": "bold-lead",
       "text": "**A fix round is not lower risk than the work it fixes.** In this project a",
       "group": "fix-round-risk",
@@ -4481,7 +4534,7 @@
     {
       "id": "skill-phase-delivery:7-merge",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:143",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:171",
       "kind": "heading",
       "text": "## 7. Merge",
       "group": "merge-authority-false",
@@ -4498,9 +4551,33 @@
       }
     },
     {
+      "id": "skill-phase-delivery:the-pre-merge-run-of-merge-preconditions-is-the",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:178",
+      "kind": "bold-lead",
+      "text": "**THE PRE-MERGE RUN OF `merge-preconditions` IS THE ORCHESTRATOR'S (M5-P3).**",
+      "group": "review-verdict-committed",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "src/gates/merge-preconditions.ts",
+      "note": "The pre-merge run authenticates through a declared token variable and must be green before merge.",
+      "probe": "token-env",
+      "verified-by": {
+        "command": "grep -c 'token-env' src/gates/merge-preconditions.ts",
+        "exit": 0,
+        "output": "7"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'token-env' src/gates/scope.ts",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
       "id": "skill-phase-delivery:8-post-merge-duties",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:153",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:202",
       "kind": "heading",
       "text": "## 8. Post-merge duties",
       "group": "loop-teardown",
@@ -4524,7 +4601,7 @@
     {
       "id": "skill-phase-delivery:unsubscribe-from-the-pr-and-cancel-the-phase-s-s",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:157",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:206",
       "kind": "numbered",
       "text": "1. Unsubscribe from the PR and cancel the phase's self check-in.",
       "group": "loop-watch",
@@ -4548,7 +4625,7 @@
     {
       "id": "skill-phase-delivery:remove-the-phase-worktree",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:158",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:207",
       "kind": "numbered",
       "text": "2. Remove the phase worktree.",
       "group": "loop-teardown",
@@ -4572,7 +4649,7 @@
     {
       "id": "skill-phase-delivery:commit-any-review-artifacts-still-uncommitted-an",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:159",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:208",
       "kind": "numbered",
       "text": "3. Commit any review artifacts still uncommitted, and make sure the",
       "group": "durability",
@@ -4596,7 +4673,7 @@
     {
       "id": "skill-phase-delivery:carry-forward-environment-warnings-the-phase-dis",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:161",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:210",
       "kind": "numbered",
       "text": "4. Carry forward: environment warnings the phase discovered, and any",
       "group": "brief-env-warnings",
@@ -4620,7 +4697,7 @@
     {
       "id": "skill-phase-delivery:create-the-next-phase-s-worktree-from-the-newly",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:163",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:212",
       "kind": "numbered",
       "text": "5. Create the next phase's worktree from the newly merged `main`.",
       "group": "loop-worktree",
@@ -4644,7 +4721,7 @@
     {
       "id": "skill-phase-delivery:failure-handling",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:165",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:214",
       "kind": "heading",
       "text": "## Failure handling",
       "group": "stalled-phase",
@@ -4668,7 +4745,7 @@
     {
       "id": "skill-phase-delivery:an-agent-that-dies-or-stalls-use-the-agent-salva",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:167",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:216",
       "kind": "bullet",
       "text": "- An agent that dies or stalls: use the `agent-salvage` skill immediately.",
       "group": "salvage-procedure",
@@ -4692,7 +4769,7 @@
     {
       "id": "skill-phase-delivery:a-finding-that-cannot-be-explained-do-not-merge",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:169",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:218",
       "kind": "bullet",
       "text": "- A finding that cannot be explained: do not merge around it. Dispatch an",
       "group": "investigator-repro",
@@ -4716,7 +4793,7 @@
     {
       "id": "skill-phase-delivery:ci-red-read-the-log-before-re-running-a-real-bug",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:172",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:221",
       "kind": "bullet",
       "text": "- CI red: read the log before re-running. A real bug and a flake look",
       "group": "flake-playbook",
@@ -4740,7 +4817,7 @@
     {
       "id": "skill-phase-delivery:an-implementer-reporting-that-the-plan-is-wrong",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/SKILL.md:175",
+      "rule": ".claude/skills/phase-delivery/SKILL.md:224",
       "kind": "bullet",
       "text": "- An implementer reporting that the plan is wrong: stop, do not improvise.",
       "group": "never-improvise",
@@ -4786,9 +4863,33 @@
       }
     },
     {
+      "id": "ref-clean-room-brief:since-m5-p3-the-deliverable-is-a-verdict-json-on",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:6",
+      "kind": "bold-lead",
+      "text": "**SINCE M5-P3 THE DELIVERABLE IS A VERDICT JSON, ONE PER CONTRACT.** Dispatch",
+      "group": "review-verdict-committed",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "roles/clean-room-reviewer.md",
+      "note": "One verdict JSON per contract, at the path the contract clause names.",
+      "probe": "hazard.json",
+      "verified-by": {
+        "command": "grep -c 'hazard.json' roles/clean-room-reviewer.md",
+        "exit": 0,
+        "output": "2"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'hazard.json' roles/implementer.md",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
       "id": "ref-clean-room-brief:environment-node-version-note-gh-presence-git-ve",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:19",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:30",
       "kind": "bold-lead",
       "text": "**Environment**: `<Node version note, gh presence, git version, suite wall",
       "group": "brief-env-warnings",
@@ -4812,7 +4913,7 @@
     {
       "id": "ref-clean-room-brief:read-first",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:22",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:33",
       "kind": "bold-lead",
       "text": "**READ FIRST**:",
       "group": "brief-reading-list",
@@ -4836,7 +4937,7 @@
     {
       "id": "ref-clean-room-brief:claude-md",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:24",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:35",
       "kind": "numbered",
       "text": "1. `CLAUDE.md`.",
       "group": "brief-reading-list",
@@ -4860,7 +4961,7 @@
     {
       "id": "ref-clean-room-brief:delivery-plan-kernel-plan-v1-md-header-section-3",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:25",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:36",
       "kind": "numbered",
       "text": "2. `delivery/plan/kernel-plan-v1.md`: header, section 3 preamble (constraints",
       "group": "brief-reading-list",
@@ -4884,7 +4985,7 @@
     {
       "id": "ref-clean-room-brief:any-external-or-plan-review-whose-findings-this",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:28",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:39",
       "kind": "numbered",
       "text": "3. `<any external or plan review whose findings this phase realizes>`.",
       "group": "brief-reading-list",
@@ -4908,7 +5009,7 @@
     {
       "id": "ref-clean-room-brief:decision-records-this-phase-implements",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:29",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:40",
       "kind": "numbered",
       "text": "4. `<decision records this phase implements>`.",
       "group": "brief-reading-list",
@@ -4932,7 +5033,7 @@
     {
       "id": "ref-clean-room-brief:the-pr-body-declares-these-deviations-list-the-w",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:30",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:41",
       "kind": "numbered",
       "text": "5. The PR body declares these deviations: `<list>`. The work history",
       "group": "brief-reading-list",
@@ -4956,7 +5057,7 @@
     {
       "id": "ref-clean-room-brief:your-review",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:33",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:44",
       "kind": "bold-lead",
       "text": "**YOUR REVIEW**:",
       "group": "criteria-walked",
@@ -4980,7 +5081,7 @@
     {
       "id": "ref-clean-room-brief:criteria-as-contract-every-criterion-precisely-r",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:35",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:46",
       "kind": "numbered",
       "text": "1. **Criteria as contract**: every criterion, precisely referenced,",
       "group": "criteria-walked",
@@ -5004,7 +5105,7 @@
     {
       "id": "ref-clean-room-brief:test-honesty-mutation-test-break-the-behavior-co",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:41",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:52",
       "kind": "numbered",
       "text": "2. **Test honesty**: mutation-test. Break the behavior, confirm the named",
       "group": "loop-mutation-test",
@@ -5028,7 +5129,7 @@
     {
       "id": "ref-clean-room-brief:deviations-one-by-one-necessity-or-convenience-d",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:46",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:57",
       "kind": "numbered",
       "text": "3. **Deviations one by one**: necessity or convenience? Does each serve the",
       "group": "clean-room-deviations",
@@ -5052,7 +5153,7 @@
     {
       "id": "ref-clean-room-brief:scope-audit-every-changed-file-on-the-phase-list",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:49",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:60",
       "kind": "numbered",
       "text": "4. **Scope audit**: every changed file on the phase list, or one of the two",
       "group": "loop-scope-audit",
@@ -5076,7 +5177,7 @@
     {
       "id": "ref-clean-room-brief:blast-radius-who-else-consumes-what-this-changed",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:51",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:62",
       "kind": "numbered",
       "text": "5. **Blast radius**: who else consumes what this changed? Name the specific",
       "group": "clean-room-blast-radius",
@@ -5100,7 +5201,7 @@
     {
       "id": "ref-clean-room-brief:fix-shapes-hunt-the-state-that-can-never-exit-an",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:54",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:65",
       "kind": "numbered",
       "text": "6. **Fix shapes**: hunt the state that can never exit and the quiet",
       "group": "guard-cannot-go-red",
@@ -5124,7 +5225,7 @@
     {
       "id": "ref-clean-room-brief:constraints-and-conventions-c-1-no-current-state",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:58",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:69",
       "kind": "numbered",
       "text": "7. **Constraints and conventions**: C-1 (no current state from a log tail),",
       "group": "never-pid-liveness",
@@ -5148,7 +5249,7 @@
     {
       "id": "ref-clean-room-brief:verdict-approve-or-fix-round-needed-findings-cr",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:63",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:74",
       "kind": "bold-lead",
       "text": "**VERDICT**: APPROVE or FIX-ROUND-NEEDED, findings `CR-nnn` severity-ranked",
       "group": "review-verdict-shape",
@@ -5170,25 +5271,169 @@
       }
     },
     {
-      "id": "ref-clean-room-brief:deliverable-write-the-review-to",
+      "id": "ref-clean-room-brief:deliverable-write-one-verdict-document-valid-aga",
       "root": ".claude/skills",
-      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:71",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:82",
       "kind": "bold-lead",
-      "text": "**DELIVERABLE**: write the review to",
-      "group": "finding-severity",
+      "text": "**DELIVERABLE**: write ONE verdict document, valid against",
+      "group": "review-verdict-shape",
       "status": "PORTED",
       "disposition": "PORT",
-      "destination": "schemas/finding.schema.json",
-      "note": "Severity-ranked findings with a concrete fix are the finding schema's required shape.",
-      "probe": "severity",
+      "destination": "roles/clean-room-reviewer.md",
+      "note": "The deliverable is one verdict document valid against the verdict schema.",
+      "probe": "verdict.schema.json",
       "verified-by": {
-        "command": "grep -c 'severity' schemas/finding.schema.json",
+        "command": "grep -c 'verdict.schema.json' roles/clean-room-reviewer.md",
         "exit": 0,
-        "output": "6"
+        "output": "2"
       },
       "negative-witness": {
         "kind": "sibling",
-        "command": "grep -c 'severity' schemas/role-brief.schema.json",
+        "command": "grep -c 'verdict.schema.json' roles/implementer.md",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
+      "id": "ref-clean-room-brief:kind-verdict-phase-phase-head-40-hex-sha-the-exa",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:89",
+      "kind": "bullet",
+      "text": "- `kind: verdict`, `phase: <PHASE>`, `head: <40-hex sha>`, the EXACT commit you",
+      "group": "review-verdict-shape",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "schemas/verdict.schema.json",
+      "note": "The head field is the exact forty-hex reviewed commit.",
+      "probe": "{40}",
+      "verified-by": {
+        "command": "grep -c '{40}' schemas/verdict.schema.json",
+        "exit": 0,
+        "output": "1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c '{40}' schemas/tuition.schema.json",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
+      "id": "ref-clean-room-brief:verdict-approve-or-fix-round-needed-any-finding",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:91",
+      "kind": "bullet",
+      "text": "- `verdict`: `APPROVE` or `FIX-ROUND-NEEDED`. Any finding of severity medium or",
+      "group": "review-verdict-shape",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "schemas/verdict.schema.json",
+      "note": "The verdict vocabulary, and a high or critical finding forces FIX-ROUND-NEEDED.",
+      "probe": "FIX-ROUND-NEEDED",
+      "verified-by": {
+        "command": "grep -c 'FIX-ROUND-NEEDED' schemas/verdict.schema.json",
+        "exit": 0,
+        "output": "5"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'FIX-ROUND-NEEDED' schemas/tuition.schema.json",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
+      "id": "ref-clean-room-brief:produced-by-your-model-family-framing-your-entry",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:93",
+      "kind": "bullet",
+      "text": "- `produced-by`: your model family, `framing`: your entry point, and",
+      "group": "review-verdict-shape",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "schemas/verdict.schema.json",
+      "note": "Model family and framing are required, so decorrelation is comparable between two verdicts.",
+      "probe": "produced-by",
+      "verified-by": {
+        "command": "grep -c 'produced-by' schemas/verdict.schema.json",
+        "exit": 0,
+        "output": "3"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'produced-by' schemas/tuition.schema.json",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
+      "id": "ref-clean-room-brief:findings-cr-nnn-findings-as-schemas-finding-sche",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:96",
+      "kind": "bullet",
+      "text": "- `findings`: `CR-nnn` findings as `schemas/finding.schema.json` defines them,",
+      "group": "review-verdict-shape",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "schemas/verdict.schema.json",
+      "note": "Findings take the finding schema shape.",
+      "probe": "finding.schema.json",
+      "verified-by": {
+        "command": "grep -c 'finding.schema.json' schemas/verdict.schema.json",
+        "exit": 0,
+        "output": "1"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'finding.schema.json' schemas/tuition.schema.json",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
+      "id": "ref-clean-room-brief:criteria-every-acceptance-criterion-quoted-met-t",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:99",
+      "kind": "bullet",
+      "text": "- `criteria`: every acceptance criterion, quoted, `met` true or false, with",
+      "group": "review-verdict-shape",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "schemas/verdict.schema.json",
+      "note": "Every acceptance criterion walked, with met and evidence.",
+      "probe": "criteria",
+      "verified-by": {
+        "command": "grep -c 'criteria' schemas/verdict.schema.json",
+        "exit": 0,
+        "output": "10"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'criteria' schemas/tuition.schema.json",
+        "exit": 1,
+        "output": "0"
+      }
+    },
+    {
+      "id": "ref-clean-room-brief:for-the-hazard-contract-hazard-classes-addressed",
+      "root": ".claude/skills",
+      "rule": ".claude/skills/phase-delivery/references/clean-room-brief.md:101",
+      "kind": "bullet",
+      "text": "- For the hazard contract, `hazard-classes-addressed`: one entry per declared",
+      "group": "review-verdict-shape",
+      "status": "PORTED",
+      "disposition": "PORT",
+      "destination": "schemas/verdict.schema.json",
+      "note": "The hazard contract requires one entry per declared hazard class.",
+      "probe": "hazard-classes-addressed",
+      "verified-by": {
+        "command": "grep -c 'hazard-classes-addressed' schemas/verdict.schema.json",
+        "exit": 0,
+        "output": "8"
+      },
+      "negative-witness": {
+        "kind": "sibling",
+        "command": "grep -c 'hazard-classes-addressed' schemas/tuition.schema.json",
         "exit": 1,
         "output": "0"
       }
@@ -6486,6 +6731,223 @@
       }
     },
     {
+      "id": "next-script:value-plan-path",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:55",
+      "kind": "binding",
+      "text": "const VALUE_PLAN_PATH = \"delivery/plan/value-delivery-plan.yaml\";",
+      "group": "next-failed-measurement",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel artifact states that a phase set derived only from work TRACES is incomplete, nor that the plan is the source which names a phase before anyone starts it; M4-P24 owns the command that would carry it",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. The path of the YAML plan M5 is delivered under. It is the value-delivery plan half of next-script:planunread's rule: the plan is the source that names a phase before anyone starts it, and a plan that cannot be read is a reason, never an empty phase set.",
+      "probe": "A DENOMINATOR THAT GROWS IS NOT A DENOMINATOR",
+      "verified-by": {
+        "command": "grep -c 'phase the plan names' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:readvalueplan",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:57",
+      "kind": "function",
+      "text": "async function readValuePlan() {",
+      "group": "next-failed-measurement",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel artifact states that a phase set derived only from work TRACES is incomplete, nor that the plan is the source which names a phase before anyone starts it; M4-P24 owns the command that would carry it",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. Parses the YAML plan's phase ids and branches in plan order. It is the value-delivery plan half of next-script:planunread's rule: the plan is the source that names a phase before anyone starts it, and a plan that cannot be read is a reason, never an empty phase set.",
+      "probe": "A DENOMINATOR THAT GROWS IS NOT A DENOMINATOR",
+      "verified-by": {
+        "command": "grep -c 'phase the plan names' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:value-plan",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:90",
+      "kind": "binding",
+      "text": "const VALUE_PLAN = await readValuePlan();",
+      "group": "next-failed-measurement",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel artifact states that a phase set derived only from work TRACES is incomplete, nor that the plan is the source which names a phase before anyone starts it; M4-P24 owns the command that would carry it",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. The parsed plan, or the reason it could not be read. It is the value-delivery plan half of next-script:planunread's rule: the plan is the source that names a phase before anyone starts it, and a plan that cannot be read is a reason, never an empty phase set.",
+      "probe": "A DENOMINATOR THAT GROWS IS NOT A DENOMINATOR",
+      "verified-by": {
+        "command": "grep -c 'phase the plan names' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:mergedbranchset",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:98",
+      "kind": "function",
+      "text": "function mergedBranchSet() {",
+      "group": "next-merged-predicate",
+      "status": "GAP",
+      "disposition": "DELETE",
+      "reason": "Added by M5-P4, which introduced the declaration. Reads which branches pull-request merge commits on origin/main name. Like next-script:done, the script's merged-ness predicate is not ported; the kernel's tiphys next carries its own landedness predicate.",
+      "gap": "the merged-ness predicate must NOT be ported: a branch whose commits landed inside another branch's pull request is reported OPEN by it forever. M4-P24 criterion 3 replaces it with a delivered-elsewhere predicate",
+      "verified-by": {
+        "command": "grep -c 'delivered-elsewhere' AGENTS.md src/cli.ts src/fleet.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / src/cli.ts:0 / src/fleet.ts:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/commands/next.ts"
+        ],
+        "read": "src/commands/next.ts carries the token because it ships the REPLACEMENT this row's own gap field predicted, deliveredElsewhere, not the naive merged-ness predicate this row refuses to port. The naive predicate is absent from the kernel: no kernel source filters branches on git's merged-ness, and src/commands/next.ts reaches the same question through landedness plus a patch-id arm precisely because git branch --merged reports a squash-merged branch open forever. The hit confirms the deletion rather than refuting it."
+      }
+    },
+    {
+      "id": "next-script:planordered",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:313",
+      "kind": "binding",
+      "text": "let planOrdered = null;",
+      "group": "next-failed-measurement",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel artifact states that a phase set derived only from work TRACES is incomplete, nor that the plan is the source which names a phase before anyone starts it; M4-P24 owns the command that would carry it",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. The plan's phases for this milestone, in plan order. It is the value-delivery plan half of next-script:planunread's rule: the plan is the source that names a phase before anyone starts it, and a plan that cannot be read is a reason, never an empty phase set.",
+      "probe": "A DENOMINATOR THAT GROWS IS NOT A DENOMINATOR",
+      "verified-by": {
+        "command": "grep -c 'phase the plan names' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:merged-branches",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:418",
+      "kind": "binding",
+      "text": "const MERGED_BRANCHES = mergedBranchSet();",
+      "group": "next-merged-predicate",
+      "status": "GAP",
+      "disposition": "DELETE",
+      "reason": "Added by M5-P4, which introduced the declaration. The merged-branch set for this run. Like next-script:done, the script's merged-ness predicate is not ported; the kernel's tiphys next carries its own landedness predicate.",
+      "gap": "the merged-ness predicate must NOT be ported: a branch whose commits landed inside another branch's pull request is reported OPEN by it forever. M4-P24 criterion 3 replaces it with a delivered-elsewhere predicate",
+      "verified-by": {
+        "command": "grep -c 'delivered-elsewhere' AGENTS.md src/cli.ts src/fleet.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / src/cli.ts:0 / src/fleet.ts:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/commands/next.ts"
+        ],
+        "read": "src/commands/next.ts carries the token because it ships the REPLACEMENT this row's own gap field predicted, deliveredElsewhere, not the naive merged-ness predicate this row refuses to port. The naive predicate is absent from the kernel: no kernel source filters branches on git's merged-ness, and src/commands/next.ts reaches the same question through landedness plus a patch-id arm precisely because git branch --merged reports a squash-merged branch open forever. The hit confirms the deletion rather than refuting it."
+      }
+    },
+    {
+      "id": "next-script:phasemerged",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:421",
+      "kind": "function",
+      "text": "function phaseMerged(id, plannedBranch) {",
+      "group": "next-merged-predicate",
+      "status": "GAP",
+      "disposition": "DELETE",
+      "reason": "Added by M5-P4, which introduced the declaration. Merged is a work history on main or a merged plan-named branch. Like next-script:done, the script's merged-ness predicate is not ported; the kernel's tiphys next carries its own landedness predicate.",
+      "gap": "the merged-ness predicate must NOT be ported: a branch whose commits landed inside another branch's pull request is reported OPEN by it forever. M4-P24 criterion 3 replaces it with a delivered-elsewhere predicate",
+      "verified-by": {
+        "command": "grep -c 'delivered-elsewhere' AGENTS.md src/cli.ts src/fleet.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / src/cli.ts:0 / src/fleet.ts:0"
+      },
+      "widened": {
+        "hit-paths": [
+          "src/commands/next.ts"
+        ],
+        "read": "src/commands/next.ts carries the token because it ships the REPLACEMENT this row's own gap field predicted, deliveredElsewhere, not the naive merged-ness predicate this row refuses to port. The naive predicate is absent from the kernel: no kernel source filters branches on git's merged-ness, and src/commands/next.ts reaches the same question through landedness plus a patch-id arm precisely because git branch --merged reports a squash-merged branch open forever. The hit confirms the deletion rather than refuting it."
+      }
+    },
+    {
+      "id": "next-script:plannextaction",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:553",
+      "kind": "function",
+      "text": "function planNextAction(entries, planLabel) {",
+      "group": "next-exit-nonzero",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel command exits nonzero while work remains; tiphys next in M4-P24 is that command and does not exist yet",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. The first plan-ordered phase not merged, as DRIVE or DISPATCH. Part of choosing the ONE next action this script prints while exiting nonzero, which is next-script:next's rule.",
+      "verified-by": {
+        "command": "grep -c 'exits nonzero whenever work remains' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:terminal",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:606",
+      "kind": "binding",
+      "text": "const TERMINAL = {",
+      "group": "next-exit-nonzero",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel command exits nonzero while work remains; tiphys next in M4-P24 is that command and does not exist yet",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. What a finished milestone owes; M4 now hands over to its successor plan instead of naming the closed approval sweep. Part of choosing the ONE next action this script prints while exiting nonzero, which is next-script:next's rule.",
+      "verified-by": {
+        "command": "grep -c 'exits nonzero whenever work remains' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:plannext",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:610",
+      "kind": "binding",
+      "text": "const planNext = planOrdered !== null ? planNextAction(planOrdered, VALUE_PLAN_PATH) : null;",
+      "group": "next-exit-nonzero",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel command exits nonzero while work remains; tiphys next in M4-P24 is that command and does not exist yet",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. The plan-derived next action for this milestone. Part of choosing the ONE next action this script prints while exiting nonzero, which is next-script:next's rule.",
+      "verified-by": {
+        "command": "grep -c 'exits nonzero whenever work remains' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
+      "id": "next-script:successornext",
+      "root": ".claude/orchestrator-next.mjs",
+      "rule": ".claude/orchestrator-next.mjs:611",
+      "kind": "binding",
+      "text": "let successorNext = null;",
+      "group": "next-exit-nonzero",
+      "status": "GAP",
+      "disposition": "KEEP",
+      "gap": "no kernel command exits nonzero while work remains; tiphys next in M4-P24 is that command and does not exist yet",
+      "dr0029-side": "process",
+      "note": "Added by M5-P4, which introduced the declaration. The successor plan's next action once the milestone is finished. Part of choosing the ONE next action this script prints while exiting nonzero, which is next-script:next's rule.",
+      "verified-by": {
+        "command": "grep -c 'exits nonzero whenever work remains' AGENTS.md roles/implementer.md src/cli.ts",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / src/cli.ts:0"
+      }
+    },
+    {
       "id": "claude-md:and-rule-1-is-defeated-by-merging-quickly-which",
       "root": "CLAUDE.md",
       "rule": "CLAUDE.md:595",
@@ -6617,6 +7079,40 @@
         "exit": 1,
         "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/investigator.md:0"
       }
+    },
+    {
+      "id": "claude-md:agent-concurrency-one-workflow-at-a-time-two-age",
+      "root": "CLAUDE.md",
+      "kind": "heading",
+      "text": "## Agent concurrency: ONE workflow at a time, two agents (DR-0044, binding)",
+      "group": "harness-tool-rules",
+      "status": "GAP",
+      "disposition": "DELETE",
+      "reason": "The rule is about the harness this process runs on. Retiring the process retires it; the kernel's watchdog clauses carry the property that mattered.",
+      "gap": "these name harness tools (Monitor, CronCreate, ListAgents, workflow agent caps) that the kernel does not have and does not model",
+      "note": "Added by M5-P5, which applied DR-0044 to CLAUDE.md. Same harness-tool rule family and the same gap as the rows it supersedes: the kernel does not model workflow caps.",
+      "verified-by": {
+        "command": "grep -c 'CronCreate' AGENTS.md roles/implementer.md roles/_shared-dispatch-contract.md templates/warnings.md",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/_shared-dispatch-contract.md:0 / templates/warnings.md:0"
+      }
+    },
+    {
+      "id": "claude-md:before-dispatching-state-in-writing-how-many-age",
+      "root": "CLAUDE.md",
+      "kind": "bold-lead",
+      "text": "**Before dispatching, state in writing: how many agents, in how many",
+      "group": "harness-tool-rules",
+      "status": "GAP",
+      "disposition": "DELETE",
+      "reason": "The rule is about the harness this process runs on. Retiring the process retires it; the kernel's watchdog clauses carry the property that mattered.",
+      "gap": "these name harness tools (Monitor, CronCreate, ListAgents, workflow agent caps) that the kernel does not have and does not model",
+      "note": "Added by M5-P5. The pre-dispatch statement survives DR-0044 with its threshold inverted: more than 2 is wrong.",
+      "verified-by": {
+        "command": "grep -c 'CronCreate' AGENTS.md roles/implementer.md roles/_shared-dispatch-contract.md templates/warnings.md",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/_shared-dispatch-contract.md:0 / templates/warnings.md:0"
+      }
     }
   ],
   "retired": [
@@ -6632,6 +7128,956 @@
         "exit": 1,
         "output": "src/fleet.ts:0 / src/cli.ts:0"
       }
+    },
+    {
+      "id": "ref-clean-room-brief:deliverable-write-the-review-to",
+      "root": ".claude/skills",
+      "was-rule": "**DELIVERABLE**: write the review to",
+      "retired-on": "2026-09-23",
+      "superseded-by": "ref-clean-room-brief:deliverable-write-one-verdict-document-valid-aga",
+      "reason": "M5-P3 rewrote the clean-room brief's deliverable: the review is no longer a markdown document written to delivery/review/clean-room-<phase>.md but one verdict JSON per contract, valid against schemas/verdict.schema.json. The rule survives in that shape under the successor row, whose anchor is the reworded DELIVERABLE line. Retired rather than deleted so the id stays resolvable for anything that cites it.",
+      "verified-by-at-retirement": {
+        "command": "grep -c 'severity' schemas/finding.schema.json",
+        "exit": 0,
+        "output": "6"
+      }
+    },
+    {
+      "id": "claude-md:and-the-newest-mtime-under-the-agent-s-working-d",
+      "root": "CLAUDE.md",
+      "was-rule": "**AND \"THE NEWEST MTIME UNDER THE AGENT'S WORKING DIRECTORY\" IS NOT MECHANICAL",
+      "retired-on": "2026-09-23",
+      "superseded-by": "claude-md:where-does-this-agent-write-measure-it-do-not-pr",
+      "reason": "M5-P5 removed the six-times narrative from CLAUDE.md. The three questions it introduced stay in CLAUDE.md and carry the rule; the story is in T-014. Recorded as diet entry diet-claude-md-05.",
+      "diet": "diet-claude-md-05",
+      "verified-by-at-retirement": {
+        "command": "grep -c 'THREE THINGS TO ANSWER IN WRITING' AGENTS.md",
+        "exit": 0,
+        "output": "1"
+      }
+    },
+    {
+      "id": "claude-md:and-an-unisolated-agent-takes-your-clone-measure",
+      "root": "CLAUDE.md",
+      "was-rule": "**AND AN UNISOLATED AGENT TAKES YOUR CLONE, measured 2026-09-15.** Six",
+      "retired-on": "2026-09-23",
+      "superseded-by": "claude-md:isolate-every-dispatched-implementer-including-t",
+      "reason": "M5-P5 removed the unisolated-agent incident narrative from CLAUDE.md. The two isolation rules it introduced stay and carry the rule; the story is in T-026. Recorded as diet entry diet-claude-md-06.",
+      "diet": "diet-claude-md-06",
+      "verified-by-at-retirement": {
+        "command": "grep -c 'verification-dispatch-isolation' AGENTS.md",
+        "exit": 0,
+        "output": "2"
+      }
+    },
+    {
+      "id": "claude-md:agent-concurrency-is-per-workflow-and-the-fix-is",
+      "root": "CLAUDE.md",
+      "was-rule": "## Agent concurrency is PER WORKFLOW, and the fix is more workflows (binding)",
+      "retired-on": "2026-09-23",
+      "superseded-by": "claude-md:agent-concurrency-one-workflow-at-a-time-two-age",
+      "reason": "M5-P5 corrected a FALSE rule. DR-0044 (decided by the owner, 2026-09-16) withdrew the fan-out rule these anchors stated and bound one workflow at a time; the section now states DR-0044's rule. Recorded as diet entry diet-claude-md-10.",
+      "diet": "diet-claude-md-10",
+      "verified-by-at-retirement": {
+        "command": "grep -c 'CronCreate' AGENTS.md roles/implementer.md roles/_shared-dispatch-contract.md templates/warnings.md",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/_shared-dispatch-contract.md:0 / templates/warnings.md:0"
+      }
+    },
+    {
+      "id": "claude-md:measured-2026-09-15-nproc-returns-4-and-the-work",
+      "root": "CLAUDE.md",
+      "was-rule": "**Measured 2026-09-15: `nproc` returns 4, and the workflow cap is",
+      "retired-on": "2026-09-23",
+      "superseded-by": "claude-md:agent-concurrency-one-workflow-at-a-time-two-age",
+      "reason": "M5-P5 corrected a FALSE rule. DR-0044 (decided by the owner, 2026-09-16) withdrew the fan-out rule these anchors stated and bound one workflow at a time; the section now states DR-0044's rule. Recorded as diet entry diet-claude-md-10.",
+      "diet": "diet-claude-md-10",
+      "verified-by-at-retirement": {
+        "command": "grep -c 'CronCreate' AGENTS.md roles/implementer.md roles/_shared-dispatch-contract.md templates/warnings.md",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/_shared-dispatch-contract.md:0 / templates/warnings.md:0"
+      }
+    },
+    {
+      "id": "claude-md:the-fix-is-n-workflows-of-2-not-one-workflow-of",
+      "root": "CLAUDE.md",
+      "was-rule": "**The fix is N workflows of 2, not one workflow of 2N.** Each workflow gets its",
+      "retired-on": "2026-09-23",
+      "superseded-by": "claude-md:agent-concurrency-one-workflow-at-a-time-two-age",
+      "reason": "M5-P5 corrected a FALSE rule. DR-0044 (decided by the owner, 2026-09-16) withdrew the fan-out rule these anchors stated and bound one workflow at a time; the section now states DR-0044's rule. Recorded as diet entry diet-claude-md-10.",
+      "diet": "diet-claude-md-10",
+      "verified-by-at-retirement": {
+        "command": "grep -c 'CronCreate' AGENTS.md roles/implementer.md roles/_shared-dispatch-contract.md templates/warnings.md",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/_shared-dispatch-contract.md:0 / templates/warnings.md:0"
+      }
+    },
+    {
+      "id": "claude-md:re-invoke-with-scriptpath-args-once-per-pair-fou",
+      "root": "CLAUDE.md",
+      "was-rule": "3. Re-invoke with `{scriptPath, args: [...]}` once per PAIR. Four extra calls",
+      "retired-on": "2026-09-23",
+      "superseded-by": "claude-md:agent-concurrency-one-workflow-at-a-time-two-age",
+      "reason": "M5-P5 corrected a FALSE rule. DR-0044 withdrew re-invoking the dispatch script once per pair and inverted the pre-dispatch sentence (more than 2 is wrong, not 2). Recorded as diet entry diet-claude-md-11.",
+      "diet": "diet-claude-md-11",
+      "verified-by-at-retirement": {
+        "command": "grep -c 'CronCreate' AGENTS.md roles/implementer.md roles/_shared-dispatch-contract.md templates/warnings.md",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/_shared-dispatch-contract.md:0 / templates/warnings.md:0"
+      }
+    },
+    {
+      "id": "claude-md:before-dispatching-any-fan-out-state-in-writing",
+      "root": "CLAUDE.md",
+      "was-rule": "**Before dispatching any fan-out, state in writing: how many agents, in how many",
+      "retired-on": "2026-09-23",
+      "superseded-by": "claude-md:before-dispatching-state-in-writing-how-many-age",
+      "reason": "M5-P5 corrected a FALSE rule. DR-0044 withdrew re-invoking the dispatch script once per pair and inverted the pre-dispatch sentence (more than 2 is wrong, not 2). Recorded as diet entry diet-claude-md-11.",
+      "diet": "diet-claude-md-11",
+      "verified-by-at-retirement": {
+        "command": "grep -c 'CronCreate' AGENTS.md roles/implementer.md roles/_shared-dispatch-contract.md templates/warnings.md",
+        "exit": 1,
+        "output": "AGENTS.md:0 / roles/implementer.md:0 / roles/_shared-dispatch-contract.md:0 / templates/warnings.md:0"
+      }
+    }
+  ],
+  "diet": [
+    {
+      "id": "diet-claude-md-01",
+      "file": "CLAUDE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        46,
+        46
+      ],
+      "first": "| Review of a PR | `delivery/review/clean-room-<phase>.md` | before merge |",
+      "last": "| Review of a PR | `delivery/review/clean-room-<phase>.md` | before merge |",
+      "disposition": "corrected",
+      "summary": "The durability table named delivery/review/clean-room-<phase>.md as the review of a PR.",
+      "authority": {
+        "at": "delivery/plan/value-delivery-plan.yaml:183-185",
+        "quote": "valid verdict JSON named delivery/review/<phase>-<contract>.json, incrementally, for"
+      },
+      "replacement": {
+        "file": "CLAUDE.md",
+        "quote": "`delivery/review/<phase-id>-<contract>.json`, one verdict per review contract, valid against `schemas/verdict.schema.json`"
+      },
+      "note": "M5-P3 changed the reviewer output contract: one verdict JSON per review contract. The old row contradicted it."
+    },
+    {
+      "id": "diet-claude-md-02",
+      "file": "CLAUDE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        87,
+        119
+      ],
+      "first": "**The `-a` is LOAD-BEARING and its absence is why the second check was",
+      "last": "not by running the check.",
+      "disposition": "history-moved",
+      "summary": "The grep -a history and the first ASCII check's blindness to control characters, with the fixture table.",
+      "history": {
+        "at": "delivery/tuition/T-010-the-control-character-check-could-not-see-nul.md:34-36",
+        "quote": "Without `-a`, GNU grep detects a file containing NUL as binary and stops reporting matches from it."
+      },
+      "rule-kept": {
+        "file": "CLAUDE.md",
+        "quote": "Authored files must be pure ASCII **and free of control characters**"
+      },
+      "note": "The grep the paragraph explained is no longer the check: the rule now runs through scripts/check-authored-bytes.mjs, which rejects NUL, and a CI step runs it on both events. Recorded as history-moved rather than mechanically-enforced since the fresh-implementer round: no test names that script inside its own body, so the enforced-by check cannot be discharged honestly. A pointer to T-010 was added in its place."
+    },
+    {
+      "id": "diet-claude-md-03",
+      "file": "CLAUDE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        355,
+        361
+      ],
+      "first": "A throughput analysis of M1 measured sixteen completed fix rounds. Thirteen",
+      "last": "rounds that way, M1-P5 chained four, M1-P6 chained two.",
+      "disposition": "history-moved",
+      "summary": "The M1 throughput analysis: sixteen fix rounds, twelve of thirteen re-reviews found a new finding.",
+      "history": {
+        "at": "delivery/plan/kernel-plan-m3.md:449-453",
+        "quote": "completed, thirteen were re-reviewed, and TWELVE of those thirteen produced a new finding attributable to the round itself"
+      },
+      "rule-kept": {
+        "file": "CLAUDE.md",
+        "quote": "**Name the MECHANISM, not the finding.**"
+      }
+    },
+    {
+      "id": "diet-claude-md-04",
+      "file": "CLAUDE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        384,
+        388
+      ],
+      "first": "This is proven inside this repository rather than imported. M1-P5's fourth",
+      "last": "closed one path at a time.",
+      "disposition": "history-moved",
+      "summary": "The M1-P5 fourth-round proof that the method works.",
+      "history": {
+        "at": "delivery/plan/kernel-plan-m3.md:457-459",
+        "quote": "derived eleven call sites where the review had listed eight, closing in one round a class that three prior rounds had each closed one path at a time"
+      },
+      "rule-kept": {
+        "file": "CLAUDE.md",
+        "quote": "**The reviewer's FIRST check is item 3**, before examining any row."
+      }
+    },
+    {
+      "id": "diet-claude-md-05",
+      "file": "CLAUDE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        500,
+        508
+      ],
+      "first": "**AND \"THE NEWEST MTIME UNDER THE AGENT'S WORKING DIRECTORY\" IS NOT MECHANICAL",
+      "last": "killed it three-quarters through its work.",
+      "disposition": "history-moved",
+      "summary": "Why the newest-mtime wording was got wrong six times.",
+      "history": {
+        "at": "delivery/tuition/T-014-the-watchdog-watched-the-wrong-place-six-times.md:13-14",
+        "quote": "In one session the orchestrator built SIX watchdogs against that rule."
+      },
+      "rule-kept": {
+        "file": "CLAUDE.md",
+        "quote": "Answer these three IN WRITING in the dispatch turn, before arming anything:"
+      },
+      "retires": [
+        "claude-md:and-the-newest-mtime-under-the-agent-s-working-d"
+      ]
+    },
+    {
+      "id": "diet-claude-md-06",
+      "file": "CLAUDE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        540,
+        546
+      ],
+      "first": "**AND AN UNISOLATED AGENT TAKES YOUR CLONE, measured 2026-09-15.** Six",
+      "last": "only because the orchestrator's work was already pushed.",
+      "disposition": "history-moved",
+      "summary": "The 2026-09-15 incident in which an unisolated agent checked out its branch in the orchestrator's clone.",
+      "history": {
+        "at": "delivery/tuition/T-026-worktree-isolation-needs-a-git-cwd-and-fails-instantly-without-one.md:56-59",
+        "quote": "The unisolated agent had created and checked out its own branch IN THE ORCHESTRATOR'S WORKING TREE."
+      },
+      "rule-kept": {
+        "file": "CLAUDE.md",
+        "quote": "**Isolate EVERY dispatched implementer, including the ones that only write documents.**"
+      },
+      "retires": [
+        "claude-md:and-an-unisolated-agent-takes-your-clone-measure"
+      ]
+    },
+    {
+      "id": "diet-claude-md-07",
+      "file": "CLAUDE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        571,
+        575
+      ],
+      "first": "Measured 2026-08-07: `main` was red for **four hours and twenty-one minutes**",
+      "last": "surfaced it, not the process.",
+      "disposition": "history-moved",
+      "summary": "The T-009 incident: main red for four hours and twenty-one minutes.",
+      "history": {
+        "at": "delivery/tuition/T-009-green-on-the-wrong-event.md:51-53",
+        "quote": "and `main` was red from 13:17:51 to 17:38:47: **four hours and twenty-one minutes**."
+      },
+      "rule-kept": {
+        "file": "CLAUDE.md",
+        "quote": "**A merge is not complete until the post-merge `push` run on the new `main` head is observed to completion.**"
+      }
+    },
+    {
+      "id": "diet-claude-md-08",
+      "file": "CLAUDE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        646,
+        664
+      ],
+      "first": "The rest of this section is the history of why it existed, kept as written",
+      "last": "else, and the log prints bundle-level counts, not per-gate rows.",
+      "disposition": "history-moved",
+      "summary": "Why the four-facts procedure existed before M5-P4 uploaded summary.json, with the pre-M5-P4 grep.",
+      "history": {
+        "at": "delivery/work-history/m5-p4.md:59-61",
+        "quote": "Two `actions/upload-artifact@v4` steps, one per arm, each carrying the same event condition as the exit-test step that produces the file"
+      },
+      "rule-kept": {
+        "file": "CLAUDE.md",
+        "quote": "The procedure below still applies when there is no artifact to read"
+      }
+    },
+    {
+      "id": "diet-claude-md-09",
+      "file": "CLAUDE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1181,
+        1196
+      ],
+      "first": "The part that IS new was measured 2026-08-20 and is the trap worth naming.",
+      "last": "a guard that cannot go red.",
+      "disposition": "history-moved",
+      "summary": "The 2026-08-20 delete dry-run table, which the 2026-09-15 generalisation below it supersedes.",
+      "history": {
+        "at": "delivery/plan/kernel-plan-m4.md:3444",
+        "quote": "| `git push --dry-run --delete origin <branch>` | `- [deleted]`, exit 0 | refused, HTTP 403"
+      },
+      "rule-kept": {
+        "file": "CLAUDE.md",
+        "quote": "**`git push --dry-run` does not probe push AUTHORIZATION at all**, for any ref namespace, in either direction."
+      }
+    },
+    {
+      "id": "diet-claude-md-10",
+      "file": "CLAUDE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1267,
+        1282
+      ],
+      "first": "## Agent concurrency is PER WORKFLOW, and the fix is more workflows (binding)",
+      "last": "Mechanical form, so it survives a busy session:",
+      "disposition": "corrected",
+      "summary": "The fan-out rule: N workflows of two, because the owner had asked twice.",
+      "authority": {
+        "at": "delivery/decisions/DR-0044-two-agents-in-parallel-is-enough.md:17-18",
+        "quote": "**Standing, binding:** dispatch at most ONE workflow at a time."
+      },
+      "replacement": {
+        "file": "CLAUDE.md",
+        "quote": "Do not open a second workflow to get around the cap"
+      },
+      "retires": [
+        "claude-md:agent-concurrency-is-per-workflow-and-the-fix-is",
+        "claude-md:measured-2026-09-15-nproc-returns-4-and-the-work",
+        "claude-md:the-fix-is-n-workflows-of-2-not-one-workflow-of"
+      ],
+      "note": "A FALSE rule since 2026-09-16. DR-0044 queued this amendment behind M4-P23 and nobody applied it after M4-P23 merged."
+    },
+    {
+      "id": "diet-claude-md-11",
+      "file": "CLAUDE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1291,
+        1299
+      ],
+      "first": "3. Re-invoke with `{scriptPath, args: [...]}` once per PAIR. Four extra calls",
+      "last": "number the tool reports rather than the one you passed.",
+      "disposition": "corrected",
+      "summary": "Re-invoke the script once per pair, and 'if that third number is 2, the dispatch is wrong'.",
+      "authority": {
+        "at": "delivery/decisions/DR-0044-two-agents-in-parallel-is-enough.md:62-64",
+        "quote": "**That sentence is now inverted: if it is more than 2, the dispatch is wrong.**"
+      },
+      "replacement": {
+        "file": "CLAUDE.md",
+        "quote": "If that third number is more than 2, the dispatch is wrong."
+      },
+      "retires": [
+        "claude-md:re-invoke-with-scriptpath-args-once-per-pair-fou",
+        "claude-md:before-dispatching-any-fan-out-state-in-writing"
+      ]
+    },
+    {
+      "id": "diet-state-01",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        7,
+        1017
+      ],
+      "first": "- as of: 2026-08-15 evening, NEWEST BLOCK. Everything below is OLDER.",
+      "last": "obligation and not a click.",
+      "disposition": "superseded-status",
+      "summary": "Dated NEWEST BLOCK status bullets from 2026-08-12 to 2026-08-20.",
+      "reason": "Each block said it was superseded by the next; M3 and M4 have since closed.",
+      "superseded-by": {
+        "file": "delivery/STATE.md",
+        "quote": "Pick up from the \"In flight\" section above, using the `phase-delivery` skill."
+      }
+    },
+    {
+      "id": "diet-state-02",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1018,
+        1025
+      ],
+      "first": "## The M1 hard stop: DISCHARGED 2026-08-06",
+      "last": "existed and that it was released by the owner, not optimised away.",
+      "disposition": "superseded-status",
+      "summary": "The M1 hard stop, discharged 2026-08-06.",
+      "reason": "Discharged; kept as history in git.",
+      "superseded-by": {
+        "file": "delivery/STATE.md",
+        "quote": "M1 closed 2026-08-06 (hard stop released by the owner)"
+      }
+    },
+    {
+      "id": "diet-state-03",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1026,
+        1035
+      ],
+      "first": "## How to resume cold",
+      "last": "`phase-delivery` skill.",
+      "disposition": "superseded-status",
+      "summary": "How to resume cold.",
+      "reason": "Moved up to follow the current standing, and its pointer changed from the section below to the section above.",
+      "superseded-by": {
+        "file": "delivery/STATE.md",
+        "quote": "5. Pick up from the \"In flight\" section above, using the `phase-delivery` skill."
+      }
+    },
+    {
+      "id": "diet-state-04",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1036,
+        1306
+      ],
+      "first": "## Phases",
+      "last": "Supervision is beacon/transcript freshness, not completion notifications.",
+      "disposition": "superseded-status",
+      "summary": "The M1 and M2 phase table and the M2 and M3 in-flight sections.",
+      "reason": "Those milestones are closed.",
+      "superseded-by": {
+        "file": "delivery/STATE.md",
+        "quote": "Their phase tables, pull request numbers and arbitration pointers are in"
+      }
+    },
+    {
+      "id": "diet-state-05",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1307,
+        1551
+      ],
+      "first": "## Carried forward, not yet owned",
+      "last": "through a command or file check, not an environment probe.",
+      "disposition": "archived",
+      "summary": "The M1 to M3 carried-forward backlog, 22 items, not re-verified.",
+      "reason": "Untouched since M3. Not called false: the pointer names it as unverified and says to re-verify against src/ before use.",
+      "note": "The pointer is derived from this entry's own lines: STATE.md must carry a paragraph naming `git show 6dc5b06:delivery/STATE.md` and `lines 1307 to 1551`."
+    },
+    {
+      "id": "diet-state-06",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1552,
+        1583
+      ],
+      "first": "## Owner decisions",
+      "last": "| DR-0043 post-M4 package cleanup | decided: the pass runs after M4, with a measured baseline of 683 build-history references in shipped artifacts |",
+      "disposition": "superseded-status",
+      "summary": "The owner decision table.",
+      "reason": "Stale: it listed DR-0010 as open, which is decided, and carried a seventeen-record gap row.",
+      "superseded-by": {
+        "file": "delivery/STATE.md",
+        "quote": "The register is `delivery/decisions/` itself, one file per record."
+      }
+    },
+    {
+      "id": "diet-state-07",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1638,
+        1656
+      ],
+      "first": "> **ANSWERED AND CLOSED, 2026-08-10: M3-P3's CR-002.** The owner authorised the",
+      "last": "> notification, and CONTINUED WORK.",
+      "disposition": "superseded-status",
+      "summary": "The answered-and-closed CR-002 escalation note from 2026-08-10.",
+      "reason": "Answered and closed; the phase merged at c7a7ce9 and DR-0023 records the lesson.",
+      "superseded-by": {
+        "file": "delivery/decisions/DR-0023-the-stop-rule-notifies-it-does-not-wait.md",
+        "quote": "# DR-0023: DR-0012's stop rule NOTIFIES the owner, it does not WAIT for them"
+      }
+    },
+    {
+      "id": "diet-state-08",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1725,
+        1775
+      ],
+      "first": "6. **A-7, before the M3 exit run. PART 1 IS DONE; PART 2 CHANGED SHAPE.**",
+      "last": "allocated id, which is the point of naming a sole allocator.",
+      "disposition": "superseded-status",
+      "summary": "A-7, the npm scope and trusted-publisher action.",
+      "reason": "Done: 0.1.0 and 0.2.0 were published over OIDC.",
+      "superseded-by": {
+        "rev": "6dc5b06",
+        "at": "delivery/STATE.md:161-162",
+        "quote": "**A-7 IS COMPLETE (owner, 2026-08-14).** The trusted publisher is configured for `@tiphys/kernel`"
+      }
+    },
+    {
+      "id": "diet-state-09",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1824,
+        1845
+      ],
+      "first": "## Tracked obligations, sequenced",
+      "last": "`process.exitCode`, and its red witness already exists as the measured table.",
+      "disposition": "superseded-status",
+      "summary": "The process.exit truncation obligation.",
+      "reason": "Fixed by M4-P29: the three sites use process.exitCode.",
+      "superseded-by": {
+        "rev": "6dc5b06",
+        "at": "src/gates/suite.ts:1166-1167",
+        "quote": "`process.exitCode`, NEVER `process.exit(runSuiteGate(...))` (M4-P29). // This gate runs as a SUBPROCESS"
+      }
+    },
+    {
+      "id": "diet-state-10",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1853,
+        1861
+      ],
+      "first": "- **DR-0022 is DECIDED (owner, 2026-08-09): option A2.** `commonmark` for block",
+      "last": "WITHDRAWN as never having been defects.",
+      "disposition": "superseded-status",
+      "summary": "DR-0022 decided, M3-P3 round 6 executing it.",
+      "reason": "M3-P3 merged.",
+      "superseded-by": {
+        "rev": "6dc5b06",
+        "at": "delivery/STATE.md:982",
+        "quote": "**M3-P3 IS MERGED AND CLOSED (2026-08-10), after TEN rounds.**"
+      }
+    },
+    {
+      "id": "diet-state-11",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1873,
+        1883
+      ],
+      "first": "- **BLOCKING ON M3-P10: `package.json` must reach `version` 0.1.0.** M3-P3's",
+      "last": "than resolving it because neither side is on its declaration.",
+      "disposition": "superseded-status",
+      "summary": "package.json must reach 0.1.0.",
+      "reason": "package.json read 0.2.0 at the baseline, and 0.2.0 was published from it.",
+      "superseded-by": {
+        "rev": "6dc5b06",
+        "at": "delivery/STATE.md:1613",
+        "quote": "OPEN. `@tiphys/kernel@0.2.0` is published, and the release workflow skipped"
+      }
+    },
+    {
+      "id": "diet-state-12",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1939,
+        1954
+      ],
+      "first": "Work that is agreed and cannot be done yet, recorded so the sequencing is a",
+      "last": "IMMEDIATELY AFTER M3-P1 merges and before M3-P2 is dispatched.",
+      "disposition": "superseded-status",
+      "summary": "The clause-map gate has no expectation row.",
+      "reason": "The row is present in scripts/m2-exit-test.sh.",
+      "superseded-by": {
+        "rev": "6dc5b06",
+        "at": "scripts/m2-exit-test.sh:221",
+        "quote": "{\"id\": \"clause-map\", \"expect\": \"green\", \"required\": true},"
+      }
+    },
+    {
+      "id": "diet-state-13",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        1957,
+        1974
+      ],
+      "first": "- **ONE WORKFLOW AT A TIME, TWO AGENTS, owner decision 2026-09-16 (DR-0044).**",
+      "last": "delivery/verification/a-suite-number-needs-a-fourth-qualifier.md:1.",
+      "disposition": "superseded-status",
+      "summary": "The DR-0044 reminder and the three queued CLAUDE.md amendments.",
+      "reason": "M5-P5 applied DR-0044 to CLAUDE.md, which the superseded-by quote shows. The two amendments still queued are restated in the Standing reminders; that restatement is current status and is not checked by the diet test.",
+      "superseded-by": {
+        "file": "CLAUDE.md",
+        "quote": "Do not open a second workflow to get around the cap"
+      }
+    },
+    {
+      "id": "diet-state-14",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        2135,
+        2681
+      ],
+      "first": "## M4 delivery, as of 2026-09-16 (evening refresh)",
+      "last": "### Residue, carried deliberately rather than lost",
+      "disposition": "superseded-status",
+      "summary": "The M4 standing blocks from 2026-09-16 to 2026-09-19 and the head of the closure block.",
+      "reason": "M4 is closed; every block said it superseded the one before.",
+      "superseded-by": {
+        "file": "delivery/STATE.md",
+        "quote": "**M4 is closed.** All thirty phases are merged;"
+      }
+    },
+    {
+      "id": "diet-state-15",
+      "file": "delivery/STATE.md",
+      "baseline": "6dc5b06",
+      "lines": [
+        2698,
+        2736
+      ],
+      "first": "### What the next session should read first",
+      "last": "- A-10: fleet default branch and six probe branches.",
+      "disposition": "superseded-status",
+      "summary": "What the next session should read first, and the 13:40 UTC M5 standing.",
+      "reason": "Replaced by the current M5 standing at the top of the file.",
+      "superseded-by": {
+        "file": "delivery/STATE.md",
+        "quote": "Pick up from the \"In flight\" section above, using the `phase-delivery` skill."
+      }
+    }
+  ],
+  "binding-headings": {
+    "CLAUDE.md": {
+      "headings": [
+        {
+          "heading": "# Tiphys kernel: repository rules",
+          "class": "binding"
+        },
+        {
+          "heading": "## What this repository is",
+          "class": "binding"
+        },
+        {
+          "heading": "## Durability rule (why this file exists)",
+          "class": "binding"
+        },
+        {
+          "heading": "## Where things live",
+          "class": "binding"
+        },
+        {
+          "heading": "## Binding conventions",
+          "class": "binding"
+        },
+        {
+          "heading": "## Gates",
+          "class": "binding"
+        },
+        {
+          "heading": "## Red-witness rule",
+          "class": "binding"
+        },
+        {
+          "heading": "## Fix-round contract (measured, 2026-08-05)",
+          "class": "binding"
+        },
+        {
+          "heading": "### The claim grep, also binding",
+          "class": "binding"
+        },
+        {
+          "heading": "### One witness is not a class",
+          "class": "binding"
+        },
+        {
+          "heading": "## Dispatch contract: no agent without a beacon and a guard (T-008, binding)",
+          "class": "binding"
+        },
+        {
+          "heading": "## Green is scoped to the run that produced it (T-009, binding)",
+          "class": "binding"
+        },
+        {
+          "heading": "### A green BUNDLE is not evidence that a PARTICULAR gate asserted anything",
+          "class": "binding"
+        },
+        {
+          "heading": "## Branch names are load-bearing, not labels (binding)",
+          "class": "binding"
+        },
+        {
+          "heading": "## Identifier schemes",
+          "class": "binding"
+        },
+        {
+          "heading": "## Delivery protocol",
+          "class": "binding"
+        },
+        {
+          "heading": "## A commit, a pull request and a CI run are three different things (DR-0031, binding)",
+          "class": "binding"
+        },
+        {
+          "heading": "### The mirror of T-019, and neither the gate nor any review caught it",
+          "class": "binding"
+        },
+        {
+          "heading": "### Local green before opening, and it is STRONGER than the CI run",
+          "class": "binding"
+        },
+        {
+          "heading": "## Standing environment warnings",
+          "class": "binding"
+        },
+        {
+          "heading": "## The orchestrator does not decide when it is finished (binding)",
+          "class": "binding"
+        },
+        {
+          "heading": "## Agent concurrency: ONE workflow at a time, two agents (DR-0044, binding)",
+          "class": "binding"
+        },
+        {
+          "heading": "## Reporting to the owner (binding, 2026-09-15)",
+          "class": "binding"
+        },
+        {
+          "heading": "## Never",
+          "class": "binding"
+        }
+      ]
+    },
+    "AGENTS.md": {
+      "frontmatter": "binding",
+      "headings": [
+        {
+          "heading": "# Orchestrator",
+          "class": "binding"
+        },
+        {
+          "heading": "## The eleven policy rows",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-001b: you do not write feature code in a project, and the carve-out is named",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-002: a review is never skipped, and the structural half is the declared mode",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-013: a genuine unknown gets its own investigator, dispatched alongside the planning",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-030: every plan-review finding is applied to the plan BEFORE execution starts",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-061: the fix round goes back to the SAME implementer, resumed",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-062: a dispute is allowed WITH EVIDENCE, and you arbitrate",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-065b: the merge commit message tells the story",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-067: three consecutive reds from one flake means stop re-kicking and fix the flake",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-073: consolidate small, low-risk, disjoint phases into one pull request",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-076: end a recurring flake early, and count what one costs",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause R-077: re-kick only when there is nothing pending to batch it with",
+          "class": "binding"
+        },
+        {
+          "heading": "## The four duties this document was assigned by name",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause fleet-state-commit-discipline: which fleet state is committed and pushed, and when",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause merge-authority: the declared mode says who signs, and for a delegated grant the signature is dual clean review",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause projects-read-only: project repositories are read-only to you, except as release manager",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause fleet-resume-specification: what survives reclamation, what is rebuilt, and what doctor reports",
+          "class": "binding"
+        },
+        {
+          "heading": "## When the owner is involved, and what happens at a bound",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause escalation-threshold: escalate only when the options are genuinely comparable AND the consequence is costly to reverse",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause stalled-phase-response: a fresh implementer and a third contract, dispatched immediately",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause two-review-contracts: two review CONTRACTS, not two reviewers",
+          "class": "binding"
+        },
+        {
+          "heading": "## The four duties this build paid tuition for",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause salvage-discipline: salvaged work is marked, and the marking is exact",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause verification-dispatch-isolation: every lens in its own clone, never a shared worktree",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause probe-injection: inject the phase's own probes into the clean-room review",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause tuition-promotion: promoting a kernel-relevant entry is a documented act, and the entry must NAME its mechanism",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause decorrelated-review: verify decorrelation against the verdict FILES, never against memory",
+          "class": "binding"
+        },
+        {
+          "heading": "## Supervision: how you know a dispatched agent is alive",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause dispatch-requires-a-beacon: no agent is dispatched without being told to write incrementally",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause dispatch-requires-a-guard: a freshness watchdog, armed in the SAME TURN as the dispatch",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause notification-is-not-liveness: waiting for a report is not supervision",
+          "class": "binding"
+        },
+        {
+          "heading": "## A green result is scoped to the run that produced it",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause merge-is-not-complete-until: the push run on the new tip, observed to completion",
+          "class": "binding"
+        },
+        {
+          "heading": "## clause gate-result-is-scoped-to-its-run: name the event and the head sha, always",
+          "class": "binding"
+        }
+      ]
+    }
+  },
+  "state-stable-sections": [
+    "## How to resume cold",
+    "## Owner decisions",
+    "## M4 closure",
+    "## Earlier milestones",
+    "## History of this file"
+  ],
+  "disclaimers-acknowledged": [
+    {
+      "file": "CLAUDE.md",
+      "quote": "(DR-0011, superseding the original \"off until M5\")",
+      "reason": "Names the rule DR-0011 replaced; the sentence states the current rule."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "**A RETIRED id is never reused, in ANY of these schemes.**",
+      "reason": "A retired id is the subject of the rule, not a label on it."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "because the retired one keeps being cited by the documents",
+      "reason": "A retired id is the subject of the rule."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "allocate a fresh id and never reuse a retired one.",
+      "reason": "A retired id is the subject of the rule."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "the phase no longer waits for the owner.",
+      "reason": "States the current DR-0016 behaviour."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "the rule that stood here was FALSE and is withdrawn.",
+      "reason": "Withdraws a former rule by name; the current rule follows it in the same section."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "and the blanket prohibition above is withdrawn. Reading CI is no longer necessarily an orchestrator action",
+      "reason": "Withdraws the earlier sentence of the same warning; the paragraph says what still binds."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "The numbers above are historical and correct for the head they name",
+      "reason": "Qualifies measured counts, not a rule."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "**A red on the default toolchain is therefore no longer proof of a red branch**",
+      "reason": "States a current fact the warning depends on."
+    },
+    {
+      "file": "CLAUDE.md",
+      "quote": "which withdrew the fan-out rule that stood here.",
+      "reason": "Names the rule DR-0044 withdrew; the section states the current rule."
+    },
+    {
+      "file": "AGENTS.md",
+      "quote": "RESTATED under DR-0015, which superseded the earlier reading of it.",
+      "reason": "Names the reading DR-0015 replaced; the clause states the current one."
+    },
+    {
+      "file": "AGENTS.md",
+      "quote": "a lease held by a session that no longer exists must expire rather than block.",
+      "reason": "Describes a session, not a rule."
     }
   ]
 }

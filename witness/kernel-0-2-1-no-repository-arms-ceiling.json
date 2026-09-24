@@ -1,0 +1,43 @@
+{
+  "id": "kernel-0-2-1-no-repository-arms-ceiling",
+  "behavior": "test-no-repository-arms-ceiling-at-tmpdir",
+  "tests": [
+    "a real repository above os.tmpdir() leaves the removed-.git, never-a-repository and GIT-stripped no-repository arms green, because git's ceiling stops discovery as the capture records"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "test/single-family-exception.test.ts",
+      "find": "process.env[\"GIT_CEILING_DIRECTORIES\"] = GIT_CEILING;",
+      "replace": "void GIT_CEILING;"
+    },
+    {
+      "kind": "mutation",
+      "file": "test/dual-review.test.ts",
+      "find": "process.env[\"GIT_CEILING_DIRECTORIES\"] = GIT_CEILING;",
+      "replace": "void GIT_CEILING;"
+    },
+    {
+      "kind": "mutation",
+      "file": "test/exit-test-local.test.ts",
+      "find": "  env[\"GIT_CEILING_DIRECTORIES\"] = GIT_CEILING;",
+      "replace": "  void GIT_CEILING;"
+    },
+    {
+      "kind": "mutation",
+      "file": "test/dual-review.test.ts",
+      "find": "  delete process.env[name];",
+      "replace": "  void name;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/kernel-0-2-1-git-ceiling.json"
+    ],
+    "provenance": "Real output of git rev-parse --show-toplevel, captured 2026-09-24 with git 2.43.0 against a scratch repository with one commit laid out as test/git-ceiling.test.ts stages it: with no GIT_CEILING_DIRECTORIES a plain directory inside it discovers the ancestor (exit 0, <lab>), with the ceiling at the ancestor it discovers nothing (exit 128, not a git repository), and a repository initialised below the ceiling is still found (exit 0, <lab>/ctx). The test re-runs the same probes live and compares status, stdout and stderr with the record, the lab path spelled <lab>, before running the three victims under a real ancestor repository."
+  }
+}

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { pathsIdentifySameObject } from "../path-identity.ts";
 import {
+  declaresNoHead,
   describeAdmittedVerdicts,
   describeOffHeadVerdicts,
   loadCommittedVerdicts,
@@ -48,10 +49,20 @@ import type { GateResultFields, GateStatus, PreconditionRecord } from "./result.
  *                                        standing warning 6 records this shape
  *                                        costing a whole watcher.
  *   an API failure called N/A          -> `not-applicable` is reachable from
- *                                        exactly one place here, the
- *                                        NO-VERDICT-AT-THIS-HEAD arm, and it
- *                                        carries an evaluated precondition
- *                                        record (SC-011).
+ *                                        exactly THREE places since M5-P3, and
+ *                                        none of them is an API failure. Each
+ *                                        carries its own evaluated precondition
+ *                                        record (SC-011): the M4-P12
+ *                                        NO-VERDICT-AT-THIS-HEAD arm (only
+ *                                        without `--base`), a change below the
+ *                                        dual-review tier (BUDGET_PRECONDITION_ID),
+ *                                        and a run inside the unconcluded CI of
+ *                                        this head with every review row green
+ *                                        (CI_CONCLUDED_PRECONDITION_ID).
+ *   an unreviewed shipped change called N/A -> with `--base`, a dual-tier
+ *                                        change with fewer than two admitted
+ *                                        verdicts is RED, decided before any
+ *                                        network request (M5-P3).
  *   CI-green read off the BRANCH       -> condition 4 compares
  *                                        `check_run.head_sha` against the head
  *                                        under evaluation and reddens when they
@@ -117,11 +128,12 @@ const PRECONDITION_ID = "merge-preconditions-verdict-names-this-head";
 
 const USAGE =
   "usage: node src/gates/merge-preconditions.ts --result <file> --head <sha> --phase <id> " +
-  "[--evidence <dir>] [--context <dir>] [--repo <owner/name>] [--api-base <url>] " +
-  "[--scope-record <file>] [--arbitrations <dir>]";
+  "[--base <ref>] [--evidence <dir>] [--context <dir>] [--repo <owner/name>] [--api-base <url>] " +
+  "[--scope-record <file>] [--arbitrations <dir>] [--token-env <NAME>]";
 
 interface Flags {
   result?: string;
+  base?: string;
   evidence?: string;
   head?: string;
   phase?: string;
@@ -130,10 +142,12 @@ interface Flags {
   "api-base"?: string;
   "scope-record"?: string;
   arbitrations?: string;
+  "token-env"?: string;
 }
 
 const SINGLE_VALUE_FLAGS = [
   "--result",
+  "--base",
   "--evidence",
   "--head",
   "--phase",
@@ -142,6 +156,7 @@ const SINGLE_VALUE_FLAGS = [
   "--api-base",
   "--scope-record",
   "--arbitrations",
+  "--token-env",
 ] as const;
 
 function parseFlags(args: string[]): Flags | undefined {
@@ -262,12 +277,27 @@ export type ApiResponse =
  * the fail-closed direction and never a silent pass, and supplying a token
  * would have to be a DECLARED FLAG in the registry command rather than an
  * ambient environment read.
+ *
+ * M5-P3: THAT DECLARED FLAG NOW EXISTS, AND THE COST ABOVE WAS MEASURED REAL.
+ * On 2026-09-23 from this container, Node's `fetch` (which does NOT go through
+ * the agent proxy) answered the unauthenticated `GET /repos/{slug}` with HTTP
+ * 403 "API rate limit exceeded for <ip>", and the same request with an
+ * Authorization header answered 200. Until M5-P3 the gate never reached the
+ * network in CI, because no verdict was ever committed; from M5-P3 on it does,
+ * on every reviewed shipped-code head, from a shared runner address. So
+ * `--token-env <NAME>` names the environment variable that holds the token,
+ * the registry command declares the name, and the value is sent as a bearer
+ * token and never written to any record, line or evidence file. Absent or
+ * empty, no header is sent, which is the M4-P12 behaviour.
  */
-export async function requestJson(url: string): Promise<ApiResponse> {
+export async function requestJson(url: string, token?: string): Promise<ApiResponse> {
   const headers: Record<string, string> = {
     accept: "application/vnd.github+json",
     "user-agent": "tiphys-merge-preconditions",
   };
+  if (token !== undefined && token !== "") {
+    headers["authorization"] = `Bearer ${token}`;
+  }
   try {
     const response = await fetch(url, { headers });
     const body = await response.text();
@@ -421,6 +451,35 @@ export function judgeCheckRuns(
       `${String(succeeded.length)} ${context} check run(s) concluded success with head_sha equal ` +
       "to the head under evaluation",
   };
+}
+
+/**
+ * The required check runs for THIS head that have not completed, one line each.
+ *
+ * M5-P3. Only runs whose `head_sha` IS the head under evaluation count, so an
+ * in-progress run for another commit cannot make this head's condition 4
+ * undecidable, and a completed run of ANY conclusion is not in flight. A
+ * re-run of a failed attempt is a second check run with the same name and
+ * head, so a failed first attempt beside an in-progress second one is still
+ * in flight, which is the case a naive "is any run completed" test gets wrong.
+ */
+export function inFlightCheckRuns(
+  head: string,
+  runs: readonly CheckRun[],
+  context: string,
+): string[] {
+  return runs
+    .filter(
+      (run) =>
+        String(run.name ?? "") === context &&
+        String(run.head_sha ?? "").toLowerCase() === head.toLowerCase() &&
+        String(run.status ?? "") !== "completed",
+    )
+    .map(
+      (run) =>
+        `IN FLIGHT ${context} check run at head ${head}: status ${String(run.status ?? "(no status)")}, ` +
+        `conclusion ${String(run.conclusion ?? "(none yet)")}`,
+    );
 }
 
 /* -------------------------------------------------------------------- */
@@ -732,6 +791,7 @@ function runRegisteredCheck(
   id: string,
   verdicts: readonly VerdictForHead[],
   contextDirectory: string,
+  base: string | undefined,
 ): { status: RowStatus; sentence: string } {
   const selected: DerivedCheck[] = registeredChecks().filter((check) => check.id === id);
   if (selected.length === 0) {
@@ -745,7 +805,9 @@ function runRegisteredCheck(
   const messages = new Set<string>();
   for (const verdict of verdicts) {
     for (const check of selected) {
-      const outcome = check.run(verdict.record, contextDirectory);
+      /* The base goes in so a head-less sibling is judged on its provenance
+         (kernel 0.2.1 fix round 2): history only if it is on the base. */
+      const outcome = check.run(verdict.record, contextDirectory, { base });
       for (const violation of outcome.violations) {
         messages.add(`${violation.pointer} ${violation.message}`);
       }
@@ -760,6 +822,242 @@ function runRegisteredCheck(
       `${id} reported no violation over the ${String(verdicts.length)} verdict(s) committed for ` +
       "this head",
   };
+}
+
+/* -------------------------------------------------------------------- */
+/* The review budget (M5-P3; DR-0027, DR-0035, T-040, T-041)             */
+/* -------------------------------------------------------------------- */
+
+/**
+ * How much review a change is REQUIRED to carry before it merges.
+ *
+ * WHY THIS EXISTS, in one measured sentence: until M5-P3 both review gates were
+ * conditional on "is there any verdict document at all", so a branch carrying
+ * shipped code and NO review was not-applicable, and T-041 counts sixteen such
+ * phases merged. Absence of evidence was read as absence of a subject. The
+ * budget turns the question round: the DIFF decides how much review is owed,
+ * and the verdicts are then measured against what is owed.
+ *
+ * THE TABLE IS DR-0027's, READ LITERALLY, and it is not re-derived here.
+ * delivery/decisions/DR-0027-reviews-target-shipped-value-not-ceremony.md:38
+ * declares three rows. Row 3 (`delivery/**`, `CLAUDE.md`, `.claude/**`) gets no
+ * review round. Row 2 (`scripts/`, `test/`, `.github/`, `gate-registry.yaml`,
+ * `gates.manifest.json`) gets ONE round whose findings do not block. Row 1 (the
+ * npm package) gets the full contract, which is DR-0012's two decorrelated
+ * approving reviews. DR-0035 later made "every change is reviewed" the owner's
+ * rule; it tiers the FIX-ROUND count and leaves DR-0012's pair where it was, so
+ * nothing here contradicts it: the two lower rows are not EXEMPT from review,
+ * they are exempt from the MACHINE-ENFORCED PAIR, which is the only thing a gate
+ * can count.
+ *
+ * FAIL CLOSED ON EVERY PATH THE TABLE DOES NOT NAME. Row 1's own list (`src/`,
+ * `bin/`, `schemas/`, `roles/`, `tuition/`) is narrower than what ships today:
+ * `plugin/src/` shipped sixteen unreviewed changes (T-041), and `templates/`,
+ * `checklists/`, `AGENTS.md` and `package.json` are all in the package's
+ * `files`. So the two LOWER rows are listed and everything else is held to the
+ * dual tier. A table that listed the dual tier instead would read a new
+ * top-level directory as paperwork, which is the fail-open direction.
+ *
+ * `gate-registry.yaml` AND `gates.manifest.json` ARE IN THE PACKAGE'S `files`
+ * AND IN ROW 2 AT ONCE. That is a real disagreement between two declarations
+ * and it is NOT resolved here: DR-0027 is the owner's explicit classification,
+ * so it wins, and the disagreement is recorded in delivery/work-history/m5-p3.md
+ * as an open question rather than silently decided.
+ */
+export type ReviewTier = "dual" | "single" | "none";
+
+interface BudgetRow {
+  tier: Exclude<ReviewTier, "dual">;
+  source: string;
+  /** A trailing `/` is a directory prefix; anything else is an exact path. */
+  paths: readonly string[];
+}
+
+export const REVIEW_BUDGET_ROWS: readonly BudgetRow[] = [
+  {
+    tier: "none",
+    source: "DR-0027 row 3 (no review round)",
+    paths: ["delivery/", "CLAUDE.md", ".claude/"],
+  },
+  {
+    tier: "single",
+    source: "DR-0027 row 2 (one review round, findings do not block)",
+    paths: ["scripts/", "test/", ".github/", "gate-registry.yaml", "gates.manifest.json"],
+  },
+];
+
+/** How many approving, decorrelated verdicts the dual tier requires. */
+export const REQUIRED_VERDICTS = 2;
+
+/** Which tier one project-relative path belongs to, and which row said so. */
+export function tierOfPath(path: string): { tier: ReviewTier; source: string } {
+  for (const row of REVIEW_BUDGET_ROWS) {
+    const named = row.paths.some((entry) =>
+      entry.endsWith("/") ? path.startsWith(entry) : path === entry,
+    );
+    if (named) {
+      return { tier: row.tier, source: row.source };
+    }
+  }
+  return {
+    tier: "dual",
+    source: "DR-0027 row 1 (the shipped tree, and every path the table does not name, fail closed)",
+  };
+}
+
+const TIER_RANK: Record<ReviewTier, number> = { none: 0, single: 1, dual: 2 };
+
+export interface ReviewBudget {
+  base: string;
+  head: string;
+  tier: ReviewTier;
+  /** Every changed path with the tier it was classified into. */
+  paths: { path: string; tier: ReviewTier }[];
+  /** The changed paths that put the change in the dual tier. */
+  dual: string[];
+}
+
+/** How many paths to name in a sentence before it stops being readable. */
+const NAMED_PATHS = 8;
+
+export function describeBudget(budget: ReviewBudget): string {
+  const named = (list: readonly string[]): string =>
+    list.slice(0, NAMED_PATHS).join(", ") +
+    (list.length > NAMED_PATHS ? ` and ${String(list.length - NAMED_PATHS)} more` : "");
+  if (budget.paths.length === 0) {
+    return `the diff ${budget.base}...${budget.head} changes no path`;
+  }
+  if (budget.tier === "dual") {
+    return (
+      `the diff ${budget.base}...${budget.head} changes ${String(budget.paths.length)} path(s), ` +
+      `${String(budget.dual.length)} of them in the dual-review tier (${named(budget.dual)})`
+    );
+  }
+  return (
+    `the diff ${budget.base}...${budget.head} changes ${String(budget.paths.length)} path(s) and ` +
+    `every one is below the dual-review tier (${named(budget.paths.map((entry) => `${entry.path}: ${entry.tier}`))})`
+  );
+}
+
+/**
+ * Classify the change `base...head` by the review it owes.
+ *
+ * THREE DOTS, the merge base, which is what `scope` and the `diff-touches`
+ * precondition already compare: a branch is charged for what IT changed, never
+ * for what `main` gained after it was cut.
+ *
+ * `-z` AND `--no-renames` FOR THE REASONS src/checks.ts gives at its own diff:
+ * without `--no-renames` a move from `src/a.ts` to `delivery/a.md` prints only
+ * the destination and the change would read as paperwork; without `-z` a
+ * non-ASCII paperwork name arrives quoted and is misread as shipped.
+ *
+ * A PATH OUTSIDE THE CONTEXT DIRECTORY IS DUAL, fail closed. git prints paths
+ * relative to the repository root and the project may be nested; a change
+ * outside the project is still unreviewed content in the commit under audit.
+ *
+ * EVERY git FAILURE IS AN ERROR RETURN, never an empty diff. An empty diff is a
+ * real answer (tier `none`), so a diff that could not be computed must never be
+ * able to produce it.
+ */
+export function classifyReviewBudget(
+  contextDirectory: string,
+  base: string,
+  head: string,
+): { ok: true; budget: ReviewBudget } | { ok: false; reason: string } {
+  const prefixRun = spawnSync("git", ["rev-parse", "--show-prefix"], {
+    cwd: contextDirectory,
+    encoding: "utf8",
+  });
+  if (prefixRun.error !== undefined || prefixRun.status !== 0) {
+    return {
+      ok: false,
+      reason:
+        `the review budget could not be established: git rev-parse --show-prefix in ${contextDirectory} ` +
+        `failed (${singleLine(String(prefixRun.error ?? prefixRun.stderr ?? ""))})`,
+    };
+  }
+  const prefix = (prefixRun.stdout ?? "").trim();
+  const diff = spawnSync(
+    "git",
+    ["diff", "-z", "--no-renames", "--name-only", `${base}...${head}`, "--"],
+    { cwd: contextDirectory, encoding: "utf8" },
+  );
+  if (diff.error !== undefined || diff.status !== 0) {
+    return {
+      ok: false,
+      reason:
+        `the review budget could not be established: git diff ${base}...${head} failed ` +
+        `(${singleLine(String(diff.error ?? diff.stderr ?? ""))}), so which review this change owes is ` +
+        "unknown and no review verdict can be reached",
+    };
+  }
+  const changed = (diff.stdout ?? "")
+    .split("\0")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  const paths = changed.map((path) => ({
+    path,
+    tier: path.startsWith(prefix) ? tierOfPath(path.slice(prefix.length)).tier : ("dual" as ReviewTier),
+  }));
+  const tier = paths.reduce<ReviewTier>(
+    (worst, entry) => (TIER_RANK[entry.tier] > TIER_RANK[worst] ? entry.tier : worst),
+    "none",
+  );
+  return {
+    ok: true,
+    budget: {
+      base,
+      head,
+      tier,
+      paths,
+      dual: paths.filter((entry) => entry.tier === "dual").map((entry) => entry.path),
+    },
+  };
+}
+
+/**
+ * The id of the precondition a below-dual change reports unmet.
+ *
+ * SHARED by both review gates, so "this change is below the dual-review tier"
+ * is one fact with one name wherever it is reported.
+ */
+export const BUDGET_PRECONDITION_ID = "review-budget-requires-dual-review";
+
+/** The evaluated, unmet precondition a below-dual change carries. */
+export function budgetPrecondition(budget: ReviewBudget): PreconditionRecord {
+  return {
+    id: BUDGET_PRECONDITION_ID,
+    met: false,
+    reason:
+      `${describeBudget(budget)}, so DR-0027 does not require the ${String(REQUIRED_VERDICTS)}-verdict ` +
+      "shipped-code review for it and this gate does not force it through that rule",
+    evidence: [
+      `tier: ${budget.tier}`,
+      "verdict documents: not read, because the pair rule does not apply to this tier",
+      ...budget.paths.slice(0, 50).map((entry) => `${entry.tier}: ${entry.path}`),
+      ...(budget.paths.length > 50 ? [`and ${String(budget.paths.length - 50)} more path(s)`] : []),
+    ],
+  };
+}
+
+/**
+ * The sentence a dual-tier change with too few admitted verdicts is red with.
+ *
+ * THE MISSING COUNT IS IN THE SENTENCE, because criterion p3-missing-is-red asks
+ * for it and because "red" alone does not tell an operator whether one review or
+ * both are owed.
+ */
+export function missingReviewsSentence(
+  budget: ReviewBudget,
+  admitted: number,
+  auditedHead: string,
+): string {
+  const missing = Math.max(0, REQUIRED_VERDICTS - admitted);
+  return (
+    `${describeBudget(budget)}, so DR-0012 requires ${String(REQUIRED_VERDICTS)} approving, decorrelated ` +
+    `verdicts for the commit under audit ${auditedHead}; ${String(admitted)} of ${String(REQUIRED_VERDICTS)} ` +
+    `are admitted and ${String(missing)} missing. A missing review is RED, never not-applicable (M5-P3)`
+  );
 }
 
 /* -------------------------------------------------------------------- */
@@ -812,9 +1110,10 @@ function read(path: string): Read {
 async function readRulesets(
   apiBase: string,
   slug: string,
+  token: string | undefined,
 ): Promise<{ ok: true; rulesets: RulesetReading[] } | { ok: false; reason: string }> {
   const listUrl = `${apiBase}/repos/${slug}/rulesets?includes_parents=true`;
-  const listed = readJsonBody(listUrl, await requestJson(listUrl));
+  const listed = readJsonBody(listUrl, await requestJson(listUrl, token));
   if (!listed.ok) {
     return { ok: false, reason: listed.reason };
   }
@@ -835,7 +1134,7 @@ async function readRulesets(
     let source = entry;
     if (!Array.isArray(entry["rules"])) {
       const detailUrl = `${apiBase}/repos/${slug}/rulesets/${String(entry["id"] ?? "")}`;
-      const detail = readJsonBody(detailUrl, await requestJson(detailUrl));
+      const detail = readJsonBody(detailUrl, await requestJson(detailUrl, token));
       if (!detail.ok) {
         return { ok: false, reason: detail.reason };
       }
@@ -857,58 +1156,26 @@ async function readRulesets(
   return { ok: true, rulesets };
 }
 
-export async function runGate(flags: Flags): Promise<number> {
-  const startedAt = now();
-  const resultPath = flags.result as string;
-  const head = (flags.head as string).toLowerCase();
-  const phase = (flags.phase as string).toLowerCase();
-  const contextDirectory = absolute(flags.context ?? process.cwd());
-  const apiBase = (flags["api-base"] ?? DEFAULT_API_BASE).replace(/\/+$/, "");
-  const slug = flags.repo ?? slugFromGit(contextDirectory) ?? "";
-  const shared = { gate: GATE_ID, unitLabel: UNIT_LABEL, startedAt };
+/**
+ * The review corpus for one head, read through the shipped primitives.
+ *
+ * EXTRACTED IN M5-P3 so the two orders the gate now has read it through ONE
+ * function. With `--base` the review evidence is read BEFORE the network,
+ * because "this shipped change carries no review" is decidable from the
+ * repository alone and must not depend on whether an API answers; without it
+ * the order is the M4-P12 one, unchanged.
+ */
+type ReviewCorpus =
+  | { ok: false; reason: string }
+  | {
+      ok: true;
+      read: number;
+      admitted: AdmittedVerdict[];
+      excluded: OffHeadVerdict[];
+      forHead: VerdictForHead[];
+    };
 
-  if (slug === "") {
-    return emit(
-      resultPath,
-      {
-        ...shared,
-        status: "error",
-        units: 0,
-        endedAt: now(),
-        detail:
-          "no repository could be established: `git -C <context> remote get-url origin` named none " +
-          "and --repo <owner/name> was not supplied. Without one, condition 4 and the " +
-          "branch-protection encoding have nothing to ask about",
-      },
-      [],
-    );
-  }
-
-  /* THE PROBE COMES FIRST (plan step 1 and criterion 2). An unreachable API is
-     `error` with units 0 and a reason naming the failure, and the test asserts
-     the STATUS WORD rather than the detail string, because the mutant this arm
-     exists against is a request wrapped in a catch that returns "unknown" and
-     reports green. CLAUDE.md standing warning 6 says REST reachability here is
-     a thing to PROBE at the start of a run that depends on it, in either
-     direction, so this is the probe and not an assumption. */
-  const probeUrl = `${apiBase}/repos/${slug}`;
-  const probe = readJsonBody(probeUrl, await requestJson(probeUrl));
-  if (!probe.ok) {
-    return emit(
-      resultPath,
-      {
-        ...shared,
-        status: "error",
-        units: 0,
-        endedAt: now(),
-        detail:
-          `the GitHub REST API could not be reached, so DR-0012 condition 4 and the ` +
-          `branch-protection encoding were not evaluated and no merge verdict was reached: ${probe.reason}`,
-      },
-      [],
-    );
-  }
-
+function readReviewCorpus(contextDirectory: string, head: string): ReviewCorpus {
   /* THE CORPUS, READ THROUGH THE SHIPPED PRIMITIVES (plan step 6). Every
      refusal below is `error` rather than red, and each is the one
      `scripts/check-dual-review.mjs` already makes at the same layer: a merge
@@ -918,43 +1185,24 @@ export async function runGate(flags: Flags): Promise<number> {
   const source = resolveCorpusSource(contextDirectory);
   const regime = missingRegimeDocument(contextDirectory, source);
   if (regime !== undefined) {
-    return emit(
-      resultPath,
-      { ...shared, status: "error", units: 0, endedAt: now(), detail: regime.reason },
-      [],
-    );
+    return { ok: false, reason: regime.reason };
   }
   const families = readReviewFamilies(contextDirectory);
   if (families.kind === "error") {
-    return emit(
-      resultPath,
-      { ...shared, status: "error", units: 0, endedAt: now(), detail: families.reason },
-      [],
-    );
+    return { ok: false, reason: families.reason };
   }
   const corpus = loadCommittedVerdicts(contextDirectory, source);
   if (!corpus.ok) {
-    return emit(
-      resultPath,
-      { ...shared, status: "error", units: 0, endedAt: now(), detail: corpus.reason },
-      [],
-    );
+    return { ok: false, reason: corpus.reason };
   }
   if (corpus.unexaminable.length > 0) {
-    return emit(
-      resultPath,
-      {
-        ...shared,
-        status: "error",
-        units: 0,
-        endedAt: now(),
-        detail:
-          `${String(corpus.unexaminable.length)} document(s) could not be examined, so whether a ` +
-          `review refusing this head is among them is unknown: ` +
-          corpus.unexaminable.map((diagnostic) => diagnostic.message).join("; "),
-      },
-      [],
-    );
+    return {
+      ok: false,
+      reason:
+        `${String(corpus.unexaminable.length)} document(s) could not be examined, so whether a ` +
+        `review refusing this head is among them is unknown: ` +
+        corpus.unexaminable.map((diagnostic) => diagnostic.message).join("; "),
+    };
   }
 
   /* THE SECOND CALL SITE OF THE EQUALITY MECHANISM, FOUND BY DERIVATION AND
@@ -972,11 +1220,32 @@ export async function runGate(flags: Flags): Promise<number> {
      cannot drift into two answers about one question. An EQUAL head still
      passes and touches git not at all (`relateDeclaredHead` answers that case
      before any spawn), which matters here because `--head` comes from the CI
-     event and need not be an object in this checkout. */
+     event and need not be an object in this checkout.
+
+     AND IT IS THE REVIEW-OF-OLD-CODE GUARD (M5-P3's hazard class). A verdict
+     for an ancestor is admitted only when every path between it and the
+     audited commit is under `delivery/`, so shipped bytes added after a review
+     leave that verdict EXCLUDED, and on a dual-tier change the admitted count
+     then falls below two and the gate is red. */
   const admitted: AdmittedVerdict[] = [];
   const excluded: OffHeadVerdict[] = [];
   const forHead: VerdictForHead[] = [];
   for (const entry of corpus.verdicts) {
+    /* KERNEL 0.2.1 (DR-0053, DR-0054). A verdict with NO head key is excluded
+       BY NAME before any relation is computed. Until 0.2.1 it reached
+       `relateDeclaredHead` with the empty string, failed to resolve, and was
+       excluded with the sentence "declares head , which does not resolve",
+       which named the wrong fact. The schema no longer requires the field, so
+       absence is now a well-formed document written before the field existed
+       and the ADMISSION rule is here: it is never admitted, so on a dual-tier
+       change it cannot count toward the two reviews condition 1 needs. */
+    if (declaresNoHead(entry.record)) {
+      excluded.push({ path: entry.path, declared: "", relation: { kind: "no-head" } });
+      continue;
+    }
+    /* KERNEL 0.2.1 (DR-0055): admission does not read the stamp, exactly as
+       in `partitionByAuditedHead`, so the two gates cannot disagree about a
+       stamp. Every rule here applies to every verdict, stamped or not. */
     const declared = String(entry.record["head"] ?? "").toLowerCase();
     const relation = relateDeclaredHead(contextDirectory, declared, head);
     if (relation.kind === "same" || relation.kind === "evidence-only-ancestor") {
@@ -986,65 +1255,51 @@ export async function runGate(flags: Flags): Promise<number> {
     }
     excluded.push({ path: entry.path, declared, relation });
   }
+  return { ok: true, read: corpus.verdicts.length, admitted, excluded, forHead };
+}
 
-  if (forHead.length === 0) {
-    /* SC-011: the ONE not-applicable arm, and it carries an EVALUATED
-       precondition rather than a silence. A head with no verdict naming it is
-       not a merge waiting on six conditions. */
-    const precondition: PreconditionRecord = {
-      id: PRECONDITION_ID,
-      met: false,
-      reason:
-        `no committed verdict document names head ${head}, so no merge is being proposed at this ` +
-        "head and DR-0012's conditions have no subject",
-      evidence: [
-        `${String(corpus.verdicts.length)} committed verdict document(s) were read and examined`,
-        `head under evaluation: ${head}`,
-        /* EVERY EXCLUDED DOCUMENT IS NAMED WITH THE ROUTE THAT EXCLUDED IT.
-           "There is no verdict here" and "there are two approving verdicts and
-           each reviewed something else" are different facts, and printing the
-           first for both is the fail-open direction `describeOffHeadVerdicts`
-           exists to close one gate along. */
-        ...describeOffHeadVerdicts(excluded, head).map((line) => `EXCLUDED ${line}`),
-      ],
-    };
-    return emit(
-      resultPath,
-      {
-        ...shared,
-        status: "not-applicable",
-        units: 0,
-        endedAt: now(),
-        precondition,
-        detail: precondition.reason,
-      },
-      [],
-    );
-  }
-
-  const rows: ConditionRow[] = [];
-
+/** The verdict-selection row, which says what every other row is ABOUT. */
+function selectionRow(
+  review: Extract<ReviewCorpus, { ok: true }>,
+  head: string,
+  budget: ReviewBudget | undefined,
+): ConditionRow {
   /* THE ADMISSION ROUTE IS A ROW, NOT A FOOTNOTE. Every other condition here
      gets a row because a reader has to be able to see what was asserted; the
      corpus SELECTION decides what all six conditions are about, so a run whose
      verdicts were admitted by ANCESTRY rather than by naming this commit must
-     say so in the same place. Its status is green because selection succeeded:
-     a selection that found nothing does not reach this line at all, it reaches
-     the not-applicable arm above with every excluded document named. */
-  rows.push({
+     say so in the same place.
+
+     ITS STATUS IS DERIVED FROM THE BUDGET SINCE M5-P3. Without `--base` it is
+     green because selection succeeded (a selection that found nothing reaches
+     the not-applicable arm instead). With `--base` on a dual-tier change it is
+     RED below two admitted verdicts, and the missing count is in the sentence. */
+  const short = budget !== undefined && budget.tier === "dual" && review.forHead.length < REQUIRED_VERDICTS;
+  const owed = short ? budget : undefined;
+  return {
     id: "verdict-selection",
     clause: "DR-0047 the verdicts selected are evidence about THIS head",
-    status: "green",
+    status: owed === undefined ? "green" : "red",
     head,
     sentence:
-      `${String(admitted.length)} verdict(s) admitted and ${String(excluded.length)} excluded; ` +
-      describeAdmittedVerdicts(admitted, head).join(" | ") +
-      (excluded.length === 0
+      (owed === undefined ? "" : `${missingReviewsSentence(owed, review.forHead.length, head)} | `) +
+      `${String(review.admitted.length)} verdict(s) admitted and ${String(review.excluded.length)} excluded` +
+      (review.admitted.length === 0 ? "" : `; ${describeAdmittedVerdicts(review.admitted, head).join(" | ")}`) +
+      (review.excluded.length === 0
         ? ""
-        : ` | EXCLUDED: ${describeOffHeadVerdicts(excluded, head).join(" | ")}`),
-  });
+        : ` | EXCLUDED: ${describeOffHeadVerdicts(review.excluded, head).join(" | ")}`),
+  };
+}
 
-  const condition1 = runRegisteredCheck(DECORRELATION_CHECK_ID, forHead, contextDirectory);
+/** Conditions 1, 2 and 3, which need nothing but the committed verdicts. */
+function reviewRows(
+  review: Extract<ReviewCorpus, { ok: true }>,
+  head: string,
+  contextDirectory: string,
+  base: string | undefined,
+): ConditionRow[] {
+  const rows: ConditionRow[] = [];
+  const condition1 = runRegisteredCheck(DECORRELATION_CHECK_ID, review.forHead, contextDirectory, base);
   rows.push({
     id: "condition-1",
     clause: "DR-0012:22 two decorrelated clean-room reviews of this head",
@@ -1053,7 +1308,7 @@ export async function runGate(flags: Flags): Promise<number> {
     sentence: condition1.sentence,
   });
 
-  const condition2 = runRegisteredCheck(PAIR_CHECK_ID, forHead, contextDirectory);
+  const condition2 = runRegisteredCheck(PAIR_CHECK_ID, review.forHead, contextDirectory, base);
   rows.push({
     id: "condition-2",
     clause: "DR-0012:23 no unresolved finding at medium or above",
@@ -1062,7 +1317,7 @@ export async function runGate(flags: Flags): Promise<number> {
     sentence: condition2.sentence,
   });
 
-  const condition3 = judgeCriteriaWalked(forHead);
+  const condition3 = judgeCriteriaWalked(review.forHead);
   rows.push({
     id: "condition-3",
     clause: "DR-0012:24 the acceptance criteria were the reviewers' contract",
@@ -1070,9 +1325,249 @@ export async function runGate(flags: Flags): Promise<number> {
     head,
     sentence: condition3.sentence,
   });
+  return rows;
+}
+
+/**
+ * The id of the precondition a run INSIDE the CI it would judge reports unmet.
+ *
+ * M5-P3. Condition 4 is "CI green on the EXACT head", and this gate is itself a
+ * step of that CI. Measured by reading the harness rather than guessed: the
+ * pull-request bundle runs the whole manifest, `merge-preconditions` is in it,
+ * and its row in scripts/m2-exit-test.sh accepts only green or not-applicable.
+ * While no verdict was ever committed the gate never ran, so the loop was
+ * invisible; M5-P3 makes the orchestrator commit verdicts on the phase branch,
+ * and from that head on the gate runs inside the very run condition 4 asks
+ * about, sees that run in progress, and would report red forever. So a `gates`
+ * check run for this head that has NOT COMPLETED makes the gate not-applicable
+ * with this evaluated precondition, and ONLY when every review row is already
+ * green: a refusing or incomplete review is still red, in CI and out of it.
+ */
+export const CI_CONCLUDED_PRECONDITION_ID = "merge-preconditions-ci-concluded-for-this-head";
+
+/** `--head` as a full lowercase sha when it names a commit here, else as given. */
+function resolveHeadFlag(contextDirectory: string, value: string): string {
+  if (/^[0-9a-fA-F]{40}$/.test(value)) {
+    return value.toLowerCase();
+  }
+  const resolved = spawnSync("git", ["rev-parse", "--verify", "--quiet", "--end-of-options", `${value}^{commit}`], {
+    cwd: contextDirectory,
+    encoding: "utf8",
+  });
+  if (resolved.error === undefined && resolved.status === 0) {
+    const sha = (resolved.stdout ?? "").trim().toLowerCase();
+    if (/^[0-9a-f]{40}$/.test(sha)) {
+      return sha;
+    }
+  }
+  return value.toLowerCase();
+}
+
+export async function runGate(flags: Flags): Promise<number> {
+  const startedAt = now();
+  const resultPath = flags.result as string;
+  const contextDirectory = absolute(flags.context ?? process.cwd());
+  /* M5-P3: A SYMBOLIC --head IS RESOLVED BEFORE IT IS LOWERCASED. The M4-P12
+     line lowercased the flag outright, which is right for the forty-hex sha CI
+     passes and wrong for `HEAD`, which became `head` and named nothing, so the
+     runner's own documented invocation (`--head HEAD`) reported the diff as a
+     bad revision. A value that resolves to a commit here is replaced by that
+     commit's full sha; one that does not is kept as given, because the M4-P12
+     comment below is still true that `--head` need not be an object in this
+     checkout. */
+  const head = resolveHeadFlag(contextDirectory, flags.head as string);
+  const phase = (flags.phase as string).toLowerCase();
+  const apiBase = (flags["api-base"] ?? DEFAULT_API_BASE).replace(/\/+$/, "");
+  const shared = { gate: GATE_ID, unitLabel: UNIT_LABEL, startedAt };
+  /* M5-P3: the token is read from the variable the COMMAND names, never from a
+     name this module chooses (see requestJson). */
+  const tokenVariable = flags["token-env"];
+  const token = tokenVariable === undefined ? undefined : process.env[tokenVariable];
+
+  /* M5-P3: THE BUDGET, AND THE REVIEW EVIDENCE, BEFORE THE NETWORK. With
+     `--base` (which the registry now declares, so every runner invocation
+     supplies it) the diff decides what review is owed. A change below the
+     dual-review tier is not-applicable with an evaluated precondition naming
+     its tier and paths (criterion p3-paperwork-budget). A dual-tier change with
+     fewer than two admitted verdicts is RED with the missing count, and that is
+     decided from the repository alone: whether an API answers must not decide
+     whether an unreviewed shipped change can merge (criterion
+     p3-missing-is-red). Without `--base` nothing here runs and the M4-P12 order
+     is unchanged, which is what keeps a hand run by the old command meaning
+     what it meant. */
+  let budget: ReviewBudget | undefined;
+  let review: Extract<ReviewCorpus, { ok: true }> | undefined;
+  const rows: ConditionRow[] = [];
+  if (flags.base !== undefined) {
+    const classified = classifyReviewBudget(contextDirectory, flags.base, head);
+    if (!classified.ok) {
+      return emit(
+        resultPath,
+        { ...shared, status: "error", units: 0, endedAt: now(), detail: classified.reason },
+        [],
+      );
+    }
+    budget = classified.budget;
+    if (budget.tier !== "dual") {
+      const precondition = budgetPrecondition(budget);
+      return emit(
+        resultPath,
+        {
+          ...shared,
+          status: "not-applicable",
+          units: 0,
+          endedAt: now(),
+          precondition,
+          detail: precondition.reason,
+        },
+        [],
+      );
+    }
+    const read = readReviewCorpus(contextDirectory, head);
+    if (!read.ok) {
+      return emit(
+        resultPath,
+        { ...shared, status: "error", units: 0, endedAt: now(), detail: read.reason },
+        [],
+      );
+    }
+    review = read;
+    const selection = selectionRow(review, head, budget);
+    rows.push(selection);
+    if (selection.status !== "green") {
+      return emit(
+        resultPath,
+        {
+          ...shared,
+          status: "red",
+          units: rows.length,
+          endedAt: now(),
+          detail:
+            `DR-0012 at head ${head}, phase ${phase}: ${missingReviewsSentence(budget, review.forHead.length, head)}; ` +
+            "conditions 1 to 6 and the branch-protection encoding were NOT evaluated, because a shipped " +
+            "change without its two reviews is refused whatever they would say",
+        },
+        rows,
+      );
+    }
+    rows.push(...reviewRows(review, head, contextDirectory, flags.base));
+    const reviewStatus = gateStatusForRows(rows);
+    if (reviewStatus !== "green") {
+      return emit(
+        resultPath,
+        {
+          ...shared,
+          status: reviewStatus,
+          units: rows.length,
+          endedAt: now(),
+          detail:
+            `DR-0012 at head ${head}, phase ${phase}: ` +
+            rows.map((row) => `${row.id}=${row.status}`).join(" ") +
+            "; the review evidence already refuses this merge, so conditions 4 to 6 and the " +
+            "branch-protection encoding were NOT evaluated and nothing about them is asserted",
+        },
+        rows,
+      );
+    }
+  }
+
+  const slug = flags.repo ?? slugFromGit(contextDirectory) ?? "";
+  if (slug === "") {
+    return emit(
+      resultPath,
+      {
+        ...shared,
+        status: "error",
+        units: 0,
+        endedAt: now(),
+        detail:
+          "no repository could be established: `git -C <context> remote get-url origin` named none " +
+          "and --repo <owner/name> was not supplied. Without one, condition 4 and the " +
+          "branch-protection encoding have nothing to ask about",
+      },
+      [],
+    );
+  }
+
+  /* THE PROBE COMES FIRST AMONG THE NETWORK STEPS (plan step 1 and criterion
+     2). An unreachable API is `error` with units 0 and a reason naming the
+     failure, and the test asserts the STATUS WORD rather than the detail
+     string, because the mutant this arm exists against is a request wrapped in
+     a catch that returns "unknown" and reports green. CLAUDE.md standing
+     warning 6 says REST reachability here is a thing to PROBE at the start of a
+     run that depends on it, in either direction, so this is the probe and not
+     an assumption. */
+  const probeUrl = `${apiBase}/repos/${slug}`;
+  const probe = readJsonBody(probeUrl, await requestJson(probeUrl, token));
+  if (!probe.ok) {
+    return emit(
+      resultPath,
+      {
+        ...shared,
+        status: "error",
+        units: 0,
+        endedAt: now(),
+        detail:
+          `the GitHub REST API could not be reached, so DR-0012 condition 4 and the ` +
+          `branch-protection encoding were not evaluated and no merge verdict was reached: ${probe.reason}`,
+      },
+      [],
+    );
+  }
+
+  if (review === undefined) {
+    const read = readReviewCorpus(contextDirectory, head);
+    if (!read.ok) {
+      return emit(
+        resultPath,
+        { ...shared, status: "error", units: 0, endedAt: now(), detail: read.reason },
+        [],
+      );
+    }
+    review = read;
+
+    if (review.forHead.length === 0) {
+      /* SC-011: the not-applicable arm of the M4-P12 order, and it carries an
+         EVALUATED precondition rather than a silence. A head with no verdict
+         naming it is not a merge waiting on six conditions. REACHABLE ONLY
+         WITHOUT `--base` since M5-P3: with it, a dual-tier change and no
+         verdict is red above, and a below-dual change never reads the corpus. */
+      const precondition: PreconditionRecord = {
+        id: PRECONDITION_ID,
+        met: false,
+        reason:
+          `no committed verdict document names head ${head}, so no merge is being proposed at this ` +
+          "head and DR-0012's conditions have no subject",
+        evidence: [
+          `${String(review.read)} committed verdict document(s) were read and examined`,
+          `head under evaluation: ${head}`,
+          /* EVERY EXCLUDED DOCUMENT IS NAMED WITH THE ROUTE THAT EXCLUDED IT.
+             "There is no verdict here" and "there are two approving verdicts
+             and each reviewed something else" are different facts, and printing
+             the first for both is the fail-open direction
+             `describeOffHeadVerdicts` exists to close one gate along. */
+          ...describeOffHeadVerdicts(review.excluded, head).map((line) => `EXCLUDED ${line}`),
+        ],
+      };
+      return emit(
+        resultPath,
+        {
+          ...shared,
+          status: "not-applicable",
+          units: 0,
+          endedAt: now(),
+          precondition,
+          detail: precondition.reason,
+        },
+        [],
+      );
+    }
+    rows.push(selectionRow(review, head, budget));
+    rows.push(...reviewRows(review, head, contextDirectory, flags.base));
+  }
 
   const checkRunsUrl = `${apiBase}/repos/${slug}/commits/${head}/check-runs`;
-  const checkRuns = readJsonBody(checkRunsUrl, await requestJson(checkRunsUrl));
+  const checkRuns = readJsonBody(checkRunsUrl, await requestJson(checkRunsUrl, token));
   if (!checkRuns.ok) {
     rows.push({
       id: "condition-4",
@@ -1083,11 +1578,41 @@ export async function runGate(flags: Flags): Promise<number> {
     });
   } else {
     const listed = (checkRuns.value as { check_runs?: unknown }).check_runs;
-    const judged = judgeCheckRuns(
-      head,
-      Array.isArray(listed) ? (listed as CheckRun[]) : [],
-      REQUIRED_CHECK_CONTEXT,
-    );
+    const runs = Array.isArray(listed) ? (listed as CheckRun[]) : [];
+    const inFlight = inFlightCheckRuns(head, runs, REQUIRED_CHECK_CONTEXT);
+    if (inFlight.length > 0 && gateStatusForRows(rows) === "green") {
+      /* THE RUN IS INSIDE THE CI IT WOULD JUDGE (M5-P3). See
+         CI_CONCLUDED_PRECONDITION_ID above. Not green, and not red: the
+         condition is not decidable until the run it is about has concluded,
+         and the orchestrator's pre-merge run, made after CI concludes, is the
+         one that decides it. The review rows already evaluated travel in the
+         evidence, so the not-applicable says what WAS established. */
+      const precondition: PreconditionRecord = {
+        id: CI_CONCLUDED_PRECONDITION_ID,
+        met: false,
+        reason:
+          `${String(inFlight.length)} ${REQUIRED_CHECK_CONTEXT} check run(s) for head ${head} have not ` +
+          "completed, so this is a run inside the CI that DR-0012 condition 4 asks about and condition 4 " +
+          "cannot be decided yet; re-run this gate after that CI concludes, before merging",
+        evidence: [
+          ...inFlight,
+          ...rows.map((row) => `ESTABLISHED ${renderRow(row)}`),
+        ],
+      };
+      return emit(
+        resultPath,
+        {
+          ...shared,
+          status: "not-applicable",
+          units: 0,
+          endedAt: now(),
+          precondition,
+          detail: precondition.reason,
+        },
+        rows,
+      );
+    }
+    const judged = judgeCheckRuns(head, runs, REQUIRED_CHECK_CONTEXT);
     rows.push({
       id: "condition-4",
       clause: "DR-0012:25 CI green on the EXACT head",
@@ -1119,7 +1644,7 @@ export async function runGate(flags: Flags): Promise<number> {
   const arbitration = judgeArbitration(
     arbitrationPath,
     head,
-    forHead.map((verdict) => verdict.path),
+    review.forHead.map((verdict) => verdict.path),
     read(arbitrationPath),
   );
   rows.push({
@@ -1130,7 +1655,7 @@ export async function runGate(flags: Flags): Promise<number> {
     sentence: arbitration.sentence,
   });
 
-  const rulesets = await readRulesets(apiBase, slug);
+  const rulesets = await readRulesets(apiBase, slug, token);
   if (!rulesets.ok) {
     rows.push({
       id: "branch-protection",
@@ -1186,6 +1711,9 @@ export async function main(argv: string[]): Promise<number> {
   if (missing.length > 0) {
     return usageError(`${GATE_ID} requires ${missing.map((name) => `--${name}`).join(" ")}`);
   }
+  if (flags["token-env"] !== undefined && !/^[A-Za-z_][A-Za-z0-9_]*$/.test(flags["token-env"])) {
+    return usageError(`--token-env takes an environment variable NAME, and ${flags["token-env"]} is not one`);
+  }
   return runGate(flags);
 }
 
@@ -1206,3 +1734,4 @@ if (entry !== undefined && pathsIdentifySameObject(fileURLToPath(import.meta.url
 }
 
 export { GATE_ID, PRECONDITION_ID, UNIT_LABEL };
+export type { Flags };

@@ -554,7 +554,11 @@ test("the gate registry declares head as a parameter of check-dual-review, which
   ) as { gates: { id: string; parameters?: string[] }[] };
   const entry = registry.gates.find((gate) => gate.id === "check-dual-review");
   assert.ok(entry !== undefined, "check-dual-review is not declared in gate-registry.yaml");
-  assert.deepEqual(entry.parameters, ["head"]);
+  /* M5-P3 ADDS `base`, which is how the runner supplies the diff whose review
+     budget the gate decides. `head` is still declared and still the audited
+     commit; the pair is asserted exactly because a parameter the runner does
+     not pass is a question the gate answers without its subject. */
+  assert.deepEqual(entry.parameters, ["base", "head"]);
 });
 
 /* ------------------------------------------------------------------ */

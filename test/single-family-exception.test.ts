@@ -53,6 +53,47 @@ import { fileURLToPath } from "node:url";
 import { dirname, join, sep } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { removeGitDirectory } from "./support/remove-git-directory.ts";
+import { realpathSync as ceilingRealpath } from "node:fs";
+import { tmpdir as ceilingTmpdir } from "node:os";
+import { delimiter as ceilingDelimiter } from "node:path";
+
+/*
+ * NO REPOSITORY ABOVE THE SCRATCH ROOT (kernel 0.2.1 fix round 3). Tests in
+ * this file stage context directories under os.tmpdir() that are NOT git
+ * repositories (or whose `.git` is removed) and assert what the code does
+ * when no repository is found. Git DISCOVERS a repository in any ancestor, so
+ * a repository at or above os.tmpdir() turns every such arm into a read of
+ * THAT repository's HEAD. Measured: the whole suite with os.tmpdir() inside a
+ * real repository failed 64 tests across six files, this one among them, and
+ * CI run 35946757118 failed one of them the same way. The ceiling stops
+ * discovery from climbing out of os.tmpdir(); repositories a test stages
+ * INSIDE it (and contexts nested in them) are still found. Every child
+ * process inherits it from here.
+ */
+const GIT_CEILING = [ceilingRealpath(ceilingTmpdir()), ceilingTmpdir(), process.env["GIT_CEILING_DIRECTORIES"] ?? ""]
+  .filter((entry) => entry !== "")
+  .join(ceilingDelimiter);
+process.env["GIT_CEILING_DIRECTORIES"] = GIT_CEILING;
+/*
+ * AND NO REPOSITORY BY THE ENVIRONMENT (kernel 0.2.1 fix round 3, the
+ * orchestrator's decision on open question 13). The ceiling above stops
+ * DISCOVERY; it does not stop an inherited GIT_DIR, which names a repository
+ * outright and was the only shape measured to reproduce CI's exact message.
+ * So the names that relocate the repository, its objects or its index are
+ * removed for this file and every child it spawns.
+ */
+const INHERITED_REPOSITORY_ENV = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+];
+for (const name of INHERITED_REPOSITORY_ENV) {
+  delete process.env[name];
+}
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const cliEntry = join(repoRoot, "bin", "tiphys.ts");
@@ -74,6 +115,7 @@ const fixturesDir = join(repoRoot, "witness", "fixtures", "dual-review");
  * (delivery/verification/m4-prototype-probes.md:132).
  */
 const realVerdictDir = join(repoRoot, "delivery", "evidence", "m3-exit-test", "e1", "e1-7");
+const KERNEL_VERSION = (JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")) as { version: string }).version;
 const REAL_VERDICTS = ["verdict-criteria.yaml", "verdict-hazard.yaml"];
 
 /**
@@ -226,6 +268,15 @@ interface StagedVerdict {
   directory?: string;
   /** Write it under a different name than the fixture it was copied from. */
   as?: string;
+  /**
+   * Give a document that carries NO `head:` line one naming the reviewed
+   * commit, inserted after its `phase:` line. KERNEL 0.2.1 (DR-0053): a
+   * head-less verdict is now history and is EXCLUDED from the merge corpus
+   * rather than kept to be refused, so the two real-corpus arms, whose
+   * documents predate the field, stage them as CURRENT reviews of the staged
+   * commit. The produced-by strings compared are still the real ones.
+   */
+  addHead?: boolean;
 }
 
 interface StageOptions {
@@ -360,6 +411,16 @@ function stage(options: StageOptions): string {
        check refuses. */
     if (/^head: .*$/m.test(body)) {
       body = body.replace(/^head: .*$/m, `head: ${reviewedHead}`);
+    } else if (verdict.addHead === true) {
+      /* AND THE STAMP (DR-0055): a current review is admitted only when it is
+         stamped the running kernel's version, read from package.json so a
+         release bump does not strand this staging. */
+      const rewritten = body.replace(
+        /^(phase: .*)$/m,
+        `$1\nhead: ${reviewedHead}\ntiphys-version: ${KERNEL_VERSION}`,
+      );
+      assert.notEqual(rewritten, body, `${verdict.file} has no single-line phase to put a head after`);
+      body = rewritten;
     }
     writeFileSync(to, body);
   };
@@ -493,7 +554,7 @@ const ARMS: { name: string; subject: "real" | "fixture"; stage: () => string }[]
       stage({
         real: true,
         declare: [realProducedBy("verdict-hazard.yaml")],
-        verdicts: REAL_VERDICTS.map((file) => ({ file })),
+        verdicts: REAL_VERDICTS.map((file) => ({ file, addHead: true })),
       }),
   },
   {
@@ -503,7 +564,7 @@ const ARMS: { name: string; subject: "real" | "fixture"; stage: () => string }[]
       stage({
         real: true,
         declare: ["A Family Nothing Here Was Produced By"],
-        verdicts: REAL_VERDICTS.map((file) => ({ file })),
+        verdicts: REAL_VERDICTS.map((file) => ({ file, addHead: true })),
       }),
   },
   {
@@ -1252,7 +1313,9 @@ test("a corpus-scoped refusal names the source that corpus was read from, on bot
      it prints there. ONE verdict, because the corpus-scoped sentence on this
      arm is the pair refusal, and a pair refusal needs a corpus of one. */
   const noGit = stage({ verdicts: [{ file: "decorrelated-criteria.yaml" }] });
-  rmSync(join(noGit, ".git"), { recursive: true, force: true });
+  /* RENAMED OUT, NOT rmSync-ED IN PLACE: see test/support/remove-git-directory.ts.
+     A partial .git left by a recursive remove is a repository again. */
+  removeGitDirectory(noGit, scratch());
   const fromTree = runScript(noGit, { anchor: false });
   assert.match(
     fromTree.stdout,

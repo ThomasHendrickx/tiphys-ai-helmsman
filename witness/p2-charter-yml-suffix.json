@@ -1,0 +1,24 @@
+{
+  "id": "p2-charter-yml-suffix",
+  "behavior": "p2-charter-yml-suffix",
+  "class": "additive",
+  "deterministic": true,
+  "repeats": 2,
+  "tests": [
+    "brief compose in a fleet reads a charter named .yml, the same suffix doctor reads"
+  ],
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/charter.ts",
+      "find": "    if (!name.endsWith(\".yaml\") && !name.endsWith(\".yml\")) {",
+      "replace": "    if (!name.endsWith(\".yaml\")) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/charter.ts",
+      "find": "        found.push(entry.path);",
+      "replace": "        void entry;"
+    }
+  ]
+}

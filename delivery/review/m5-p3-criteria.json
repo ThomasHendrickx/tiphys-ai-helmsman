@@ -1,0 +1,113 @@
+{
+  "kind": "verdict",
+  "phase": "M5-P3",
+  "head": "3f78dce2ee965672ea55423c3fc9a33dddca1145",
+  "verdict": "APPROVE",
+  "produced-by": "anthropic-claude-opus",
+  "framing": "criteria-contract",
+  "review-contract": "criteria",
+  "findings": [
+    {
+      "id": "CR-001",
+      "severity": "low",
+      "evidence": [
+        "Carried from the review of c4727e5 and still open at H2: .github/workflows/gates.yml has no permissions block, so whether the job token can read check runs is unestablished. The fix round renamed the informational step and changed nothing here, which is correct for this round",
+        "The proxy refuses GET /repos/ThomasHendrickx/tiphys-ai-helmsman/actions/permissions/workflow with HTTP 403, so the repository default cannot be read from this container"
+      ],
+      "concrete-fix": "On the CI run for the verdict commit, read the merge-preconditions line. If condition 4 reports HTTP 403 'Resource not accessible by integration', add a job-level permissions block granting contents: read and checks: read, then re-run. No change is owed if that run shows the in-flight not-applicable.",
+      "analysis": "Not a merge risk: the verdict commit's CI run comes before merge by construction and answers the question."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "p3-output-contract",
+      "quote": "tiphys brief compose for both review contracts names a distinct top-level JSON path under delivery/review, and both produced documents validate as verdicts.",
+      "evidence": [
+        "roles/clean-room-reviewer.md and the brief sources are unchanged between c4727e5 and H2 (git diff c4727e5..3f78dce --stat lists neither), so the compose result measured at c4727e5 carries: criteria names delivery/review/<phase-id>-criteria.json, hazard names -hazard.json, one each",
+        "this document, written at that path for H2: validate --type verdict reports no INVALID line (exit code quoted in the markdown report)",
+        "the output-contract test passes in npm test at H2"
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-missing-is-red",
+      "quote": "The real full-mode gate command against a fixture branch changing src/ with zero or one admitted verdict exits nonzero with status red and names the missing count.",
+      "evidence": [
+        "Real repository at H2, real runner, full mode: with zero verdicts, check-dual-review and merge-preconditions both exit 1, red, '0 of 2 are admitted and 2 missing'; with one verdict, both exit 1, red, '1 of 2 are admitted and 1 missing'",
+        "Identical to the results at c4727e5"
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-pair-arms",
+      "quote": "The same command is red for a FIX-ROUND-NEEDED pair and for a correlated pair, and green only for two APPROVE verdicts with distinct contracts, framings and declared families over the reviewed shipped tree.",
+      "evidence": [
+        "At H2: a FIX-ROUND-NEEDED pair, a shared produced-by and a shared review-contract are each exit 1 red on both gates",
+        "An approving decorrelated pair is check-dual-review exit 0 green. On merge-preconditions the review checks are green and the gate goes on to the network conditions",
+        "An approving pair followed by a src/ commit is red on both gates, with the verdicts named EXCLUDED. An approving pair followed by a delivery-only commit stays green",
+        "The reviewers' actual strings, anthropic-claude-opus against claude-sonnet-5, are check-dual-review exit 0 green. Claude-Sonnet-5 against ' claude-sonnet-5 ' is exit 1 red, 'produced-by value claude-sonnet-5 occurs in 2 of the 2 verdicts'"
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-paperwork-budget",
+      "quote": "A fixture branch changing only delivery/ follows its declared review budget and is not forced through the shipped-code two-verdict rule.",
+      "evidence": [
+        "At H2, a commit changing only delivery/STATE.md, base H2: both gates exit 21, not-applicable, precondition review-budget-requires-dual-review, tier none",
+        "A scripts/-only commit gives not-applicable, tier single. A witness/-only commit is red with 2 missing: fail closed, open question 5"
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-scope-unchanged",
+      "quote": "src/gates/scope.ts is byte-identical to the baseline and its existing phase-own-evidence tests accept delivery/review/m5-p3-criteria.json while refusing another phase's filename.",
+      "evidence": [
+        "git diff c4727e5..3f78dce --stat touches no src/ path. src/gates/scope.ts at H2 is blob 679c9c9b, the same as origin/main",
+        "The phase-own-evidence test passes in npm test at H2",
+        "The scope gate is green at H2 on a phase-named clone branch: 35 paths, with the 3 new witness entries ADDED at head and printed by name"
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-suite",
+      "quote": "npm run build and node --test both exit 0 with a nonzero test count.",
+      "evidence": [
+        "node v26.6.0 at H2: npm ci exit 0, npm run build exit 0; npm test counts are quoted in the markdown report",
+        "red-witness at H2 is green: 24 witnesses (14 own, 10 stored). clause-map is green, 74 rows"
+      ],
+      "met": true
+    }
+  ],
+  "deviations-judged": [
+    {
+      "deviation": "D-1 (additive grants)",
+      "serves-plan-intent": true,
+      "reasoning": "The round adds three more witness entries and the merge-preconditions review class, and removes nothing. The scope gate names them all, and I sign them off."
+    },
+    {
+      "deviation": "D-2 (in-flight rule)",
+      "serves-plan-intent": true,
+      "reasoning": "Unchanged at H2. Still head-scoped, and it still never softens a refusal, as measured at c4727e5 with the code unchanged since."
+    },
+    {
+      "deviation": "D-3 (API token)",
+      "serves-plan-intent": true,
+      "reasoning": "Unchanged. The token-scope question stays open as CR-001."
+    },
+    {
+      "deviation": "D-4 (review of the pair-arm checks by manual witness)",
+      "serves-plan-intent": true,
+      "reasoning": "I re-checked every pair arm end to end at H2 with JSON verdicts in the real repository."
+    },
+    {
+      "deviation": "D-5 (row 2 is not enforced)",
+      "serves-plan-intent": true,
+      "reasoning": "Unchanged. It matches the plan's declared lower budget, and the owner question stays recorded."
+    },
+    {
+      "deviation": "D-6 (retirement inventory)",
+      "serves-plan-intent": true,
+      "reasoning": "Unchanged at H2. This round edits no skill file, so no inventory row is owed."
+    }
+  ]
+}

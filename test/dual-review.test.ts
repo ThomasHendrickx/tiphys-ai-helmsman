@@ -25,7 +25,9 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -33,6 +35,46 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { realpathSync as ceilingRealpath } from "node:fs";
+import { tmpdir as ceilingTmpdir } from "node:os";
+import { delimiter as ceilingDelimiter } from "node:path";
+
+/*
+ * NO REPOSITORY ABOVE THE SCRATCH ROOT (kernel 0.2.1 fix round 3). Tests in
+ * this file stage context directories under os.tmpdir() that are NOT git
+ * repositories (or whose `.git` is removed) and assert what the code does
+ * when no repository is found. Git DISCOVERS a repository in any ancestor, so
+ * a repository at or above os.tmpdir() turns every such arm into a read of
+ * THAT repository's HEAD. Measured: the whole suite with os.tmpdir() inside a
+ * real repository failed 64 tests across six files, this one among them, and
+ * CI run 35946757118 failed one of them the same way. The ceiling stops
+ * discovery from climbing out of os.tmpdir(); repositories a test stages
+ * INSIDE it (and contexts nested in them) are still found. Every child
+ * process inherits it from here.
+ */
+const GIT_CEILING = [ceilingRealpath(ceilingTmpdir()), ceilingTmpdir(), process.env["GIT_CEILING_DIRECTORIES"] ?? ""]
+  .filter((entry) => entry !== "")
+  .join(ceilingDelimiter);
+process.env["GIT_CEILING_DIRECTORIES"] = GIT_CEILING;
+/*
+ * AND NO REPOSITORY BY THE ENVIRONMENT (kernel 0.2.1 fix round 3, the
+ * orchestrator's decision on open question 13). The ceiling above stops
+ * DISCOVERY; it does not stop an inherited GIT_DIR, which names a repository
+ * outright and was the only shape measured to reproduce CI's exact message.
+ * So the names that relocate the repository, its objects or its index are
+ * removed for this file and every child it spawns.
+ */
+const INHERITED_REPOSITORY_ENV = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+];
+for (const name of INHERITED_REPOSITORY_ENV) {
+  delete process.env[name];
+}
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const cliEntry = join(repoRoot, "bin", "tiphys.ts");
@@ -131,14 +173,12 @@ test("every dual-review fixture validates against the shipped verdict schema", (
       { cwd: repoRoot, encoding: "utf8" },
     );
     const output = `${run.stdout}${run.stderr}`;
-    /* THE EXIT CODE IS NONZERO HERE AND THAT IS THE VALIDATOR WORKING, not a
-       fixture defect. Four checks registered for `verdict` require a context
-       and this invocation deliberately gives none, so each reports
-       `SKIPPED <id> no context` and the command exits 1 rather than passing by
-       not running. What this test is about is the SCHEMA, so what it asserts is
-       that no line is an `INVALID`, and that every line that is there is a
-       skip. Asserting exit 0 would have forced a `--context` that has nothing
-       to do with the question. */
+    /* Checks registered for `verdict` require a context and this invocation
+       deliberately gives none, so each reports `SKIPPED <id> no context`.
+       Since kernel 0.2.1 a run whose only non-pass results are skips exits 0,
+       so the exit is asserted too; what makes a skip visible is that every
+       line that is there is a skip, never a pass. */
+    assert.equal(run.status, 0, `${name}: ${output}`);
     assert.doesNotMatch(output, /INVALID/, `${name}: ${output}`);
     for (const line of output.split("\n").filter((entry) => entry.trim() !== "")) {
       assert.match(line, /^SKIPPED [a-z-]+ no context$/, `${name}: ${line}`);
@@ -339,8 +379,8 @@ test("dual-review-decorrelation is registered in the shipped registry for the ve
   assert.equal(found.length, 1, "the check is not registered exactly once");
   assert.equal(found[0]?.type, "verdict");
   /* requiresContext TRUE, so running the validator with no `--context` prints
-     `SKIPPED dual-review-decorrelation no context` and exits nonzero rather
-     than passing by not running. */
+     `SKIPPED dual-review-decorrelation no context` rather than a pass (and,
+     since kernel 0.2.1, exits 0 when that is the only non-pass result). */
   assert.equal(found[0]?.requiresContext, true);
 });
 
@@ -697,7 +737,7 @@ test("a directory with no verdict document reports not-applicable with a reason 
   });
 });
 
-test("the precondition arm answers only whether a verdict document exists, and it says no for this repository", () => {
+test("the precondition arm answers only whether a verdict document exists, and against this repository it acts on the count it prints", () => {
   withContext("full", DECORRELATED, (dir) => {
     const met = spawnSync(process.execPath, [scriptPath, "--precondition", dir], {
       cwd: repoRoot,
@@ -714,16 +754,22 @@ test("the precondition arm answers only whether a verdict document exists, and i
     assert.equal(unmet.status, 1, `${unmet.stdout}${unmet.stderr}`);
   });
 
-  /* AND AGAINST THIS REPOSITORY, whose `delivery/review/` holds prose reviews
-     and no verdict document. The registry entry's `$comment` states this as a
-     present-tense fact and a document asserting a present-tense fact that
-     nothing checks is tuition T-006. */
+  /* AND AGAINST THIS REPOSITORY. Until M5-P3 this arm pinned "0 verdict
+     document(s)" and exit 1, a present-tense fact about the corpus that M5-P3
+     makes false on purpose: its phase branch carries two committed verdicts,
+     and every later phase branch will too. A pinned count is a claim about
+     every FUTURE head (CLAUDE.md binding convention 5), so what is asserted is
+     the property that does not move: the arm prints a count and its exit code
+     is the one that count implies. */
   const here = spawnSync(process.execPath, [scriptPath, "--precondition", "."], {
     cwd: repoRoot,
     encoding: "utf8",
   });
-  assert.equal(here.status, 1, `${here.stdout}${here.stderr}`);
-  assert.match(here.stdout, /0 verdict document\(s\)/);
+  const printed = /(\d+) verdict document\(s\)/.exec(here.stdout);
+  assert.ok(printed !== null, `${here.stdout}${here.stderr}`);
+  const unexaminable = /(\d+) candidate\(s\) that could not be examined/.exec(here.stdout);
+  const applicable = Number(printed[1]) + Number(unexaminable?.[1] ?? "0") > 0;
+  assert.equal(here.status, applicable ? 0 : 1, `${here.stdout}${here.stderr}`);
 });
 
 test("the merge-path caller refuses a directory that declares no regime, rather than treating the grant as absent", () => {
@@ -896,4 +942,426 @@ test("the check's declared dimensions are the three the criteria name, read from
     );
   }
   assert.equal(scriptModule.CHECK_ID, "dual-review-decorrelation");
+});
+
+/* ------------------------------------------------------------------ */
+/* M5-P3: missing is red, through the REAL runner and registry          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE ARMS OF M5-P3's CRITERIA, EACH RUN THROUGH `tiphys gates run` WITH THE
+ * SHIPPED `gate-registry.yaml`, never through the script directly. The hazard
+ * this phase exists against is REVIEW-GATE-NEVER-RUNS: a gate that is correct
+ * when invoked and is never invoked, because the runner's precondition said no
+ * (T-040, T-041). A test that called the script by hand would be green on
+ * exactly that defect, so the variable under test here is what the RUNNER does
+ * with the registry's own entry, precondition and declared parameters included.
+ *
+ * THE FIXTURE IS A GIT REPOSITORY, because the review budget is a property of a
+ * DIFF (`base...head`) and the admission rule is a property of ANCESTRY. Its
+ * commits are, in order: a base; a change under `src/` (the shipped change a
+ * review is owed for, and the commit the verdicts name); and a commit that adds
+ * the verdicts, whose whole gap is under `delivery/` so the ancestry rule
+ * admits them. The gate scripts are SYMLINKS into this checkout, excluded from
+ * the fixture's history, so the runner resolves the registry's relative
+ * commands in the fixture while the code that runs is the code under test.
+ */
+
+const RUNNER_GIT_IDENTITY = {
+  GIT_AUTHOR_NAME: "tiphys test",
+  GIT_AUTHOR_EMAIL: "test@example.invalid",
+  GIT_COMMITTER_NAME: "tiphys test",
+  GIT_COMMITTER_EMAIL: "test@example.invalid",
+};
+
+function fixtureGit(dir: string, args: string[]): string {
+  const run = spawnSync("git", args, {
+    cwd: dir,
+    encoding: "utf8",
+    env: { ...process.env, ...RUNNER_GIT_IDENTITY },
+  });
+  assert.equal(run.status, 0, `git ${args.join(" ")} failed: ${run.stderr}`);
+  return (run.stdout ?? "").trim();
+}
+
+/** One verdict to place, rewritten from a shipped fixture. */
+interface BudgetVerdict {
+  fixture: string;
+  as: string;
+  verdict?: string;
+}
+
+interface BudgetRepo {
+  dir: string;
+  base: string;
+  /** The commit the placed verdicts name. */
+  reviewed: string;
+  /** The checkout's HEAD, which the gate audits. */
+  head: string;
+}
+
+/**
+ * Stage the fixture repository.
+ *
+ * `shipped` false makes the branch's only change a `delivery/` document, which
+ * is criterion p3-paperwork-budget's arm. `shippedAfterReview` adds a second
+ * `src/` change AFTER the verdicts, which is the review-of-old-code arm: the
+ * verdicts name an ancestor whose gap is no longer paperwork.
+ */
+function stageBudgetRepo(
+  verdicts: BudgetVerdict[],
+  options: { shipped?: boolean; shippedAfterReview?: boolean } = {},
+): BudgetRepo {
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-review-budget-"));
+  copyFileSync(join(repoRoot, "assurance-modes.yaml"), join(dir, "assurance-modes.yaml"));
+  const charter = readFileSync(join(repoRoot, "templates", "charter.example.yaml"), "utf8");
+  assert.match(charter, /^delivery-mode: full$/m, "the shipped template no longer declares mode full");
+  writeFileSync(join(dir, "charter.yaml"), charter);
+  mkdirSync(join(dir, "src"), { recursive: true });
+  writeFileSync(join(dir, "src", "feature.ts"), "export const feature = 1;\n");
+  fixtureGit(dir, ["init", "-q", "."]);
+  fixtureGit(dir, ["add", "-A"]);
+  fixtureGit(dir, ["commit", "-q", "-m", "base"]);
+  const base = fixtureGit(dir, ["rev-parse", "HEAD"]);
+
+  if (options.shipped === false) {
+    mkdirSync(join(dir, "delivery", "notes"), { recursive: true });
+    writeFileSync(join(dir, "delivery", "notes", "state.md"), "paperwork only\n");
+  } else {
+    writeFileSync(join(dir, "src", "feature.ts"), "export const feature = 2;\n");
+  }
+  fixtureGit(dir, ["add", "-A"]);
+  fixtureGit(dir, ["commit", "-q", "-m", "the change under review"]);
+  const reviewed = fixtureGit(dir, ["rev-parse", "HEAD"]);
+
+  mkdirSync(join(dir, "delivery", "review"), { recursive: true });
+  for (const entry of verdicts) {
+    let body = readFileSync(join(fixturesDir, entry.fixture), "utf8");
+    const anchored = body.replace(/^head: .*$/m, `head: ${reviewed}`);
+    assert.notEqual(anchored, body, `${entry.fixture} has no single-line head to rewrite`);
+    body = anchored;
+    if (entry.verdict !== undefined) {
+      const rewritten = body.replace(/^verdict: .*$/m, `verdict: ${entry.verdict}`);
+      assert.notEqual(rewritten, body, `${entry.fixture} has no single-line verdict to rewrite`);
+      body = rewritten;
+    }
+    writeFileSync(join(dir, "delivery", "review", entry.as), body);
+  }
+  fixtureGit(dir, ["add", "-A"]);
+  fixtureGit(dir, ["commit", "-q", "--allow-empty", "-m", "the reviews"]);
+
+  if (options.shippedAfterReview === true) {
+    writeFileSync(join(dir, "src", "feature.ts"), "export const feature = 3;\n");
+    fixtureGit(dir, ["add", "-A"]);
+    fixtureGit(dir, ["commit", "-q", "-m", "shipped bytes the reviews never read"]);
+  }
+  const head = fixtureGit(dir, ["rev-parse", "HEAD"]);
+
+  /* THE GATE CODE, linked rather than copied and excluded from the fixture's
+     history, so no fixture commit's diff contains it and the budget is decided
+     by the one `src/` file the arm changed. */
+  writeFileSync(join(dir, ".git", "info", "exclude"), "/scripts/\n/src/gates/\n/gate-registry.yaml\n/evidence/\n");
+  mkdirSync(join(dir, "scripts"), { recursive: true });
+  symlinkSync(scriptPath, join(dir, "scripts", "check-dual-review.mjs"));
+  mkdirSync(join(dir, "src", "gates"), { recursive: true });
+  symlinkSync(
+    join(repoRoot, "src", "gates", "merge-preconditions.ts"),
+    join(dir, "src", "gates", "merge-preconditions.ts"),
+  );
+  copyFileSync(join(repoRoot, "gate-registry.yaml"), join(dir, "gate-registry.yaml"));
+  return { dir, base, reviewed, head };
+}
+
+interface RunnerOutcome {
+  exit: number;
+  output: string;
+  record: { status: string; units: number; detail?: string; precondition?: { id: string; met: boolean; reason: string; evidence?: string[] } };
+}
+
+/** Run ONE registry gate through the real runner, full mode, as CI would. */
+function runRegistryGate(repo: BudgetRepo, gate: string, head?: string): RunnerOutcome {
+  const evidence = join(repo.dir, "evidence", gate);
+  const run = spawnSync(
+    process.execPath,
+    [
+      cliEntry,
+      "gates",
+      "run",
+      "--registry",
+      "gate-registry.yaml",
+      "--mode",
+      "full",
+      "--only",
+      gate,
+      "--base",
+      repo.base,
+      "--head",
+      head ?? repo.head,
+      "--phase",
+      "m3-p9",
+      "--evidence",
+      evidence,
+    ],
+    { cwd: repo.dir, encoding: "utf8" },
+  );
+  const output = `${run.stdout ?? ""}${run.stderr ?? ""}`;
+  const record = JSON.parse(readFileSync(join(evidence, gate, "result.json"), "utf8")) as RunnerOutcome["record"];
+  return { exit: run.status ?? -1, output, record };
+}
+
+function withBudgetRepo<T>(
+  verdicts: BudgetVerdict[],
+  options: { shipped?: boolean; shippedAfterReview?: boolean },
+  body: (repo: BudgetRepo) => T,
+): T {
+  const repo = stageBudgetRepo(verdicts, options);
+  try {
+    return body(repo);
+  } finally {
+    rmSync(repo.dir, { recursive: true, force: true });
+  }
+}
+
+const APPROVING_PAIR: BudgetVerdict[] = [
+  { fixture: "decorrelated-criteria.yaml", as: "m3-p9-criteria.yaml" },
+  { fixture: "decorrelated-hazard.yaml", as: "m3-p9-hazard.yaml" },
+];
+
+test("a shipped change with no committed review is red through the real runner, naming two missing", () => {
+  withBudgetRepo([], {}, (repo) => {
+    const run = runRegistryGate(repo, "check-dual-review");
+    assert.equal(run.record.status, "red", run.output);
+    assert.notEqual(run.exit, 0, run.output);
+    assert.match(run.record.detail ?? "", /0 of 2 are admitted and 2 missing/);
+    assert.match(run.record.detail ?? "", /A missing review is RED, never not-applicable/);
+    assert.match(run.record.detail ?? "", /src\/feature\.ts/);
+  });
+});
+
+test("check-dual-review through the real runner resolves --head HEAD to the staged commit", () => {
+  /* FIX ROUND 1, the derivation's second entry point. The runner is invoked
+     with `--head HEAD` exactly as scripts/m2-exit-test.sh invokes it, and the
+     gate must reach the same verdict it reaches for the explicit sha: green,
+     with the admitted pair named against the resolved commit. A gate that
+     lowercased the value before resolving it would be judging `head`, which
+     names no commit, and reports error. */
+  withBudgetRepo(APPROVING_PAIR, {}, (repo) => {
+    const run = runRegistryGate(repo, "check-dual-review", "HEAD");
+    assert.equal(run.record.status, "green", run.output);
+    assert.equal(run.exit, 0, run.output);
+    assert.ok(run.record.units >= 2, run.output);
+    assert.ok((run.record.detail ?? "").includes(repo.head), `${repo.head} is not named: ${run.record.detail ?? ""}`);
+  });
+});
+
+test("a shipped change with one committed review is red through the real runner, naming one missing", () => {
+  withBudgetRepo([APPROVING_PAIR[0] as BudgetVerdict], {}, (repo) => {
+    const run = runRegistryGate(repo, "check-dual-review");
+    assert.equal(run.record.status, "red", run.output);
+    assert.notEqual(run.exit, 0, run.output);
+    assert.match(run.record.detail ?? "", /1 of 2 are admitted and 1 missing/);
+  });
+});
+
+test("an approving decorrelated pair over the reviewed shipped tree is green through the real runner", () => {
+  withBudgetRepo(APPROVING_PAIR, {}, (repo) => {
+    const run = runRegistryGate(repo, "check-dual-review");
+    assert.equal(run.record.status, "green", run.output);
+    assert.equal(run.exit, 0, run.output);
+    assert.ok(run.record.units >= 2, run.output);
+  });
+});
+
+test("a refusing pair, a shared family, a shared framing and a shared contract are each red through the real runner", () => {
+  const arms: [string, RegExp, BudgetVerdict[]][] = [
+    [
+      "FIX-ROUND-NEEDED",
+      /does not approve this head .*check: verdict-pair-approves/,
+      [
+        { fixture: "decorrelated-criteria.yaml", as: "m3-p9-criteria.yaml", verdict: "FIX-ROUND-NEEDED" },
+        { fixture: "decorrelated-hazard.yaml", as: "m3-p9-hazard.yaml" },
+      ],
+    ],
+    [
+      "shared family",
+      /not decorrelated on produced-by/,
+      [
+        { fixture: "decorrelated-criteria.yaml", as: "m3-p9-criteria.yaml" },
+        { fixture: "shared-family-hazard.yaml", as: "m3-p9-hazard.yaml" },
+      ],
+    ],
+    [
+      "shared framing",
+      /not decorrelated on framing/,
+      [
+        { fixture: "decorrelated-criteria.yaml", as: "m3-p9-criteria.yaml" },
+        { fixture: "shared-framing-hazard.yaml", as: "m3-p9-hazard.yaml" },
+      ],
+    ],
+    [
+      "shared contract",
+      /not decorrelated on review-contract/,
+      [
+        { fixture: "decorrelated-criteria.yaml", as: "m3-p9-criteria.yaml" },
+        { fixture: "shared-contract-criteria.yaml", as: "m3-p9-criteria-2.yaml" },
+      ],
+    ],
+  ];
+  for (const [name, reason, verdicts] of arms) {
+    withBudgetRepo(verdicts, {}, (repo) => {
+      const run = runRegistryGate(repo, "check-dual-review");
+      assert.equal(run.record.status, "red", `${name}: ${run.output}`);
+      assert.notEqual(run.exit, 0, `${name}: ${run.output}`);
+      /* RED FOR THE NAMED REASON, not merely red: a pair refused for some
+         unrelated staging defect would pass a status-only assertion. */
+      assert.match(run.record.detail ?? "", reason, `${name}: ${run.record.detail ?? ""}`);
+    });
+  }
+});
+
+test("an approving pair that names an ancestor whose gap adds shipped bytes is red, and names the exclusion", () => {
+  withBudgetRepo(APPROVING_PAIR, { shippedAfterReview: true }, (repo) => {
+    const run = runRegistryGate(repo, "check-dual-review");
+    assert.equal(run.record.status, "red", run.output);
+    assert.notEqual(run.exit, 0, run.output);
+    assert.match(run.record.detail ?? "", /0 of 2 are admitted and 2 missing/);
+    assert.match(run.record.detail ?? "", /NOT evidence about this commit/);
+    assert.match(run.record.detail ?? "", new RegExp(repo.reviewed));
+  });
+});
+
+test("a delivery-only change is not forced through the two-verdict rule and names its tier", () => {
+  withBudgetRepo([], { shipped: false }, (repo) => {
+    const run = runRegistryGate(repo, "check-dual-review");
+    assert.equal(run.record.status, "not-applicable", run.output);
+    assert.equal(run.record.precondition?.id, "review-budget-requires-dual-review", run.output);
+    assert.equal(run.record.precondition?.met, false);
+    assert.match(run.record.precondition?.reason ?? "", /every one is below the dual-review tier/);
+    assert.ok((run.record.precondition?.evidence ?? []).includes("tier: none"), JSON.stringify(run.record.precondition));
+    assert.ok(
+      (run.record.precondition?.evidence ?? []).some((line) => line.includes("delivery/notes/state.md")),
+      JSON.stringify(run.record.precondition),
+    );
+  });
+});
+
+test("merge-preconditions, the review gate the pull-request bundle runs, is red through the real runner for zero and one committed review", () => {
+  /* THE SAME TWO ARMS THROUGH THE GATE THAT IS IN gates.manifest.json, because
+     `check-dual-review` is registry-only and CI never runs it through the
+     runner. The fixture repository has NO REMOTE, so a gate that consulted the
+     GitHub API before deciding the review evidence would stop at "no
+     repository could be established" and report error; red with the missing
+     count is the proof the evidence was decided first. */
+  for (const [verdicts, missing] of [
+    [[], 2],
+    [[APPROVING_PAIR[0] as BudgetVerdict], 1],
+  ] as [BudgetVerdict[], number][]) {
+    withBudgetRepo(verdicts, {}, (repo) => {
+      const run = runRegistryGate(repo, "merge-preconditions");
+      assert.equal(run.record.status, "red", run.output);
+      assert.notEqual(run.exit, 0, run.output);
+      assert.match(
+        run.record.detail ?? "",
+        new RegExp(`${String(2 - missing)} of 2 are admitted and ${String(missing)} missing`),
+      );
+      assert.doesNotMatch(run.record.detail ?? "", /no repository could be established/);
+    });
+  }
+});
+
+test("merge-preconditions through the real runner is not-applicable for a delivery-only change, and an approving pair reaches the network conditions", () => {
+  withBudgetRepo([], { shipped: false }, (repo) => {
+    const run = runRegistryGate(repo, "merge-preconditions");
+    assert.equal(run.record.status, "not-applicable", run.output);
+    assert.equal(run.record.precondition?.id, "review-budget-requires-dual-review", run.output);
+    assert.ok((run.record.precondition?.evidence ?? []).includes("tier: none"), JSON.stringify(run.record.precondition));
+  });
+  /* THE CONTROL: the same command over an approving pair is NOT red on the
+     review evidence and goes on to condition 4, which needs a repository this
+     fixture deliberately does not have. Error, never green and never
+     not-applicable, is the correct word for that. */
+  withBudgetRepo(APPROVING_PAIR, {}, (repo) => {
+    const run = runRegistryGate(repo, "merge-preconditions");
+    assert.equal(run.record.status, "error", run.output);
+    assert.match(run.record.detail ?? "", /no repository could be established/);
+  });
+});
+
+const budgetModule = (await import(new URL("../src/gates/merge-preconditions.ts", import.meta.url).href)) as {
+  classifyReviewBudget: (
+    contextDirectory: string,
+    base: string,
+    head: string,
+  ) =>
+    | { ok: true; budget: { tier: string; paths: { path: string; tier: string }[]; dual: string[] } }
+    | { ok: false; reason: string };
+};
+
+/**
+ * THE REVIEW BUDGET CONSUMES git's OUTPUT, so the red-witness rule's stronger
+ * form applies: the assertion is made against REAL captured output. The
+ * capture at witness/captures/m5-p3-git-review-budget.json was taken from this
+ * exact staging; the test re-stages it, re-runs both commands, requires the
+ * live output to equal the recorded bytes, and only then asks the shipped
+ * classifier about it. A git that printed something else would redden the
+ * first half before the classifier was trusted with it.
+ */
+const GIT_BUDGET_CAPTURE = join(repoRoot, "witness", "captures", "m5-p3-git-review-budget.json");
+
+test("the review budget classifies git's real NUL-separated, rename-split name list for a nested project by DR-0027's table", () => {
+  const recorded = JSON.parse(readFileSync(GIT_BUDGET_CAPTURE, "utf8")) as {
+    commands: { argv: string[]; cwd: string; stdout: string }[];
+  };
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-budget-git-"));
+  try {
+    const kernel = join(dir, "kernel");
+    mkdirSync(join(kernel, "src"), { recursive: true });
+    writeFileSync(join(kernel, "src", "feature.ts"), "export const feature = 1;\n");
+    writeFileSync(join(kernel, "src", "old.ts"), "export const old = 1;\n");
+    fixtureGit(dir, ["init", "-q", "."]);
+    fixtureGit(dir, ["add", "-A"]);
+    fixtureGit(dir, ["commit", "-q", "-m", "base"]);
+    const base = fixtureGit(dir, ["rev-parse", "HEAD"]);
+    writeFileSync(join(kernel, "src", "feature.ts"), "export const feature = 2;\n");
+    mkdirSync(join(kernel, "delivery"), { recursive: true });
+    writeFileSync(join(kernel, "delivery", "a b.md"), "paperwork with a space in its name\n");
+    renameSync(join(kernel, "src", "old.ts"), join(kernel, "delivery", "old.md"));
+    mkdirSync(join(kernel, "test"), { recursive: true });
+    writeFileSync(join(kernel, "test", "x.test.ts"), "// test\n");
+    writeFileSync(join(kernel, "CLAUDE.md"), "rules\n");
+    writeFileSync(join(dir, "outside.md"), "outside the project\n");
+    fixtureGit(dir, ["add", "-A"]);
+    fixtureGit(dir, ["commit", "-q", "-m", "the change"]);
+    const head = fixtureGit(dir, ["rev-parse", "HEAD"]);
+
+    for (const command of recorded.commands) {
+      const argv = command.argv.slice(1).map((arg) => (arg === "<base>...<head>" ? `${base}...${head}` : arg));
+      const live = spawnSync("git", argv, { cwd: join(dir, command.cwd), encoding: "utf8" });
+      assert.equal(live.status, 0, live.stderr);
+      assert.equal(live.stdout, command.stdout, `git ${argv.join(" ")} no longer prints what was captured`);
+    }
+
+    const classified = budgetModule.classifyReviewBudget(kernel, base, head);
+    assert.ok(classified.ok, classified.ok ? "" : classified.reason);
+    const tiers = new Map(classified.budget.paths.map((entry) => [entry.path, entry.tier]));
+    assert.deepEqual(
+      Object.fromEntries(tiers),
+      {
+        "kernel/CLAUDE.md": "none",
+        "kernel/delivery/a b.md": "none",
+        "kernel/delivery/old.md": "none",
+        /* THE SOURCE HALF OF A MOVE INTO delivery/ IS SEEN, which is what
+           `--no-renames` is for: without it only the destination prints and a
+           shipped file moved into paperwork reads as paperwork. */
+        "kernel/src/old.ts": "dual",
+        "kernel/src/feature.ts": "dual",
+        "kernel/test/x.test.ts": "single",
+        /* OUTSIDE THE PROJECT, fail closed. */
+        "outside.md": "dual",
+      },
+    );
+    assert.equal(classified.budget.tier, "dual");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

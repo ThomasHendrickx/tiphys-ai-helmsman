@@ -512,3 +512,92 @@ test("both briefs INCLUDE the one shared dispatch block and do not carry a copy 
     );
   assert.deepEqual(carriers, ["_shared-dispatch-contract.md"]);
 });
+
+/* ------------------------------------------------------------------ */
+/* M5-P3: each contract names its own verdict file                      */
+/* ------------------------------------------------------------------ */
+
+const scopeModule = (await import(new URL("../src/gates/scope.ts", import.meta.url).href)) as {
+  isPhaseOwnEvidence: (path: string, phase: string) => boolean;
+};
+
+/**
+ * The verdict path a composed brief tells its reviewer to write, read from the
+ * contract clause's own sentence. `<phase-id>` is the placeholder the brief
+ * defines as the lower-case phase id.
+ */
+function verdictPathIn(composed: string): string[] {
+  return [...composed.matchAll(/Your verdict file is `(delivery\/review\/<phase-id>-[a-z-]+\.json)`/g)].map(
+    (match) => match[1] as string,
+  );
+}
+
+/**
+ * A verdict for `contract`, built from the shipped dual-review fixture of the
+ * same contract so the document is one a reviewer could have written, then
+ * re-pointed at this brief's phase and a forty-hex head.
+ */
+function verdictFor(contract: string): Record<string, unknown> {
+  const fixture = contract === "hazard" ? "decorrelated-hazard.yaml" : "decorrelated-criteria.yaml";
+  const parsed = yamlModule.parse(
+    readFileSync(join(repoRoot, "witness", "fixtures", "dual-review", fixture), "utf8"),
+  ) as Record<string, unknown>;
+  assert.equal(parsed["review-contract"], contract, `${fixture} is not a ${contract} verdict`);
+  return { ...parsed, phase: PHASE_ID, head: "0123456789abcdef0123456789abcdef01234567" };
+}
+
+test("each composed review contract names a distinct top-level verdict JSON path under delivery/review, and the document written there validates as a verdict", () => {
+  const paths = new Map<string, string>();
+  for (const contract of rolesModule.REVIEW_CONTRACTS) {
+    const emitted = compose("clean-room-reviewer", ["--review-contract", contract]);
+    assert.equal(emitted.status, 0, `${contract}: ${emitted.stderr}`);
+    const named = verdictPathIn(emitted.stdout);
+    /* EXACTLY ONE, because a brief naming two files for one review has not told
+       the reviewer where its output goes. */
+    assert.equal(named.length, 1, `${contract} brief names ${String(named.length)} verdict files: ${named.join(", ")}`);
+    const template = named[0] as string;
+    assert.ok(template.endsWith(`-${contract}.json`), `${contract} brief names ${template}`);
+    /* THE PLACEHOLDER IS DEFINED IN THE SAME COMPOSED BRIEF, so a reviewer
+       reading only its own brief can turn it into a path. */
+    assert.match(emitted.stdout, /`<phase-id>` is the\s+phase id in lower case/);
+    paths.set(contract, template.replace("<phase-id>", PHASE_ID.toLowerCase()));
+  }
+  const distinct = new Set(paths.values());
+  assert.equal(distinct.size, rolesModule.REVIEW_CONTRACTS.length, [...paths.values()].join(", "));
+
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-verdict-contract-"));
+  try {
+    for (const [contract, path] of paths) {
+      /* TOP LEVEL of delivery/review/, which is where the scope gate's
+         phase-own-evidence rule looks and where the merge gate's corpus is. */
+      assert.match(path, /^delivery\/review\/[^/]+\.json$/, path);
+      assert.equal(scopeModule.isPhaseOwnEvidence(path, PHASE_ID), true, `${path} is not ${PHASE_ID}'s own evidence`);
+      const target = join(dir, path);
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(target, `${JSON.stringify(verdictFor(contract), null, 2)}\n`);
+      const validated = run(cliEntry, ["validate", "--type", "verdict", target], repoRoot);
+      const output = `${validated.stdout}${validated.stderr}`;
+      /* NO INVALID LINE. Checks that need a context report SKIPPED when none
+         is given (the dual-review fixture test records it; since kernel 0.2.1
+         such a run exits 0). Every line present must be one of those skips. */
+      assert.doesNotMatch(output, /INVALID/, `${contract}: ${output}`);
+      for (const line of output.split("\n").filter((entry) => entry.trim() !== "")) {
+        assert.match(line, /SKIPPED .* no context|^tiphys validate:|valid/i, `${contract}: ${line}`);
+      }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the scope gate's phase-own-evidence rule accepts this phase's verdict file names and refuses another phase's", () => {
+  for (const contract of rolesModule.REVIEW_CONTRACTS) {
+    assert.equal(scopeModule.isPhaseOwnEvidence(`delivery/review/m5-p3-${contract}.json`, "m5-p3"), true);
+    assert.equal(scopeModule.isPhaseOwnEvidence(`delivery/review/m5-p3-${contract}.json`, "M5-P3"), true);
+    /* ANOTHER PHASE, including the one whose id this one is a prefix of. */
+    assert.equal(scopeModule.isPhaseOwnEvidence(`delivery/review/m5-p2-${contract}.json`, "m5-p3"), false);
+    assert.equal(scopeModule.isPhaseOwnEvidence(`delivery/review/m5-p30-${contract}.json`, "m5-p3"), false);
+    /* AND NOT ONE DIRECTORY DOWN. */
+    assert.equal(scopeModule.isPhaseOwnEvidence(`delivery/review/sub/m5-p3-${contract}.json`, "m5-p3"), false);
+  }
+});
