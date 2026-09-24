@@ -2126,6 +2126,30 @@ The inotify watcher on `/` and `/tmp` stayed armed through every run of this
 round, from suite a to the end of that bundle, and logged no event after my
 own probe.
 
+### Gates after the strip (open question 13 decided)
+
+Node v26.6.0 at ad1263a (the strip and member 3), origin/main still 3eeccb9.
+scratch run-green11.sh:
+
+- `npm run build` exit 0, and `git status --short` printed nothing after it.
+- `npm test`, FIRST run: exit 1, 1485 tests, 1484 pass, 1 fail, 0 skipped.
+  The failure was test/implementer-brief.test.ts:863, a file this round does
+  not touch: `ENOENT, No such file or directory
+  '/tmp/tiphys-impl-manifest-JxL7lN/src/gates/schemas'` from `cpSync` inside
+  its own `stageKernel` (test/implementer-brief.test.ts:96). That file alone,
+  run three times straight after, printed `pass 21 fail 0` each time. No other
+  suite process was running (`ps` showed none). I did not find the cause; it is
+  recorded, not explained. Scratch copies: green11-first.log and
+  green11-first-suite.txt.
+- `npm test`, SECOND run, same head, same build: exit 0, 1485 tests, 1485 pass,
+  0 fail, 0 cancelled, 0 skipped.
+- check-authored-bytes exit 0; render-agent-rules-gates --check exit 0 (24
+  rows); check-id-collisions exit 0.
+
+The citations and red-witness gates were run at the head that carries this
+record; their output is in the hand-back, because recording it here would
+change the head they ran at.
+
 ## Open questions
 
 1. **RESOLVED in fix round 1 (CR-001).** Was: **`headGroupFor` is unchanged.** In the derived checks, a same-phase
@@ -2240,10 +2264,10 @@ and what settles each:
 - 1144: "an unstamped document never reached the comparison" at b57bd7c: the
   new test is red there with `Missing expected exception: {}`, the `{}` being
   the unstamped record (captured above).
-- 2096 (1636 before fix round 3): "needs a", inside open question 9, which is a question.
-- 2108 (1648 before fix round 3): "cannot be decoded" describes an input (an undecodable file), not a
+- 2188 (1636 before fix round 3): "needs a", inside open question 9, which is a question.
+- 2200 (1648 before fix round 3): "cannot be decoded" describes an input (an undecodable file), not a
   claim about the code.
-- 2132 (1664 before fix round 3): the grep command itself.
+- 2227 (1664 before fix round 3): the grep command itself.
 
 Fix round 2's section:
 
@@ -2266,23 +2290,23 @@ Fix round 2's section:
 - 997, 1303, 1306, 1330, 1349, 1375: lines of the derivation's
   captured grep output, unedited.
 
-Fix round 3's section (re-run after it was written; lines 1602 to 2059):
+Fix round 3's section (re-run after the strip was recorded; lines 1602 to 2152):
 
 - 1614: CI's captured output ("never green" is the check's own sentence).
-- 1710, 1737, 1749, 1757, 1771, 1941: test titles inside the captured
+- 1718, 1745, 1757, 1765, 1779, 1984: test titles inside the captured
   fr3-fails.py output, unedited.
-- 1803: "no grep for a removed `.git` can see" the never-a-repository victims:
+- 1811: "no grep for a removed `.git` can see" the never-a-repository victims:
   the static grep printed just above finds two of the six victim files, and
   the other four are in the execution list only.
-- 1903: each cwd-relative bare init targets a subdirectory, "never
+- 1911: each cwd-relative bare init targets a subdirectory, "never
   os.tmpdir() itself": test/orchestrator-next.test.ts:71 makes `origin` as
   `join(dir, "origin.git")` under a fresh mkdtemp, the five `makeBareRemote`
   helpers make `join(root, name)`, and scripts/probe-cas-ref.mjs:192 makes
   `join(absRoot, "remote.git")`.
-- 1961 and 1983: "never a repository" is the victim shape's name, and 1983 is
-  captured output.
+- 2007, 2032 and 2048: "never a repository" is the victim shape's name,
+  and 2032 and 2048 are captured output.
 
 Occurrences, counted the same way in both forms after this section was
-written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 90, and the
-wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 90.
-Equal, so no hit was missed by wrapping. The hits after line 2132 are this section quoting the ones above it.
+written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 91, and the
+wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 91.
+Equal, so no hit was missed by wrapping. The hits after line 2227 are this section quoting the ones above it.
