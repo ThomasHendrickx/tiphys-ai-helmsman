@@ -48,7 +48,7 @@ const checksModule = (await import(
     type: string,
     instance: unknown,
     contextDirectory: string | undefined,
-  ) => { lines: string[]; failed: boolean };
+  ) => { lines: string[]; failed: boolean; violated: boolean };
   registerCheck: (check: DerivedCheck) => void;
   deregisterCheck: (id: string) => boolean;
   checksFor: (type: string) => DerivedCheck[];
@@ -206,6 +206,9 @@ test("a derived check that requires a context it was not given is SKIPPED and th
       true,
       "a cross-document rule that did not run must not be able to pass",
     );
+    /* Kernel 0.2.1: a skip is not a violation, and `violated` is what the
+       validate command exits on. */
+    assert.equal(withoutContext.violated, false, withoutContext.lines.join("\n"));
     /* The SKIP is distinguishable from a violation: they are different facts
        and a reader must be able to tell "this rule found a problem" from
        "this rule never ran". */

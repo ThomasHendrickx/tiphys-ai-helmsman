@@ -1,0 +1,24 @@
+{
+  "id": "kernel-0-2-1-rules-since-malformed-is-defect",
+  "behavior": "rules-since-malformed-since-is-internal-defect",
+  "tests": [
+    "a RULES_SINCE row whose since is not a kernel version is an internal defect that names the row, for an unstamped document as much as a stamped one"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/stamp.ts",
+      "find": "  if (since === undefined) {",
+      "replace": "  if (since === undefined && stamp.kind === \"malformed\") {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/stamp.ts",
+      "find": "  const since = parseKernelVersion(rule.since);",
+      "replace": "  if (stamp.kind !== \"stamped\") {\n    return false;\n  }\n  const since = parseKernelVersion(rule.since);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

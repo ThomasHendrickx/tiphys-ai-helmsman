@@ -1,0 +1,24 @@
+{
+  "id": "kernel-0-2-1-stamp-rule-applies-from-its-version",
+  "behavior": "stamp-rule-applies-from-its-version",
+  "tests": [
+    "a rule applies from the version that introduced it: an abbreviated head is history when unstamped or stamped 0.1.0, and INVALID when stamped 0.2.0"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "  const notInForce = rulesNotYetInForce(resolvedType, stamp);",
+      "replace": "  const notInForce: ReturnType<typeof rulesNotYetInForce> = [];"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/stamp.ts",
+      "find": "       not let it pass: the document is already INVALID on its stamp. */\n    return false;",
+      "replace": "       not let it pass: the document is already INVALID on its stamp. */\n    return true;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -56,12 +56,20 @@ files, so one review never overwrites the other.
 How it is written. Create the file within your first minutes. Rewrite it as you
 work, so its mtime is your beacon and a death leaves a partial result (see the
 incremental-output clause). A partial file may not validate yet. The finished
-file must: `tiphys validate --type verdict <path>` reports no `INVALID` line.
+file must: `tiphys validate --type verdict <path>` reports no `INVALID` line
+and exits 0. Without `--context`, checks that need one print
+`SKIPPED <id> no context`; the command still exits 0 when those are its only
+non-pass lines, and a skipped check is one that did not run, not one that
+passed.
 
 What it is about. `head` is the full forty-character sha of the exact commit
 you reviewed. Not a branch name, not a short sha, not the commit you expect to
 be merged. A verdict whose head is not the reviewed commit is not evidence
-about it, and the merge gate excludes it and names the exclusion. `produced-by`
+about it, and the merge gate excludes it and names the exclusion.
+`tiphys-version` is the kernel version on the `tiphys-version:` line at the top
+of your composed brief; copy it exactly. It is recommended, not required: it
+tells `tiphys validate` which rules the verdict was written to. The merge gate
+does not read it, and holds every verdict to every current rule either way. `produced-by`
 names your model family, `framing` names your entry point, and
 `review-contract` names the contract stated at the top of your brief.
 

@@ -1,3 +1,4 @@
+import { STAMP_FIELD, ownVersionForStamp } from "../stamp.ts";
 import { createHash, randomBytes } from "node:crypto";
 import { spawnSync } from "node:child_process";
 import {
@@ -44,6 +45,12 @@ import {
 } from "./result.ts";
 import type { GateEntry, GateManifest, PreconditionSpec, RunParameter } from "./manifest.ts";
 import type { GateResult, GateStatus, PreconditionRecord } from "./result.ts";
+
+/** The stamp for a summary, or nothing when the version cannot be read. */
+function stampField(): { "tiphys-version"?: string } {
+  const version = ownVersionForStamp();
+  return version === undefined ? {} : { [STAMP_FIELD]: version };
+}
 
 /**
  * THE GATE RUNNER (kernel plan M2, M2-P1 step 7 and step 8).
@@ -207,6 +214,12 @@ export interface GateSummaryRow {
 export interface RunSummary {
   /** Identity of THIS run. A bundle nobody can attribute is not evidence. */
   runId: string;
+  /**
+   * KERNEL 0.2.1 (DR-0055): the kernel version that produced this summary,
+   * so a bundle read later says which kernel's gates it is evidence about.
+   * Absent only when no package.json can be found above the running module.
+   */
+  "tiphys-version"?: string;
   manifest: string;
   /** M3-P2: true when `manifest` above named a gate registry, not a manifest. */
   registry?: boolean;
@@ -2077,6 +2090,7 @@ function writeAbortedSummary(
   }
   const summary: RunSummary = {
     runId,
+    ...stampField(),
     manifest: options.manifestPath,
     manifestSha256: "",
     startedAt: now(),
@@ -2288,6 +2302,7 @@ function runClaimedBundle(
 
   const summary: RunSummary = {
     runId,
+    ...stampField(),
     manifest: options.manifestPath,
     ...(options.registry === true
       ? {

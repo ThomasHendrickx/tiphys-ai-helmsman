@@ -34,6 +34,7 @@
  */
 
 import { writeFileSync } from "node:fs";
+import { STAMP_FIELD, ownVersionForStamp } from "../stamp.ts";
 import { join } from "node:path";
 import {
   REVIEW_CONTRACTS,
@@ -399,12 +400,17 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
     return { ok: false, reason: productIntent.reason };
   }
 
+  const stampVersion = ownVersionForStamp();
   const lines: string[] = [
     `# Brief: ${options.roleId}`,
     "",
     `role: ${String(frontmatter["role"] ?? options.roleId)}`,
     `lifetime: ${String(frontmatter["lifetime"] ?? "")}`,
     `model-tier: ${String(frontmatter["model-tier"] ?? "")}`,
+    /* KERNEL 0.2.1 (DR-0055): THE BRIEF IS STAMPED with the kernel that
+       composed it, and this line is the value a reviewer writes into its
+       verdict's `tiphys-version` (roles/clean-room-reviewer.md). */
+    ...(stampVersion === undefined ? [] : [`${STAMP_FIELD}: ${stampVersion}`]),
     ...(reviewContract === undefined ? [] : [`review-contract: ${reviewContract}`]),
     "",
     "## Mandated reading, in order",

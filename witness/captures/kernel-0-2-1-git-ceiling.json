@@ -1,0 +1,30 @@
+{
+  "provenance": "Real output of git rev-parse --show-toplevel under three GIT_CEILING_DIRECTORIES settings, captured 2026-09-24 with the git named below by a scratch script that stages <lab> (a repository with one commit) containing ctx/deeper, runs the first two probes from ctx while ctx is a plain directory, then runs git init in ctx and runs the third from ctx/deeper. The lab directory's real path is spelled <lab>; no other byte is rewritten. test/git-ceiling.test.ts stages the same layout, runs the same probes live and compares them with this record before trusting the ceiling that six test files set.",
+  "git": "git version 2.43.0",
+  "probes": [
+    {
+      "name": "no-ceiling-finds-the-ancestor",
+      "cwd": "<lab>/ctx",
+      "ceiling": null,
+      "status": 0,
+      "stdout": "<lab>\n",
+      "stderr": ""
+    },
+    {
+      "name": "ceiling-at-the-ancestor-finds-nothing",
+      "cwd": "<lab>/ctx",
+      "ceiling": "<lab>",
+      "status": 128,
+      "stdout": "",
+      "stderr": "fatal: not a git repository (or any of the parent directories): .git\n"
+    },
+    {
+      "name": "ceiling-at-the-ancestor-still-finds-a-repository-below-it",
+      "cwd": "<lab>/ctx/deeper",
+      "ceiling": "<lab>",
+      "status": 0,
+      "stdout": "<lab>/ctx\n",
+      "stderr": ""
+    }
+  ]
+}

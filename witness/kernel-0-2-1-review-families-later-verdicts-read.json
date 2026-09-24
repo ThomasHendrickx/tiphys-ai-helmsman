@@ -1,0 +1,32 @@
+{
+  "id": "kernel-0-2-1-review-families-later-verdicts-read",
+  "behavior": "review-families-later-family-red",
+  "tests": [
+    "a second family committed after review-families was declared still contradicts it",
+    "a history verdict edited after review-families was declared is current work and is read again"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    if (id !== undefined && history.has(id)) {",
+      "replace": "    if (id !== undefined) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    const before = paperworkBlobIds(contextDirectory, parent);",
+      "replace": "    const before = paperworkBlobIds(contextDirectory, refSha);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/kernel-0-2-1-history-git.json"
+    ],
+    "provenance": "Real output of git diff -z --no-renames --name-only base...head (the name list classifyReviewBudget reads) and git log --reverse --topo-order --full-history --format=%H %P ref -- ./charter.yaml (the log firstDeclarationCommit reads), captured 2026-09-23 with git 2.43.0 against the scratch repositories test/history-compat.test.ts stages; the named tests stage them again and compare git's live output with the recorded stdout, commit shas spelled by staging name, before trusting the gate."
+  }
+}

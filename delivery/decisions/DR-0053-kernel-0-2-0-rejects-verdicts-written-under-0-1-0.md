@@ -84,3 +84,38 @@ on purpose (DR-0038). The owner has decided that Tiphys judges current and
 future work, never history (DR-0054). So 0.2.1 also limits that check to
 verdicts committed from the declaration onward. Pulse keeps its records
 unedited.
+
+## Owner answer, 2026-09-23
+
+The owner approved the 0.2.1 publish: "yes, publish 0.2.1 once it's green".
+The publish follows the 0.2.1 merge under DR-0012 and a green post-merge
+`push` run, and runs the release verification before it is reported done.
+
+## Amendment: plan criterion M3-P1 4c, 2026-09-23 (orchestrator ruling)
+
+**What changed.** Criterion 4c at delivery/plan/kernel-plan-m3.md:1809 says
+a cross-document check run without `--context` prints
+`SKIPPED <check-id> no context` and the command exits nonzero. From 0.2.1 the
+line is still printed, by check id, and the command exits 0 when the SKIPPED
+lines are its only non-pass results. It exits 1 only on a real `INVALID`
+line (src/commands/validate.ts:510 returns on `violated`).
+`ChecksRun.failed` is kept and still counts a skip
+(src/checks.ts:6191), so a caller that wants the old meaning can read it.
+
+**Why.** The owner reported that `tiphys validate` "returns false" on
+pulse's history. Every pulse verdict validated without `--context` exited 1
+on SKIPPED lines alone, even with no INVALID line. DR-0054 says Tiphys judges
+current and future work, never history, and a failing exit on a document that
+breaks no rule is a judgment of it. The skip is still reported, so a check
+cannot pass by not running: it is printed as not run, never as a pass.
+
+**Who is affected.** The criteria review of 0.2.1 searched for any consumer
+that reads the exit code of `validate`: none in `src`, `scripts`, `bin`,
+`plugin/src`, `gate-registry.yaml`, `gates.manifest.json`, the workflows, or
+pulse at d4e491b. The kernel's own callers of the check machinery always pass
+a context. A consumer that used a context-less exit 0 as proof that
+cross-document checks passed would now be misled; none was found.
+
+**Release-note line for 0.2.1.** `tiphys validate` without `--context` no
+longer exits 1 on SKIPPED checks alone. It still prints each skip, and still
+exits 1 on any INVALID line.

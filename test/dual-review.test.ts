@@ -35,6 +35,46 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { realpathSync as ceilingRealpath } from "node:fs";
+import { tmpdir as ceilingTmpdir } from "node:os";
+import { delimiter as ceilingDelimiter } from "node:path";
+
+/*
+ * NO REPOSITORY ABOVE THE SCRATCH ROOT (kernel 0.2.1 fix round 3). Tests in
+ * this file stage context directories under os.tmpdir() that are NOT git
+ * repositories (or whose `.git` is removed) and assert what the code does
+ * when no repository is found. Git DISCOVERS a repository in any ancestor, so
+ * a repository at or above os.tmpdir() turns every such arm into a read of
+ * THAT repository's HEAD. Measured: the whole suite with os.tmpdir() inside a
+ * real repository failed 64 tests across six files, this one among them, and
+ * CI run 35946757118 failed one of them the same way. The ceiling stops
+ * discovery from climbing out of os.tmpdir(); repositories a test stages
+ * INSIDE it (and contexts nested in them) are still found. Every child
+ * process inherits it from here.
+ */
+const GIT_CEILING = [ceilingRealpath(ceilingTmpdir()), ceilingTmpdir(), process.env["GIT_CEILING_DIRECTORIES"] ?? ""]
+  .filter((entry) => entry !== "")
+  .join(ceilingDelimiter);
+process.env["GIT_CEILING_DIRECTORIES"] = GIT_CEILING;
+/*
+ * AND NO REPOSITORY BY THE ENVIRONMENT (kernel 0.2.1 fix round 3, the
+ * orchestrator's decision on open question 13). The ceiling above stops
+ * DISCOVERY; it does not stop an inherited GIT_DIR, which names a repository
+ * outright and was the only shape measured to reproduce CI's exact message.
+ * So the names that relocate the repository, its objects or its index are
+ * removed for this file and every child it spawns.
+ */
+const INHERITED_REPOSITORY_ENV = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+];
+for (const name of INHERITED_REPOSITORY_ENV) {
+  delete process.env[name];
+}
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const cliEntry = join(repoRoot, "bin", "tiphys.ts");
@@ -133,14 +173,12 @@ test("every dual-review fixture validates against the shipped verdict schema", (
       { cwd: repoRoot, encoding: "utf8" },
     );
     const output = `${run.stdout}${run.stderr}`;
-    /* THE EXIT CODE IS NONZERO HERE AND THAT IS THE VALIDATOR WORKING, not a
-       fixture defect. Four checks registered for `verdict` require a context
-       and this invocation deliberately gives none, so each reports
-       `SKIPPED <id> no context` and the command exits 1 rather than passing by
-       not running. What this test is about is the SCHEMA, so what it asserts is
-       that no line is an `INVALID`, and that every line that is there is a
-       skip. Asserting exit 0 would have forced a `--context` that has nothing
-       to do with the question. */
+    /* Checks registered for `verdict` require a context and this invocation
+       deliberately gives none, so each reports `SKIPPED <id> no context`.
+       Since kernel 0.2.1 a run whose only non-pass results are skips exits 0,
+       so the exit is asserted too; what makes a skip visible is that every
+       line that is there is a skip, never a pass. */
+    assert.equal(run.status, 0, `${name}: ${output}`);
     assert.doesNotMatch(output, /INVALID/, `${name}: ${output}`);
     for (const line of output.split("\n").filter((entry) => entry.trim() !== "")) {
       assert.match(line, /^SKIPPED [a-z-]+ no context$/, `${name}: ${line}`);
@@ -341,8 +379,8 @@ test("dual-review-decorrelation is registered in the shipped registry for the ve
   assert.equal(found.length, 1, "the check is not registered exactly once");
   assert.equal(found[0]?.type, "verdict");
   /* requiresContext TRUE, so running the validator with no `--context` prints
-     `SKIPPED dual-review-decorrelation no context` and exits nonzero rather
-     than passing by not running. */
+     `SKIPPED dual-review-decorrelation no context` rather than a pass (and,
+     since kernel 0.2.1, exits 0 when that is the only non-pass result). */
   assert.equal(found[0]?.requiresContext, true);
 });
 

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { pathsIdentifySameObject } from "../path-identity.ts";
 import {
+  declaresNoHead,
   describeAdmittedVerdicts,
   describeOffHeadVerdicts,
   loadCommittedVerdicts,
@@ -790,6 +791,7 @@ function runRegisteredCheck(
   id: string,
   verdicts: readonly VerdictForHead[],
   contextDirectory: string,
+  base: string | undefined,
 ): { status: RowStatus; sentence: string } {
   const selected: DerivedCheck[] = registeredChecks().filter((check) => check.id === id);
   if (selected.length === 0) {
@@ -803,7 +805,9 @@ function runRegisteredCheck(
   const messages = new Set<string>();
   for (const verdict of verdicts) {
     for (const check of selected) {
-      const outcome = check.run(verdict.record, contextDirectory);
+      /* The base goes in so a head-less sibling is judged on its provenance
+         (kernel 0.2.1 fix round 2): history only if it is on the base. */
+      const outcome = check.run(verdict.record, contextDirectory, { base });
       for (const violation of outcome.violations) {
         messages.add(`${violation.pointer} ${violation.message}`);
       }
@@ -1227,6 +1231,21 @@ function readReviewCorpus(contextDirectory: string, head: string): ReviewCorpus 
   const excluded: OffHeadVerdict[] = [];
   const forHead: VerdictForHead[] = [];
   for (const entry of corpus.verdicts) {
+    /* KERNEL 0.2.1 (DR-0053, DR-0054). A verdict with NO head key is excluded
+       BY NAME before any relation is computed. Until 0.2.1 it reached
+       `relateDeclaredHead` with the empty string, failed to resolve, and was
+       excluded with the sentence "declares head , which does not resolve",
+       which named the wrong fact. The schema no longer requires the field, so
+       absence is now a well-formed document written before the field existed
+       and the ADMISSION rule is here: it is never admitted, so on a dual-tier
+       change it cannot count toward the two reviews condition 1 needs. */
+    if (declaresNoHead(entry.record)) {
+      excluded.push({ path: entry.path, declared: "", relation: { kind: "no-head" } });
+      continue;
+    }
+    /* KERNEL 0.2.1 (DR-0055): admission does not read the stamp, exactly as
+       in `partitionByAuditedHead`, so the two gates cannot disagree about a
+       stamp. Every rule here applies to every verdict, stamped or not. */
     const declared = String(entry.record["head"] ?? "").toLowerCase();
     const relation = relateDeclaredHead(contextDirectory, declared, head);
     if (relation.kind === "same" || relation.kind === "evidence-only-ancestor") {
@@ -1277,9 +1296,10 @@ function reviewRows(
   review: Extract<ReviewCorpus, { ok: true }>,
   head: string,
   contextDirectory: string,
+  base: string | undefined,
 ): ConditionRow[] {
   const rows: ConditionRow[] = [];
-  const condition1 = runRegisteredCheck(DECORRELATION_CHECK_ID, review.forHead, contextDirectory);
+  const condition1 = runRegisteredCheck(DECORRELATION_CHECK_ID, review.forHead, contextDirectory, base);
   rows.push({
     id: "condition-1",
     clause: "DR-0012:22 two decorrelated clean-room reviews of this head",
@@ -1288,7 +1308,7 @@ function reviewRows(
     sentence: condition1.sentence,
   });
 
-  const condition2 = runRegisteredCheck(PAIR_CHECK_ID, review.forHead, contextDirectory);
+  const condition2 = runRegisteredCheck(PAIR_CHECK_ID, review.forHead, contextDirectory, base);
   rows.push({
     id: "condition-2",
     clause: "DR-0012:23 no unresolved finding at medium or above",
@@ -1430,7 +1450,7 @@ export async function runGate(flags: Flags): Promise<number> {
         rows,
       );
     }
-    rows.push(...reviewRows(review, head, contextDirectory));
+    rows.push(...reviewRows(review, head, contextDirectory, flags.base));
     const reviewStatus = gateStatusForRows(rows);
     if (reviewStatus !== "green") {
       return emit(
@@ -1543,7 +1563,7 @@ export async function runGate(flags: Flags): Promise<number> {
       );
     }
     rows.push(selectionRow(review, head, budget));
-    rows.push(...reviewRows(review, head, contextDirectory));
+    rows.push(...reviewRows(review, head, contextDirectory, flags.base));
   }
 
   const checkRunsUrl = `${apiBase}/repos/${slug}/commits/${head}/check-runs`;

@@ -1,0 +1,12 @@
+--- a/schemas/verdict.schema.json
++++ b/schemas/verdict.schema.json
+@@ -20,8 +20,7 @@
+   "properties": {
+     "kind": {
+       "$comment": "R-016's discriminator, so `tiphys validate --type auto` resolves this document without being told (M3R-001).",
+-      "type": "string",
+-      "const": "verdict"
++      "type": "string"
+     },
+     "phase": {
+       "$comment": "The plan phase this review is OF. Not decoration: it is the join key all three Kind B checks use to select the phase in `plan.yaml` and to confirm `work-history.yaml` is the right one. A verdict that named no phase would make every cross-document completeness rule unimplementable, which is the same reason the checklist probe carries `verifies-gate`.",

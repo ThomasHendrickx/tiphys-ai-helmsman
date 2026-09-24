@@ -1,0 +1,43 @@
+{
+  "id": "kernel-0-2-1-headless-sibling-is-history",
+  "behavior": "admission-headless-sibling-is-history",
+  "tests": [
+    "a same-phase sibling verdict with no head that is unchanged since the merge base is history: a real pulse M3-P3 round-4 review committed at the base beside an anchored approving pair is excluded by name and both merge gates clear the review conditions, while a sibling whose head is present and unusable still reddens both"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (atHead !== undefined && atBase === atHead) {",
+      "replace": "      if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  return { members, unkeyed, headless };",
+      "replace": "  return { members, unkeyed: [], headless };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      ? `is unchanged since the merge base ${sibling.ground.mergeBase}, so it is history (DR-0054)`",
+      "replace": "      ? \"was left out\""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  const inContext = relative(contextDirectory, path);",
+      "replace": "  const inContext = path;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/kernel-0-2-1-history-git.json"
+    ],
+    "provenance": "Real output of the git commands the named test's control arm consumes, captured with git 2.43.0 against scratch repositories laid out as test/history-compat.test.ts stages them: git diff -z --no-renames --name-only base...head (the name list classifyReviewBudget reads; budget-name-list-m3-p3-resumed, fix round 2, where pulse's m3-p3-criteria-round4.yaml is committed at the base and the reviews add only the resumed pair) and git rev-parse --verify --quiet base:./<path> (the blob probe blobAt in src/checks.ts runs to decide that a head-less sibling is unchanged since the merge base; sibling-blob-at-base, exit 0 with pulse's blob id). The test stages it again and compares git's live output with the recorded stdout and exit, commit shas spelled by staging name, before trusting either gate."
+  }
+}

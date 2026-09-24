@@ -13,10 +13,14 @@
  *   INVALID <json-pointer> <message> (check: <check-id>)
  *
  * A check that needs a CONTEXT it was not given reports
- * `SKIPPED <check-id> no context` and the command exits nonzero. That is the
- * whole point of the mechanism: a cross-document rule must never be able to
- * pass BY NOT RUNNING, which is the vacuous-pass shape SC-011 and M2-C-2 both
- * exist to prevent, one layer up.
+ * `SKIPPED <check-id> no context`. Until kernel 0.2.1 the command then exited
+ * nonzero (M3 criterion 4c, delivery/plan/kernel-plan-m3.md:1809), so a
+ * cross-document rule could not pass BY NOT RUNNING. Since 0.2.1, by the
+ * orchestrator's ruling on the owner's report that consumer history "returns
+ * false", `tiphys validate` exits 0 when SKIPPED lines are the only non-pass
+ * results: the skip is still PRINTED, so a reader can tell "did not run" from
+ * "passed", and `ChecksRun.failed` still reports it, but only
+ * `ChecksRun.violated` decides the exit.
  *
  * DR-0013 clause 8: Kind B rules stay HERE and are never encoded as Ajv
  * extensions. The Kind A / Kind B boundary is binding.
@@ -29,7 +33,7 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { readdirSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join } from "node:path";
+import { join, relative } from "node:path";
 import { decodeDocument, readOperatorPath } from "./validate.ts";
 import type { Diagnostic } from "./validate.ts";
 /* M3-P8. The two tuition checks resolve operator-supplied paths against the
@@ -91,7 +95,21 @@ export interface DerivedCheck {
    * with a nonzero exit rather than a silent pass.
    */
   requiresContext: boolean;
-  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome;
+  run(instance: unknown, contextDirectory: string | undefined, options?: CheckRunOptions): CheckOutcome;
+}
+
+/**
+ * What a caller that knows the CHANGE UNDER AUDIT can tell a derived check.
+ *
+ * KERNEL 0.2.1 fix round 2 (CR-KH-003, CR-007). `base` is the ref the change
+ * is measured from, the one the merge gates already take as `--base`. The two
+ * merge checks use it to decide whether a head-less sibling is HISTORY (it is
+ * at the merge base with the same bytes) or CURRENT WORK (the change adds or
+ * edits it). A caller with no base, `tiphys validate --context` and the bare
+ * script, gets the exclusion on shape alone and a line that says so.
+ */
+export interface CheckRunOptions {
+  base?: string;
 }
 
 /** Every artifact type one check runs on, `type` first and then `alsoTypes`. */
@@ -625,9 +643,12 @@ export const modeStageOrder: DerivedCheck = {
  * the hazard exactly as the plan words it.
  *
  * `requiresContext` is TRUE, so invoking the validator without `--context`
- * prints `SKIPPED mode-gate-sets-resolve no context` and exits nonzero. That
- * is the point of the mechanism (M3-P1 criterion 4c): a cross-document rule
- * must never be able to pass BY NOT RUNNING.
+ * prints `SKIPPED mode-gate-sets-resolve no context`. That is the point of
+ * the mechanism (M3-P1 criterion 4c): a cross-document rule must never be able
+ * to pass BY NOT RUNNING. Since kernel 0.2.1 the skip no longer makes
+ * `tiphys validate` exit nonzero on its own (the orchestrator's ruling,
+ * recorded in DR-0053); it is still printed, and `ChecksRun.failed` still
+ * counts it.
  */
 export const modeGateSetsResolve: DerivedCheck = {
   id: "mode-gate-sets-resolve",
@@ -2067,8 +2088,9 @@ export const checklistFramingIdsUnique: DerivedCheck = {
  * here; neither is reachable from direction 1.
  *
  * `requiresContext` is TRUE, so invoking the validator without `--context`
- * prints `SKIPPED gate-probes-resolve no context` and exits nonzero. A
- * cross-document rule must never be able to pass BY NOT RUNNING.
+ * prints `SKIPPED gate-probes-resolve no context`, which is never a pass
+ * (since kernel 0.2.1 it no longer makes `tiphys validate` exit nonzero on its
+ * own; see DR-0053).
  */
 export const gateProbesResolve: DerivedCheck = {
   id: "gate-probes-resolve",
@@ -2563,8 +2585,9 @@ export const verdictFindingReferencesResolve: DerivedCheck = {
  * KIND B BY NECESSITY: it resolves a string against the filesystem, which no
  * keyword under any DR-0013 option reaches. `requiresContext` is TRUE, so
  * running the validator without `--context` prints `SKIPPED
- * tuition-target-exists no context` and exits nonzero rather than passing by
- * not running.
+ * tuition-target-exists no context` rather than passing by not running (since
+ * kernel 0.2.1 the skip alone no longer makes `tiphys validate` exit nonzero;
+ * see DR-0053).
  *
  * ONLY `applied` IS CHECKED, and that is the point rather than a limitation.
  * `proposed` names a change nobody has made and `ticketed` names one carried
@@ -3929,6 +3952,124 @@ function headKeyOf(record: Record<string, unknown> | undefined, where: string): 
 interface HeadGroup {
   members: LoadedVerdict[];
   unkeyed: Diagnostic[];
+  /**
+   * KERNEL 0.2.1 (DR-0054): same-phase siblings that declare NO head at all
+   * and were excluded as history, each with the ground it was excluded on.
+   * Never a member; the caller prints each one so the exclusion is never
+   * silent. A head-less sibling the change under audit adds or edits is NOT
+   * here: it is in `unkeyed`, refused (fix round 2).
+   */
+  headless: HeadlessSibling[];
+}
+
+/** A head-less sibling excluded as history, and on what ground. */
+interface HeadlessSibling {
+  path: string;
+  record: Record<string, unknown>;
+  /**
+   * `at-base`: the same bytes exist at the merge base, so the change under
+   * audit did not write it. `unchecked`: the caller gave no base, so the
+   * exclusion rests on the document's shape alone, and the line says so.
+   */
+  ground: { kind: "at-base"; mergeBase: string } | { kind: "unchecked" };
+}
+
+/**
+ * How a head-less sibling's provenance is judged for one run (fix round 2).
+ *
+ * `unchecked` when the caller gave no base. `error` when a base was given
+ * and the merge base could not be established: every head-less sibling is
+ * then refused, because "could not tell whether this is history" must not
+ * shrink the group (the fail-closed direction).
+ */
+type HistoryProvenance =
+  | { kind: "unchecked" }
+  | { kind: "checked"; mergeBase: string; refSha: string }
+  | { kind: "error"; reason: string };
+
+function establishHistoryProvenance(
+  contextDirectory: string,
+  source: VerdictCorpusSource,
+  base: string | undefined,
+): HistoryProvenance {
+  if (base === undefined) {
+    return { kind: "unchecked" };
+  }
+  if (source.kind !== "commit") {
+    return {
+      kind: "error",
+      reason: `a base (${base}) was given but the verdicts were read from the working tree (${source.reason}), so whether it predates the change under audit could not be established`,
+    };
+  }
+  const merged = gitIn(["merge-base", base, source.refSha], contextDirectory);
+  if (!merged.ok) {
+    return {
+      kind: "error",
+      reason: `the merge base of ${base} and ${source.refSha} could not be established (${merged.reason}), so whether it predates the change under audit is unknown`,
+    };
+  }
+  return { kind: "checked", mergeBase: merged.stdout.trim(), refSha: source.refSha };
+}
+
+/**
+ * The blob id of a loaded verdict's `path` at `rev`, or undefined when absent.
+ *
+ * `path` is as the corpus loader returns it, `join(contextDirectory, <path in
+ * the commit>)`, so it is ABSOLUTE when the caller's context directory is (the
+ * merge-preconditions gate) and relative when it is not (the bare script). It
+ * is taken back to the context directory first, because `rev:./<path>` names
+ * a path relative to the current directory and an absolute one is never found:
+ * measured on the first run of this code, every sibling read as ADDED at
+ * merge-preconditions while check-dual-review read the same one correctly.
+ */
+function blobAt(contextDirectory: string, rev: string, path: string): string | undefined {
+  const inContext = relative(contextDirectory, path);
+  const shown = gitIn(["rev-parse", "--verify", "--quiet", `${rev}:./${inContext}`], contextDirectory);
+  return shown.ok ? shown.stdout.trim() : undefined;
+}
+
+/**
+ * A head-less document's verdict value and every finding at a blocking
+ * severity, for the line that excludes or refuses it. Never a judgement: the
+ * words are printed so a reader sees what was excluded (CR-KH-003).
+ */
+function describeVerdictAndBlocking(record: Record<string, unknown>): string {
+  const verdict = typeof record["verdict"] === "string" ? `verdict ${record["verdict"]}` : "no readable verdict";
+  const raw = record["findings"];
+  if (raw === undefined) {
+    return `${verdict} and no findings list`;
+  }
+  if (!Array.isArray(raw)) {
+    return `${verdict} and a findings value that is not a list, so its blocking findings could not be read`;
+  }
+  const blocking: string[] = [];
+  let unreadable = 0;
+  for (const entry of raw) {
+    const finding = asRecord(entry);
+    const severity = finding?.["severity"];
+    if (typeof severity !== "string" || !SEVERITY_VOCABULARY.includes(severity)) {
+      unreadable += 1;
+      continue;
+    }
+    if (BLOCKING_SEVERITIES.includes(severity)) {
+      const id = typeof finding?.["id"] === "string" ? (finding["id"] as string) : "(no id)";
+      blocking.push(`${id} (${severity})`);
+    }
+  }
+  const named =
+    blocking.length === 0
+      ? `no finding at ${BLOCKING_SEVERITIES.join(", ")}`
+      : `blocking finding(s) ${blocking.join(", ")}`;
+  return `${verdict}, ${named}${unreadable > 0 ? `, and ${String(unreadable)} finding(s) whose severity could not be read` : ""}`;
+}
+
+/** The line a derived check prints for each head-less sibling it excluded. */
+function headlessSiblingReport(checkId: string, sibling: HeadlessSibling, phase: string, headKey: string): string {
+  const ground =
+    sibling.ground.kind === "at-base"
+      ? `is unchanged since the merge base ${sibling.ground.mergeBase}, so it is history (DR-0054)`
+      : "is excluded as history (DR-0054) on its SHAPE ALONE: provenance was NOT checked, because no base was given (the merge gates' --base), so whether the change under audit wrote it is unknown";
+  return `REPORT ${checkId} ${sibling.path} declares no head and ${ground}: excluded by name from the group for phase ${phase} at head ${headKey}, never counted toward it and never refusing it; it reads ${describeVerdictAndBlocking(sibling.record)}`;
 }
 
 /**
@@ -3943,14 +4084,38 @@ interface HeadGroup {
  * head would leave a compared pair of two and a green run. So every same-phase
  * sibling that cannot be keyed is REPORTED as a violation and the remaining
  * members are still compared: a reader is owed both facts.
+ *
+ * KERNEL 0.2.1 (DR-0054), AND THE SPLIT IS THE ONE `partitionByAuditedHead`
+ * MAKES. A sibling that declares NO head key is history, written before
+ * M4-P10 asked for one, and it is not evidence about any head in either
+ * direction: it cannot be counted toward the group and it cannot refuse it.
+ * Refusing it made a phase whose old reviews predate the field unreviewable
+ * for ever without editing history, which is measured against pulse's paused
+ * M3-P3. So it is EXCLUDED BY NAME (`headless`, printed by every caller) and
+ * the fail-open worry above is answered by PROVENANCE, not by shape (fix
+ * round 2, CR-KH-003 and CR-007). Shape alone cannot tell history from a
+ * current review that omitted the field: a document written today with no
+ * `head` would get history's exemption, and two clean reviews plus a fresh
+ * head-less refusal carrying a high finding read green. So with a base, a
+ * head-less sibling is history ONLY when the same bytes exist at the merge
+ * base; one the change under audit ADDS or CHANGES is refused, naming its
+ * verdict and blocking findings. With no base the exclusion stays, on shape
+ * alone, and every excluded line says provenance was not checked and names
+ * the verdict and blocking findings. RESIDUAL, stated rather than hidden: a
+ * head-less blocker already on the base is still history. A sibling whose head
+ * is PRESENT and unusable tried to name a head and named it wrongly, so it
+ * keeps the refusal. Both readers use `declaresNoHead` for the shape test.
  */
 function headGroupFor(
   verdicts: readonly LoadedVerdict[],
   phaseKey: string,
   headKey: string,
+  contextDirectory: string,
+  provenance: HistoryProvenance,
 ): HeadGroup {
   const members: LoadedVerdict[] = [];
   const unkeyed: Diagnostic[] = [];
+  const headless: HeadlessSibling[] = [];
   for (const candidate of verdicts) {
     /* BOTH SIDES CANONICAL. `phaseKey` is already canonical; the sibling's is
        read through the same function so the two are compared in one form
@@ -3976,6 +4141,34 @@ function headGroupFor(
     if (phaseReading.value !== phaseKey) {
       continue;
     }
+    if (declaresNoHead(candidate.record)) {
+      if (provenance.kind === "unchecked") {
+        headless.push({ path: candidate.path, record: candidate.record, ground: { kind: "unchecked" } });
+        continue;
+      }
+      if (provenance.kind === "error") {
+        unkeyed.push({
+          pointer: "#/head",
+          message: `${candidate.path} declares no head and ${provenance.reason}, so it can neither be excluded as history nor be allowed to shrink the group for phase ${phaseKey}; it reads ${describeVerdictAndBlocking(candidate.record)}`,
+        });
+        continue;
+      }
+      const atHead = blobAt(contextDirectory, provenance.refSha, candidate.path);
+      const atBase = blobAt(contextDirectory, provenance.mergeBase, candidate.path);
+      if (atHead !== undefined && atBase === atHead) {
+        headless.push({
+          path: candidate.path,
+          record: candidate.record,
+          ground: { kind: "at-base", mergeBase: provenance.mergeBase },
+        });
+        continue;
+      }
+      unkeyed.push({
+        pointer: "#/head",
+        message: `${candidate.path} declares no head, and the change under audit ${atBase === undefined ? "ADDS" : "CHANGES"} it (merge base ${provenance.mergeBase}), so it is current work and not history: DR-0054 exempts only a document that predates the change. It reads ${describeVerdictAndBlocking(candidate.record)}. Add the full forty-character head it reviewed, or remove it from ${REVIEW_DIRECTORY}`,
+      });
+      continue;
+    }
     const key = headKeyOf(candidate.record, candidate.path);
     if (!key.ok) {
       unkeyed.push({ pointer: "#/head", message: key.message });
@@ -3985,7 +4178,7 @@ function headGroupFor(
       members.push(candidate);
     }
   }
-  return { members, unkeyed };
+  return { members, unkeyed, headless };
 }
 
 /* ------------------------------------------------------------------ */
@@ -4162,7 +4355,33 @@ export type HeadRelation =
   /** Forty hex digits naming no commit in this repository. */
   | { kind: "unresolvable"; reason: string }
   /** git could not answer, so the relation is not known. Never admitted. */
-  | { kind: "undetermined"; reason: string };
+  | { kind: "undetermined"; reason: string }
+  /**
+   * The verdict carries no `head` key at all. KERNEL 0.2.1 (DR-0053): the
+   * schema no longer requires the field, because it judged every verdict a
+   * consumer wrote before the field existed, so absence is now a well-formed
+   * document and the ADMISSION rule lives here. Never admitted.
+   */
+  | { kind: "no-head" };
+
+/**
+ * Does this verdict declare no head AT ALL?
+ *
+ * KERNEL 0.2.1 (DR-0053, DR-0054). ABSENCE ONLY, and the narrowness is the
+ * point. A document with no `head` key is the shape every verdict written
+ * before M4-P10 has, so it is HISTORY: it is excluded from every merge corpus
+ * by name and is never admitted. SHAPE IS NOT PROVENANCE (fix round 2): this
+ * function says only that the key is absent; whether an absent-head sibling is
+ * HISTORY is decided in `headGroupFor` from the merge base, because a current
+ * review can omit the field too. A document whose `head` is PRESENT and unusable (null, empty, an
+ * abbreviation, a list) is a document that tried to state its head and stated
+ * it wrongly, which the schema still refuses for a current document, so it
+ * keeps the M4-P10 treatment in `partitionByAuditedHead` and `headGroupFor`:
+ * kept, refused, red. Both readers call this function for the absent case.
+ */
+export function declaresNoHead(record: Record<string, unknown> | undefined): boolean {
+  return record === undefined || !("head" in record);
+}
 
 /**
  * Ask git whether `candidate` is an ancestor of `descendant`.
@@ -4380,6 +4599,32 @@ export function partitionByAuditedHead(
   const unkeyed: Diagnostic[] = [];
   const unkeyedVerdicts: LoadedVerdict[] = [];
   for (const candidate of verdicts) {
+    /* KERNEL 0.2.1 (DR-0053, DR-0054). A verdict with NO head key is EXCLUDED
+       BY NAME, never kept to be refused. Until 0.2.1 it was kept in the corpus
+       so the derived check would redden on it, which was right while the schema
+       required the field and wrong once measured against a real consumer: all
+       49 of pulse's committed verdicts predate the field, so every later run of
+       this gate would have been red on history it cannot change. Excluded is
+       still never admitted: under a review budget (`--base`, which the gate
+       runner always supplies) a dual-tier change whose reviews carry no head
+       has fewer than two admitted verdicts and is red, and the exclusion line
+       names each document. Without `--base` (the bare workflow step) a corpus
+       holding ONLY head-less verdicts is not-applicable with each one named,
+       which is the treatment a corpus of reviews of other commits already
+       gets (CR-VS-001); that arm is weaker than 0.2.0 and is stated, not
+       hidden. `headGroupFor` makes the same split for a same-phase sibling,
+       through the same `declaresNoHead`. */
+    if (declaresNoHead(candidate.record)) {
+      offHead.push({ path: candidate.path, declared: "", relation: { kind: "no-head" } });
+      continue;
+    }
+    /* KERNEL 0.2.1 (DR-0055, as the orchestrator ruled after pulse was found
+       mid-phase on 0.2.0): ADMISSION DOES NOT READ THE STAMP. Every rule this
+       gate applies is applied to every verdict, stamped or not, so an old or
+       missing stamp can neither exclude a verdict nor excuse one from a rule.
+       A 0.2.0 verdict, which carries a head and no stamp, is admitted exactly
+       when it meets the rules. The stamp decides only which schema rules
+       `tiphys validate` holds a document to, for history. */
     const key = headKeyOf(candidate.record, candidate.path);
     if (!key.ok) {
       unkeyed.push({ pointer: "#/head", message: key.message });
@@ -4408,8 +4653,15 @@ export function describeOffHeadVerdicts(
   return [...offHead]
     .sort((left, right) => (left.path < right.path ? -1 : left.path > right.path ? 1 : 0))
     .map((entry) => {
-      const head = `${entry.path} declares head ${entry.declared}, which`;
       const tail = `it is not evidence about the commit under audit ${auditedHead}`;
+      if (entry.relation.kind === "no-head") {
+        return (
+          `${entry.path} declares no head, so it does not say which commit it reviewed and is never admitted ` +
+          `toward a merge, and ${tail}; whether it is history (DR-0054) or current work is decided by the ` +
+          `merge checks from its provenance, and one the change under audit adds or edits is refused there`
+        );
+      }
+      const head = `${entry.path} declares head ${entry.declared}, which`;
       if (entry.relation.kind === "unresolvable") {
         return `${head} does not resolve to a commit in this repository at all, so it is evidence about an object nobody can produce and ${tail}`;
       }
@@ -4891,6 +5143,179 @@ export function reviewFamiliesProvenanceLine(provenance: ReviewFamiliesProvenanc
   );
 }
 
+/**
+ * The commit that FIRST added `review-families` to the charter, in the history
+ * of `refSha`, with its parents.
+ *
+ * KERNEL 0.2.1 (DR-0054). "First" is the earliest commit, in topological order
+ * over the FULL history of `./charter.yaml`, whose charter carries the key. A
+ * declaration that was added, removed and added again is therefore dated from
+ * its FIRST appearance, which is the WIDER scope and so the stricter one: more
+ * verdicts are read, never fewer. The key is detected by DECODING each blob,
+ * never by a textual search, because a comment or a quoted string mentioning
+ * the word is not a declaration.
+ *
+ * A SHALLOW HISTORY IS THE FAIL-CLOSED DIRECTION, and it is stated because it
+ * is the case a CI checkout produces. At a shallow boundary git reports no
+ * parents, so the boundary commit reads as the declaration's origin with
+ * nothing before it, and EVERY verdict in the tree is read, which is 0.2.0's
+ * whole-corpus behaviour. A shallow clone can make this check stricter than
+ * DR-0054 asks; it cannot make it more permissive.
+ */
+function firstDeclarationCommit(
+  contextDirectory: string,
+  refSha: string,
+): { ok: true; sha: string; parents: string[] } | { ok: false; reason: string } {
+  const logged = gitIn(
+    [
+      "log",
+      "--reverse",
+      "--topo-order",
+      "--full-history",
+      "--format=%H %P",
+      refSha,
+      "--",
+      `./${CHARTER_DOCUMENT}`,
+    ],
+    contextDirectory,
+  );
+  if (!logged.ok) {
+    return {
+      ok: false,
+      reason:
+        `the history of ${CHARTER_DOCUMENT} in ${refSha} could not be read, so the commit that first declared ` +
+        `${REVIEW_FAMILIES_FIELD} is unknown and which verdicts the declaration can be held to cannot be decided: ${logged.reason}`,
+    };
+  }
+  for (const line of logged.stdout.split("\n")) {
+    const [sha, ...parents] = line.trim().split(/\s+/).filter((word) => word !== "");
+    if (sha === undefined) {
+      continue;
+    }
+    const shown = gitIn(["show", `${sha}:./${CHARTER_DOCUMENT}`], contextDirectory);
+    if (!shown.ok) {
+      /* The commit that DELETED the charter is in this log too, and it carries
+         no charter to read. That is an answer about that commit, not a failure
+         to read the history. */
+      continue;
+    }
+    const decoded = decodeDocument(shown.stdout, join(contextDirectory, CHARTER_DOCUMENT));
+    if (!decoded.ok) {
+      continue;
+    }
+    const record = asRecord(decoded.value);
+    if (record !== undefined && REVIEW_FAMILIES_FIELD in record) {
+      return { ok: true, sha, parents };
+    }
+  }
+  return {
+    ok: false,
+    reason:
+      `${CHARTER_DOCUMENT} declares ${REVIEW_FAMILIES_FIELD} at ${refSha} and no commit in its history was found ` +
+      `whose ${CHARTER_DOCUMENT} carries it, so the declaration cannot be dated and which verdicts it can be held ` +
+      `to cannot be decided`,
+  };
+}
+
+/** Every blob id committed under `delivery/` at one commit, keyed by context-relative path. */
+function paperworkBlobIds(
+  contextDirectory: string,
+  sha: string,
+): { ok: true; ids: Map<string, string> } | { ok: false; reason: string } {
+  const ids = new Map<string, string>();
+  const typed = gitIn(["cat-file", "-t", `${sha}:./${PAPERWORK_ROOT}`], contextDirectory);
+  if (!typed.ok) {
+    /* Absent, or could not look: the same two answers `listCommittedTree`
+       separates, separated the same way. */
+    const readable = gitIn(["cat-file", "-t", sha], contextDirectory);
+    return readable.ok
+      ? { ok: true, ids }
+      : { ok: false, reason: `${sha} could not be read in ${contextDirectory}: ${readable.reason}` };
+  }
+  const listed = gitIn(["ls-tree", "-r", "-z", sha, "--", `./${PAPERWORK_ROOT}/`], contextDirectory);
+  if (!listed.ok) {
+    return { ok: false, reason: `${sha}:./${PAPERWORK_ROOT} could not be listed: ${listed.reason}` };
+  }
+  for (const entry of listed.stdout.split("\0")) {
+    /* `<mode> SP <type> SP <object> TAB <path>`, and the path is relative to
+       the directory git ran in, which is the context directory, exactly as
+       `listCommittedTree` relies on. */
+    const tab = entry.indexOf("\t");
+    if (tab < 0) {
+      continue;
+    }
+    const [, type, object] = entry.slice(0, tab).split(" ");
+    if (type === "blob" && object !== undefined) {
+      ids.set(join(contextDirectory, entry.slice(tab + 1)), object);
+    }
+  }
+  return { ok: true, ids };
+}
+
+/**
+ * Keep only the verdicts committed AT OR AFTER the commit that first declared
+ * `review-families` (DR-0054).
+ *
+ * "COMMITTED BEFORE" IS DECIDED BY CONTENT, NOT BY PATH OR DATE. A verdict is
+ * history exactly when its blob, byte for byte, was already committed under
+ * `delivery/` in a parent of the declaration commit. So a document edited after
+ * the declaration is read (its bytes are new), a document renamed without an
+ * edit is not (its bytes are old), and a document added IN the declaration
+ * commit is read, because "at or after" includes the commit itself. Dates are
+ * not used at all: author and committer dates are writable by the author and a
+ * scope decided by them would be decided by the party being checked.
+ */
+function scopeToDeclaration(
+  contextDirectory: string,
+  refSha: string,
+  verdicts: readonly LoadedVerdict[],
+): { ok: true; verdicts: LoadedVerdict[]; sentence: string } | { ok: false; reason: string } {
+  const declaration = firstDeclarationCommit(contextDirectory, refSha);
+  if (!declaration.ok) {
+    return declaration;
+  }
+  const current = paperworkBlobIds(contextDirectory, refSha);
+  if (!current.ok) {
+    return { ok: false, reason: current.reason };
+  }
+  const history = new Set<string>();
+  for (const parent of declaration.parents) {
+    const before = paperworkBlobIds(contextDirectory, parent);
+    if (!before.ok) {
+      return {
+        ok: false,
+        reason:
+          `the tree before the declaration (${parent}, parent of ${declaration.sha}) could not be read, so which ` +
+          `verdicts are history cannot be decided: ${before.reason}`,
+      };
+    }
+    for (const id of before.ids.values()) {
+      history.add(id);
+    }
+  }
+  const kept: LoadedVerdict[] = [];
+  let historical = 0;
+  for (const candidate of verdicts) {
+    const id = current.ids.get(candidate.path);
+    /* An id this listing cannot produce for a document the same commit's
+       loader just read is kept, not dropped: dropping is the fail-open
+       direction for a falsifier. */
+    if (id !== undefined && history.has(id)) {
+      historical += 1;
+      continue;
+    }
+    kept.push(candidate);
+  }
+  return {
+    ok: true,
+    verdicts: kept,
+    sentence:
+      `(scope, DR-0054: the ${String(kept.length)} verdict document(s) committed at or after ${declaration.sha}, ` +
+      `the commit that first declared ${REVIEW_FAMILIES_FIELD}; ${String(historical)} committed before it are ` +
+      `history and were not read)`,
+  };
+}
+
 /** What the single-family arm concluded about one committed corpus. */
 export type SingleFamilyOutcome =
   | { kind: "not-declared" }
@@ -4923,12 +5348,20 @@ export type SingleFamilyOutcome =
  * declaration could name a family nothing in the record uses and still buy the
  * relaxation.
  *
- * THE SCOPE IS THE WHOLE COMMITTED CORPUS, NOT THE ONE (phase, head) GROUP,
- * and that is deliberate. "This project has one family available" is a claim
- * about the project, so the widest set of its own verdicts is what can refute
- * it. Scoping the falsifiers to the group under review would let a project
- * whose history carries three families declare one, provided the two reviews
- * in front of the check happened to agree.
+ * THE SCOPE IS THE COMMITTED CORPUS FROM THE DECLARATION ONWARD, NOT THE ONE
+ * (phase, head) GROUP. "This project has one family available" is a claim
+ * about the project, so the widest set of its own verdicts the claim can
+ * honestly be held to is what can refute it. Scoping the falsifiers to the
+ * group under review would let a project declare one family while its current
+ * work used three, provided the two reviews in front of the check agreed.
+ *
+ * KERNEL 0.2.1 WITHDREW THE WHOLE-HISTORY HALF OF THAT SCOPE (DR-0054, owner
+ * decision): "Tiphys judges current and future work, never history." A verdict
+ * committed before the commit that first added the declaration was written
+ * when no claim existed, so it cannot contradict one, and a project whose past
+ * shows two families may now declare one. `scopeToDeclaration` is the whole
+ * change. What DR-0054 keeps: any verdict committed at or after that commit and
+ * naming a second family still reddens.
  *
  * WHAT IT DOES NOT CATCH, said here and not only in the plan: a project with a
  * second family AVAILABLE that has simply never used it. Nothing in a record of
@@ -4995,8 +5428,22 @@ export function singleFamilyException(
   if (!paperwork.ok) {
     return { kind: "error", reason: paperwork.reason };
   }
-  const corpus = paperwork.verdicts;
-  const corpusScope = describeVerdictCorpusSource(paperwork.source);
+  /* KERNEL 0.2.1 (DR-0054): THE FALSIFIERS READ ONLY WHAT WAS COMMITTED AT OR
+     AFTER THE DECLARATION. Before the commit that first added the declaration
+     the project had made no claim, so nothing it did then can contradict one;
+     the owner's rule is that Tiphys judges current and future work and never
+     history. What stays: once declared, any LATER verdict naming a second
+     family, or naming none, still reddens. `paperwork.source.kind` is always
+     "commit" here, for the reason the unreachable arm above states. */
+  const scoped =
+    paperwork.source.kind === "commit"
+      ? scopeToDeclaration(contextDirectory, paperwork.source.refSha, paperwork.verdicts)
+      : ({ ok: false, reason: "the falsifiers' corpus was not read from a commit" } as const);
+  if (!scoped.ok) {
+    return { kind: "error", reason: scoped.reason };
+  }
+  const corpus = scoped.verdicts;
+  const corpusScope = `${describeVerdictCorpusSource(paperwork.source)} ${scoped.sentence}`;
   const declared = reading.families[0] as string;
   const provenance = reviewFamiliesProvenanceLine(reading.provenance);
   const violations: Diagnostic[] = [];
@@ -5123,7 +5570,7 @@ export const dualReviewDecorrelation: DerivedCheck = {
   id: "dual-review-decorrelation",
   type: "verdict",
   requiresContext: true,
-  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+  run(instance: unknown, contextDirectory: string | undefined, options?: CheckRunOptions): CheckOutcome {
     if (contextDirectory === undefined) {
       /* Unreachable through `runChecks`, which SKIPS first. Fail closed rather
          than trusting a caller that reaches the check directly. */
@@ -5268,7 +5715,13 @@ export const dualReviewDecorrelation: DerivedCheck = {
       };
     }
     const headKey = ownHead.value;
-    const grouped = headGroupFor(committed.verdicts, phaseKey, headKey);
+    const grouped = headGroupFor(
+      committed.verdicts,
+      phaseKey,
+      headKey,
+      contextDirectory,
+      establishHistoryProvenance(contextDirectory, committed.source, options?.base),
+    );
     const group = grouped.members;
 
     /* MEMBERSHIP FIRST. DR-0012 condition 1 says the two reviews are WRITTEN TO
@@ -5361,6 +5814,9 @@ export const dualReviewDecorrelation: DerivedCheck = {
     const compared = DECORRELATION_DIMENSIONS.filter(
       (dimension) => !exemptDimensions.has(dimension),
     );
+    const headlessReports = grouped.headless.map((sibling) =>
+      headlessSiblingReport("dual-review-decorrelation", sibling, phase, headKey),
+    );
     return {
       violations,
       reports:
@@ -5369,9 +5825,10 @@ export const dualReviewDecorrelation: DerivedCheck = {
                requirement is that nobody can hide it. A red run whose reader
                cannot see that produced-by was exempt is one where the exception
                is invisible exactly when the record is being read most closely. */
-            [...exceptionReports]
+            [...exceptionReports, ...headlessReports]
           : [
               ...exceptionReports,
+              ...headlessReports,
               `REPORT dual-review-decorrelation ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} are distinct on ${compared.join(", ")}${producedByCaveat(compared)}`,
             ],
     };
@@ -5475,7 +5932,7 @@ export const verdictPairApproves: DerivedCheck = {
   id: "verdict-pair-approves",
   type: "verdict",
   requiresContext: true,
-  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
+  run(instance: unknown, contextDirectory: string | undefined, options?: CheckRunOptions): CheckOutcome {
     if (contextDirectory === undefined) {
       /* Unreachable through `runChecks`, which SKIPS first. Fail closed rather
          than trusting a caller that reaches the check directly. */
@@ -5533,7 +5990,13 @@ export const verdictPairApproves: DerivedCheck = {
         reports: [],
       };
     }
-    const grouped = headGroupFor(committed.verdicts, phaseKey, headKey);
+    const grouped = headGroupFor(
+      committed.verdicts,
+      phaseKey,
+      headKey,
+      contextDirectory,
+      establishHistoryProvenance(contextDirectory, committed.source, options?.base),
+    );
     const group = grouped.members;
 
     /* SAME TWO SOURCES AS THE SIBLING CHECK, AND THE REASON IS SHARPER HERE.
@@ -5571,12 +6034,16 @@ export const verdictPairApproves: DerivedCheck = {
       violations.push(...blockingFindings(candidate, phase, headKey));
     }
 
+    const headlessReports = grouped.headless.map((sibling) =>
+      headlessSiblingReport("verdict-pair-approves", sibling, phase, headKey),
+    );
     return {
       violations,
       reports:
         violations.length > 0
-          ? []
+          ? headlessReports
           : [
+              ...headlessReports,
               `REPORT verdict-pair-approves ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} read APPROVE and carry no finding at ${BLOCKING_SEVERITIES.join(", ")}`,
             ],
     };
@@ -5840,13 +6307,20 @@ export interface ChecksRun {
   lines: string[];
   /** True when at least one check violated or was skipped for want of context. */
   failed: boolean;
+  /**
+   * True when at least one check VIOLATED. A skip alone leaves it false. This
+   * is what `tiphys validate` exits on (kernel 0.2.1).
+   */
+  violated: boolean;
 }
 
 /**
  * Run every registered check for `type`.
  *
  * A check whose `requiresContext` is true and which was given none is
- * SKIPPED and the run FAILS. It is deliberately not an ordinary violation:
+ * SKIPPED and `failed` is set (since kernel 0.2.1 `tiphys validate` exits on
+ * `violated`, so a skip alone exits 0; DR-0053). It is deliberately not an
+ * ordinary violation:
  * "this rule did not run" and "this rule found a problem" are different
  * facts and a reader must be able to tell them apart, but both are reasons
  * not to trust a green.
@@ -5855,11 +6329,20 @@ export function runChecks(
   type: string,
   instance: unknown,
   contextDirectory: string | undefined,
+  /**
+   * KERNEL 0.2.1 (DR-0055): checks not in force for this document's stamp,
+   * decided by src/stamp.ts's RULES_SINCE. They are not run and not counted
+   * as skipped; the caller prints why.
+   */
+  notInForce: ReadonlySet<string> = new Set<string>(),
 ): ChecksRun {
   const violationLines: string[] = [];
   const reportLines: string[] = [];
   const skippedLines: string[] = [];
   for (const check of checksFor(type)) {
+    if (notInForce.has(check.id)) {
+      continue;
+    }
     if (check.requiresContext && contextDirectory === undefined) {
       skippedLines.push(`SKIPPED ${check.id} no context`);
       continue;
@@ -5876,5 +6359,6 @@ export function runChecks(
   return {
     lines: [...skippedLines, ...violationLines, ...reportLines],
     failed: violationLines.length > 0 || skippedLines.length > 0,
+    violated: violationLines.length > 0,
   };
 }

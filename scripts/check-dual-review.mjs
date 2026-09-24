@@ -251,9 +251,14 @@ function parseArgs(argv) {
  * verdict that names a different head, or a head that is not a commit here at
  * all, is EXCLUDED and NAMED. See `resolveAuditedHead` in `src/checks.ts` for
  * the mechanism and for the two arms that were reproduced green before it.
- * `unkeyed` verdicts, the ones that do not say what they reviewed, are kept in
+ * `unkeyed` verdicts, the ones whose head is PRESENT and unusable, are kept in
  * the set on purpose: dropping them would turn today's red into a quiet
  * not-applicable, and the derived check is the thing that refuses them.
+ * KERNEL 0.2.1 (DR-0053, DR-0054) NARROWED THAT TO PRESENT-AND-UNUSABLE. A
+ * verdict with NO head key is the shape of every verdict written before the
+ * field existed, and keeping it to be refused made every run red on history a
+ * consumer cannot change, so `partitionByAuditedHead` now EXCLUDES it by name
+ * as `no-head` and it arrives here in `offHead`, never admitted.
  *
  * `unexaminable` IS THE HALF THIS LOOP USED TO THROW AWAY, AND THROWING IT AWAY
  * HERE COSTS MORE THAN IT DOES IN THE CHECK. This function decides both which
@@ -267,6 +272,17 @@ function parseArgs(argv) {
  * `error`, which is the same fail-closed rule `REGIME_DOCUMENTS` applies one
  * screen down: at this layer, could-not-determine is `error` and never green.
  */
+/**
+ * KERNEL 0.2.1 (the criteria review, CR-006). Printed in the not-applicable
+ * detail when every committed verdict was excluded for declaring no head. That
+ * arm is reached only without `--base`, where no review budget is computed, so
+ * a dual-tier change with only history reviews reads not-applicable here where
+ * 0.2.0 read it red. The gate runner always passes `--base`, and there the same
+ * corpus is red; this line says so to anyone wiring the script by hand.
+ */
+export const HEADLESS_ONLY_WARNING =
+  "WARNING every committed verdict declares no head, so none is a review of any commit; without --base this script computes no review budget and cannot refuse a change that owes two reviews: pass --base (the gate runner does) for that refusal";
+
 export function committedVerdictPaths(directory, requestedHead) {
   const loaded = loadCommittedVerdicts(directory);
   if (!loaded.ok) {
@@ -506,7 +522,9 @@ export function evaluate(directory, requestedHead, options = {}) {
   const violations = new Set();
   for (const { path, instance } of found.paths) {
     for (const check of running) {
-      const outcome = check.run(instance, directory);
+      /* The base goes in so a head-less sibling is judged on its provenance
+         (kernel 0.2.1 fix round 2); without one the check says it did not. */
+      const outcome = check.run(instance, directory, { base: options.base });
       for (const violation of outcome.violations) {
         const line = `INVALID ${violation.pointer} ${violation.message} (check: ${check.id}) [${path}]`;
         violations.add(`${violation.pointer} ${violation.message}`);
@@ -598,6 +616,12 @@ export function evaluate(directory, requestedHead, options = {}) {
        sweep. */
     anchor: found.anchor,
     offHeadLines: found.offHeadLines ?? [],
+    /* KERNEL 0.2.1 (the criteria review, CR-006). True when something was
+       excluded and EVERY exclusion is a verdict that declares no head: the
+       corpus is history only, and without --base this run cannot tell a
+       dual-tier change missing its reviews from a change that owes none. */
+    headlessOnly:
+      (found.offHead ?? []).length > 0 && (found.offHead ?? []).every((entry) => entry.relation.kind === "no-head"),
     admittedLines: found.admittedLines ?? [],
     /* THE EXCEPTION IS REPORTED ONLY WHEN IT WAS ACTUALLY RELIED ON, and
        "relied on" is derived rather than asserted. Both falsifiers live inside
@@ -789,7 +813,7 @@ function main(argv) {
       `${GATE_ID}: ${String(found.paths.length)} verdict document(s) ${describeVerdictCorpusSource(found.source)}` +
         describeAnchor(found.anchor) +
         (found.offHead.length > 0
-          ? `, and ${String(found.offHead.length)} verdict document(s) about another commit, which are not evidence about this one`
+          ? `, and ${String(found.offHead.length)} verdict document(s) about another commit or declaring no head, which are not evidence about this one`
           : "") +
         (unexaminable > 0 ? `, and ${String(unexaminable)} candidate(s) that could not be examined` : "") +
         "\n",
@@ -885,11 +909,13 @@ function main(argv) {
         ", so there is no pair of reviews to compare" +
         (run.offHeadLines.length > 0
           ? `; ${String(run.offHeadLines.length)} committed verdict document(s) review other work and are NOT evidence about this commit: ${run.offHeadLines.join("; ")}`
-          : ""),
+          : "") +
+        (run.headlessOnly === true ? `; ${HEADLESS_ONLY_WARNING}` : ""),
       evidenceLines: [
         `directory: ${options.directory}`,
         `anchor:${describeAnchor(run.anchor)}`,
         ...run.offHeadLines,
+        ...(run.headlessOnly === true ? [HEADLESS_ONLY_WARNING] : []),
       ],
     });
   }

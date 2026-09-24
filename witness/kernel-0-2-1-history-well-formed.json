@@ -1,0 +1,24 @@
+{
+  "id": "kernel-0-2-1-history-well-formed",
+  "behavior": "pulse-0-1-0-verdicts-well-formed",
+  "tests": [
+    "every representative 0.1.0-era pulse verdict validates with no INVALID line against the shipped schema"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/stamp.ts",
+      "find": "    entry: \"head\",",
+      "replace": "    entry: \"phase\","
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/verdict.schema.json",
+      "find": "              \"enum\": [\"high\", \"critical\"]",
+      "replace": "              \"enum\": [\"medium\", \"high\", \"critical\"]"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
