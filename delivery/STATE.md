@@ -61,8 +61,9 @@ the merge gate rather than not-applicable.
 - M5-P6, scale-out proof: `claude/m5-p6-scale-out-proof`, wave D. The kernel
   half (conflicts command, DR-0058 init change, hemma intake) is reviewed:
   both clean-room reviews APPROVE at 45a0d54 after one fix round. Step 3, the
-  two hemma phases, is blocked only on owner action A-18; intake Q-9 and
-  Q-5 are answered in section 4f, and no kernel release is needed first.
+  two hemma phases, is unblocked: the owner approved work in hemma and
+  hemma-fleet on 2026-09-24 and both are attached. Intake Q-9 and Q-5 are
+  answered in section 4f, and no kernel release is needed first.
 
 ### Owner decisions open
 
@@ -72,8 +73,6 @@ the merge gate rather than not-applicable.
 
 ### Owner actions open
 
-- A-18: grant this session push access to hemma, and create a fleet-home
-  repository for hemma with access for this session. Opened 2026-09-24.
 - A-17: bump pulse and pulse-fleet to kernel 0.2.1, add CI to pulse, and run
   one phase merged at exactly its reviewed head. Opened 2026-09-24.
 - A-14: restart pulse and bump pulse-fleet to kernel 0.2.0. Its register
@@ -149,7 +148,7 @@ The full runnable text of every open action is in the register below.
   workflow run: https://github.com/ThomasHendrickx/tiphys-ai-helmsman/actions/runs/35839356656"
   ```
 
-- **A-18: GIVE M5-P6 STEP 3 WRITE ACCESS TO HEMMA.** Opened 2026-09-24. OPEN.
+- **A-18: GIVE M5-P6 STEP 3 WRITE ACCESS TO HEMMA.** Opened 2026-09-24. DONE.
   M5-P6 step 3 bootstraps hemma and merges two phases there. The intake,
   delivery/verification/m5-hemma-intake.md:244, found two things missing:
 
@@ -161,6 +160,11 @@ The full runnable text of every open action is in the register below.
     pulse-fleet is for pulse. A suggested name is `hemma-fleet`.
 
   Done when both are attached to the orchestrator session with push access.
+
+  DONE 2026-09-24. The owner created `ThomasHendrickx/hemma-fleet` (empty)
+  and approved, in the session, working with hemma and hemma-fleet. Both are
+  attached. Push authorization is confirmed only by the first real push,
+  because a dry-run does not probe it (CLAUDE.md standing warning 14).
 
 - **A-17: MAKE PULSE ABLE TO PASS THE M4 EXIT TEST.** Opened 2026-09-24. OPEN.
   The M4 exit test is NOT discharged. The evidence is on the M5-P1 branch, not
