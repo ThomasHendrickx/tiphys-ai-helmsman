@@ -11,7 +11,7 @@ HEAD a6141d7d0c289d115aeb236853fe9aa881d75788 ("Demo: ground-floor plan with
 real, localised annotations (#454)"), single branch `main`, `.git/shallow`
 holds exactly that sha.
 
-The clone at `/home/user/hemma` was never written. It was copied once with
+No command in this intake targeted the clone at `/home/user/hemma` (post-run check in section 2c). It was copied once with
 `cp -a /home/user/hemma <scratch>/hemma-intake/hemma` and EVERY command below
 (git reads, `npm ci`, lint, type-check, tests) ran against that scratch copy.
 No commit, branch, push or GitHub write call was made against hemma. Paths
@@ -71,8 +71,8 @@ satisfiable for each serial merge, with no cancelled-run caveat.
 
 `golden-path-preview.yml`: `schedule` (`30 5 * * *`) and `workflow_dispatch`
 only, no `pull_request` trigger, runs a journey against the deployed `main`
-alias held in the `PREVIEW_BASE_URL` repository variable; by design it can
-never block a merge (`golden-path-preview.yml:1-40`).
+alias held in the `PREVIEW_BASE_URL` repository variable; by design it does
+not appear as a PR check: `grep -n pull_request golden-path-preview.yml` matches only a comment line (line 6), no trigger (`golden-path-preview.yml:1-40`).
 
 ### 2b. Recent CI results on GitHub (read-only, GitHub MCP `actions_list`)
 
@@ -170,7 +170,7 @@ Read from the kernel source, not predicted:
 - `tiphys init <dir> [--shared-exclusion]` is the whole interface
   (src/commands/init.ts:95). It takes a directory and one optional flag.
 - It refuses any non-empty directory (src/commands/init.ts:113), so it can
-  never run IN hemma's repository. It creates a SEPARATE fleet home, the shape
+  not run IN hemma's repository, which is non-empty. It creates a SEPARATE fleet home, the shape
   the only precedent used (`ThomasHendrickx/pulse-fleet` beside
   `ThomasHendrickx/pulse`, src/commands/init.ts:114 treats `.git` as a marker).
 - It writes `charter/`, `decisions/`, `tasks/`, `status/` with `.gitkeep`,
@@ -207,7 +207,7 @@ have to place by hand; each is a `hidden-bootstrap-handwork` hazard).
 | I-11 | `npm install` in the fleet home so the pinned kernel is under `node_modules/` | every symlink in I-7 to I-9 resolves through it | OPERATOR | depends on Q-5 |
 | I-12 | one phase declaration per hemma phase, committed to hemma `main` BEFORE the phase branch exists | scope gate (src/gates/scope.ts:877) | PREDICATE, with KERNEL-IMPOSED naming | id must match `^M[0-9]+-P[0-9]+$` and branch `^claude/m[0-9]+-p[0-9]+-.+$` (src/gates/schemas/phase-declaration.schema.json:13, src/gates/schemas/phase-declaration.schema.json:18). Measured: `tiphys conflicts` REFUSED declarations with ids `H-P1`/`H-P2`, exit 2, `does not match the required pattern ^M[0-9]+-P[0-9]+$`. Hemma's own phase names (`run17-p4`, `claude/run9-r2-...`) do not fit; the kernel's vocabulary is imposed, which is a declared cost, not handwork |
 | I-13 | red-witness specs (`witness/*.json`) for any src change, if hemma's registry includes the kernel's `red-witness` gate | red-witness gate | PREDICATE | none yet; hemma's natural witness is `eslint --max-warnings 0 <file>` (section 6) |
-| I-14 | a CI step that runs `tiphys gates run` in hemma | nothing today; hemma's `ci.yml` never invokes tiphys | PREDICATE (hemma owns its CI) | absent. Without it the kernel's gates are local-only evidence, the DR-0029 Part 3c degraded band |
+| I-14 | a CI step that runs `tiphys gates run` in hemma | nothing today: `grep -c tiphys` reports 0 in `ci.yml` and 0 in `golden-path-preview.yml` | PREDICATE (hemma owns its CI) | absent. Without it the kernel's gates are local-only evidence, the DR-0029 Part 3c degraded band |
 | I-15 | push access for the orchestrator to hemma, and to the new fleet-home repository | step 3 | OWNER ACTION | section 7 |
 
 ### 4d. Verdict on p6-charter-only, as the kernel stands at this branch
@@ -231,7 +231,7 @@ third option and is excluded by the plan's own hazard `hidden-bootstrap-handwork
 (delivery/plan/value-delivery-plan.yaml:460).
 
 Evidence for the precedent, and its limit: pulse-fleet was cloned read-only
-(`git clone --depth 1`, HEAD 7656f67) into scratch and LISTED, never executed.
+(`git clone --depth 1`, HEAD 7656f67) into scratch and read with `ls` and `cat` only; no script in it was run.
 A shallow clone shows the symlinks exist at that head, not when or by whom they
 were added. A read-only clone of `ThomasHendrickx/pulse` itself was refused by
 this session's permission layer, so the project side of the precedent is
@@ -284,7 +284,7 @@ delivery/decisions/DR-0029-the-ownership-boundary-and-the-applicability-envelope
 **FITS, WITH NAMED CONDITIONS.** Hemma is inside the envelope. Nothing here
 requires bending the kernel to admit it. The conditions:
 
-- K-1: p6-charter-only cannot be met by the kernel as it stands (section 4d,
+- K-1: p6-charter-only is not met by the kernel as it stands, on the evidence of section 4d (a route this intake did not find is Q-4 and Q-8;
   H-1 to H-4). This is a KERNEL finding, not a hemma unsuitability.
 - K-2: phases are selected from the falsifiable part of hemma (3b.2).
 - K-3: every merge is a production deploy, so the phases carry no migration
