@@ -569,3 +569,72 @@ the corpus checks find 0 committed verdicts for M5-P6 at this head.
 
 Final review status: COMPLETE
 
+# Re-verification at 8c17a5f
+
+Head: 8c17a5f469f7820de8101aca382f13e2d0212efc, fetched and checked out
+detached. The delta 903a3cd..8c17a5f is one commit and 6 files, all under
+`delivery/`:
+
+- STATE.md
+- the new DR-0059 record
+- the m5-p6 declaration
+- both kernel review copies
+- the intake
+
+No src/, test/ or witness/ change, so p6-prepass and p6-suite carry over from
+903a3cd unchanged.
+
+| finding | status | evidence |
+|---|---|---|
+| CR-009 (medium) | FIXED | DR-0059 records the decision (option A) with a sound reason. A release is cut from `main`, and the producer reaches `main` only when this phase merges, so "release first" cannot be done. The follow-up (release, then run `init --project` in hemma, then record it as present and identical) is registered at delivery/STATE.md:526 under "Tracked obligations, unowned" (section heading at line 515). The criterion stays NOT MET in the exit report, as it should. |
+| CR-008 (low) | FIXED | a pointer under intake 4d (delivery/verification/m5-hemma-intake.md:215) to exit report 1g and DR-0059 |
+| CR-007 (low) | FIXED | the committed hazard review opens with a declared transliteration note (U+2014 to a comma, 1 replacement). With that header line removed, `diff` against the reviewer's original shows exactly one changed line, line 339, and nothing else (scratchpad/m5p6-review/cmp2.sh). |
+| CR-006 (low) | RESIDUE ACCEPTED | unchanged, as stated |
+
+Recopied review files:
+
+- The committed clean-room-m5-p6-kernel-criteria.md is IDENTICAL (`cmp`) to
+  my file as it stood before this section.
+- The committed hazard review has 934 lines against the original's 933, the
+  difference being the header note.
+- Both committed files have 0 non-ASCII lines.
+
+Gates at 8c17a5f. I ran these in a scratch clone on the branch name, with
+`npm ci --ignore-scripts` there and its node_modules deleted afterwards:
+
+- Scope: green. 51 changed paths audited, 46 entries added at head. The 4 new
+  since 903a3cd are:
+  - citation DR-0059
+  - declaredExtras for the DR-0059 file
+  - declaredExtras `delivery/review/m5-p6-criteria.json` and `delivery/review/m5-p6-hazard.json`
+
+  The gate lists those two JSON files as "declared, not touched". They are the
+  grants for the verdict commit the review procedure prescribes. I SIGN OFF
+  all 46.
+- Citations: green, `linted 5 changed document(s) ... 121 citation(s) resolved, 0 self-citation(s), 0 unverifiable-external`.
+- `check-id-collisions`: no collisions (highest DR-0059, next free DR-0060).
+- `check-authored-bytes`: exit 0.
+
+Verdict JSON: scratchpad/m5p6-review/m5-p6-criteria.json, overwritten. The
+previous one is kept as m5-p6-criteria-903a3cd.json. Contents:
+
+- head 8c17a5f469f7820de8101aca382f13e2d0212efc, verdict APPROVE, tiphys-version 0.2.1
+- one finding: CR-006, low
+- p6-charter-only `met: false`, with DR-0059 cited
+- the other four criteria `met: true`
+- both deviations judged as serving the plan's intent
+
+`node bin/tiphys.ts validate --type verdict <file>` exits 0 and prints no
+INVALID line (5 context checks SKIPPED, no context).
+
+## Verdict at 8c17a5f: APPROVE
+
+p6-charter-only is still not met. DR-0059 now accepts that openly, with a
+registered follow-up, which is what CR-009 asked for. Every other criterion
+is met, and I verified each one independently.
+
+After this section is added, my report file no longer matches the committed
+copy. That is expected.
+
+Re-verification at 8c17a5f status: COMPLETE
+

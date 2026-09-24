@@ -1,0 +1,126 @@
+{
+  "kind": "verdict",
+  "phase": "M5-P6",
+  "head": "8c17a5f469f7820de8101aca382f13e2d0212efc",
+  "tiphys-version": "0.2.1",
+  "verdict": "APPROVE",
+  "produced-by": "claude-sonnet-5",
+  "framing": "hazard-first",
+  "review-contract": "hazard",
+  "findings": [
+    {
+      "id": "CR-KH-003",
+      "severity": "low",
+      "evidence": [
+        "Fix round 1 (45a0d54) closed the two windows named at 520ba00: readProjectCopy uses O_NOFOLLOW plus an fstat-must-be-file check, and createCopyExclusively uses O_CREAT|O_EXCL (flag wx), both re-verified live at 45a0d54 with a symlink swapped in between open and write",
+        "Residue named by the round itself and confirmed still true at 45a0d54: O_NOFOLLOW and O_EXCL protect only the final path component; a parent directory component swapped mid-resolution (e.g. a directory replaced by a symlink between realpathSync and the openSync calls) is not covered by either flag",
+        "No live construction in this container forces that parent-component race (no privileged directory-rename primitive available to this agent); this is a residue statement about the mechanism, not a reproduced defect"
+      ],
+      "concrete-fix": "Accepted residue. If ever wanted, a defense-in-depth check would re-resolve realpathSync on the target's parent directory immediately before each open and refuse if it moved, closing the parent-component window the same way O_NOFOLLOW closes the leaf-component one."
+    },
+    {
+      "id": "CR-KH-005",
+      "severity": "low",
+      "evidence": [
+        "Resolved at the decision-record level rather than in code: DR-0058 carries a 22-line Addendum (2026-09-24) naming CR-KH-005 directly and recording that I-8 and I-10 are dispositioned not-needed rather than produced by init, citing delivery/verification/m5-hemma-intake.md:244",
+        "The exit report's own section 1g repeats the same disposition and states the honest consequence: p6-charter-only is NOT MET on released kernel 0.2.1 because H-6 (assurance-modes.yaml) is still hand-placed there; it is MET by this branch's tiphys init --project only once a release ships it"
+      ],
+      "concrete-fix": "No code fix owed; the addendum is the fix. The remaining gap (a released kernel producing I-8/I-10, or a documented reason they stay project-owned) is tracked as a follow-up, not a defect in this PR."
+    },
+    {
+      "id": "CR-009",
+      "severity": "medium",
+      "evidence": [
+        "Raised by the final criteria review: nothing recorded a decision to merge M5-P6 with p6-charter-only not met on released 0.2.1",
+        "Answered at 8c17a5f by DR-0059, which records the decision, states why option B (close the gap before merging) is not available (a release is cut from main, and the code that closes the gap reaches main only when this phase merges), and registers the follow-up release-then-hemma-run under delivery/STATE.md 'Kernel 0.2.1 follow-ups'",
+        "DR-0059 does not soften the NOT MET verdict: its own situation section restates 'NOT MET on the released kernel 0.2.1' and 'The one criterion not met is stated as not met, with its cause'; the STATE.md addition pairs 'met on the branch' with 'not on a release' in the same sentence rather than dropping the qualifier",
+        "The intake gains a pointer (delivery/verification/m5-hemma-intake.md:215) at section 4d directing a reader to the exit report's as-performed inventory and to DR-0059, rather than rewriting the superseded 4d verdict in place"
+      ],
+      "concrete-fix": "No further fix owed; DR-0059 is the fix. Tracked follow-up (not this PR's scope): publish a kernel release carrying init --project, run it in hemma, and show it reports the H-6 copy as present and identical, which is what would move p6-charter-only to MET."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "p6-prepass",
+      "quote": "The conflict command exits nonzero and names every overlapping literal path for an overlapping fixture pair, exits 0 with zero overlaps for a disjoint pair, and always prints that semantic coupling remains a review obligation.",
+      "evidence": [
+        "Re-verified at 45a0d54 with the fix-round-1 canonicalisation in place: overlap fixtures exit 1 and name the shared path, disjoint fixtures exit 0, and both print the SEMANTIC_COUPLING_OBLIGATION line (clean-room-m5-p6-kernel-hazard.md re-verification section)",
+        "Used for real on hemma's own declarations at exit-report time: DISJOINT M1-P1 M1-P2, exit 0, obligation line printed (m5-scale-out-exit.md:230-236); an independent script (canon-check.mjs) confirmed all 57 real repository declarations parse with 0 refused entries"
+      ],
+      "met": true
+    },
+    {
+      "id": "p6-charter-only",
+      "quote": "delivery/verification/m5-hemma-intake.md enumerates every bootstrap input and shows that no kernel-specific configuration beyond the project charter and project-owned predicates was hand-added before init.",
+      "evidence": [
+        "m5-scale-out-exit.md section 1g enumerates 18 bootstrap inputs (2 CHARTER, 9 PREDICATE, 6 OPERATOR, 1 KERNEL-HANDWORK) and names the one exception explicitly: H-6, assurance-modes.yaml copied by hand because released kernel 0.2.1 has no init --project",
+        "The report states its own verdict on this criterion honestly: 'NOT MET on released kernel 0.2.1' because of H-6, and 'MET by this branch's tiphys init --project once a release carries it' (m5-scale-out-exit.md:469 and the section 4 verdict table)",
+        "So the criterion's literal text (no hand-added kernel config) is not satisfied today; the document is honest about that rather than papering over it, which is what this finding rewards, not what it penalizes",
+        "At 8c17a5f, DR-0059 records the decision to merge in this state and why (a release cannot be cut from the unmerged branch, so closing the gap fully requires merging first); STATE.md registers the release-plus-hemma-run follow-up; the intake gains a pointer to both. None of this changes the criterion's own answer: it stays NOT MET on released 0.2.1, now with a decision record behind the choice to merge anyway rather than an implicit one"
+      ],
+      "met": false
+    },
+    {
+      "id": "p6-parallel-value",
+      "quote": "delivery/verification/m5-scale-out-exit.md names two concurrently active disjoint phases, their reviewed heads, serial merges, green post-merge push runs and final delivered outcomes, with resolvable evidence for each fact.",
+      "evidence": [
+        "Section 2a-2d name M1-P1 and M1-P2 by branch, PR, reviewed head and merge commit, show both open at once (15:36:42-15:48:10 UTC), serial merges, and every push-to-main CI run green with run URLs",
+        "Section 2e's delivered outcome is measured directly in a hemma clone at main 5bf2e57 (eslint --max-warnings 0 exit 0 on both specs, before/after warning counts from git show plus eslint --stdin), not from this repository's own suite; every 'delivered' sentence in section 2 points at hemma, none at this repo's node --test",
+        "p6-suite (below) is kept separate and is the only place the kernel's own suite is used as evidence, for its own distinct criterion"
+      ],
+      "met": true
+    },
+    {
+      "id": "p6-attribution",
+      "quote": "Every failure in the exit report is classified as kernel, project predicate, environment or owner action with the command or API result that establishes the class.",
+      "evidence": [
+        "Section 3's table carries 30 rows (A-1 to A-30), each with a class and a column naming the exact command, log line or file that establishes it; no row is left unclassified",
+        "Spot-verified two rows live: A-13 (tiphys init refuses a non-empty directory) reproduces exit 1 at src/commands/init.ts:151 in a scratch probe; the citations gate (node bin/tiphys.ts gates run --only citations) resolved 117 citations across the 4 linted changed documents at 903a3cd with 0 unverifiable-external"
+      ],
+      "met": true
+    },
+    {
+      "id": "p6-suite",
+      "quote": "npm run build and node --test both exit 0 with a nonzero test count.",
+      "evidence": [
+        "Section 4a, run at exit-report time on e1f2bda (a report-only ancestor of this head; the report's later content does not touch src/ or test/): npm run build exit 0, git status --porcelain clean after build, npm test exit 0, 1512 tests, 1512 pass, 0 fail, 0 skipped, node v26.6.0",
+        "The U+2139 glyphs in the captured node --test output are declared as transliterated to 'i', 6 occurrences, nothing else changed (section 4a note), which is the correct resolution under CLAUDE.md convention 3 rather than a silent alteration"
+      ],
+      "met": true
+    }
+  ],
+  "deviations-judged": [
+    {
+      "deviation": "The delta 45a0d54..903a3cd, reviewed here, touches only delivery/ (17 files) and lands the exit report, review-document copies and a DR-0058 addendum without further kernel code changes, on top of a kernel half already approved at 45a0d54",
+      "serves-plan-intent": true,
+      "reasoning": "git diff --stat 45a0d54 903a3cd -- ':!delivery' is empty, confirmed live; the plan's M5-P6 steps call for exactly this shape (bootstrap, disjoint phases, one exit report) and DR-0031 asks that a phase's evidence land with the phase in one pull request rather than split, which this delta does."
+    },
+    {
+      "deviation": "The exit report's section 1k withdraws a previously claimed local E2E control run on main after finding a leftover next-server process served 4 of 5 local runs; the original false sentence is left struck in place rather than deleted",
+      "serves-plan-intent": true,
+      "reasoning": "A targeted sweep of every 'control on'/'e2e-main'/'as a control' mention across the whole document (including the section 3 failure-attribution rows A-4 and A-5) found zero places where the withdrawn control is later restated as valid. Leaving the false sentence visible, struck, rather than silently correcting it, is the stronger and more auditable form and matches the transliteration-declaration discipline this repository already requires elsewhere."
+    },
+    {
+      "deviation": "The delta 903a3cd..8c17a5f, reviewed here, adds DR-0059 (a decision record raised by the final criteria review's finding CR-009, not by this hazard review), a small STATE.md follow-up entry, an intake pointer, declaration entries for the two not-yet-committed verdict JSONs, and copies this reviewer's own committed file forward with a declared transliteration note",
+      "serves-plan-intent": true,
+      "reasoning": "git diff --stat 903a3cd 8c17a5f -- ':!delivery' is empty, confirmed live; DR-0016 delegates exactly this kind of merge-readiness decision to the orchestrator when the analysis yields a clear recommendation, which DR-0059 states and defends (option B is procedurally unavailable, not merely less convenient); the claim grep over DR-0059 found zero hits."
+    }
+  ],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "false-disjointness",
+      "probed": "Re-ran conflicts.ts at 45a0d54 with non-canonical spellings (./ prefix, trailing slash, doubled slash, case variants, a new case-variant spelling not listed by the implementer) against real and scratch fixtures; all are refused with a no-verdict exit 2 naming the reason rather than silently normalized. Independently parsed all 57 real phase declarations in this repository (canon-check.mjs): 0 refused, 770 entries. Read every use of the command's own output in the exit report and intake (m5-scale-out-exit.md:230-250) and confirmed the SEMANTIC_COUPLING_OBLIGATION line, which states in the tool's own words that zero literal overlap is not proof of independence, is printed on every run including hemma's real DISJOINT verdict, and that the bootstrap criteria review additionally ran a live control fixture that DOES overlap (OVERLAP M1-P1 M1-P2 tests/setup.ts, exit 1) to demonstrate the command can go red.",
+      "cleared-because": "Every path the command accepts is canonical by construction (fix round 1's nonCanonicalReason refusal), so two differently-spelled paths naming the same file cannot both reach the comparison silently; and the exit report never treats the command's zero-overlap verdict as a semantic-coupling verdict, always pairing it with a reviewer-obligation statement and, for the one pair it actually ships (M1-P1/M1-P2), a stated manual semantic judgement (m5-scale-out-exit.md section 2a: 'The two changed sets are disjoint... neither spec path is referenced by any' other phase's changed files)."
+    },
+    {
+      "class-id": "hidden-bootstrap-handwork",
+      "probed": "Read section 1g's full 18-row bootstrap-input table and its handwork numbering note; cross-checked that H-1 to H-4 are the intake's own prior numbering, H-5 was allocated then explicitly withdrawn in writing when tiphys resume was found to produce the same result (the id stays retired, not reused, per this repository's identifier-scheme rule), and H-6 is the one live KERNEL-HANDWORK row, named, sourced (F-3) and carried into the criteria table and the section-3 attribution row A-15.",
+      "cleared-because": "Every non-CHARTER, non-PREDICATE, non-OPERATOR input is explicitly classed KERNEL-HANDWORK and numbered; there is exactly one (H-6), it is named by id in three places (1g, 1h/F-3, and section 3/A-15) with consistent detail, and the report's own verdict on p6-charter-only is NOT MET on released 0.2.1 because of it, rather than being smoothed into MET."
+    },
+    {
+      "class-id": "self-hosted-success",
+      "probed": "Read section 2 in full (2a-2f) and section 4a separately. Every 'delivered' sentence in section 2 cites a fact read from hemma: GitHub pull request and run reads, git log/diff against hemma commits, and a live eslint run in a temporary hemma worktree at main 5bf2e57. Section 4a (p6-suite) is the only place this repository's own node --test count (1512 tests) appears as evidence, and it backs only the p6-suite criterion, not p6-parallel-value.",
+      "cleared-because": "No sentence under p6-parallel-value or in section 2 substitutes a kernel test count for a hemma outcome; the delivered-outcome evidence in 2e is reproducible by a reader with the exact command given (npx eslint --max-warnings 0 <the two spec files> on a hemma 5bf2e57 clone), and the kernel's own suite result is kept in its own criterion (p6-suite) with its own row, never merged into the parallel-value row."
+    }
+  ]
+}

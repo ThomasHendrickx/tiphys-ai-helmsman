@@ -932,3 +932,80 @@ and the citations gate is green at this exact head with no stale-resolution
 risk given the PR's single-branch shape. The verdict JSON is at
 m5-p6-hazard.json, validated with `node bin/tiphys.ts validate --type
 verdict`, exit 0.
+
+## Re-verification at 8c17a5f
+
+Head 8c17a5f469f7820de8101aca382f13e2d0212efc, one commit on 903a3cd, fetched
+and checked out detached.
+
+**Gating check.** `git diff --stat 903a3cd 8c17a5f -- ':!delivery'` is empty:
+6 files changed, all under delivery/ (STATE.md, the new DR-0059, the m5-p6
+declaration, both clean-room-m5-p6-kernel-*.md files, and the intake).
+
+**DR-0059.** Read in full
+(delivery/decisions/DR-0059-m5-p6-merges-with-charter-only-met-on-the-branch-not-the-release.md).
+It states the situation without softening: "NOT MET on the released kernel
+0.2.1" and "The one criterion not met is stated as not met, with its cause."
+Its decision (option A) is defended by a procedural fact rather than
+convenience: a release is cut from `main`, and the code that closes H-6
+reaches `main` only when this phase merges, so option B (close the gap before
+merging) is not available as written. The follow-up (release, then run it in
+hemma) is registered in delivery/STATE.md under a named section rather than
+left implicit. Ran the claim grep over the file: zero hits. hemma
+review evidence is untouched by this delta (2c and 2e stand as re-verified at
+903a3cd).
+
+**Hidden-bootstrap-handwork and self-hosted-success, re-checked against this
+delta.** Neither hazard class's evidence changed: DR-0059 and the STATE.md
+addition are about the MERGE DECISION, not about the bootstrap-input
+inventory (still section 1g, still H-6 the only item) or about hemma's
+delivered outcomes (still section 2, untouched by this commit). The STATE.md
+line "p6-charter-only is met on the branch, not on a release" pairs the
+qualifier in the same sentence rather than dropping it, and matches DR-0059's
+own title. No new self-hosted-success risk: DR-0059 cites no kernel test
+result as a hemma outcome.
+
+**The intake pointer.** delivery/verification/m5-hemma-intake.md:215 adds one
+paragraph at section 4d directing a reader to the exit report's 1g inventory
+and to DR-0059, and states plainly that the superseded 4d verdict below it
+was true only at the pre-DR-0058 head. It asserts nothing new; it is a
+cross-reference.
+
+**Committed review file, diffed against my scratchpad original.**
+
+```
+diff <scratchpad>/clean-room-m5-p6-kernel-hazard.md delivery/review/clean-room-m5-p6-kernel-hazard.md
+0a1
+> <!-- Copied from the reviewer's file by the orchestrator. One change: at line 340
+> (339 in the original) a single U+2014 em dash in the reviewer's own prose, not
+> captured output, is replaced by a comma, per the no-em-dash rule (1 replacement).
+> Nothing else is altered. -->
+339c340
+< text (adding a schemas/ copy) -- meaning there is also no witness pinning the
+---
+> text (adding a schemas/ copy), meaning there is also no witness pinning the
+```
+
+Exactly the declared change: one em dash to comma, now with an explicit
+header note naming the codepoint, the count and the reason, matching the
+convention-3 transliteration-declaration discipline this repository requires
+for captured output, applied here to a reviewer's own prose fixed after the
+fact. Nothing else in the 934-line committed file differs from my 933-line
+scratchpad original (the added header line accounts for the one-line count
+difference).
+
+### Verdict
+
+**APPROVE for M5-P6 at 8c17a5f, unchanged.** The delta is delivery-only, adds
+one decision record (DR-0059) that states the not-met verdict plainly and
+defends the merge-now choice with a procedural fact rather than a
+convenience, registers the follow-up, adds a cross-reference pointer in the
+intake, and forwards my own committed review with exactly the one declared,
+now-labeled transliteration. Finding CR-009 (medium, raised by the criteria
+review, not by me) is answered by DR-0059 and added to the verdict JSON as
+resolved; it does not force FIX-ROUND-NEEDED under the verdict schema (only
+high or critical findings do), and DR-0012 condition 2's merge-time medium
+bar is a fact for the merge gate to apply, not a reason to withhold this
+review's APPROVE. Fresh verdict JSON at m5-p6-hazard.json (head
+8c17a5f469f7820de8101aca382f13e2d0212efc), validated with `node bin/tiphys.ts
+validate --type verdict`, exit 0.
