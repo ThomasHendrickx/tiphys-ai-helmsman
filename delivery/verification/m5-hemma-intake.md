@@ -146,3 +146,89 @@ production migrations applied from CI's `migrate` job. Consequence: EVERY
 merge to hemma `main` in step 3 is a production deploy and, if it carries a
 migration, a production schema change. Section 6 selects phases with neither
 a migration nor a server-behaviour change for exactly this reason.
+
+## 4. Charter and every bootstrap input (criterion p6-charter-only)
+
+### 4a. What hemma has today
+
+No Tiphys artifact exists in hemma. `git ls-files | grep -iE
+'charter|tiphys|gate-registry|phase-decl'` printed nothing. The CHARTER INPUT
+hemma can supply is prose that already exists: `PROJECT-PURPOSE.md` (14 KB,
+product intent), `CLAUDE.md:13-24` (tech stack, i.e. the irreversible
+decisions), `CLAUDE.md:105-143` and `:335-346` (quality rules and definition of
+done), `docs/deployment.md` (deploy topology), and `docs/work-history/` (an
+existing retention location). None of it is in the charter schema's shape.
+
+### 4b. What `tiphys init` actually consumes
+
+Read from the kernel source, not predicted:
+
+- `tiphys init <dir> [--shared-exclusion]` is the whole interface
+  (src/commands/init.ts:95). It takes a directory and one optional flag.
+- It refuses any non-empty directory (src/commands/init.ts:112), so it can
+  never run IN hemma's repository. It creates a SEPARATE fleet home, the shape
+  the only precedent used (`ThomasHendrickx/pulse-fleet` beside
+  `ThomasHendrickx/pulse`, src/commands/init.ts:114 treats `.git` as a marker).
+- It writes `charter/`, `decisions/`, `tasks/`, `status/` with `.gitkeep`,
+  `state/`, `worktrees/`, `projects/`, `backlog.md`, a `package.json` pinning
+  `@tiphys/kernel` to the running kernel's own version, and a `.gitignore` of
+  exactly the three ephemeral dirs (src/commands/init.ts:138, src/fleet.ts:12,
+  src/fleet.ts:29).
+- **It reads NO charter.** Nothing in src/commands/init.ts:95 to its end opens a
+  charter, a registry, or any project file. "Bootstrap from its charter" is
+  therefore not an init step; the charter is written into the fleet home AFTER
+  init, and every other input below is consumed later by other commands.
+
+### 4c. The full input inventory
+
+Classification key: CHARTER (hemma supplies it inside its charter), PREDICATE
+(hemma-owned gate command or declaration, DR-0029 Part 1 at
+delivery/decisions/DR-0029-the-ownership-boundary-and-the-applicability-envelope.md:38),
+OPERATOR (an argument, declared on the command line), KERNEL-HANDWORK (kernel
+configuration that neither init nor the charter produces and that someone would
+have to place by hand; each is a `hidden-bootstrap-handwork` hazard).
+
+| # | input | consumed by | class | hemma source |
+|---|---|---|---|---|
+| I-1 | fleet home directory (new, empty, its own repository) | `tiphys init <dir>` | OPERATOR | none; to be created |
+| I-2 | `--shared-exclusion` | `tiphys init` (src/commands/init.ts:88) | OPERATOR | a choice; relevant if the two concurrent phases run from different environments |
+| I-3 | kernel version pin | init writes it from the running kernel (src/commands/init.ts:161); the charter also requires `identity.kernel-version-pin` (schemas/charter.schema.json:29) | CHARTER | this repository's package.json:3 says 0.1.0; which version is PUBLISHED and installable is open (Q-5) |
+| I-4 | the charter: `kind`, `identity`, `delivery-mode`, `assurance-tier`, `yolo-permissions`, `irreversible-decisions`, `product-intent`, `constraints`, `escalation-contract`, `release-verification`, `retention` required; `review-families` optional | `tiphys validate --type charter`, doctor, merge preconditions | CHARTER | all eleven must be AUTHORED; content exists as prose (4a). `review-families` should be declared, since hemma has one collaborator (section 5) |
+| I-5 | the charter's FILE NAME and location | checks read `charter.yaml` from a context directory (src/checks.ts:4616); the pulse precedent stored `charter/pulse.yaml` in the fleet home | CHARTER, location UNRESOLVED | Q-4 |
+| I-6 | a project gate registry naming hemma's own commands (`npm run lint`, `npx tsc --noEmit`, `npx vitest run --project unit`, and the kernel-contract gates hemma opts into) | `tiphys gates run --registry <file>` | PREDICATE | hemma's commands exist and pass (section 2c); the registry itself does not exist and no template ships (`templates/` holds no gate-registry example, contrary to DR-0029 Part 1's stated consequence at delivery/decisions/DR-0029-the-ownership-boundary-and-the-applicability-envelope.md:50) |
+| I-7 | `assurance-modes.yaml` | the merge-authority regime needs BOTH `charter.yaml` and `assurance-modes.yaml` present at the committed source (src/checks.ts:4629); the mode enum check reads it (src/checks.ts:320) | **KERNEL-HANDWORK (H-1)** | none. It is the KERNEL's closed vocabulary (DR-0020), not a hemma predicate. The pulse precedent hand-placed it as a symlink, `assurance-modes.yaml -> node_modules/@tiphys/kernel/assurance-modes.yaml` |
+| I-8 | `schemas/` beside the context documents | cross-document checks resolve `schemas/charter.schema.json` beside the document (src/commands/mode.ts:21) | **KERNEL-HANDWORK (H-2)** | none. Pulse precedent: symlink `schemas -> node_modules/@tiphys/kernel/schemas` |
+| I-9 | the kernel's `gate-registry.yaml` placed in the fleet home | the pulse precedent symlinked `gate-registry.yaml -> node_modules/@tiphys/kernel/gate-registry.yaml` | **KERNEL-HANDWORK (H-3)**, and a PREDICATE substitution | That symlink makes the KERNEL's predicates stand in for the project's, which is the opposite of DR-0029 Part 1. For hemma it would also not run: the kernel registry's commands are kernel-repository-relative, e.g. `node src/gates/scope.ts --declarations delivery/plan/phase-declarations` at `gate-registry.yaml` line 126 (root-level yaml, quoted because it is not a citation root) |
+| I-10 | `.gitignore` line `.ctx-*/` | observed in pulse-fleet, not written by init (src/fleet.ts:29 lists three entries) | **KERNEL-HANDWORK (H-4)** | none |
+| I-11 | `npm install` in the fleet home so the pinned kernel is under `node_modules/` | every symlink in I-7 to I-9 resolves through it | OPERATOR | depends on Q-5 |
+| I-12 | one phase declaration per hemma phase, committed to hemma `main` BEFORE the phase branch exists | scope gate (src/gates/scope.ts:877) | PREDICATE, with KERNEL-IMPOSED naming | id must match `^M[0-9]+-P[0-9]+$` and branch `^claude/m[0-9]+-p[0-9]+-.+$` (src/gates/schemas/phase-declaration.schema.json:13, src/gates/schemas/phase-declaration.schema.json:18). Measured: `tiphys conflicts` REFUSED declarations with ids `H-P1`/`H-P2`, exit 2, `does not match the required pattern ^M[0-9]+-P[0-9]+$`. Hemma's own phase names (`run17-p4`, `claude/run9-r2-...`) do not fit; the kernel's vocabulary is imposed, which is a declared cost, not handwork |
+| I-13 | red-witness specs (`witness/*.json`) for any src change, if hemma's registry includes the kernel's `red-witness` gate | red-witness gate | PREDICATE | none yet; hemma's natural witness is `eslint --max-warnings 0 <file>` (section 6) |
+| I-14 | a CI step that runs `tiphys gates run` in hemma | nothing today; hemma's `ci.yml` never invokes tiphys | PREDICATE (hemma owns its CI) | absent. Without it the kernel's gates are local-only evidence, the DR-0029 Part 3c degraded band |
+| I-15 | push access for the orchestrator to hemma, and to the new fleet-home repository | step 3 | OWNER ACTION | section 7 |
+
+### 4d. Verdict on p6-charter-only, as the kernel stands at this branch
+
+**Charter plus project-owned predicates is NOT sufficient today.** Four inputs
+(I-7, I-8, I-9, I-10) are kernel configuration that init does not produce and
+that the charter does not carry. The only onboarded precedent carries all four
+as hand-placed files. Step 3 can satisfy p6-charter-only in one of two ways,
+and choosing between them is not this intake's decision:
+
+1. a kernel change makes init (or a resolver) produce or locate I-7, I-8 and
+   I-10, and I-9 is replaced by a hemma-authored registry (I-6). This touches
+   src/commands/init.ts, which is NOT on this phase's files-to-touch
+   (delivery/plan/value-delivery-plan.yaml:423), so it needs a plan amendment;
+2. the handwork is performed and DECLARED, and the exit report records
+   p6-charter-only as failed with each item named. That is honest and it fails
+   the criterion.
+
+Bending the kernel silently (placing the symlinks and saying nothing) is the
+third option and is excluded by the plan's own hazard `hidden-bootstrap-handwork`
+(delivery/plan/value-delivery-plan.yaml:460).
+
+Evidence for the precedent, and its limit: pulse-fleet was cloned read-only
+(`git clone --depth 1`, HEAD 7656f67) into scratch and LISTED, never executed.
+A shallow clone shows the symlinks exist at that head, not when or by whom they
+were added. A read-only clone of `ThomasHendrickx/pulse` itself was refused by
+this session's permission layer, so the project side of the precedent is
+unobserved here.
