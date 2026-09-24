@@ -1569,6 +1569,35 @@ kernel-0-2-1-pulse-non-verdict-stays-invalid member 1 (1, '0', '1')
 kernel-0-2-1-pulse-non-verdict-stays-invalid RESTORED (0, '1', '0')
 ```
 
+### Gates for fix round 2
+
+All on node v26.6.0, origin/main at 3eeccb9 (unmoved, fetched after the
+runs, so no merge was owed).
+
+At ffb786d, scratch run-green9.sh: `npm run build` exit 0 with `git status
+--short` printing nothing after it; `npm test` exit 0, 1484 tests, 1484 pass,
+0 fail, 0 skipped (dist built); check-authored-bytes exit 0;
+render-agent-rules-gates --check exit 0 (24 rows). The PR bundle
+(`scripts/m2-exit-test.sh --base origin/main --head HEAD --bundle pr`):
+`declared 15 applicable 10 verdict 9 green 8 red 1 not-applicable 5 error 1`.
+Red was merge-preconditions, the expected red for a branch whose two reviews
+of this head do not exist yet ("A missing review is RED"). Error was
+red-witness, the stale patch recorded above. The suite gate reported
+`1484 test(s) from 70 file(s) (pass 1484, fail 0, skipped 0)`.
+
+At e55af6f (the patch repair), the red-witness gate alone:
+
+```
+gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0
+gates: red-witness: green: 113 witness(es) evaluated (22 own, 91 stored re-evaluated in 892862ms); every witness red against every declared dangerous state and green at head
+```
+
+The citations gate at ffb786d: green, 4 citation(s) resolved in 2 changed
+document(s). The affected test files (scratch run-affected.sh, 12 files
+including test/history-compat.test.ts and test/verdict-head.test.ts): 260
+tests, 260 pass, 0 fail, 0 skipped; test/history-compat.test.ts alone: 21
+tests, 21 pass, 0 skipped.
+
 ## Open questions
 
 1. **RESOLVED in fix round 1 (CR-001).** Was: **`headGroupFor` is unchanged.** In the derived checks, a same-phase
@@ -1672,10 +1701,10 @@ and what settles each:
 - 1144: "an unstamped document never reached the comparison" at b57bd7c: the
   new test is red there with `Missing expected exception: {}`, the `{}` being
   the unstamped record (captured above).
-- 1592: "needs a", inside open question 9, which is a question.
-- 1604: "cannot be decoded" describes an input (an undecodable file), not a
+- 1636: "needs a", inside open question 9, which is a question.
+- 1648: "cannot be decoded" describes an input (an undecodable file), not a
   claim about the code.
-- 1620: the grep command itself.
+- 1664: the grep command itself.
 
 Fix round 2's section:
 
@@ -1701,4 +1730,4 @@ Fix round 2's section:
 Occurrences, counted the same way in both forms after this section was
 written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 73, and the
 wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 73.
-Equal, so no hit was missed by wrapping. The hits after line 1620 are this section quoting the ones above it.
+Equal, so no hit was missed by wrapping. The hits after line 1664 are this section quoting the ones above it.
