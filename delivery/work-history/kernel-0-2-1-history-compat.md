@@ -2031,7 +2031,32 @@ characters in that block only, marked with `...`; nothing else changed.)
 
 ### Gates for fix round 3
 
-To be filled from the runs at the committed head.
+All on node v26.6.0 at 485aef5 (the fix-round commit), origin/main at 3eeccb9
+(fetched after the commit, unmoved, so no merge was owed). scratch
+run-green10.sh:
+
+- `npm run build` exit 0, and `git status --short` printed nothing after it.
+- `npm test` exit 0: 1485 tests, 1485 pass, 0 fail, 0 cancelled, 0 skipped
+  (`dist/` built). One more than fix round 2's 1484: test/git-ceiling.test.ts.
+- `node scripts/check-authored-bytes.mjs` exit 0.
+- `node scripts/render-agent-rules-gates.mjs --check` exit 0, 24 rows.
+- PR bundle (`scripts/m2-exit-test.sh --base origin/main --head HEAD --bundle
+  pr`): `declared 15 applicable 10 verdict 10 green 9 red 1 not-applicable 5
+  error 0 vacuous 0`. The red is merge-preconditions, which has no reviews of
+  this head yet, as at fix round 2. Inside it:
+
+```
+gates: suite: green: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 1485 test(s) from 71 file(s) (pass 1485, fail 0, skipped 0, todo 0, did-not-run 0); ...
+gates: citations: green: linted 2 changed document(s) at 485aef509cc37f071d42b4717000a40c208d35e8: 4 citation(s) resolved, 0 self-citation(s), 0 unverifiable-external
+gates: red-witness: green: 114 witness(es) evaluated (23 own, 91 stored re-evaluated in 875721ms); every witness red against every declared dangerous state and green at head
+```
+
+(Lines cut after "did-not-run 0);" in the first line only, marked `...`.)
+23 own is fix round 2's 22 plus kernel-0-2-1-no-repository-arms-ceiling.
+
+The inotify watcher on `/` and `/tmp` stayed armed through every run of this
+round, from suite a to the end of that bundle, and logged no event after my
+own probe.
 
 ## Open questions
 
@@ -2144,10 +2169,10 @@ and what settles each:
 - 1144: "an unstamped document never reached the comparison" at b57bd7c: the
   new test is red there with `Missing expected exception: {}`, the `{}` being
   the unstamped record (captured above).
-- 2071 (1636 before fix round 3): "needs a", inside open question 9, which is a question.
-- 2083 (1648 before fix round 3): "cannot be decoded" describes an input (an undecodable file), not a
+- 2096 (1636 before fix round 3): "needs a", inside open question 9, which is a question.
+- 2108 (1648 before fix round 3): "cannot be decoded" describes an input (an undecodable file), not a
   claim about the code.
-- 2107 (1664 before fix round 3): the grep command itself.
+- 2132 (1664 before fix round 3): the grep command itself.
 
 Fix round 2's section:
 
@@ -2170,7 +2195,7 @@ Fix round 2's section:
 - 997, 1303, 1306, 1330, 1349, 1375: lines of the derivation's
   captured grep output, unedited.
 
-Fix round 3's section (re-run after it was written; lines 1602 to 2033):
+Fix round 3's section (re-run after it was written; lines 1602 to 2059):
 
 - 1614: CI's captured output ("never green" is the check's own sentence).
 - 1710, 1737, 1749, 1757, 1771, 1941: test titles inside the captured
@@ -2189,4 +2214,4 @@ Fix round 3's section (re-run after it was written; lines 1602 to 2033):
 Occurrences, counted the same way in both forms after this section was
 written: `grep -oEi '<the same phrases>' <file> | wc -l` printed 90, and the
 wrap-insensitive `tr '\n' ' ' < <file> | grep -oEi ... | wc -l` printed 90.
-Equal, so no hit was missed by wrapping. The hits after line 2107 are this section quoting the ones above it.
+Equal, so no hit was missed by wrapping. The hits after line 2132 are this section quoting the ones above it.
