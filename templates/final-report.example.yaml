@@ -12,7 +12,7 @@
 # `tiphys-version` is the kernel version this report is written to (DR-0055).
 # Copy the version of the kernel you run. A report without it is read as
 # history from before stamping and is not held to rules added since 0.1.0.
-tiphys-version: 0.2.0
+tiphys-version: 0.2.1
 kind: final-report
 subject: M3-P3, assurance modes and role-to-model configuration, rounds 1 to 10
 
