@@ -1,0 +1,15 @@
+{
+  "phase": "M1-P1",
+  "head": "8380ad0d6470964b00903e42a8300b64cfe53bd7",
+  "verdict": "APPROVE",
+  "review-contract": "criteria",
+  "produced-by": "claude-opus",
+  "findings": [
+    {
+      "id": "CR-M1P1-001",
+      "severity": "low",
+      "summary": "Work history claim-grep section cites stale line numbers for three hits (213, 214, 380; actual 218, 219, 385 at head); classification of every hit is correct.",
+      "status": "open"
+    }
+  ]
+}

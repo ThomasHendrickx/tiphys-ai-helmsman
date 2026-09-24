@@ -42,7 +42,17 @@
     "delivery/plan/value-delivery-plan.yaml",
     "delivery/decisions/DR-0058-m5-p6-closes-the-charter-only-gap-in-init.md",
     "delivery/review/clean-room-m5-p6-kernel-criteria.md",
-    "delivery/review/clean-room-m5-p6-kernel-hazard.md"
+    "delivery/review/clean-room-m5-p6-kernel-hazard.md",
+    "delivery/review/m5-p6-hemma-m1-p1-criteria.json",
+    "delivery/review/m5-p6-hemma-m1-p1-hazard.json",
+    "delivery/review/m5-p6-hemma-m1-p2-criteria.json",
+    "delivery/review/m5-p6-hemma-m1-p2-hazard.json",
+    "delivery/review/m5-p6-hemma-review-bootstrap-criteria.md",
+    "delivery/review/m5-p6-hemma-review-bootstrap-hazard.md",
+    "delivery/review/m5-p6-hemma-review-m1p1-criteria.md",
+    "delivery/review/m5-p6-hemma-review-m1p1-hazard.md",
+    "delivery/review/m5-p6-hemma-review-m1p2-criteria.md",
+    "delivery/review/m5-p6-hemma-review-m1p2-hazard.md"
   ],
   "citations": [
     "DR-0029",
