@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "src/commands/init.ts",
-      "find": "  if (!statSync(realRoot).isDirectory()) {\n",
-      "replace": "  if (!lstatSync(root).isDirectory()) {\n"
+      "find": "    rootIsDirectory = statSync(realRoot).isDirectory();\n",
+      "replace": "    rootIsDirectory = lstatSync(root).isDirectory();\n"
     },
     {
       "kind": "mutation",

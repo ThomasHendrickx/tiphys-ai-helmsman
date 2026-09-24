@@ -337,15 +337,17 @@ function initProject(args: string[]): number {
      path from here on, so a checkout reached through a link is accepted and a
      dangling link is named as what it is rather than as "not a directory". */
   let realRoot: string;
+  let rootIsDirectory: boolean;
   try {
     realRoot = realpathSync(root);
+    rootIsDirectory = statSync(realRoot).isDirectory();
   } catch (error) {
     process.stderr.write(
       `tiphys init ${PROJECT_FLAG}: ${root} could not be resolved (${String((error as NodeJS.ErrnoException).code ?? error)}); a symbolic link must point at an existing directory\n`,
     );
     return 1;
   }
-  if (!statSync(realRoot).isDirectory()) {
+  if (!rootIsDirectory) {
     process.stderr.write(`tiphys init ${PROJECT_FLAG}: ${root} is not a directory\n`);
     return 1;
   }
