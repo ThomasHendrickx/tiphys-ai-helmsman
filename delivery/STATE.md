@@ -61,7 +61,8 @@ the merge gate rather than not-applicable.
 - M5-P6, scale-out proof: `claude/m5-p6-scale-out-proof`, wave D. The kernel
   half (conflicts command, DR-0058 init change, hemma intake) is reviewed:
   both clean-room reviews APPROVE at 45a0d54 after one fix round. Step 3, the
-  two hemma phases, is blocked on owner action A-18 and on intake Q-9.
+  two hemma phases, is blocked only on owner action A-18; intake Q-9 and
+  Q-5 are answered in section 4f, and no kernel release is needed first.
 
 ### Owner decisions open
 
