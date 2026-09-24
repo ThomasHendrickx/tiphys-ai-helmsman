@@ -2150,6 +2150,59 @@ The citations and red-witness gates were run at the head that carries this
 record; their output is in the hand-back, because recording it here would
 change the head they ran at.
 
+### Stopped here (orchestrator decision, git 2.55 left as a follow-up)
+
+The orchestrator stopped the git 2.55 root-cause work so that 0.2.1 can be
+released. The ceiling and the GIT_DIR-family strip above stay as they are. The
+intermittent git 2.55 failure is a recorded follow-up, not part of this
+release. The diagnostic trace commit 132565b is reverted by 0ee245c.
+
+What is known, each with where it was measured:
+
+- CI failed on d02c0c1 (run 35956468096) and on f39daae (run 35946757118),
+  both in the removed-.git arm of test/single-family-exception.test.ts, which
+  printed that `assurance-modes.yaml` does not exist in a commit resolved from
+  HEAD. CI passed the suite on 132565b (run 35958588437); its only red was
+  merge-preconditions, which needs review verdicts this branch does not carry.
+  One green run is not evidence of a fix.
+- The two commits CI named (f3a032c on d02c0c1, 3cb63cc on f39daae) are the
+  removed-.git arm's OWN staged commit. I rebuilt that arm's two commits from
+  the files at each head for every timestamp pair in a 30-minute window, and
+  both shas matched (scratch fr3c-brute2.py). So in both failures the arm's
+  `.git` survived its removal in part. The failure is not the ceiling letting
+  discovery reach a parent repository, which is how the parent-gitdir member
+  was first read.
+- node v26.6.0's recursive rmSync returns without error and leaves part of
+  the tree when another process unlinks entries it has listed. node v22.22.2
+  removed the whole tree in every trial.
+- git 2.55.0 runs a commit's auto maintenance detached, and the detached child
+  unlinks `.git/objects/maintenance.lock` after `git commit` has returned
+  (the capture `witness/captures/kernel-0-2-1-detached-maintenance.txt`, line
+  6 onward). git 2.43.0 runs that step in the foreground.
+- Commit ad33779 moves the arm's `.git` out by rename before removing it
+  (test/support/remove-git-directory.ts:32), in the three removed-.git arms
+  (test/single-family-exception.test.ts:1318, test/resume.test.ts:367,
+  test/resume.test.ts:442). Its test forces the race: in 24 trials a bare
+  rmSync left 12 `.git` directories and 9 resolving HEADs, and the helper left
+  0 and 0 (test/remove-git-directory.test.ts:140 prints both). The four
+  touched files passed 46 of 46, 0 skipped, under git 2.55.0 and git 2.43.0.
+
+What is NOT known:
+
+- The unforced race was not reproduced here: 0 failures in 2,900 unforced
+  trials with git 2.55.0 and node v26.6.0. That the detached maintenance child
+  is the concurrent writer in CI is an inference from the two measurements
+  above, not an observation of CI.
+- Whether ad33779 removes the CI failure. Only CI runs can show that, and
+  because the failure is intermittent, it needs more than one green run.
+- The new witness for ad33779 was NOT run through the red-witness gate in this
+  round; the orchestrator asked to skip that gate. Its two members were run
+  by hand and both went red (the existence check threw, and an in-place rmSync
+  left 20 `.git` directories).
+- src/exec/env.ts:420 uses the same recursive rmSync then re-create shape on a
+  directory. Whether anything unlinks inside it concurrently was not checked.
+  src/ is outside this round.
+
 ## Open questions
 
 1. **RESOLVED in fix round 1 (CR-001).** Was: **`headGroupFor` is unchanged.** In the derived checks, a same-phase
