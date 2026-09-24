@@ -1,0 +1,67 @@
+{
+  "kind": "verdict",
+  "phase": "claude/kernel-0-2-1-release-bump",
+  "head": "95d1ede537d528243aad9e3a90d1366570301ef0",
+  "tiphys-version": "0.2.1",
+  "verdict": "APPROVE",
+  "produced-by": "claude-opus-5-5",
+  "framing": "criteria-contract",
+  "review-contract": "criteria",
+  "findings": [],
+  "criteria": [
+    {
+      "id": "1",
+      "quote": "The diff is exactly that.",
+      "evidence": [
+        "git diff --stat origin/main...95d1ede (merge base 69a7a60 equals origin/main): package-lock.json 6, package.json 2, plugin/package.json 2, templates/final-report.example.yaml 2, witness/kernel-0-2-1-final-report-template-stamped.json 2; 5 files, 7 insertions, 7 deletions.",
+        "Every hunk is one 0.2.0 to 0.2.1 change; the plugin peer range stays ^0.2.0; the witness find text tiphys-version: 0.2.1 occurs exactly once in the template."
+      ],
+      "met": true
+    },
+    {
+      "id": "2",
+      "quote": "package.json, lockfile and plugin agree, and npm ci is clean.",
+      "evidence": [
+        "Lockfile: top-level 0.2.1, packages[\"\"] 0.2.1, plugin dev pin 0.2.1, peer ^0.2.0; package.json 0.2.1; plugin/package.json dev pin 0.2.1.",
+        "npm ci (node v26.6.0, npm 11.18.0) exit 0, zero EBADENGINE, npm warn or npm err lines; node_modules/@tiphys/kernel self-link reports 0.2.1.",
+        "Pre-existing, identical on main 69a7a60: npm ci reports 1 high severity vulnerability, and npm ls @tiphys/kernel exits ELSPROBLEMS on the plugin's file:. self-reference. Not introduced by this change."
+      ],
+      "met": true
+    },
+    {
+      "id": "3",
+      "quote": "Every 0.2.0 left in the tree is correct to keep: RULES_SINCE entries, peer ranges and old-stamped fixtures.",
+      "evidence": [
+        "git grep -F 0.2.0 outside delivery/: 69 lines, all classified: RULES_SINCE since rows (src/stamp.ts 155, 163, 170, 182), history prose and schema comments, the ^0.2.0 peer range and its witness find text, five old-stamped dual-review fixtures and 30 test lines in history-compat and verdict-head, behavior titles, release-verify stubs and captures, one retirement test line.",
+        "The brief stamp comes from package.json via ownVersionForStamp (src/commands/brief.ts:403), no literal.",
+        "Lab copy, test named in the template witness: template 0.2.1 rc 0 (1 pass); 0.1.0 rc 1 (0 pass 1 fail); 0.2.0 rc 1 (0 pass 1 fail), so a missed template bump is red."
+      ],
+      "met": true
+    },
+    {
+      "id": "4",
+      "quote": "release.yml's version guard and scripts/release-verify.sh accept 0.2.1.",
+      "evidence": [
+        "release.yml decide step compares package.json version with inputs.version by equality, no literal; its logic run at head: REQUESTED=CONFIRM=0.2.1 accepted, publish=yes, rc 0; REQUESTED=0.2.0 refused, rc 1.",
+        "release-verify.sh takes the version as an operand with no grammar or literal and checks served and installed versions by equality with it (scripts/release-verify.sh:485, :572). Not run against the registry: 0.2.1 is not published."
+      ],
+      "met": true
+    },
+    {
+      "id": "5",
+      "quote": "npm run build exits 0 with a clean tree, and history-compat, verdict-head and license-gate pass on node 26, with counts.",
+      "evidence": [
+        "npm run build exit 0; git status --short 0 lines after build and after tests.",
+        "node v26.6.0: history-compat rc 0, 21 tests 21 pass 0 fail 0 skipped; verdict-head rc 0, 41 tests 41 pass 0 fail 0 skipped; license-gate rc 0, 47 tests 47 pass 0 fail 0 skipped."
+      ],
+      "met": true
+    }
+  ],
+  "deviations-judged": [
+    {
+      "deviation": "The plugin peer range stays ^0.2.0 while its exact dev pin moves to 0.2.1.",
+      "serves-plan-intent": true,
+      "reasoning": "^0.2.0 admits 0.2.1, so consumers on 0.2.0 are not forced to upgrade; the dev pin tests the plugin against the kernel being released."
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "id": "conflicts-overlap-named-and-nonzero",
+  "behavior": "conflicts-overlap-named-and-nonzero",
+  "tests": [
+    "conflicts exits 1 and names every overlapping path for an overlapping pair"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "      if (a === b) {",
+      "replace": "      if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "  return finish(overlappingPairs > 0 ? EXIT_OVERLAP : 0);",
+      "replace": "  return finish(0);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/conflicts.ts",
+      "find": "      } else if (isDirectory(a) && b.startsWith(a)) {",
+      "replace": "      } else if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

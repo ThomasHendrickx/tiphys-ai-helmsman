@@ -5,7 +5,7 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-## M5 standing at 2026-09-23, 23:15 UTC, `main` at 209004b
+## M5 standing at 2026-09-24, 09:15 UTC, `main` at 2c49ab3
 
 M5 runs in waves under DR-0050 (delivery/plan/m5-conflict-pre-pass.md:1). The
 approved plan is delivery/plan/value-delivery-plan.yaml:1.
@@ -20,6 +20,25 @@ approved plan is delivery/plan/value-delivery-plan.yaml:1.
 | M5-P3, live review evidence | #213 | 6dc5b06 | gates 35890128107 success |
 | paperwork: DR-0053, DR-0054, M5-P3 evidence | #214 | b16f200 | gates 35897702941 success |
 | M5-P5, context diet | #215 | 209004b | gates 35927282691 success |
+| paperwork 4: DR-0056, M5-P5 merge evidence | #217 | 3eeccb9 | gates 35934423857 and macOS smoke 35934423859 success |
+| kernel 0.2.1, history compat and version stamps | #216 | 69a7a60 | gates 35971153312 and macOS smoke 35971153205 success |
+| kernel 0.2.1 version bump | #218 | 2c49ab3 | gates 35976377266 and macOS smoke 35976377284 success |
+
+**Kernel 0.2.1 is released.** `release` run 35976386843 (workflow_dispatch on
+2c49ab3) completed success, and both its `release` and `tag` jobs concluded
+success. The registry reads `latest` 0.2.1, with gitHead 2c49ab3. The tag
+`v0.2.1` is on the remote (annotated, peeled to 2c49ab3), and the GitHub
+release v0.2.1 exists, published 2026-09-24T08:52:21Z. Read 2026-09-24 by
+`npm view`, `git ls-remote` and the REST API; the account is in
+delivery/work-history/orchestrator-paperwork-5.md:1.
+
+#216 was audited at verdict commit 8a00c96 (reviewed head fc44f28), CI gates
+35966714698 and macOS smoke 35966714689 on that head. #218 was audited at
+a957a95 (reviewed head 95d1ede), CI gates 35973303679 and macOS smoke
+35973303931. Both merged under DR-0012 with condition 5 judged not applicable,
+because neither is a phase branch:
+delivery/decisions/DR-0057-a-non-phase-branch-merges-with-condition-5-not-applicable.md:1.
+The hand-run gate captures are in `delivery/evidence/`.
 
 The M5-P2 push run went red once on attempt 1 in a test M5-P2 does not touch,
 and was green on the one allowed re-run. Recorded, with the #211 instance, in
@@ -35,23 +54,54 @@ the merge gate rather than not-applicable.
 
 ### In flight
 
-- Kernel 0.2.1, old history validates again and content is version-stamped
-  (DR-0053, DR-0054, DR-0055): PR #216, in fix round 1 after its first two
-  reviews.
-- M5-P1, pulse value proof: `claude/m5-p1-pulse-value-proof`. A-14 is done:
-  pulse M3-P4 merged on kernel 0.2.0 as pulse PR #22, pulse `main` `b7036d7`.
-  The exit-test evidence is filled on the branch and not yet reviewed; three
-  of its rows fail the rule written for them in advance.
-- M5-P6, scale-out proof: `claude/m5-p6-scale-out-proof`, wave D.
+- M5-P1, pulse value proof: `claude/m5-p1-pulse-value-proof`, at 5971cc4.
+  The M4 exit test on pulse ran and is NOT DISCHARGED; that branch's
+  `delivery/verification/m4-exit-test-pulse.md` records why. The next step is
+  owner action A-17.
+- M5-P6, scale-out proof: `claude/m5-p6-scale-out-proof`, wave D. The kernel
+  half (conflicts command, DR-0058 init change, hemma intake) is reviewed:
+  both clean-room reviews APPROVE at 45a0d54 after one fix round. Step 3 is
+  DONE: hemma and hemma-fleet were bootstrapped (hemma 456, hemma-fleet 1),
+  and hemma phases M1-P1 (457) and M1-P2 (458) ran concurrently, merged
+  serially, with every post-merge push run green. Step 4, the exit report, is
+  written: delivery/verification/m5-scale-out-exit.md. Verdicts: p6-prepass,
+  p6-parallel-value and p6-attribution MET; p6-charter-only NOT MET on
+  released 0.2.1 (H-6), met by this branch's `init --project` once released,
+  which is a follow-up release. MERGED 2026-09-24 as PR #220 (merge
+  de2f999, verdict commit 5110bb7, both verdicts APPROVE at 8c17a5f,
+  merge-preconditions green on all 8). Follow-up per DR-0059: a release
+  carrying `init --project`, then a hemma run.
 
 ### Owner decisions open
 
 - None. The owner approved the 0.2.1 publish on 2026-09-23 (DR-0053), and
-  chose option A for M5-P5's last round (DR-0056).
+  chose option A for M5-P5's last round (DR-0056). DR-0057, merging #216 and
+  #218 with condition 5 not applicable, was decided by the orchestrator.
 
 ### Owner actions open
 
-- A-15: tag and release v0.2.0. The tag was still absent at 17:03 UTC.
+- A-17: bump pulse and pulse-fleet to kernel 0.2.1, add CI to pulse, and run
+  one phase merged at exactly its reviewed head. Opened 2026-09-24.
+  Progress 2026-09-24: pulse is on 0.2.1 (pulse PR #23, merge 987b6da).
+  pulse-fleet still pins 0.1.0 (its package.json at 7656f67), and pulse has
+  no `.github/workflows/`. The owner says pulse's own session is adding CI
+  and merging the next phase; this session does not act in pulse.
+  Read-only check at 17:38 UTC: step 2 is done (pulse PR #24 adds CI; runs
+  on main report success). Step 3 is NOT met by pulse PR #25 (M3-P5). It
+  merged head 98fbadc, but both committed verdicts
+  (`delivery/review/m3-p5-criteria.json` and `m3-p5-hazard.json` in pulse)
+  name head 98b4f0e with verdict FIX-ROUND-NEEDED, one medium and one high.
+  The two commits after 98b4f0e change source and tests, and no verdict
+  covers them. That is the same failure as PR #22. pulse-fleet was not
+  re-checked.
+- A-14: restart pulse and bump pulse-fleet to kernel 0.2.0. Its register
+  entry was allocated on the M5-P1 branch and reaches this register when that
+  phase merges; it is not yet on `main`. That branch records it done on
+  2026-09-24 (pulse ran M3-P4 on 0.2.0 and merged it as pulse PR #22); it
+  closes when M5-P1 merges, not here.
+- A-15: tag and release v0.2.0. The tag was still absent at 09:15 UTC on
+  2026-09-24 (`git ls-remote origin 'refs/tags/v0.2*'` lists only v0.2.1),
+  and `GET /releases/tags/v0.2.0` answered 404.
 - A-10: fleet default branch and six probe branches.
 - A-9 and A-8: scratch and superseded branches on this repository. Both were
   still present at 17:10 UTC by `git ls-remote origin`.
@@ -116,6 +166,51 @@ The full runnable text of every open action is in the register below.
 
   workflow run: https://github.com/ThomasHendrickx/tiphys-ai-helmsman/actions/runs/35839356656"
   ```
+
+- **A-18: GIVE M5-P6 STEP 3 WRITE ACCESS TO HEMMA.** Opened 2026-09-24. DONE.
+  M5-P6 step 3 bootstraps hemma and merges two phases there. The intake,
+  delivery/verification/m5-hemma-intake.md:244, found two things missing:
+
+  - Push access to `ThomasHendrickx/hemma`. A read clone works; a push
+    attach was refused by this session's permission layer twice on
+    2026-09-24.
+  - A fleet-home repository for hemma, because `tiphys init` refuses a
+    non-empty directory and the fleet home is its own repository, as
+    pulse-fleet is for pulse. A suggested name is `hemma-fleet`.
+
+  Done when both are attached to the orchestrator session with push access.
+
+  DONE 2026-09-24. The owner created `ThomasHendrickx/hemma-fleet` (empty)
+  and approved, in the session, working with hemma and hemma-fleet. Both are
+  attached. Push authorization is confirmed only by the first real push,
+  because a dry-run does not probe it (CLAUDE.md standing warning 14).
+
+- **A-17: MAKE PULSE ABLE TO PASS THE M4 EXIT TEST.** Opened 2026-09-24. OPEN.
+  The M4 exit test is NOT discharged. The evidence is on the M5-P1 branch, not
+  yet on `main`: `delivery/verification/m4-exit-test-pulse.md` on
+  `origin/claude/m5-p1-pulse-value-proof` at 5971cc4. Three rows fail:
+
+  - Pulse PR #22 merged head `ec51961`, but the last review covered `dd6adff`.
+    No verdict names the two code commits after it (`5a48bc8`, `ec51961`),
+    and one medium, HZ-M3P4-R2-01, was addressed after the last review with
+    no review of the fix.
+  - Pulse has no CI, so there is no post-merge push run.
+  - There is no deploy verification in the charter's sense. A Vercel
+    production deploy of the merge was observed, which is not the charter's
+    candidate check.
+
+  What the owner does, in the pulse repository and its fleet:
+
+  1. Bump pulse and pulse-fleet to kernel 0.2.1, for example
+     `npm install --save-exact @tiphys/kernel@0.2.1` in each.
+  2. Add a CI workflow to pulse that runs the Tiphys gates on `pull_request`
+     and `push`, so a post-merge push run exists.
+  3. Run one phase and merge exactly the head the last review names. Check
+     with `git rev-parse HEAD` on the branch against the verdict's head before
+     merging.
+
+  The orchestrator then verifies read-only (DR-0037: it reads the pilot and
+  never writes to it). A-14 is not closed here; the M5-P1 branch closes it.
 
 - **A-10: THE SIX PROBE BRANCHES ON THE FLEET REMOTE, AND ITS DEFAULT BRANCH.**
   Raised earlier and unchanged. A probe against `tiphys-ai-helmsman-fleet` left
@@ -464,6 +559,69 @@ were written and left this list: the `process.exit()` truncation (M4-P29,
 src/gates/suite.ts:1166), the DR-0022 parser decision (M3-P3 merged), the
 `package.json` 0.1.0 bump (it reads 0.2.0), and the missing `clause-map`
 expectation row (present at scripts/m2-exit-test.sh:221).
+
+**Kernel 0.2.1 follow-ups, added 2026-09-24.** None is assigned. Each one names
+what is known and what is not.
+
+- **M5-P6 criterion p6-charter-only is met on the branch, not on a release
+  (DR-0059).** hemma received `assurance-modes.yaml` by hand because 0.2.1 has
+  no `init --project`. Closing it: after M5-P6 merges, publish a release that
+  carries `init --project` (owner approval needed), run it in hemma, and
+  record that it reports the copy as present and identical.
+
+- **merge-preconditions has no arm for a non-phase branch in the dual-review
+  tier.** Condition 5 reads red whenever the scope record is not green
+  (src/gates/merge-preconditions.ts:533), and the scope gate is not-applicable
+  on a branch with no declaration. So each such pull request needs the
+  judgment DR-0057 records until the gate changes. Also recorded there: the
+  gate holds `package.json`, the lockfile and `templates/` in the dual tier by
+  failing closed (src/gates/merge-preconditions.ts:853), which the
+  orchestrator had assumed otherwise.
+
+- **The intermittent git 2.55 test failure has no proven root cause.** CI
+  failed twice in a removed-.git arm of test/single-family-exception.test.ts:1318.
+  The detached maintenance child of git 2.55 is the suspected concurrent writer;
+  that is an inference, and the race was not reproduced unforced (0 in 2,900
+  trials). ad33779 moves `.git` out by rename first; whether that removes the
+  CI failure needs more than one green CI run. The stop point is
+  delivery/work-history/kernel-0-2-1-history-compat.md:2153.
+
+- **src/exec/env.ts:420 has the same shape in shipped code.** It removes a
+  directory with a recursive `rmSync` and then recreates it. The 0.2.1
+  measurement was that node v26.6.0's recursive `rmSync` can return without
+  error and leave part of a tree when another process unlinks entries at the
+  same time. Whether anything writes into that redirect target concurrently is
+  not established.
+
+- **CR-008: the behavior row `validate-verdict-head-required-from-0-2-0` has no
+  witness spec.** Low severity, from the criteria review
+  (delivery/review/clean-room-kernel-0-2-1-opus-criteria.md:765) and recorded
+  in the arbitration (delivery/review/arbitration-kernel-0-2-1-reviewed-head.md:51).
+
+- **Scratch-repository tests inherit a global `commit.gpgsign`.** In this
+  container `git config --show-origin --get commit.gpgsign` prints
+  `file:/root/.gitconfig true` with `gpg.format` `ssh`, and
+  test/remove-git-directory.test.ts:1 sets neither `commit.gpgsign` nor a
+  config isolation variable. The orchestrator saw that file and other
+  scratch-repo tests fail locally on a signing-service timeout. Five test files
+  already set `commit.gpgsign` themselves (for example test/spawn.test.ts:1);
+  which other files lack it is not yet enumerated.
+
+- **The red-witness gate dominates CI time when many witnesses are stored.**
+  From the uploaded `summary.json` of #216's PR run 35966714698: "115
+  witness(es) evaluated (24 own, 91 stored re-evaluated in 727427ms)", inside a
+  bundle of 24.8 minutes. On #218's PR run 35973303679 the gate took seconds
+  (3 stored) and the bundle 7.6 minutes, so on #216 the gate cost about 17
+  minutes. That last figure is deduced by subtraction, because the summary has
+  no per-gate duration. The proposal is to re-run only the witnesses whose
+  files the diff changes.
+
+- **Open question under T-046, cause not asserted.** An implementer reported
+  that it "killed its own freshness watchdog with plain kill". At the same time
+  the orchestrator's own monitor died with exit 144. T-046 is about killing by
+  pattern (delivery/tuition/T-046-an-agent-killed-another-agents-tests-by-pattern.md:1).
+  Whether the two events are connected is not known. Which process ended the
+  monitor, and how, was not observed.
 
 - **`delivery/plan/m4-conflict-pre-pass.md:60` IS A BLANK LINE.** Found by the
   same reviewer while checking twenty-two citations by hand, hit rate 21 of 22.

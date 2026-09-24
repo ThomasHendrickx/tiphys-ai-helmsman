@@ -425,12 +425,17 @@ phases:
       - src/commands/conflicts.ts
       - src/cli.ts
       - test/conflicts.test.ts
+      - src/commands/init.ts
+      - test/init.test.ts
+      - templates/gate-registry.example.yaml
       - delivery/verification/m5-hemma-intake.md
       - delivery/verification/m5-scale-out-exit.md
       - delivery/STATE.md
     extras:
       - test/behaviors.json
       - delivery/plan/phase-declarations/m5-p6.json
+      - delivery/plan/value-delivery-plan.yaml
+      - delivery/decisions/DR-0058-m5-p6-closes-the-charter-only-gap-in-init.md
     acceptance:
       - id: p6-prepass
         criterion: >-
