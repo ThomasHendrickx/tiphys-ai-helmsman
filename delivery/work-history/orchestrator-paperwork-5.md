@@ -100,3 +100,27 @@ the file was restored by `cp` from the saved copy (`cmp` exit 0). With the
 item cut, the test "STATE.md begins with the current standing" exited 1,
 "pass 0, fail 1", actual `[ 'open owner action A-17 has no register item' ]`.
 With the item present: green, see Checks.
+
+## Checks, at da79453, node v26.6.0 and npm 11.18.0 from the scratch prefix
+
+- `npm ci`: exit 0, 0 EBADENGINE lines.
+- `node scripts/check-authored-bytes.mjs`: exit 0 (after committing; before
+  the commit it exited 2, "tracked working tree differs from the index", which
+  is its refusal to check an unstaged tree, not a byte finding).
+- `node scripts/check-id-collisions.mjs`: exit 0, "highest DR-0057, next free
+  DR-0058", "highest T-046, next free T-047", "no collisions".
+- `node scripts/render-agent-rules-gates.mjs --check`: exit 0, "green (24
+  rendered gate rows compared)".
+- citations gate (`--base origin/main --head HEAD`, evidence in the
+  scratchpad): exit 0, "linted 2 changed document(s) at da79453...: 22
+  citation(s) resolved, 0 self-citation(s), 0 unverifiable-external". The two
+  documents are delivery/STATE.md and the DR-0057 record; this work history
+  is not among the documents it lints.
+- `node --test test/retirement-inventory.test.ts`: 56 tests, 56 pass, 0 fail,
+  0 cancelled, 0 skipped, 0 todo. `dist/` was not built; this file does not
+  exercise the built CLI.
+- Claim grep over this work history: line-based, no hit; wrap-insensitive, no
+  hit. Over DR-0057: one hit, "whenever" (matches `never`), adjacent to the
+  citation src/gates/merge-preconditions.ts:533 that settles it. Over the
+  STATE.md additions: "whenever" (same citation), and "never writes to it",
+  which restates DR-0037's rule rather than claiming a measurement.
