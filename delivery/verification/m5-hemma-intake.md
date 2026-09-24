@@ -198,19 +198,23 @@ have to place by hand; each is a `hidden-bootstrap-handwork` hazard).
 | I-2 | `--shared-exclusion` | `tiphys init` (src/commands/init.ts:88) | OPERATOR | a choice; relevant if the two concurrent phases run from different environments |
 | I-3 | kernel version pin | init writes it from the running kernel (src/commands/init.ts:161); the charter also requires `identity.kernel-version-pin` (schemas/charter.schema.json:29) | CHARTER | this repository's package.json:3 says 0.1.0; which version is PUBLISHED and installable is open (Q-5) |
 | I-4 | the charter: `kind`, `identity`, `delivery-mode`, `assurance-tier`, `yolo-permissions`, `irreversible-decisions`, `product-intent`, `constraints`, `escalation-contract`, `release-verification`, `retention` required; `review-families` optional | `tiphys validate --type charter`, doctor, merge preconditions | CHARTER | all eleven must be AUTHORED; content exists as prose (4a). `review-families` should be declared, since hemma has one collaborator (section 5) |
-| I-5 | the charter's FILE NAME and location | checks read `charter.yaml` from a context directory (src/checks.ts:4616); the pulse precedent stored `charter/pulse.yaml` in the fleet home | CHARTER, location UNRESOLVED | Q-4 |
-| I-6 | a project gate registry naming hemma's own commands (`npm run lint`, `npx tsc --noEmit`, `npx vitest run --project unit`, and the kernel-contract gates hemma opts into) | `tiphys gates run --registry <file>` | PREDICATE | hemma's commands exist and pass (section 2c); the registry itself does not exist and no template ships (`templates/` holds no gate-registry example, contrary to DR-0029 Part 1's stated consequence at delivery/decisions/DR-0029-the-ownership-boundary-and-the-applicability-envelope.md:50) |
-| I-7 | `assurance-modes.yaml` | the merge-authority regime needs BOTH `charter.yaml` and `assurance-modes.yaml` present at the committed source (src/checks.ts:4629); the mode enum check reads it (src/checks.ts:320) | **KERNEL-HANDWORK (H-1)** | none. It is the KERNEL's closed vocabulary (DR-0020), not a hemma predicate. The pulse precedent hand-placed it as a symlink, `assurance-modes.yaml -> node_modules/@tiphys/kernel/assurance-modes.yaml` |
-| I-8 | `schemas/` beside the context documents | cross-document checks resolve `schemas/charter.schema.json` beside the document (src/commands/mode.ts:21) | **KERNEL-HANDWORK (H-2)** | none. Pulse precedent: symlink `schemas -> node_modules/@tiphys/kernel/schemas` |
-| I-9 | the kernel's `gate-registry.yaml` placed in the fleet home | the pulse precedent symlinked `gate-registry.yaml -> node_modules/@tiphys/kernel/gate-registry.yaml` | **KERNEL-HANDWORK (H-3)**, and a PREDICATE substitution | That symlink makes the KERNEL's predicates stand in for the project's, which is the opposite of DR-0029 Part 1. For hemma it would also not run: the kernel registry's commands are kernel-repository-relative, e.g. `node src/gates/scope.ts --declarations delivery/plan/phase-declarations` at `gate-registry.yaml` line 126 (root-level yaml, quoted because it is not a citation root) |
-| I-10 | `.gitignore` line `.ctx-*/` | observed in pulse-fleet, not written by init (src/fleet.ts:29 lists three entries) | **KERNEL-HANDWORK (H-4)** | none |
+| I-5 | the charter's FILE NAME and location | checks read `charter.yaml` from a context directory (src/checks.ts:4616); the pulse precedent stored `charter/pulse.yaml` in the fleet home | CHARTER, location RESOLVED after DR-0058 (section 4e): two locations | Q-4, answered in 4e |
+| I-6 | a project gate registry naming hemma's own commands (`npm run lint`, `npx tsc --noEmit`, `npx vitest run --project unit`, and the kernel-contract gates hemma opts into) | `tiphys gates run --registry <file>` | PREDICATE | hemma's commands exist and pass (section 2c); the registry itself does not exist. AFTER DR-0058 a project-owned template ships, `templates/gate-registry.example.yaml`, and `tiphys init --project` names its path; hemma still writes its own registry and the adapter scripts its commands name (4e) |
+| I-7 | `assurance-modes.yaml` | the merge-authority regime needs BOTH `charter.yaml` and `assurance-modes.yaml` present at the committed source (src/checks.ts:4629); the mode enum check reads it (src/checks.ts:320) | was **KERNEL-HANDWORK (H-1)**; after DR-0058 PRODUCED by `tiphys init --project` into the PROJECT repository, to be committed (4e) | none. It is the KERNEL's closed vocabulary (DR-0020), not a hemma predicate. The pulse precedent hand-placed it as a symlink, `assurance-modes.yaml -> node_modules/@tiphys/kernel/assurance-modes.yaml` |
+| I-8 | `schemas/` beside the context documents | cross-document checks resolve `schemas/charter.schema.json` beside the document (src/commands/mode.ts:21) | was **KERNEL-HANDWORK (H-2)**; after DR-0058 NOT NEEDED for bootstrap or the merge regime, with evidence (4e) | none. Pulse precedent: symlink `schemas -> node_modules/@tiphys/kernel/schemas` |
+| I-9 | the kernel's `gate-registry.yaml` placed in the fleet home | the pulse precedent symlinked `gate-registry.yaml -> node_modules/@tiphys/kernel/gate-registry.yaml` | was **KERNEL-HANDWORK (H-3)**, and a PREDICATE substitution; after DR-0058 REPLACED by the project-owned template (I-6, 4e) | That symlink makes the KERNEL's predicates stand in for the project's, which is the opposite of DR-0029 Part 1. For hemma it would also not run: the kernel registry's commands are kernel-repository-relative, e.g. `node src/gates/scope.ts --declarations delivery/plan/phase-declarations` at `gate-registry.yaml` line 126 (root-level yaml, quoted because it is not a citation root) |
+| I-10 | `.gitignore` line `.ctx-*/` | observed in pulse-fleet, not written by init (src/fleet.ts:29 lists three entries) | was **KERNEL-HANDWORK (H-4)**; after DR-0058 NOT NEEDED, no kernel producer or consumer (4e) | none |
 | I-11 | `npm install` in the fleet home so the pinned kernel is under `node_modules/` | every symlink in I-7 to I-9 resolves through it | OPERATOR | depends on Q-5 |
 | I-12 | one phase declaration per hemma phase, committed to hemma `main` BEFORE the phase branch exists | scope gate (src/gates/scope.ts:877) | PREDICATE, with KERNEL-IMPOSED naming | id must match `^M[0-9]+-P[0-9]+$` and branch `^claude/m[0-9]+-p[0-9]+-.+$` (src/gates/schemas/phase-declaration.schema.json:13, src/gates/schemas/phase-declaration.schema.json:18). Measured: `tiphys conflicts` REFUSED declarations with ids `H-P1`/`H-P2`, exit 2, `does not match the required pattern ^M[0-9]+-P[0-9]+$`. Hemma's own phase names (`run17-p4`, `claude/run9-r2-...`) do not fit; the kernel's vocabulary is imposed, which is a declared cost, not handwork |
 | I-13 | red-witness specs (`witness/*.json`) for any src change, if hemma's registry includes the kernel's `red-witness` gate | red-witness gate | PREDICATE | none yet; hemma's natural witness is `eslint --max-warnings 0 <file>` (section 6) |
 | I-14 | a CI step that runs `tiphys gates run` in hemma | nothing today: `grep -c tiphys` reports 0 in `ci.yml` and 0 in `golden-path-preview.yml` | PREDICATE (hemma owns its CI) | absent. Without it the kernel's gates are local-only evidence, the DR-0029 Part 3c degraded band |
 | I-15 | push access for the orchestrator to hemma, and to the new fleet-home repository | step 3 | OWNER ACTION | section 7 |
 
-### 4d. Verdict on p6-charter-only, as the kernel stands at this branch
+### 4d. Verdict on p6-charter-only, as the kernel stood at `cb262fb`
+
+**SUPERSEDED BY 4e.** The verdict below was true at `cb262fb`, before DR-0058,
+and is kept as written so the record shows what the kernel change closed.
+Option 1 below is what DR-0058 chose.
 
 **Charter plus project-owned predicates is NOT sufficient today.** Four inputs
 (I-7, I-8, I-9, I-10) are kernel configuration that init does not produce and
@@ -236,6 +240,108 @@ A shallow clone shows the symlinks exist at that head, not when or by whom they
 were added. A read-only clone of `ThomasHendrickx/pulse` itself was refused by
 this session's permission layer, so the project side of the precedent is
 unobserved here.
+
+### 4e. Addendum after DR-0058 (M5-P6 kernel half and its fix round 1)
+
+This addendum brings section 4 up to date with the kernel change DR-0058 made on
+this branch. It answers the criteria review's CR-001 and CR-002 and records the
+hazard review's CR-KH-005 disposition. DR-0058 itself is not edited here; the
+orchestrator adds the addendum to the decision record.
+
+**What `tiphys init` produces now.**
+
+- `tiphys init <fleet>` writes the same fleet layout as before and prints two
+  next steps: the charter goes at `<fleet>/charter/<project>.yaml`, and the
+  project repository needs `tiphys init --project <repo>`.
+- `tiphys init --project <repo>` (src/commands/init.ts:323) accepts only the
+  top level of a git work tree, reached directly or through a symbolic link. It
+  writes `assurance-modes.yaml` at the repository root as a byte copy of the
+  running kernel's file. It refuses to replace anything already there that is
+  not identical. It reports whether `charter.yaml` and `gate-registry.yaml`
+  exist, and names the template path when the registry is absent. It writes
+  neither.
+
+**The four former KERNEL-HANDWORK items, with evidence.**
+
+| item | disposition | evidence |
+|---|---|---|
+| I-7 `assurance-modes.yaml` | PRODUCED by `init --project`, in the PROJECT repository, as a copy | the merge regime reads it from the commit of the repository the gates run in (src/checks.ts:4799); the merge gate's `--context` defaults to that repository (src/gates/merge-preconditions.ts:1369). A committed symlink would pass the presence probe and yield its target PATH as the body (measured, delivery/work-history/m5-p6.md) |
+| I-8 `schemas/` beside the context | NOT NEEDED | the only context read of it is src/checks.ts:748, inside `charter-mode-enum-matches-modes`, a check of `type: "assurance-modes"` with `requiresContext: true` (src/checks.ts:733), so it runs only when an assurance-modes DOCUMENT is validated with `--context`. The regime read at src/checks.ts:4799 only looks up the mode's `merge-authority`. The grep below the table prints that one line and nothing else |
+| I-9 the kernel's registry in the fleet home | REPLACED by the project-owned template `templates/gate-registry.example.yaml` | the template names no kernel command; test/init.test.ts:403 reads the kernel registry's scripts at run time and requires that none appears in it |
+| I-10 `.gitignore` line `.ctx-*/` | NOT NEEDED | `grep -rn '\.ctx-' src roles AGENTS.md .claude/skills scripts` exits 1 with no output at this branch, so no kernel code creates or reads such a directory |
+
+The I-8 grep, run at this branch:
+
+```
+grep -rnE 'join\(context[A-Za-z]*, *"schemas|"schemas/charter\.schema\.json"|schemas", "charter' src
+src/checks.ts:748:      join("schemas", "charter.schema.json"),
+```
+
+The fleet home itself consumes none of the four: five fleet-scoped commands were
+run in a home made by `init` with only a charter added (delivery/work-history/m5-p6.md).
+I-11 (`npm install` in the fleet home) is therefore no longer needed to resolve
+any symlink; an installed kernel is still needed to RUN `tiphys`, which is Q-5.
+
+**Q-4 answered: the charter lives in two places, for two readers.**
+
+- `<fleet>/charter/<project>.yaml`, read by doctor and brief compose
+  (src/charter.ts:38).
+- `<project>/charter.yaml`, read from the commit by the merge regime
+  (src/charter.ts:41, src/checks.ts:4750).
+
+**The post-init steps, in order, all declared rather than hidden.**
+
+1. `tiphys init <fleet>`; write `<fleet>/charter/hemma.yaml`.
+2. In hemma: `tiphys init --project <hemma>`; COMMIT the written
+   `assurance-modes.yaml`.
+3. In hemma: write `charter.yaml` at the root (the same charter as step 1) and
+   commit it.
+4. In hemma: write `gate-registry.yaml` from the template, with hemma's own
+   commands, and the adapter scripts those commands name (for example
+   `scripts/tiphys-gates/unit-tests.mjs`). Each adapter runs hemma's tool and
+   writes one GateResult per the subprocess contract in the template's header.
+   These are PREDICATE inputs (DR-0029 Part 1), owned by hemma.
+5. Commit one phase declaration per phase to hemma `main` before its branch
+   exists (I-12).
+
+**Project-side files that kernel gates read at FIXED paths (CR-002).** Derived
+by:
+
+```
+grep -nE '"(gates\.manifest\.json|test/behaviors\.json|gate-registry\.yaml|assurance-modes\.yaml|charter\.yaml|witness/?|delivery/[^"]*|package\.json|package-lock\.json|tsconfig[^"]*|schemas/[^"]*|\.github/[^"]*)"|process\.cwd\(\)' src/gates/*.ts
+```
+
+The table is that output with the kernel-internal and comment hits removed.
+The last column is this intake's RECOMMENDATION for step 3's hemma registry.
+Step 3 decides, and must record any change from it.
+
+| kernel gate | fixed project path it reads | step 3 uses it? | how hemma supplies the input |
+|---|---|---|---|
+| `red-witness` | `gates.manifest.json` at the root, an ERROR if absent (src/gates/red-witness.ts:205); `test/behaviors.json` at head (src/gates/red-witness.ts:217); `witness/` (src/gates/red-witness.ts:266) | NO | not supplied. All three are kernel-format files hemma does not have; hemma's red witness is an `eslint` run recorded in the work history (section 6), outside the kernel gate |
+| `suite` | `package.json` test script (src/gates/suite.ts:770); `--registry` default `test/behaviors.json` (src/gates/suite.ts:560) | NO | hemma's tests are vitest, and the suite gate injects a `node:test` reporter, so it does not fit; hemma's `unit-tests` adapter gate replaces it |
+| `scope` | declarations directory by `--declarations`; standing extras `test/behaviors.json` and `delivery/work-history/<phase>.md` (src/gates/scope.ts:979); evidence directories `delivery/review/`, `delivery/verification/` (src/gates/scope.ts:565) | YES, it is the scope proof for the two parallel phases | `--declarations` points at hemma's declaration directory (I-12). The standing extras and evidence directories are read as GRANTS added to the allowed list (src/gates/scope.ts:979), so by that reading their absence is not an error; not run against a hemma tree |
+| `merge-preconditions` | `charter.yaml` and `assurance-modes.yaml` from the commit, context default the working directory (src/gates/merge-preconditions.ts:1369); review-budget path classes (src/gates/merge-preconditions.ts:880) | ONLY IF step 3 merges through the kernel's regime | `charter.yaml` from post-init step 3, `assurance-modes.yaml` from step 2 |
+| `citations` | document roots and `citationRequired` globs hard-coded to this repository's `delivery/` layout (src/gates/citations.ts:213) | NO | not supplied; hemma has no `delivery/` tree |
+| `coverage` | this repository's requirement and plan documents (src/gates/coverage.ts:180) | NO | kernel-internal |
+| `gate-classes` | declarations and registry by argument, relative to the working directory (src/gates/gate-classes.ts:484); `node_modules/typescript` (src/gates/gate-classes.ts:662) | NO | not supplied |
+
+How a hemma registry INVOKES a kernel gate (the `scope` row) is open: the
+command has to name a path in an installed kernel, which is the
+operator-machine dependency `init --project` rejected for the modes document.
+That is intake Q-9 below, and it has to be settled before step 3's registry is
+written.
+
+**Known residue (one line each, from the criteria review).**
+
+- CR-003: nothing checks the project's `assurance-modes.yaml` against the
+  kernel after `init --project`, and the regime reads `merge-authority` from it,
+  so a stale or edited copy changes the regime silently.
+- CR-004: the charter exists twice (fleet and project), and nothing checks that
+  the two agree.
+- CR-005: right after `init --project`, `tiphys validate --type assurance-modes
+  --context .` and `mode show --file assurance-modes.yaml` both exit 1 in the
+  project, because those context checks expect the kernel's own tree. The merge
+  regime does not run them.
 
 ## 5. Suitability against the applicability envelope
 
@@ -438,6 +544,14 @@ then ship changed production code, against K-3.
   Postgres). Their current state is known only from CI.
 - Q-8: is p6-charter-only to be met by a kernel change (plan amendment) or
   recorded as a declared failure (section 4d)? This is the orchestrator's call.
+  ANSWERED: DR-0058 chose the kernel change; section 4e records the result.
+- Q-9 (added by the M5-P6 kernel fix round 1): how does hemma's registry
+  invoke a kernel gate such as `scope`? Its command must name a path in an
+  installed kernel, which is the operator-machine dependency `init --project`
+  avoided for the modes document. Open; it must be settled before step 3
+  writes hemma's registry (section 4e).
 
 **Verdict: FITS WITH NAMED CONDITIONS K-1 to K-5. Step 1 is complete; step 3 is
 blocked on the owner action in section 7 and the scope decision in Q-8.**
+(Updated by the kernel fix round 1: Q-8 is answered by DR-0058; step 3 is now
+blocked on section 7 and on Q-9.)
