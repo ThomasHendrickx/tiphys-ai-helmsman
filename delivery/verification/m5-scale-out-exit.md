@@ -84,8 +84,9 @@ exit 1
 (Only the two FAIL lines of doctor are shown here; the full output is in the
 second run below, where every line is printed.)
 
-Then `mkdir state worktrees projects` and `projects/hemma` made a symbolic link
-to the hemma clone. The charter's retention paths were moved to paths hemma
+Then `mkdir state worktrees projects` (by hand, before the kernel command for
+it was found; see the fresh-clone run below) and `projects/hemma` made a
+symbolic link to the hemma clone. The charter's retention paths were moved to paths hemma
 already tracks (`docs/work-history/`, `docs/reports/`). Second run:
 
 ```
@@ -123,6 +124,41 @@ fixed list documented at intake section 4f and names no hemma fact.
 
 The retention paths resolve through `projects/hemma`, the second root doctor
 reads (src/commands/doctor.ts:701, src/commands/doctor.ts:805).
+
+**The kernel's own command for a clone, measured afterwards on a FRESH clone
+of the pushed branch** (`bba99ec`), node v26.6.0:
+
+```
++ npm ci
+added 11 packages in 614ms
+exit 0
++ npx tiphys init .
+tiphys init: <clone> is already initialized; run tiphys resume to rebuild the ephemeral directories a clone does not carry
+exit 1
++ npx tiphys resume
+REBUILT state/
+REBUILT worktrees/
+REBUILT projects/
+exit 0
++ npx tiphys doctor (no project clone yet)
+CHECK layout PASS all layout entries present
+CHECK retention FAIL <clone>/charter/hemma.yaml declares retention path docs/work-history/, which does not exist
+exit 1
++ npx tiphys next
+next action: NOTHING IS IN FLIGHT in this fleet home. That is not the same sentence as 'the work is done'; read the cannot-see list above before concluding it
+exit 0 (0 means every in-flight category is empty, 3 means work remains, 1 means this command failed)
+```
+
+(`doctor` filtered to its `layout` and `retention` lines; `next` to its last
+two.) So `tiphys resume` is the kernel's step for a clone, and the only step it
+leaves is the project clone under `projects/`, which is by design.
+
+And init against a directory holding only hemma-fleet's `README.md`:
+
+```
+tiphys init: <scratch>/readme-only is not empty and not a fleet home, refusing
+exit 1
+```
 
 ### 1c. hemma: the bootstrap branch
 
@@ -373,7 +409,7 @@ configuration neither init nor the charter produces, placed by hand; each is a
 | B-2 | `tiphys init <empty scratch dir>`, then a byte copy of its seven tracked files | hemma-fleet | OPERATOR | forced by the non-empty refusal, src/commands/init.ts:151; see F-1 |
 | B-3 | `charter/hemma.yaml` | hemma-fleet | CHARTER | all eleven required fields; sources named per field |
 | B-4 | `npm install` (lockfile for init's pin) | hemma-fleet | OPERATOR | intake I-11 |
-| B-5 | `mkdir state worktrees projects` in a clone of the fleet home | hemma-fleet | **KERNEL-HANDWORK (H-5)** | see F-2 |
+| B-5 | `npx tiphys resume` in a clone of the fleet home | hemma-fleet | OPERATOR | a kernel command; this step first did it by hand with `mkdir` (same three empty directories) before finding it; see F-2 |
 | B-6 | a hemma clone at `projects/hemma` | hemma-fleet | OPERATOR | projects/ is where clones live by design (src/fleet.ts:29); doctor's retention check needs it |
 | B-7 | `charter.yaml` at the root | hemma | CHARTER | same bytes as B-3 |
 | B-8 | `assurance-modes.yaml` at the root, a byte copy from `node_modules/@tiphys/kernel` | hemma | **KERNEL-HANDWORK (H-6)** | see F-3 |
@@ -387,26 +423,26 @@ configuration neither init nor the charter produces, placed by hand; each is a
 | B-16 | `docs/work-history/2026-09-24.tiphys-bootstrap.md` | hemma | PREDICATE (hemma's own rule) | not a Tiphys input |
 | B-17 | `--phase` from the branch name, and `--base/--head/--phase` on push | hemma CI | PREDICATE | see F-4 |
 
-**Summary.** 17 inputs: 2 CHARTER, 9 PREDICATE, 4 OPERATOR, **2 KERNEL-HANDWORK
-(H-5, H-6)**.
+**Summary.** 17 inputs: 2 CHARTER, 9 PREDICATE, 5 OPERATOR, **1 KERNEL-HANDWORK
+(H-6)**.
 
 ### 1h. Findings from the bootstrap
 
 - **F-1 (kernel, low): init cannot target an existing repository.** A fleet
   home whose repository already has a commit (here only a README) cannot be
   made by `tiphys init` in place; the operator runs init elsewhere and copies.
-  Measured: exit 0 into an empty directory, and the refusal message at
-  src/commands/init.ts:151 for a non-empty one. The copy is exact and
+  Measured: exit 0 into an empty directory, and exit 1 with the refusal at
+  src/commands/init.ts:151 for a directory holding only the README (1b). The copy is exact and
   declared, so it is not hidden; it is a manual step.
-- **F-2 (kernel, H-5): a CLONE of a fleet home is not a fleet home.** init
-  creates `state/`, `worktrees/` and `projects/` and gitignores them
-  (src/fleet.ts:12, src/fleet.ts:29), so no clone has them. Measured on a clone:
-  doctor `CHECK layout FAIL missing state/, worktrees/, projects/`, exit 1, and
-  `tiphys next: not a fleet home` (src/fleet.ts:88), exit 1. The fix is three
-  empty directories, placed by hand, and no kernel command places them (init
-  refuses the non-empty clone). The pulse-fleet precedent has the same shape:
-  an `ls` of its checkout at `/home/user/pulse-fleet` during this step listed
-  no `state/`, `worktrees/` or `projects/`.
+- **F-2 (operator step, NOT handwork): a clone of a fleet home needs
+  `tiphys resume`.** init creates `state/`, `worktrees/` and `projects/` and
+  gitignores them (src/fleet.ts:12, src/fleet.ts:29), so no clone has them, and
+  without them doctor fails `layout` and `next` refuses (src/fleet.ts:88).
+  `tiphys resume` rebuilds all three (1b, fresh-clone run), and init itself
+  names that command when run in a clone. This step at first recreated them by
+  hand and classed that as handwork; the fresh-clone measurement corrected it.
+  Recorded because the kernel's own pointer to `resume` appears only when init
+  is run in the clone, and doctor's `layout` FAIL line does not mention it.
 - **F-3 (kernel, H-6): 0.2.1 has no `init --project`, so the modes document was
   copied by hand.** The copy is byte-identical to what `tiphys init --project`
   on this branch writes (src/commands/init.ts:323 and intake 4e), and the
