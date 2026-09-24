@@ -989,6 +989,14 @@ test(
 /* Criterion 5: release verification refuses a contaminated path        */
 /* ------------------------------------------------------------------ */
 
+/** The env for a run that must be REFUSED before the registry wait. The wait
+    bound is 0 so that a MUTATED run (the red-witness harness removes the
+    refusal) polls the registry once and moves on, rather than spending the
+    900s default if the registry happens to be unreachable from the runner. */
+function refusalEnv(): Record<string, string> {
+  return { ...cleanEnv(), RELEASE_VERIFY_WAIT_SECONDS: "0" };
+}
+
 test("release-verify refuses to run where the source tree is on the resolution path, naming that path", () => {
   /* CRITERION 5's FALSIFIABLE HALF. "Clean" is a property of the invoking
      environment, which is why the plan says no assertion inside the script can
@@ -1019,7 +1027,7 @@ test("release-verify refuses to run where the source tree is on the resolution p
   const result = spawnSync(
     "bash",
     [releaseVerify, "@tiphys/kernel", "0.1.0", "--records", records],
-    { cwd: repoRoot, encoding: "utf8", env: cleanEnv(), maxBuffer: 64 * 1024 * 1024 },
+    { cwd: repoRoot, encoding: "utf8", env: refusalEnv(), maxBuffer: 64 * 1024 * 1024 },
   );
   assert.notEqual(result.status, 0, "release-verify produced a green from inside the source tree");
   assert.match(result.stderr ?? "", /REFUSED\./);
@@ -1101,7 +1109,7 @@ test("release-verify refuses a contaminated resolution path through the real pat
       const result = spawnSync(
         "bash",
         [releaseVerify, "@tiphys/kernel", "0.1.0", "--records", records],
-        { cwd: workdir, encoding: "utf8", env: cleanEnv(), maxBuffer: 64 * 1024 * 1024 },
+        { cwd: workdir, encoding: "utf8", env: refusalEnv(), maxBuffer: 64 * 1024 * 1024 },
       );
       assert.notEqual(result.status, 0, `arm ${arm}: release-verify produced a green from a contaminated directory`);
       assert.match(result.stderr ?? "", /REFUSED\./, `arm ${arm}: ${result.stderr ?? ""}`);
@@ -1210,6 +1218,449 @@ test("release-verify from a clean directory passes and records a resolved path i
     }
   } finally {
     rmSync(prefix, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Registry mode waits until the registry SERVES the version            */
+/* ------------------------------------------------------------------ */
+
+/*
+ * THE DEFECT, measured on release run 35839356656: the post-publish run of
+ * scripts/release-verify.sh started one second after `npm publish`, the
+ * registry did not serve the version yet, and all five steps failed. The
+ * mechanism is a verification that treats "not yet served" the same as "served
+ * and broken". These tests drive the REAL script with a stub `npm` first on
+ * PATH, because the registry's propagation delay is the thing under test and
+ * it cannot be summoned on demand.
+ *
+ * THE STUB'S "NOT SERVED" ANSWERS ARE READ FROM A REAL CAPTURE, never typed
+ * here (red-witness rule, CLAUDE.md warning 10):
+ * witness/captures/release-verify-registry-not-served.txt holds npm 11.18.0's
+ * own exit code and stderr for `npm view` and `npm install` of a version the
+ * registry does not serve. The capture's shape matters to the script: the real
+ * answer is exit 1 with an EMPTY stdout, so "served" has to be "exit 0 and
+ * prints exactly the version", not merely "exit 0".
+ *
+ * THE STUB MODELS THE REGISTRY AS ONE COUNTER shared by the install path
+ * (`cache add` and `install`) and, by default, `view`: the first K registry
+ * requests of any of them get the not-served answer. That is what makes the
+ * first test red on the pre-fix script, whose FIRST registry request is the
+ * install.
+ *
+ * FIX ROUND 1 widened the stub, and each widening is a registry state a review
+ * found the script could not tell apart:
+ *   - `view: "served"` serves `npm view` from the start while the install
+ *     path is still not served (Opus CR-001: the full packument and the
+ *     abbreviated one are different documents);
+ *   - `view: { wrong, count }` answers the first `count` views with exit 0 and
+ *     the wrong stdout (Opus CR-002: exit 0 is not "this exact version");
+ *   - `hang: true` makes every registry request sleep in a CHILD of the stub
+ *     and never answer (Sonnet CR-001: a stalled connection, not a refused
+ *     one). The sleep is a CHILD of the stub, so a bound that kills only the
+ *     stub leaves it running; its stdio is /dev/null so it cannot hold a pipe.
+ * The install path's not-served answer is the real `npm cache add` capture,
+ * witness/captures/release-verify-cache-add-not-served.txt.
+ */
+const registryCapture = fileURLToPath(
+  new URL("../witness/captures/release-verify-registry-not-served.txt", import.meta.url),
+);
+const cacheAddCapture = fileURLToPath(
+  new URL("../witness/captures/release-verify-cache-add-not-served.txt", import.meta.url),
+);
+
+function capturedSection(capture: string, heading: string): { exit: number; stderr: string } {
+  const start = capture.indexOf(`=== ${heading}`);
+  assert.notEqual(start, -1, `the capture has no section ${heading}`);
+  const rest = capture.slice(start);
+  const next = rest.indexOf("\n=== ", 1);
+  const section = next === -1 ? rest : rest.slice(0, next);
+  const exit = /\nexit=(\d+)\n/.exec(section);
+  assert.ok(exit !== null, `no exit= line in section ${heading}`);
+  const stderr = section.split("\n--- stderr:\n")[1] ?? "";
+  return { exit: Number(exit[1]), stderr };
+}
+
+interface RegistryStub {
+  dir: string;
+  env: Record<string, string>;
+  calls: () => string[];
+}
+
+interface StubShape {
+  /** How `npm view` answers: from the shared counter (default), served from
+      the first request, or exit 0 with `wrong` on stdout for `count` views. */
+  view?: "shared" | "served" | { wrong: string; count: number };
+  /** Every registry request sleeps in a child and never answers. */
+  hang?: boolean;
+}
+
+/**
+ * A stub `npm` in a fresh bin directory. `notServedFor` is how many registry
+ * requests answer "not served" before the version appears ("never" for all of
+ * them). `broken` installs a package that IS served and does not work: no
+ * templates, and a bin that exits 1.
+ */
+function registryStub(root: string, notServedFor: number | "never", broken: boolean, shape: StubShape = {}): RegistryStub {
+  const capture = readFileSync(registryCapture, "utf8");
+  const view = capturedSection(capture, "npm view @tiphys/kernel@9.9.9 version");
+  const install = capturedSection(capture, "npm install --prefix inst @tiphys/kernel@9.9.9");
+  const cacheAdd = capturedSection(readFileSync(cacheAddCapture, "utf8"), "npm cache add @tiphys/kernel@9.9.9");
+  assert.notEqual(view.exit, 0, "the captured not-served view exited 0, so the capture no longer shows the shape this stub models");
+  assert.match(view.stderr, /E404/);
+  assert.match(install.stderr, /ETARGET/);
+  assert.notEqual(cacheAdd.exit, 0, "the captured not-served cache add exited 0");
+  assert.match(cacheAdd.stderr, /ETARGET/);
+
+  const dir = join(root, "stub");
+  mkdirSync(join(dir, "bin"), { recursive: true });
+  writeFileSync(join(dir, "view.stderr"), view.stderr);
+  writeFileSync(join(dir, "install.stderr"), install.stderr);
+  writeFileSync(join(dir, "cache.stderr"), cacheAdd.stderr);
+  writeFileSync(join(dir, "requests"), "0\n");
+  writeFileSync(join(dir, "views"), "0\n");
+  const limit = notServedFor === "never" ? 1_000_000 : notServedFor;
+  const viewMode = shape.view === undefined || shape.view === "shared" ? "shared" : shape.view === "served" ? "served" : "wrong";
+  const wrong = typeof shape.view === "object" ? shape.view : { wrong: "", count: 0 };
+  const script = [
+    "#!/usr/bin/env bash",
+    `STUB=${JSON.stringify(dir)}`,
+    `LIMIT=${String(limit)}`,
+    `BROKEN=${broken ? "1" : "0"}`,
+    `HANG=${shape.hang === true ? "1" : "0"}`,
+    `VIEW_MODE=${viewMode}`,
+    `WRONG_TEXT=${JSON.stringify(wrong.wrong)}`,
+    `WRONG_COUNT=${String(wrong.count)}`,
+    `VIEW_EXIT=${String(view.exit)}`,
+    `INSTALL_EXIT=${String(install.exit)}`,
+    `CACHE_EXIT=${String(cacheAdd.exit)}`,
+    'printf "%s\\n" "$*" >> "$STUB/calls.log"',
+    'bump() { local n; n=$(( $(cat "$STUB/$1") + 1 )); echo "$n" > "$STUB/$1"; echo "$n"; }',
+    'hang() { if [ "$HANG" = 1 ]; then sleep 100000 </dev/null >/dev/null 2>&1; exit 0; fi; }',
+    'case "$1" in',
+    "  view)",
+    "    hang",
+    '    spec="$2"',
+    '    if [ "$VIEW_MODE" = shared ]; then n="$(bump requests)"; if [ "$n" -le "$LIMIT" ]; then cat "$STUB/view.stderr" >&2; exit "$VIEW_EXIT"; fi; fi',
+    '    if [ "$VIEW_MODE" = wrong ]; then v="$(bump views)"; if [ "$v" -le "$WRONG_COUNT" ]; then if [ -n "$WRONG_TEXT" ]; then echo "$WRONG_TEXT"; fi; exit 0; fi; fi',
+    '    echo "${spec##*@}"; exit 0 ;;',
+    "  cache)",
+    "    hang",
+    '    n="$(bump requests)"',
+    '    if [ "$n" -le "$LIMIT" ]; then cat "$STUB/cache.stderr" >&2; exit "$CACHE_EXIT"; fi',
+    "    exit 0 ;;",
+    "  install)",
+    '    prefix=""; spec=""',
+    '    while [ "$#" -gt 0 ]; do case "$1" in --prefix|--cache) [ "$1" = --prefix ] && prefix="$2"; shift 2 ;; --*) shift ;; *) spec="$1"; shift ;; esac; done',
+    '    case "$spec" in',
+    '      *.tgz) version="$STUB_TARBALL_VERSION" ;;',
+    '      *) n="$(bump requests)"',
+    '         if [ "$n" -le "$LIMIT" ]; then cat "$STUB/install.stderr" >&2; exit "$INSTALL_EXIT"; fi',
+    '         version="${spec##*@}" ;;',
+    "    esac",
+    '    pkg="$prefix/node_modules/@tiphys/kernel"',
+    '    mkdir -p "$pkg" "$prefix/node_modules/.bin"',
+    '    printf \'{"name":"@tiphys/kernel","version":"%s"}\\n\' "$version" > "$pkg/package.json"',
+    '    if [ "$BROKEN" = 1 ]; then',
+    '      printf "#!/usr/bin/env bash\\nexit 1\\n" > "$prefix/node_modules/.bin/tiphys"',
+    "    else",
+    '      mkdir -p "$pkg/templates"; echo "plan: {}" > "$pkg/templates/plan.example.yaml"',
+    '      printf "#!/usr/bin/env bash\\nif [ \\"\\$1\\" = version ]; then echo %s; fi\\nexit 0\\n" "$version" > "$prefix/node_modules/.bin/tiphys"',
+    "    fi",
+    '    chmod +x "$prefix/node_modules/.bin/tiphys"; exit 0 ;;',
+    '  *) echo "stub npm: unexpected $*" >&2; exit 99 ;;',
+    "esac",
+    "",
+  ].join("\n");
+  writeFileSync(join(dir, "bin", "npm"), script, { mode: 0o755 });
+  const env: Record<string, string> = { ...cleanEnv(), PATH: `${join(dir, "bin")}:${process.env["PATH"] ?? ""}` };
+  delete env["RELEASE_VERIFY_WAIT_SECONDS"];
+  delete env["RELEASE_VERIFY_POLL_SECONDS"];
+  return {
+    dir,
+    env,
+    calls: () =>
+      existsSync(join(dir, "calls.log"))
+        ? readFileSync(join(dir, "calls.log"), "utf8").split("\n").filter((line) => line !== "")
+        : [],
+  };
+}
+
+function runStubbedReleaseVerify(
+  root: string,
+  stub: RegistryStub,
+  extra: string[],
+  bounds: { wait: number | string; poll: number | string },
+  spawnTimeoutMs = 120_000,
+): { status: number; stderr: string; records: Array<Record<string, unknown>>; seconds: number } {
+  const workdir = join(root, "clean");
+  mkdirSync(workdir, { recursive: true });
+  const recordsPath = join(root, "records.json");
+  const started = Date.now();
+  const result = spawnSync("bash", [releaseVerify, "@tiphys/kernel", "0.2.0", "--records", recordsPath, ...extra], {
+    cwd: workdir,
+    encoding: "utf8",
+    /* THE BOUNDS GO BY ENVIRONMENT, not by flag, on purpose: the pre-fix
+       script rejects an unknown flag with exit 64, which would make every test
+       here red for a usage reason rather than for the defect. The flags have
+       their own test below. */
+    env: {
+      ...stub.env,
+      RELEASE_VERIFY_WAIT_SECONDS: String(bounds.wait),
+      RELEASE_VERIFY_POLL_SECONDS: String(bounds.poll),
+    },
+    maxBuffer: 64 * 1024 * 1024,
+    timeout: spawnTimeoutMs,
+    killSignal: "SIGKILL",
+  });
+  const seconds = (Date.now() - started) / 1000;
+  const records = existsSync(recordsPath)
+    ? readFileSync(recordsPath, "utf8")
+        .split("\n")
+        .filter((line) => line !== "")
+        .map((line) => JSON.parse(line) as Record<string, unknown>)
+    : [];
+  return { status: result.status ?? -1, stderr: result.stderr ?? "", records, seconds };
+}
+
+test("release-verify in registry mode waits until the registry serves the version, then verifies it", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-rv-wait-"));
+  try {
+    const stub = registryStub(root, 2, false);
+    const run = runStubbedReleaseVerify(root, stub, [], { wait: 30, poll: 1 });
+    /* The pre-fix script fails here with five step failures, which is the
+       incident: its first registry request is the install, and it is answered
+       with the captured ETARGET. */
+    assert.equal(run.status, 0, `expected a green after the registry started serving; stderr:\n${run.stderr}`);
+    const wait = run.records.find((entry) => entry["step"] === "registry-served");
+    assert.ok(wait !== undefined, `no registry-served record; steps ${run.records.map((entry) => String(entry["step"])).join(", ")}`);
+    assert.equal(wait["exitCode"], 0);
+    assert.equal(wait["attempts"], 3, "the version appears on the third registry request, so the wait polls three times");
+    assert.equal(typeof wait["firstPollAt"], "string");
+    assert.equal(typeof wait["lastPollAt"], "string");
+    /* The wait precedes every step, and the steps are the unchanged set. */
+    const steps = run.records.map((entry) => entry["step"]);
+    assert.ok(steps.indexOf("registry-served") < steps.indexOf("install"), `order: ${steps.join(", ")}`);
+    for (const step of ["clean-environment", "install", "import", "bin-version", "copy-template", "validate-template"]) {
+      const entry = run.records.find((candidate) => candidate["step"] === step);
+      assert.ok(entry !== undefined, `no record for step ${step}`);
+      assert.equal(entry["exitCode"], 0, `step ${step} exited ${String(entry["exitCode"])}`);
+    }
+    /* Fix round 1: each poll asks the INSTALL path first (`npm cache add`) and
+       asks `npm view` only once that path serves, so three polls are three
+       cache adds and one view. */
+    assert.equal(stub.calls().filter((line) => line.startsWith("cache add ")).length, 3);
+    assert.equal(stub.calls().filter((line) => line.startsWith("view ")).length, 1);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("release-verify in registry mode times out with NOT SERVED and exit 75 when the registry never serves the version", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-rv-never-"));
+  try {
+    const stub = registryStub(root, "never", false);
+    const run = runStubbedReleaseVerify(root, stub, [], { wait: 3, poll: 1 });
+    assert.equal(run.status, 75, `expected the distinct not-served exit; stderr:\n${run.stderr}`);
+    assert.match(run.stderr, /NOT SERVED\. The registry did not serve @tiphys\/kernel@0\.2\.0 within 3 seconds/);
+    /* NOT the five step failures: no step ran, and nothing was installed. */
+    assert.doesNotMatch(run.stderr, /step install exited/);
+    assert.doesNotMatch(run.stderr, /failing step\(s\)/);
+    const steps = run.records.map((entry) => entry["step"]);
+    assert.deepEqual(steps, ["clean-environment", "registry-served"]);
+    const wait = run.records[1] as Record<string, unknown>;
+    assert.equal(wait["exitCode"], 75);
+    assert.ok(Number(wait["attempts"]) >= 2, `polled ${String(wait["attempts"])} time(s) in a 3s window at 1s`);
+    /* AND AT MOST FIVE (Opus CR-003): a 3s window at a 1s interval is four
+       polls; a loop that forgot to sleep would make hundreds. */
+    assert.ok(Number(wait["attempts"]) <= 5, `polled ${String(wait["attempts"])} time(s) in a 3s window at 1s, so the interval was not honoured`);
+    const cacheAddNotServed = capturedSection(readFileSync(cacheAddCapture, "utf8"), "npm cache add @tiphys/kernel@9.9.9");
+    assert.equal(wait["lastNpmExitCode"], cacheAddNotServed.exit);
+    assert.ok((wait["lastStderr"] as string[]).some((line) => /ETARGET/.test(line)), `lastStderr ${JSON.stringify(wait["lastStderr"])}`);
+    /* WHY npm said no is in the CI log itself (Opus CR-004), not only in the
+       records file the workflow's `cat` never reaches after a nonzero exit.
+       The line is the capture's own first `npm error` line. */
+    const firstError = cacheAddNotServed.stderr.split("\n").find((line) => line.startsWith("npm error")) as string;
+    assert.ok(run.stderr.includes(`last npm error: ${firstError}`), `the NOT SERVED line does not carry "${firstError}":\n${run.stderr}`);
+    assert.equal(stub.calls().some((line) => line.startsWith("install ")), false, "an install ran after the wait expired");
+    /* BOUNDED: a 3s deadline at 1s polls ends in seconds, not at the 900s default. */
+    assert.ok(run.seconds < 30, `took ${String(run.seconds)}s`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("release-verify in registry mode fails a served but broken version at its steps without waiting out the deadline", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-rv-broken-"));
+  try {
+    const stub = registryStub(root, 0, true);
+    const run = runStubbedReleaseVerify(root, stub, [], { wait: 20, poll: 1 });
+    assert.equal(run.status, 1, `expected a step failure; stderr:\n${run.stderr}`);
+    assert.doesNotMatch(run.stderr, /NOT SERVED/);
+    assert.match(run.stderr, /step bin-version exited/);
+    assert.match(run.stderr, /step copy-template exited/);
+    assert.match(run.stderr, /failing step\(s\)/);
+    const wait = run.records.find((entry) => entry["step"] === "registry-served");
+    assert.ok(wait !== undefined, "no registry-served record");
+    assert.equal(wait["exitCode"], 0);
+    assert.equal(wait["attempts"], 1, "a served version is recognised on the first poll");
+    /* 15 of the 20s: a run that waited the deadline out on a served version
+       takes at least 20s; a healthy run here measured about 2s. */
+    assert.ok(run.seconds < 15, `took ${String(run.seconds)}s against a 20s deadline, so it waited on a served version`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("release-verify in tarball mode makes no registry poll", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-rv-tarball-"));
+  try {
+    /* The registry would never answer, so any poll at all would time out. */
+    const stub = registryStub(root, "never", false);
+    stub.env["STUB_TARBALL_VERSION"] = "0.2.0";
+    const tarball = join(root, "kernel-0.2.0.tgz");
+    writeFileSync(tarball, "");
+    const run = runStubbedReleaseVerify(root, stub, ["--tarball", tarball], { wait: 2, poll: 1 });
+    assert.equal(run.status, 0, `stderr:\n${run.stderr}`);
+    assert.deepEqual(stub.calls().filter((line) => line.startsWith("view ") || line.startsWith("cache ")), [], "tarball mode asked the registry");
+    assert.equal(run.records.some((entry) => entry["step"] === "registry-served"), false);
+    assert.equal(run.records.find((entry) => entry["step"] === "install")?.["artifact"], "local-tarball");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("release-verify's wait flags override the environment and a malformed bound is a usage error", () => {
+  const root = mkdtempSync(join(tmpdir(), "tiphys-rv-flags-"));
+  try {
+    const stub = registryStub(root, "never", false);
+    /* The environment says 600s; the flag says 2s. A run that honoured the
+       environment would take ten minutes and hit the spawn timeout. */
+    const run = runStubbedReleaseVerify(root, stub, ["--wait-seconds", "2", "--poll-seconds", "1"], { wait: 600, poll: 1 });
+    assert.equal(run.status, 75, `stderr:\n${run.stderr}`);
+    assert.match(run.stderr, /within 2 seconds/);
+    for (const bad of [["--poll-seconds", "0"], ["--wait-seconds", "soon"], ["--wait-seconds", "-5"]]) {
+      const refused = runStubbedReleaseVerify(root, stub, bad, { wait: 2, poll: 1 });
+      assert.equal(refused.status, 64, `${bad.join(" ")} was accepted: ${refused.stderr}`);
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* Fix round 1: the bound and the "served" test are what they claim     */
+/* ------------------------------------------------------------------ */
+
+test("release-verify bounds each registry poll, so a registry that never answers still ends within the deadline", () => {
+  /* Sonnet CR-001. The pre-fix loop checked its deadline only BETWEEN polls, so
+     one poll that did not return outlived --wait-seconds without limit. The
+     review measured 60s and more for one poll against a refused port, which
+     fix round 1 traced to npm's default retry backoff; a connection that never
+     answers at all is the harder case and the one modelled here: the stub's
+     every registry request sleeps in a child and never answers. The
+     deadline is 3s and the script's per-poll floor is 10s, so a bounded run
+     ends in about 13s; 25s is the assertion's margin. The spawn timeout (40s)
+     is only there so the pre-fix red arrives in finite time. */
+  const root = mkdtempSync(join(tmpdir(), "tiphys-rv-hang-"));
+  try {
+    const stub = registryStub(root, 0, false, { hang: true });
+    const run = runStubbedReleaseVerify(root, stub, [], { wait: 3, poll: 1 }, 40_000);
+    assert.equal(run.status, 75, `expected NOT SERVED from a registry that never answers; status ${String(run.status)} after ${String(run.seconds)}s\n${run.stderr}`);
+    assert.ok(run.seconds < 25, `took ${String(run.seconds)}s against a 3s deadline and a 10s per-poll floor`);
+    assert.match(run.stderr, /NOT SERVED\./);
+    assert.match(run.stderr, /timed out/);
+    const wait = run.records.find((entry) => entry["step"] === "registry-served");
+    assert.ok(wait !== undefined, "no registry-served record");
+    assert.equal(wait["lastPollTimedOut"], true);
+    assert.equal(stub.calls().some((line) => line.startsWith("install ")), false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("release-verify polls the install path, so a version npm view shows before npm install can fetch it is still waited for", () => {
+  /* Opus CR-001. `npm view` reads the FULL packument; `npm install` reads the
+     abbreviated one and then the tarball. Here `view` serves from the first
+     request while the install path (`cache add`, then `install`) is not served
+     for its first two requests. The pre-fix wait passed on its first poll and
+     the install then failed, which is the incident again with a log line saying
+     the registry served. */
+  const root = mkdtempSync(join(tmpdir(), "tiphys-rv-corgi-"));
+  try {
+    const stub = registryStub(root, 2, false, { view: "served" });
+    const run = runStubbedReleaseVerify(root, stub, [], { wait: 30, poll: 1 });
+    assert.equal(run.status, 0, `expected a green once the install path served; stderr:\n${run.stderr}`);
+    const wait = run.records.find((entry) => entry["step"] === "registry-served");
+    assert.ok(wait !== undefined, "no registry-served record");
+    assert.equal(wait["attempts"], 3, "the install path serves on its third request");
+    assert.equal(stub.calls().filter((line) => line.startsWith("cache add ")).length, 3);
+    const install = run.records.find((entry) => entry["step"] === "install");
+    assert.equal(install?.["exitCode"], 0);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("release-verify does not count npm view exiting 0 with a different or empty version as served", () => {
+  /* Opus CR-002. "Served" is exit 0 AND stdout exactly the version. The only
+     captured not-served shape exits 1, so without this test the equality half
+     could be deleted with every other test green. Two arms: a different
+     version, and empty stdout (what older npm printed for an unpublished
+     version of an existing package). The install path serves throughout. */
+  for (const [wrong, count] of [["0.1.9", 2], ["", 1]] as const) {
+    const root = mkdtempSync(join(tmpdir(), "tiphys-rv-exact-"));
+    try {
+      const stub = registryStub(root, 0, false, { view: { wrong, count } });
+      const run = runStubbedReleaseVerify(root, stub, [], { wait: 30, poll: 1 });
+      assert.equal(run.status, 0, `arm ${JSON.stringify(wrong)}: ${run.stderr}`);
+      const wait = run.records.find((entry) => entry["step"] === "registry-served");
+      assert.ok(wait !== undefined, `arm ${JSON.stringify(wrong)}: no registry-served record`);
+      assert.equal(wait["attempts"], count + 1, `arm ${JSON.stringify(wrong)}: view printed the wrong version ${String(count)} time(s), so ${String(count + 1)} polls`);
+      assert.equal(wait["lastStdout"], "0.2.0");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  }
+});
+
+test("release-verify rejects a wait or poll bound above 86400 seconds, by flag and by environment", () => {
+  /* Sonnet CR-002. With no ceiling, 19 digits wrapped bash's signed 64-bit
+     arithmetic: the review measured a 19-nine --wait-seconds reporting NOT
+     SERVED after ONE poll, and other lengths made the bound effectively
+     infinite. The cap is 86400 (one day); each over-cap value must be a usage
+     error before any poll, for both flags and both variables. The spawn
+     timeout (10s) only makes the pre-fix red, which would wait for a day,
+     arrive in finite time. */
+  const root = mkdtempSync(join(tmpdir(), "tiphys-rv-cap-"));
+  try {
+    const stub = registryStub(root, "never", false);
+    for (const value of ["86401", "9999999999999999999"]) {
+      const cases: Array<{ label: string; extra: string[]; bounds: { wait: string; poll: string } }> = [
+        { label: `--wait-seconds ${value}`, extra: ["--wait-seconds", value], bounds: { wait: "1", poll: "1" } },
+        { label: `--poll-seconds ${value}`, extra: ["--poll-seconds", value], bounds: { wait: "1", poll: "1" } },
+        { label: `RELEASE_VERIFY_WAIT_SECONDS=${value}`, extra: [], bounds: { wait: value, poll: "1" } },
+        { label: `RELEASE_VERIFY_POLL_SECONDS=${value}`, extra: [], bounds: { wait: "1", poll: value } },
+      ];
+      for (const entry of cases) {
+        const run = runStubbedReleaseVerify(root, stub, entry.extra, entry.bounds, 10_000);
+        assert.equal(run.status, 64, `${entry.label} was accepted (status ${String(run.status)} after ${String(run.seconds)}s): ${run.stderr}`);
+        assert.match(run.stderr, /at most 86400/, entry.label);
+      }
+    }
+    assert.equal(stub.calls().some((line) => line.startsWith("cache ") || line.startsWith("view ")), false, "an over-cap bound reached the registry");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+  /* The cap itself is accepted: 86400 by flag, with a registry that serves at
+     once, ends green on the first poll. */
+  const control = mkdtempSync(join(tmpdir(), "tiphys-rv-cap-ok-"));
+  try {
+    const stub = registryStub(control, 0, false);
+    const run = runStubbedReleaseVerify(control, stub, ["--wait-seconds", "86400", "--poll-seconds", "86400"], { wait: 1, poll: 1 });
+    assert.equal(run.status, 0, run.stderr);
+  } finally {
+    rmSync(control, { recursive: true, force: true });
   }
 });
 
@@ -2511,7 +2962,7 @@ test("the publishing job READS the registry after publishing, under the same gua
      ONE release-verification interface (DR-0014, scripts/release-verify.sh) and
      its two arms differ by one flag: with `--tarball` it installs a local
      artifact, without it it installs `$NAME@$VERSION` from the registry
-     (scripts/release-verify.sh:299). So "reads the registry" is "invokes that
+     (scripts/release-verify.sh:558, after the registry wait). So "reads the registry" is "invokes that
      script with no --tarball", which is a property of the invocation rather
      than a word in a step name.
 

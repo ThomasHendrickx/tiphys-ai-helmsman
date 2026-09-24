@@ -27,6 +27,7 @@ import { readdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import { runChecks } from "../checks.ts";
+import { describeRuleNotInForce, describeStamp, readStamp, rulesNotYetInForce } from "../stamp.ts";
 import { outputContractDiagnostics, splitFrontmatter } from "../roles.ts";
 import { roleBriefBodyDiagnostics } from "./brief.ts";
 import {
@@ -461,11 +462,27 @@ export function cmdValidate(argv: string[]): number {
   }
 
   const schema = loadTypeSchema(resolvedType);
+  /* KERNEL 0.2.1 (DR-0055): A RULE APPLIES FROM THE VERSION THAT INTRODUCED
+     IT. The document's own `tiphys-version` decides which of the rules in
+     src/stamp.ts's RULES_SINCE are in force for it; an unstamped document is
+     pre-stamp history held to the 0.1.0 rules. A rule not applied is PRINTED,
+     never dropped silently, and this is `validate` only: the merge gates do
+     not read the stamp, and apply every rule they hold to every verdict. */
+  const stamp = readStamp(decoded.value);
+  const notInForce = rulesNotYetInForce(resolvedType, stamp);
+  const historyLines = notInForce.map((rule) => describeRuleNotInForce(rule, stamp));
+  const gatedSchemaPaths = notInForce.flatMap((rule) =>
+    rule.schemaPath === undefined ? [] : [{ schemaPath: rule.schemaPath, entry: rule.entry }],
+  );
+  const gatedChecks = new Set(notInForce.flatMap((rule) => (rule.check === undefined ? [] : [rule.check])));
   const diagnostics = validateInstance(
-    schema,
+    withoutKeywords(schema, gatedSchemaPaths),
     decoded.value,
     companionsFor(resolvedType),
   );
+  for (const line of historyLines) {
+    process.stdout.write(`${line}\n`);
+  }
   if (diagnostics.length > 0) {
     for (const line of formatDiagnostics(diagnostics)) {
       process.stdout.write(`${line}\n`);
@@ -473,9 +490,71 @@ export function cmdValidate(argv: string[]): number {
     return 1;
   }
 
-  const checks = runChecks(resolvedType, decoded.value, context);
+  const checks = runChecks(resolvedType, decoded.value, context, gatedChecks);
   for (const line of checks.lines) {
     process.stdout.write(`${line}\n`);
   }
-  return checks.failed ? 1 : 0;
+  /* A derived check gated out by the stamp is not run, and says so where the
+     check results are read, beside the SKIPPED lines, so a reader scanning
+     them sees it rather than an absence (the 0.2.1 hazard review, CR-KH-001).
+     The HISTORY line above gives the rule and its version. */
+  for (const check of [...gatedChecks].sort()) {
+    process.stdout.write(`NOT IN FORCE ${check} for ${describeStamp(stamp)}\n`);
+  }
+  /* KERNEL 0.2.1 (orchestrator ruling on open question 4): a run whose only
+     non-pass results are `SKIPPED <id> no context` EXITS 0. The SKIPPED lines
+     are still printed, so "this rule did not run" stays readable; it is no
+     longer reported as "this document is invalid". This REVERSES M3's
+     criterion 4c (delivery/plan/kernel-plan-m3.md:1809), which the 0.2.1
+     work history records. A real violation still exits 1. */
+  return checks.violated ? 1 : 0;
+}
+
+/**
+ * A copy of `schema` with exactly the keyword at each JSON pointer removed
+ * (DR-0055: a rule not in force for a document's stamp), or, when the rule
+ * names an `entry`, exactly that entry of the array keyword there. The
+ * original is not touched, so the compile cache keeps its full form. A pointer
+ * or entry that does not resolve is an internal defect and throws: RULES_SINCE
+ * naming a rule the schema no longer holds must fail loudly, not gate nothing.
+ */
+function withoutKeywords(
+  schema: SchemaDocument,
+  rules: readonly { schemaPath: string; entry?: string | undefined }[],
+): SchemaDocument {
+  if (rules.length === 0) {
+    return schema;
+  }
+  const copy = structuredClone(schema) as Record<string, unknown>;
+  for (const { schemaPath, entry } of rules) {
+    const segments = schemaPath
+      .split("/")
+      .slice(1)
+      .map((segment) => segment.replace(/~1/g, "/").replace(/~0/g, "~"));
+    const keyword = segments.pop();
+    let node: unknown = copy;
+    for (const segment of segments) {
+      node =
+        typeof node === "object" && node !== null ? (node as Record<string, unknown>)[segment] : undefined;
+    }
+    if (
+      keyword === undefined ||
+      typeof node !== "object" ||
+      node === null ||
+      !Object.prototype.hasOwnProperty.call(node, keyword)
+    ) {
+      throw new Error(`internal defect: RULES_SINCE names schema keyword ${schemaPath}, which this schema does not hold`);
+    }
+    if (entry !== undefined) {
+      const list = (node as Record<string, unknown>)[keyword];
+      const at = Array.isArray(list) ? list.indexOf(entry) : -1;
+      if (!Array.isArray(list) || at < 0) {
+        throw new Error(`internal defect: RULES_SINCE names entry ${entry} of ${schemaPath}, which this schema does not hold`);
+      }
+      list.splice(at, 1);
+      continue;
+    }
+    delete (node as Record<string, unknown>)[keyword];
+  }
+  return copy as SchemaDocument;
 }

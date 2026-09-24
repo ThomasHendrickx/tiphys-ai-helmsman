@@ -109,13 +109,31 @@ what that is.
 
 ```
 tiphys brief compose --role plan-writer \
-  --phase templates/plan.example.yaml --phase-id M9-P1 [--out brief.md]
+  --phase templates/plan.example.yaml --phase-id M9-P1 [--out brief.md] \
+  [--charter <file>]
 ```
 
 The composed brief contains, in order: a frontmatter-driven header carrying
-the resolved mandated-reading list, the brief body with includes expanded, the
-named phase rendered from the plan instance, and the fleet warnings file when
-one is present in the current working directory.
+the resolved mandated-reading list, the brief body with includes expanded, an
+Intent section, the named phase rendered from the plan instance, and the fleet
+warnings file when one is present in the current working directory.
+
+The Intent section puts the charter's `product-intent` next to the phase's
+`intent`, both verbatim. The charter is the one `--charter` names. Without the
+flag it is located in the current working directory by the same rule
+`tiphys doctor` uses: a project's `charter.yaml`, or the one
+`kind: charter` document in a fleet's `charter/` directory (`.yaml` or
+`.yml`). These stop composition with a nonzero exit:
+
+- several charters, until `--charter` picks one;
+- YAML in `charter/` when none of it is a charter (YAML that is not a charter
+  beside exactly one charter is ignored, and that charter is read);
+- a `charter/` that exists and cannot be listed, such as a plain file;
+- an entry in `charter/` that is not a regular file or does not decode;
+- a charter that cannot be read or has no product intent.
+
+With no charter at all, the section says so in one sentence rather than being
+left out.
 
 The rendered phase is a COMPLETE projection: every required field of
 `schemas/plan.schema.json`'s phase definition is rendered under its own

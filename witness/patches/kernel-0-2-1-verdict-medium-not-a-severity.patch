@@ -1,0 +1,11 @@
+--- a/schemas/verdict.schema.json
++++ b/schemas/verdict.schema.json
+@@ -158,7 +158,7 @@
+         },
+         "severity": {
+           "type": "string",
+-          "enum": ["low", "medium", "high", "critical"]
++          "enum": ["low", "high", "critical"]
+         },
+         "evidence": {
+           "$comment": "Evidence beats assertion: exit codes, counts, paths with line numbers, captured output. `minItems: 1` because a finding with no evidence is an opinion, and this repository treats a claim with no verifiable artifact behind it as unknown.",

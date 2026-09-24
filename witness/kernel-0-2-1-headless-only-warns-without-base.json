@@ -1,0 +1,24 @@
+{
+  "id": "kernel-0-2-1-headless-only-warns-without-base",
+  "behavior": "check-dual-review-headless-only-warns-without-base",
+  "tests": [
+    "the bare check-dual-review script without --base, on a corpus whose every verdict declares no head, is not-applicable with a warning that names --base, and the same corpus with one anchored verdict carries no warning"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "scripts/check-dual-review.mjs",
+      "find": "      (found.offHead ?? []).length > 0 && (found.offHead ?? []).every((entry) => entry.relation.kind === \"no-head\"),",
+      "replace": "      false,"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/check-dual-review.mjs",
+      "find": "        (run.headlessOnly === true ? `; ${HEADLESS_ONLY_WARNING}` : \"\"),",
+      "replace": "        \"\","
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

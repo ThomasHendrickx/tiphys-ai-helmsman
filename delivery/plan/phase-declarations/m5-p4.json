@@ -8,7 +8,9 @@
     "test/assurance-modes.test.ts",
     "test/gate-registry.test.ts",
     "test/authored-bytes.test.ts",
-    "test/orchestrator-next.test.ts"
+    "test/orchestrator-next.test.ts",
+    "delivery/plan/cutover/retirement-inventory.json",
+    "CLAUDE.md"
   ],
   "declaredExtras": [
     "test/behaviors.json",

@@ -1,0 +1,10 @@
+--- a/schemas/verdict.schema.json
++++ b/schemas/verdict.schema.json
+@@ -12,7 +12,6 @@
+     "head",
+     "verdict",
+     "produced-by",
+-    "framing",
+     "review-contract",
+     "findings",
+     "criteria",

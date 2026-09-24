@@ -901,10 +901,11 @@ test("the destructive-authority clause names all three conjuncts and the manifes
 test("the seed mechanism index validates, and its mechanism keys are a superset of the interim index's, naming any that is missing", () => {
   /* `--context` ADDED BY M3-P8, which registers a derived check for this type
      (`mechanism-rule-evidence-resolves`) that resolves each rule's citations
-     against the tree. A context-requiring check with no context SKIPS and
-     exits nonzero rather than passing silently, which is M3-P1's rule and not
-     a regression; the subject of this test, that the index validates and its
-     keys are a superset of the interim file's, is unchanged. */
+     against the tree. A context-requiring check with no context is reported
+     SKIPPED rather than passing silently (M3-P1's rule; since kernel 0.2.1 a
+     skipped-only run exits 0). The subject of this test, that the index
+     validates and its keys are a superset of the interim file's, is
+     unchanged. */
   const validated = run(
     cliEntry,
     [

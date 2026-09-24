@@ -13,6 +13,46 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { realpathSync as ceilingRealpath } from "node:fs";
+import { tmpdir as ceilingTmpdir } from "node:os";
+import { delimiter as ceilingDelimiter } from "node:path";
+
+/*
+ * NO REPOSITORY ABOVE THE SCRATCH ROOT (kernel 0.2.1 fix round 3). Tests in
+ * this file stage context directories under os.tmpdir() that are NOT git
+ * repositories (or whose `.git` is removed) and assert what the code does
+ * when no repository is found. Git DISCOVERS a repository in any ancestor, so
+ * a repository at or above os.tmpdir() turns every such arm into a read of
+ * THAT repository's HEAD. Measured: the whole suite with os.tmpdir() inside a
+ * real repository failed 64 tests across six files, this one among them, and
+ * CI run 35946757118 failed one of them the same way. The ceiling stops
+ * discovery from climbing out of os.tmpdir(); repositories a test stages
+ * INSIDE it (and contexts nested in them) are still found. Every child
+ * process inherits it from here.
+ */
+const GIT_CEILING = [ceilingRealpath(ceilingTmpdir()), ceilingTmpdir(), process.env["GIT_CEILING_DIRECTORIES"] ?? ""]
+  .filter((entry) => entry !== "")
+  .join(ceilingDelimiter);
+process.env["GIT_CEILING_DIRECTORIES"] = GIT_CEILING;
+/*
+ * AND NO REPOSITORY BY THE ENVIRONMENT (kernel 0.2.1 fix round 3, the
+ * orchestrator's decision on open question 13). The ceiling above stops
+ * DISCOVERY; it does not stop an inherited GIT_DIR, which names a repository
+ * outright and was the only shape measured to reproduce CI's exact message.
+ * So the names that relocate the repository, its objects or its index are
+ * removed for this file and every child it spawns.
+ */
+const INHERITED_REPOSITORY_ENV = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_INDEX_FILE",
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+];
+for (const name of INHERITED_REPOSITORY_ENV) {
+  delete process.env[name];
+}
 
 /**
  * Tests for the M1 exit-test harness scripts (kernel plan v1, M1-P6).
@@ -124,6 +164,10 @@ function identityLessEnv(root: string): Record<string, string> {
   env["HOME"] = home;
   env["GIT_CONFIG_GLOBAL"] = join(root, "no-such-global-config");
   env["GIT_CONFIG_SYSTEM"] = join(root, "no-such-system-config");
+  /* Stripped with the other GIT_* names above, and put back on purpose: it
+     names no identity and no repository, it only stops discovery climbing
+     out of os.tmpdir() (fix round 3). */
+  env["GIT_CEILING_DIRECTORIES"] = GIT_CEILING;
   return env;
 }
 

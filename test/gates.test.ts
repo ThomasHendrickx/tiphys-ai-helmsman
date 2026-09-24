@@ -3811,8 +3811,11 @@ test("the shipped registry run against a consumer package tree with no scripts d
            precondition. Supplying the flag keeps the variable under test the one
            the test names. The value is never dereferenced by the runner; the
            child is what would resolve it, and here the child does not exist,
-           which is the point. */
+           which is the point. M5-P3 adds `base` to the declared parameters for
+           the same reason and it is supplied here the same way. */
         "--head",
+        "HEAD",
+        "--base",
         "HEAD",
       ],
       dir,

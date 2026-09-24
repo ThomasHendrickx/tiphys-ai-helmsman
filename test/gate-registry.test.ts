@@ -1077,8 +1077,12 @@ const REGISTRY_ONLY_SCRIPT_GATES: ReadonlyMap<
         "M3-P9 step 3b declares it per D-M3-34, with `events: [pull_request]` " +
         "and a command-exit-zero precondition, because a merged head has no " +
         "pair of verdicts to compare. It is executed by a step in " +
-        ".github/workflows/gates.yml whose `if:` matches those declared events " +
-        "and which evaluates the same precondition the registry entry names.",
+        ".github/workflows/gates.yml whose `if:` matches those declared events. " +
+        "Since M5-P3 that step and the registry entry ask DIFFERENT precondition " +
+        "questions: the step runs the M3-P9 verdict-present arm with no --base, " +
+        "and the registry runs the review-budget arm with base and head, which " +
+        "makes a missing review red. The review gate CI enforces with the " +
+        "budget is merge-preconditions, which IS in gates.manifest.json.",
       coveredBy: /check-dual-review\.mjs/,
     },
   ],
@@ -1754,4 +1758,431 @@ test("the M4-P14 gate class behaviors are registered in test/behaviors.json and 
     [],
     `${String(unresolved.length)} of ${String(ids.length)} registered rows name no test:\n  ${unresolved.join("\n  ")}`,
   );
+});
+
+/* ------------------------------------------------------------------ */
+/* M5-P4 criterion p4-mode-complete: full mode equals the registry      */
+/* ------------------------------------------------------------------ */
+
+/*
+ * THE CONVERSE DIRECTION, which `mode-gate-sets-resolve` does not check.
+ * That check iterates assurance-modes.yaml's entries and asks whether each
+ * resolves; it never iterates the registry, so a gate declared with
+ * `modes: [full]` and absent from `full`'s `gate-sets` was invisible, and by
+ * M5 seven were (brief-drift, check-agents-references, check-dual-review,
+ * license, typecheck, gate-classes, merge-preconditions). The plan names the
+ * hazard `descriptive-only-fix`: correcting the list once lets it drift again.
+ *
+ * So the expected set is DERIVED from gate-registry.yaml at run time and the
+ * comparison is SET EQUALITY in both directions. No count is pinned
+ * (CLAUDE.md convention 5): a registry gate added by a later phase reddens
+ * this test by NAME until it is also added to assurance-modes.yaml, which is
+ * the intended pressure on that phase.
+ */
+
+const assuranceModesPath = join(repoRoot, "assurance-modes.yaml");
+
+function fullModeGateSets(modesText: string): string[] {
+  const document = yamlModule.parse(modesText) as { modes: { id: string; "gate-sets"?: string[] }[] };
+  const full = document.modes.find((mode) => mode.id === "full");
+  assert.ok(full !== undefined, "assurance-modes.yaml declares no mode `full`");
+  return full["gate-sets"] ?? [];
+}
+
+/** Both directions of the full-mode relation, each named by id. */
+function fullModeDivergence(
+  registry: Registry,
+  gateSets: string[],
+): { missingFromModes: string[]; notFullInRegistry: string[]; message: string } {
+  const derived = new Set(
+    registry.gates.filter((gate) => gate.modes.includes("full")).map((gate) => gate.id),
+  );
+  const listed = new Set(gateSets);
+  const missingFromModes = [...derived].filter((id) => !listed.has(id)).sort();
+  const notFullInRegistry = [...listed].filter((id) => !derived.has(id)).sort();
+  const lines: string[] = [];
+  for (const id of missingFromModes) {
+    lines.push(`gate ${id} declares modes [full] in gate-registry.yaml and is absent from full's gate-sets in assurance-modes.yaml`);
+  }
+  for (const id of notFullInRegistry) {
+    lines.push(`gate-set ${id} is listed for full in assurance-modes.yaml and gate-registry.yaml declares no full-mode gate with that id`);
+  }
+  return { missingFromModes, notFullInRegistry, message: lines.join("\n") };
+}
+
+test("full mode's gate-sets equal the full-mode gate ids derived from gate-registry.yaml in both directions, and removing any one id fails naming it", () => {
+  const registry = readRegistry(registryPath);
+  const modesText = readFileSync(assuranceModesPath, "utf8");
+  const shipped = fullModeGateSets(modesText);
+
+  const clean = fullModeDivergence(registry, shipped);
+  assert.equal(clean.message, "", clean.message);
+  assert.equal(new Set(shipped).size, shipped.length, "full's gate-sets carries a duplicate id");
+
+  /* EVERY derived id is removed in turn, not a sample: the criterion says
+     "removing any of the current ids", so the witness is exhaustive and the
+     list it walks is the registry's, read now. */
+  const derivedIds = registry.gates.filter((gate) => gate.modes.includes("full")).map((gate) => gate.id);
+  assert.ok(derivedIds.length > 0, "the registry declares no full-mode gate, so this test would be vacuous");
+  for (const id of derivedIds) {
+    const removed = fullModeDivergence(registry, shipped.filter((entry) => entry !== id));
+    assert.deepEqual(removed.missingFromModes, [id], `removing ${id} was not reported as exactly ${id}`);
+    assert.match(removed.message, new RegExp(`gate ${id} declares modes \\[full\\]`));
+  }
+
+  /* THE OTHER DIRECTION, from the REGISTRY side: a phase that adds a gate to
+     the registry and forgets this file. Two structurally different members:
+     a brand-new gate, and an existing gate whose modes list gains `full`. */
+  const extended = readRegistry(registryPath);
+  extended.gates.push({
+    ...(extended.gates[0] as RegistryGate),
+    id: "a-gate-a-later-phase-adds",
+    modes: ["full"],
+  });
+  assert.deepEqual(fullModeDivergence(extended, shipped).missingFromModes, ["a-gate-a-later-phase-adds"]);
+
+  const renamed = readRegistry(registryPath);
+  const renamedGate = renamed.gates[0] as RegistryGate;
+  const originalId = renamedGate.id;
+  renamedGate.id = `${originalId}-renamed`;
+  const renamedDivergence = fullModeDivergence(renamed, shipped);
+  assert.deepEqual(renamedDivergence.missingFromModes, [`${originalId}-renamed`]);
+  assert.deepEqual(renamedDivergence.notFullInRegistry, [originalId]);
+
+  /* AND FROM THE MODES SIDE, two members: an id no registry declares, and a
+     real gate whose registry `modes` no longer names `full`. */
+  const inflated = fullModeDivergence(registry, [...shipped, "performance-budget"]);
+  assert.deepEqual(inflated.notFullInRegistry, ["performance-budget"]);
+  const narrowed = readRegistry(registryPath);
+  const narrowedGate = narrowed.gates[0] as RegistryGate;
+  narrowedGate.modes = narrowedGate.modes.filter((mode) => mode !== "full");
+  assert.deepEqual(fullModeDivergence(narrowed, shipped).notFullInRegistry, [narrowedGate.id]);
+});
+
+/* ------------------------------------------------------------------ */
+/* M5-P4 criterion p4-summary-artifact: exactly summary.json is kept    */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The plan names the hazard `evidence-leak`: uploading the evidence directory
+ * publishes captured output, and captured output can carry credentials. The
+ * guard therefore RESOLVES each upload step's `path` input against a fixture
+ * runner.temp laid out the way scripts/m2-exit-test.sh lays out a real one,
+ * including captured stdout that must never leave the runner, and requires
+ * that the files it would upload are exactly the bundle's summary.json for
+ * that arm. Widening the path to the directory, to a glob, or to a second
+ * line is a different resolved set and reddens.
+ *
+ * The expected path is DERIVED, not written here: the evidence directory is
+ * the last argument of the exit-test step for the same event, and the bundle
+ * sub-directory is the `local dir=` line of the harness function for that
+ * bundle.
+ */
+
+interface UploadStep {
+  name?: string;
+  uses?: string;
+  if?: string;
+  run?: string;
+  with?: Record<string, unknown>;
+}
+
+/** Same fail-closed evaluator shape as test/authored-bytes.test.ts. */
+function uploadStepRunsOn(condition: string | undefined, event: string): boolean {
+  if (condition === undefined) return true;
+  const body = condition.trim().replace(/^\$\{\{\s*/, "").replace(/\s*\}\}$/, "");
+  return body.split("&&").every((raw) => {
+    const term = raw.trim();
+    if (term === "!cancelled()" || term === "always()" || term === "success()") return true;
+    const compared = /^github\.event_name\s*(==|!=)\s*'([^']*)'$/.exec(term);
+    if (compared === null) {
+      throw new Error(`the step condition term ${JSON.stringify(term)} is not one this harness evaluates`);
+    }
+    return compared[1] === "==" ? event === compared[2] : event !== compared[2];
+  });
+}
+
+function gatesJobSteps(workflowText: string): UploadStep[] {
+  const document = yamlModule.parse(workflowText) as { jobs: Record<string, { steps?: UploadStep[] }> };
+  const job = document.jobs["gates"];
+  assert.ok(job !== undefined, "the workflow has no job named `gates`");
+  return job.steps ?? [];
+}
+
+function substituteRunnerTemp(text: string, runnerTemp: string): string {
+  const substituted = text.replace(/\$\{\{\s*runner\.temp\s*\}\}/g, runnerTemp);
+  if (substituted.includes("${{")) {
+    throw new Error(`an expression other than runner.temp remains in ${JSON.stringify(text)}`);
+  }
+  return substituted;
+}
+
+function filesUnder(dir: string): string[] {
+  const found: string[] = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) found.push(...filesUnder(path));
+    else found.push(path);
+  }
+  return found;
+}
+
+/** A glob in the upload-artifact dialect, reduced to what a path can widen to. */
+function globToRegExp(pattern: string): RegExp {
+  let source = "";
+  for (let index = 0; index < pattern.length; index += 1) {
+    const char = pattern[index] as string;
+    if (char === "*" && pattern[index + 1] === "*") {
+      source += ".*";
+      index += 1;
+      if (pattern[index + 1] === "/") index += 1;
+    } else if (char === "*") source += "[^/]*";
+    else if (char === "?") source += "[^/]";
+    else source += char.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+  }
+  return new RegExp(`^${source}$`);
+}
+
+/** Every file an upload-artifact `path` input would upload, resolved on disk. */
+function resolveUploadPath(pathInput: string, runnerTemp: string): string[] {
+  const included = new Set<string>();
+  const excluded: RegExp[] = [];
+  for (const rawLine of pathInput.split("\n")) {
+    const line = rawLine.trim();
+    if (line === "") continue;
+    const negated = line.startsWith("!");
+    const pattern = substituteRunnerTemp(negated ? line.slice(1) : line, runnerTemp);
+    if (negated) {
+      excluded.push(globToRegExp(pattern));
+      continue;
+    }
+    if (/[*?[{]/.test(pattern)) {
+      const firstWild = pattern.search(/[*?[{]/);
+      const base = pattern.slice(0, pattern.lastIndexOf("/", firstWild));
+      const matcher = globToRegExp(pattern);
+      for (const file of existsSync(base) ? filesUnder(base) : []) {
+        if (matcher.test(file)) included.add(file);
+      }
+    } else if (existsSync(pattern)) {
+      let isDirectory = false;
+      try {
+        readdirSync(pattern);
+        isDirectory = true;
+      } catch {
+        isDirectory = false;
+      }
+      for (const file of isDirectory ? filesUnder(pattern) : [pattern]) included.add(file);
+    }
+  }
+  return [...included].filter((file) => !excluded.some((re) => re.test(file))).sort();
+}
+
+/** runner.temp as scripts/m2-exit-test.sh leaves it, credential-bearing captures included. */
+function stageRunnerTemp(dir: string, evidenceName: string, bundles: string[]): void {
+  const evidence = join(dir, evidenceName);
+  for (const bundle of bundles) {
+    mkdirSync(join(evidence, bundle, "suite"), { recursive: true });
+    writeFileSync(join(evidence, bundle, "summary.json"), "{}\n");
+    writeFileSync(join(evidence, bundle, "suite", "result.json"), "{}\n");
+    writeFileSync(join(evidence, bundle, "suite", "stdout.txt"), "token=fixture-credential-never-uploaded\n");
+  }
+  mkdirSync(join(evidence, "records"), { recursive: true });
+  mkdirSync(join(evidence, "output"), { recursive: true });
+  mkdirSync(join(evidence, "per-phase-green", "scope"), { recursive: true });
+  writeFileSync(join(evidence, "records", "001.json"), "{}\n");
+  writeFileSync(join(evidence, "output", "001.out"), "captured output\n");
+  writeFileSync(join(evidence, "per-phase-green", "scope", "summary.json"), "{}\n");
+}
+
+/** The bundle sub-directory the harness function writes summary.json into. */
+function harnessBundleDir(harnessText: string, fn: string): string {
+  const start = harnessText.indexOf(`\n${fn}() {`);
+  assert.ok(start >= 0, `scripts/m2-exit-test.sh has no function ${fn}`);
+  const match = /local dir="\$\{evidence\}\/([^"]+)"/.exec(harnessText.slice(start));
+  assert.ok(match !== null, `${fn} declares no local dir under the evidence directory`);
+  return match[1] as string;
+}
+
+const SUMMARY_ARMS = [
+  { event: "pull_request", bundleFn: "run_pr_bundle" },
+  { event: "push", bundleFn: "run_main_bundle" },
+] as const;
+
+const MAX_SUMMARY_RETENTION_DAYS = 14;
+
+/** Why the workflow's summary upload is NOT exactly summary.json per arm; empty when it is. */
+function summaryUploadDefects(workflowText: string, harnessText: string, runnerTemp: string): string[] {
+  const steps = gatesJobSteps(workflowText);
+  const defects: string[] = [];
+  for (const { event, bundleFn } of SUMMARY_ARMS) {
+    const exitSteps = steps.filter(
+      (step) =>
+        typeof step.run === "string" &&
+        step.run.includes("scripts/m2-exit-test.sh") &&
+        !step.run.includes("--self-test") &&
+        step.run.includes("--bundle") &&
+        uploadStepRunsOn(step.if, event),
+    );
+    if (exitSteps.length !== 1) {
+      defects.push(`${event}: expected one exit-test bundle step, found ${String(exitSteps.length)}`);
+      continue;
+    }
+    const lastArgument = /"([^"]+)"\s*$/.exec((exitSteps[0] as UploadStep).run as string);
+    if (lastArgument === null) {
+      defects.push(`${event}: the exit-test step's evidence argument could not be read`);
+      continue;
+    }
+    const expected = join(
+      substituteRunnerTemp(lastArgument[1] as string, runnerTemp),
+      harnessBundleDir(harnessText, bundleFn),
+      "summary.json",
+    );
+
+    const uploads = steps.filter(
+      (step) =>
+        typeof step.uses === "string" &&
+        step.uses.startsWith("actions/upload-artifact@") &&
+        uploadStepRunsOn(step.if, event),
+    );
+    if (uploads.length === 0) {
+      defects.push(`${event}: no upload-artifact step runs on this event`);
+      continue;
+    }
+    const uploaded = new Set<string>();
+    for (const upload of uploads) {
+      const inputs = upload.with ?? {};
+      const retention = inputs["retention-days"];
+      if (
+        typeof retention !== "number" ||
+        !Number.isInteger(retention) ||
+        retention < 1 ||
+        retention > MAX_SUMMARY_RETENTION_DAYS
+      ) {
+        defects.push(`${event}: ${String(upload.name)} declares retention-days ${JSON.stringify(retention)}, not an integer from 1 to ${String(MAX_SUMMARY_RETENTION_DAYS)}`);
+      }
+      if (typeof upload.if !== "string" || !/!cancelled\(\)|always\(\)/.test(upload.if)) {
+        defects.push(`${event}: ${String(upload.name)} does not run after a failed step, so a red bundle's summary is lost`);
+      }
+      if (typeof inputs["path"] !== "string") {
+        defects.push(`${event}: ${String(upload.name)} has no path input`);
+        continue;
+      }
+      /* A GLOB IS REFUSED, not resolved (fix round 1, CR-002): its resolved
+         set is a property of today's runner.temp, and the upload must be
+         exactly one file on every future layout too. A leading `!` is an
+         exclusion pattern and is refused for the same reason. */
+      for (const rawLine of inputs["path"].split("\n")) {
+        const line = rawLine.trim();
+        if (line !== "" && /[*?[\]{}!]/.test(line.replace(/\$\{\{\s*runner\.temp\s*\}\}/g, ""))) {
+          defects.push(`${event}: ${String(upload.name)} path line ${JSON.stringify(line)} carries a glob character, and only a literal file path is allowed`);
+        }
+      }
+      for (const file of resolveUploadPath(inputs["path"], runnerTemp)) uploaded.add(file);
+    }
+    const resolved = [...uploaded].sort();
+    if (JSON.stringify(resolved) !== JSON.stringify([expected])) {
+      defects.push(`${event}: the upload resolves to ${JSON.stringify(resolved)}, not exactly ${JSON.stringify([expected])}`);
+    }
+  }
+  return defects;
+}
+
+test("the gates workflow uploads exactly the bundle's summary.json on each CI event with a declared short retention, and a widened path reddens", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  const harness = readFileSync(harnessPath, "utf8");
+  const dir = scratch("summary-upload");
+  try {
+    const evidenceName = "m2-exit-evidence";
+    stageRunnerTemp(dir, evidenceName, [
+      harnessBundleDir(harness, "run_pr_bundle"),
+      harnessBundleDir(harness, "run_main_bundle"),
+    ]);
+    assert.deepEqual(summaryUploadDefects(workflow, harness, dir), []);
+
+    const prPath = `path: \${{ runner.temp }}/${evidenceName}/pr-bundle/summary.json`;
+    assert.ok(workflow.includes(prPath), `the workflow no longer carries ${prPath}`);
+
+    /* FOUR WIDENINGS, structurally different: the bundle directory (which
+       holds captured stdout), a recursive glob that catches only files named
+       summary.json and still takes the per-phase-green ones, the whole
+       evidence root, and a second path line beside the correct one. */
+    const widened: Record<string, string> = {
+      directory: workflow.replace(prPath, `path: \${{ runner.temp }}/${evidenceName}/pr-bundle`),
+      "recursive glob": workflow.replace(prPath, `path: \${{ runner.temp }}/${evidenceName}/**/summary.json`),
+      "evidence root": workflow.replace(prPath, `path: \${{ runner.temp }}/${evidenceName}`),
+      "second line": workflow.replace(
+        prPath,
+        `path: |\n            \${{ runner.temp }}/${evidenceName}/pr-bundle/summary.json\n            \${{ runner.temp }}/${evidenceName}/output`,
+      ),
+    };
+    for (const [label, text] of Object.entries(widened)) {
+      assert.notEqual(text, workflow, `the ${label} widening did not apply`);
+      const defects = summaryUploadDefects(text, harness, dir).join("\n");
+      assert.match(defects, /pull_request: the upload resolves to/, `the ${label} widening was not detected`);
+    }
+
+    /* RETENTION: removed, and set long. */
+    const noRetention = workflow.replace(/\n\s+retention-days: 7/, "");
+    assert.notEqual(noRetention, workflow);
+    assert.match(summaryUploadDefects(noRetention, harness, dir).join("\n"), /retention-days undefined/);
+    const longRetention = workflow.replace("retention-days: 7", "retention-days: 90");
+    assert.match(summaryUploadDefects(longRetention, harness, dir).join("\n"), /retention-days 90/);
+
+    /* THE PUSH ARM is its own witness (T-009): its step removed entirely. */
+    const noPushUpload = workflow.replace(
+      /\n      - name: Upload the gate summary \(push, summary\.json only\)[\s\S]*?if-no-files-found: warn/,
+      "",
+    );
+    assert.notEqual(noPushUpload, workflow);
+    assert.match(summaryUploadDefects(noPushUpload, harness, dir).join("\n"), /push: no upload-artifact step/);
+
+    /* GLOBS THAT MATCH ONLY summary.json TODAY (fix round 1, CR-002). The
+       resolved-set comparison above is against a SNAPSHOT of runner.temp, so a
+       glob that happens to resolve to exactly the one file on this fixture is
+       green here and widens the day the harness writes a second matching file.
+       So a glob character in any upload path line is refused outright, and
+       each arm has its own witness, with two different glob shapes. */
+    const pushPath = `path: \${{ runner.temp }}/${evidenceName}/main-bundle/summary.json`;
+    assert.ok(workflow.includes(pushPath), `the workflow no longer carries ${pushPath}`);
+    const globbed: { label: string; event: string; text: string }[] = [
+      {
+        label: "push main-bundle/*.json",
+        event: "push",
+        text: workflow.replace(pushPath, `path: \${{ runner.temp }}/${evidenceName}/main-bundle/*.json`),
+      },
+      {
+        label: "push summary.json*",
+        event: "push",
+        text: workflow.replace(pushPath, `${pushPath}*`),
+      },
+      {
+        label: "pull_request pr-bundle/*.json",
+        event: "pull_request",
+        text: workflow.replace(prPath, `path: \${{ runner.temp }}/${evidenceName}/pr-bundle/*.json`),
+      },
+      {
+        label: "pull_request summ?ry.json",
+        event: "pull_request",
+        text: workflow.replace(prPath, `path: \${{ runner.temp }}/${evidenceName}/pr-bundle/summ?ry.json`),
+      },
+      {
+        label: "pull_request negation line",
+        event: "pull_request",
+        text: workflow.replace(
+          prPath,
+          `path: |\n            \${{ runner.temp }}/${evidenceName}/pr-bundle/summary.json\n            !\${{ runner.temp }}/${evidenceName}/output`,
+        ),
+      },
+    ];
+    for (const { label, event, text } of globbed) {
+      assert.notEqual(text, workflow, `the ${label} glob did not apply`);
+      assert.match(
+        summaryUploadDefects(text, harness, dir).join("\n"),
+        new RegExp(`${event}: .* carries a glob character`),
+        `the ${label} glob was not refused`,
+      );
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
 });

@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "        status: \"not-applicable\",\n        units: 0,",
-      "replace": "        status: \"green\",\n        units: 1,"
+      "find": "          status: \"not-applicable\",\n          units: 0,\n          endedAt: now(),\n          precondition,\n          detail: precondition.reason,\n        },\n        [],\n      );\n    }\n    rows.push(selectionRow(review, head, budget));",
+      "replace": "          status: \"green\",\n          units: 1,\n          endedAt: now(),\n          precondition,\n          detail: precondition.reason,\n        },\n        [],\n      );\n    }\n    rows.push(selectionRow(review, head, budget));"
     },
     {
       "kind": "mutation",

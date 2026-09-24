@@ -14,6 +14,7 @@ import {
 import { tmpdir } from "node:os";
 import { join, relative, sep } from "node:path";
 import { test } from "node:test";
+import { removeGitDirectory } from "./support/remove-git-directory.ts";
 import { fileURLToPath } from "node:url";
 
 /**
@@ -363,7 +364,7 @@ test("resume refuses a complete fleet layout whose .git is gone, and creates not
      bare directory) fails BOTH checks, which is why it alone is not a witness
      for either. */
   const clone = makeFleetClone(t);
-  rmSync(join(clone, ".git"), { recursive: true });
+  removeGitDirectory(clone, makeTempDir(t));
 
   assert.equal(existsSync(join(clone, ".git")), false, "precondition violated: .git survived");
   for (const name of DURABLE_DIRS) {
@@ -438,7 +439,7 @@ test("resume refuses every directory that is not a rehydratable fleet clone, and
   writeFileSync(join(bare, "unrelated.txt"), "content\n");
 
   const decapitated = makeFleetClone(t);
-  rmSync(join(decapitated, ".git"), { recursive: true });
+  removeGitDirectory(decapitated, makeTempDir(t));
 
   const stranger = join(root, "stranger");
   mkdirSync(stranger);

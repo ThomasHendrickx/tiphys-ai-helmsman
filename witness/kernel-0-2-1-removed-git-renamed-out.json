@@ -1,0 +1,31 @@
+{
+  "id": "kernel-0-2-1-removed-git-renamed-out",
+  "behavior": "test-removed-git-leaves-no-repository",
+  "tests": [
+    "a .git removed while another process unlinks inside it leaves no repository behind, where a recursive rmSync in place can leave one"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "test/support/remove-git-directory.ts",
+      "find": "  renameSync(join(dir, \".git\"), moved);\n",
+      "replace": "  rmSync(join(dir, \".git\"), { recursive: true, force: true });\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "test/support/remove-git-directory.ts",
+      "find": "  renameSync(join(dir, \".git\"), moved);\n  if (existsSync(join(dir, \".git\"))) {\n    throw new Error(`${join(dir, \".git\")} still exists after it was moved to ${moved}`);\n  }\n",
+      "replace": "  rmSync(join(dir, \".git\"), { recursive: true, force: true });\n"
+    }
+  ],
+  "deterministic": false,
+  "repeats": 3,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/kernel-0-2-1-detached-maintenance.txt"
+    ],
+    "provenance": "Real strace output of `git commit -q -m stage` under git 2.55.0 (strace 6.8), captured 2026-09-24 in a scratch repository with one staged file. Lines are SELECTED (execve, exit_group, and any path containing maintenance.lock), the repository path is spelled <repo>/, the git prefix <git>, and the environment-pointer column of execve lines is cut; the file's own header states all three. It records the detached `git maintenance run --auto --quiet --detach` child unlinking .git/objects/maintenance.lock after the commit process exited. The test reads the record, not the live git, and asserts that ordering."
+  }
+}

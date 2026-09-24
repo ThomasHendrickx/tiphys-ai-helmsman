@@ -67,7 +67,19 @@ const taskModule = await import(
 const checksModule = await import(
   pathToFileURL(join(repoRoot, "src", "checks.ts")).href
 );
+/* M5-P3. THE REVIEW BUDGET IS READ FROM THE MERGE-PRECONDITIONS MODULE, never
+   copied here: both review gates must classify one diff into one tier, and two
+   copies of DR-0027's table would be two answers the day one of them is edited. */
+const budgetModule = await import(
+  pathToFileURL(join(repoRoot, "src", "gates", "merge-preconditions.ts")).href
+);
 const { makeGateResult, renderGateResult, exitCodeForStatus } = resultModule;
+const {
+  classifyReviewBudget,
+  budgetPrecondition,
+  missingReviewsSentence,
+  REQUIRED_VERDICTS,
+} = budgetModule;
 const { refuseOpenForWrite } = taskModule;
 const {
   registeredChecks,
@@ -80,6 +92,7 @@ const {
   partitionByAuditedHead,
   describeOffHeadVerdicts,
   describeAdmittedVerdicts,
+  resolveCorpusSource,
   REVIEW_FAMILIES_FIELD,
   CHARTER_DOCUMENT,
 } = checksModule;
@@ -121,8 +134,8 @@ const DECLARED_EVIDENCE = "declared: true";
 
 function usage() {
   return (
-    "usage: node scripts/check-dual-review.mjs [--precondition] <dir> " +
-    "[--head <sha>] [--result <path>] [--evidence <dir>]"
+    "usage: node scripts/check-dual-review.mjs [--precondition [--review-budget]] <dir> " +
+    "[--base <ref>] [--head <sha>] [--result <path>] [--evidence <dir>]"
   );
 }
 
@@ -139,11 +152,37 @@ function parseArgs(argv) {
        sha explicitly, which `gate-registry.yaml`'s `parameters: [head]` now
        makes it do, exactly as it has always done for `scope`. */
     head: undefined,
+    /* M5-P3. THE DIFF BASE, and with it the REVIEW BUDGET. When present the
+       gate classifies `base...head` by DR-0027's table and a dual-tier change
+       with fewer than two admitted verdicts is RED, where without it an empty
+       corpus is the not-applicable it has always been. The registry declares
+       `parameters: [base, head]`, so every runner invocation supplies it; the
+       workflow step in .github/workflows/gates.yml does not, and keeps the
+       M3-P9 meaning. */
+    base: undefined,
+    /* M5-P3. The precondition question for a runner that supplies `--base`:
+       not "is there a verdict" (whose NO is exactly the mechanism that let an
+       unreviewed shipped change read as not-applicable, T-040) but "is there a
+       commit here whose review budget the gate can decide". */
+    reviewBudget: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--precondition") {
       options.precondition = true;
+      continue;
+    }
+    if (argument === "--review-budget") {
+      options.reviewBudget = true;
+      continue;
+    }
+    if (argument === "--base") {
+      const value = argv[index + 1];
+      if (value === undefined || value.startsWith("--")) {
+        return { usageError: "--base requires a value" };
+      }
+      options.base = value;
+      index += 1;
       continue;
     }
     if (argument === "--head") {
@@ -174,6 +213,9 @@ function parseArgs(argv) {
   }
   if (options.directory === undefined) {
     return { usageError: "a directory argument is required" };
+  }
+  if (options.reviewBudget && !options.precondition) {
+    return { usageError: "--review-budget qualifies --precondition and is refused without it" };
   }
   return { options };
 }
@@ -209,9 +251,14 @@ function parseArgs(argv) {
  * verdict that names a different head, or a head that is not a commit here at
  * all, is EXCLUDED and NAMED. See `resolveAuditedHead` in `src/checks.ts` for
  * the mechanism and for the two arms that were reproduced green before it.
- * `unkeyed` verdicts, the ones that do not say what they reviewed, are kept in
+ * `unkeyed` verdicts, the ones whose head is PRESENT and unusable, are kept in
  * the set on purpose: dropping them would turn today's red into a quiet
  * not-applicable, and the derived check is the thing that refuses them.
+ * KERNEL 0.2.1 (DR-0053, DR-0054) NARROWED THAT TO PRESENT-AND-UNUSABLE. A
+ * verdict with NO head key is the shape of every verdict written before the
+ * field existed, and keeping it to be refused made every run red on history a
+ * consumer cannot change, so `partitionByAuditedHead` now EXCLUDES it by name
+ * as `no-head` and it arrives here in `offHead`, never admitted.
  *
  * `unexaminable` IS THE HALF THIS LOOP USED TO THROW AWAY, AND THROWING IT AWAY
  * HERE COSTS MORE THAN IT DOES IN THE CHECK. This function decides both which
@@ -225,6 +272,17 @@ function parseArgs(argv) {
  * `error`, which is the same fail-closed rule `REGIME_DOCUMENTS` applies one
  * screen down: at this layer, could-not-determine is `error` and never green.
  */
+/**
+ * KERNEL 0.2.1 (the criteria review, CR-006). Printed in the not-applicable
+ * detail when every committed verdict was excluded for declaring no head. That
+ * arm is reached only without `--base`, where no review budget is computed, so
+ * a dual-tier change with only history reviews reads not-applicable here where
+ * 0.2.0 read it red. The gate runner always passes `--base`, and there the same
+ * corpus is red; this line says so to anyone wiring the script by hand.
+ */
+export const HEADLESS_ONLY_WARNING =
+  "WARNING every committed verdict declares no head, so none is a review of any commit; without --base this script computes no review budget and cannot refuse a change that owes two reviews: pass --base (the gate runner does) for that refusal";
+
 export function committedVerdictPaths(directory, requestedHead) {
   const loaded = loadCommittedVerdicts(directory);
   if (!loaded.ok) {
@@ -258,6 +316,13 @@ export function committedVerdictPaths(directory, requestedHead) {
   return {
     ok: true,
     anchor,
+    /* M5-P3. How many verdicts were ADMITTED to the audited group, which is
+       the number the review budget is measured against. Unkeyed verdicts are
+       kept in `paths` for the check to refuse and are NOT counted here: a
+       document that does not say what it reviewed is not a review of this. On
+       the unanchored arm every loaded verdict is kept and counted, which is
+       the old behaviour for a context with no repository. */
+    admittedCount: anchor.kind === "anchored" ? partition.admitted.length : partition.onHead.length,
     offHead: partition.offHead,
     offHeadLines:
       anchor.kind === "anchored" ? describeOffHeadVerdicts(partition.offHead, anchor.head) : [],
@@ -322,7 +387,23 @@ export function committedVerdictPaths(directory, requestedHead) {
  * re-resolved, so this refusal cannot be about a different commit than the
  * verdicts it is refusing to judge.
  */
-export function evaluate(directory, requestedHead) {
+export function evaluate(directory, requestedHead, options = {}) {
+  /* M5-P3. THE BUDGET IS DECIDED FIRST, and a below-dual change never reads
+     the corpus. That order is deliberate: a paperwork change in a context
+     whose regime documents are absent is not a merge-regime question at all,
+     and refusing it with `error` for a missing charter would force the pair
+     rule's instrument onto a change the pair rule does not govern. */
+  let budget;
+  if (options.base !== undefined) {
+    const classified = classifyReviewBudget(directory, options.base, requestedHead ?? "HEAD");
+    if (!classified.ok) {
+      return { status: "error", units: 0, lines: [classified.reason], checksRun: 0 };
+    }
+    budget = classified.budget;
+    if (budget.tier !== "dual") {
+      return { status: "not-applicable", units: 0, lines: [], checksRun: 0, budget };
+    }
+  }
   const found = committedVerdictPaths(directory, requestedHead);
   if (!found.ok) {
     return { status: "error", units: 0, lines: [found.reason], checksRun: 0 };
@@ -375,6 +456,49 @@ export function evaluate(directory, requestedHead) {
       ],
     };
   }
+  /* M5-P3, criterion p3-missing-is-red. A dual-tier change with fewer than
+     two ADMITTED verdicts is RED, and the sentence carries the missing count.
+     Placed after every could-not-determine refusal above, because those are
+     `error` and an error must never be downgraded to a verdict; placed before
+     the checks, because with fewer than two reviews there is no pair for them
+     to judge and the answer is already known. The anchor is required: on the
+     unanchored arm (no repository) no commit is under audit and "admitted for
+     this commit" has no meaning, which is `error`, never a count. */
+  if (budget !== undefined) {
+    if (found.anchor === undefined || found.anchor.kind !== "anchored") {
+      return {
+        status: "error",
+        units: 0,
+        checksRun: 0,
+        lines: [
+          `a review budget was requested with --base and no commit under audit could be established` +
+            `${describeAnchor(found.anchor)}, so how many reviews this change carries is unknown`,
+        ],
+      };
+    }
+    if (found.admittedCount < REQUIRED_VERDICTS) {
+      return {
+        status: "red",
+        units: found.admittedCount,
+        checksRun: 0,
+        pairChecksRun: 0,
+        source: found.source,
+        anchor: found.anchor,
+        offHeadLines: found.offHeadLines ?? [],
+        admittedLines: found.admittedLines ?? [],
+        lines: [`INVALID #/verdicts ${missingReviewsSentence(budget, found.admittedCount, found.anchor.head)}`],
+        missing: REQUIRED_VERDICTS - found.admittedCount,
+        budget,
+        read: found.paths.map((entry) => ({
+          path: entry.path,
+          verdict: typeof entry.instance["verdict"] === "string" ? entry.instance["verdict"] : "(unreadable)",
+          producedBy:
+            typeof entry.instance["produced-by"] === "string" ? entry.instance["produced-by"] : "(unreadable)",
+          head: typeof entry.instance["head"] === "string" ? entry.instance["head"] : "(unreadable)",
+        })),
+      };
+    }
+  }
   const registered = registeredChecks();
   const selected = registered.filter((check) => check.id === CHECK_ID);
   const pairSelected = registered.filter((check) => check.id === PAIR_CHECK_ID);
@@ -398,7 +522,9 @@ export function evaluate(directory, requestedHead) {
   const violations = new Set();
   for (const { path, instance } of found.paths) {
     for (const check of running) {
-      const outcome = check.run(instance, directory);
+      /* The base goes in so a head-less sibling is judged on its provenance
+         (kernel 0.2.1 fix round 2); without one the check says it did not. */
+      const outcome = check.run(instance, directory, { base: options.base });
       for (const violation of outcome.violations) {
         const line = `INVALID ${violation.pointer} ${violation.message} (check: ${check.id}) [${path}]`;
         violations.add(`${violation.pointer} ${violation.message}`);
@@ -490,6 +616,12 @@ export function evaluate(directory, requestedHead) {
        sweep. */
     anchor: found.anchor,
     offHeadLines: found.offHeadLines ?? [],
+    /* KERNEL 0.2.1 (the criteria review, CR-006). True when something was
+       excluded and EVERY exclusion is a verdict that declares no head: the
+       corpus is history only, and without --base this run cannot tell a
+       dual-tier change missing its reviews from a change that owes none. */
+    headlessOnly:
+      (found.offHead ?? []).length > 0 && (found.offHead ?? []).every((entry) => entry.relation.kind === "no-head"),
     admittedLines: found.admittedLines ?? [],
     /* THE EXCEPTION IS REPORTED ONLY WHEN IT WAS ACTUALLY RELIED ON, and
        "relied on" is derived rather than asserted. Both falsifiers live inside
@@ -522,6 +654,7 @@ export function evaluate(directory, requestedHead) {
       head: typeof entry.instance["head"] === "string" ? entry.instance["head"] : "(unreadable)",
     })),
     verdicts: found.paths.map((entry) => entry.path),
+    budget,
   };
 }
 
@@ -635,6 +768,29 @@ function main(argv) {
   /* THE PRECONDITION ARM. No gate record and no evidence: it answers one
      question with an exit code, which is what `kind: command-exit-zero`
      consumes. */
+  if (options.precondition && options.reviewBudget) {
+    /* M5-P3. THE PRECONDITION A BUDGET-AWARE RUNNER EVALUATES. Met when the
+       context resolves a commit, because then the gate itself, handed `--base`
+       and `--head`, decides from the DIFF what review is owed and reports its
+       own evaluated precondition when the answer is "none". Unmet only when
+       there is no commit here to audit at all. The verdict-count question this
+       arm replaces is the one T-040 measured answering NO on every head of
+       three milestones: its unmet arm is exactly how a shipped change with no
+       review became not-applicable, so it cannot be the question that decides
+       whether the gate runs. */
+    const source = resolveCorpusSource(options.directory);
+    if (source.kind !== "commit") {
+      process.stdout.write(
+        `${GATE_ID}: no commit resolves in ${options.directory}, so there is no change whose review budget can be decided: ${source.reason}\n`,
+      );
+      return 1;
+    }
+    process.stdout.write(
+      `${GATE_ID}: ${options.directory} resolves ${source.ref} to ${source.refSha}; the review budget is decided by the gate from its --base and --head\n`,
+    );
+    return 0;
+  }
+
   if (options.precondition) {
     const found = committedVerdictPaths(options.directory, options.head);
     if (!found.ok) {
@@ -657,7 +813,7 @@ function main(argv) {
       `${GATE_ID}: ${String(found.paths.length)} verdict document(s) ${describeVerdictCorpusSource(found.source)}` +
         describeAnchor(found.anchor) +
         (found.offHead.length > 0
-          ? `, and ${String(found.offHead.length)} verdict document(s) about another commit, which are not evidence about this one`
+          ? `, and ${String(found.offHead.length)} verdict document(s) about another commit or declaring no head, which are not evidence about this one`
           : "") +
         (unexaminable > 0 ? `, and ${String(unexaminable)} candidate(s) that could not be examined` : "") +
         "\n",
@@ -670,13 +826,66 @@ function main(argv) {
     return found.paths.length + unexaminable > 0 ? 0 : 1;
   }
 
-  const run = evaluate(options.directory, options.head);
+  const run = evaluate(options.directory, options.head, { base: options.base });
   if (run.status === "error") {
     return emit(options, {
       status: "error",
       units: 0,
       startedAt,
       detail: run.lines.join("; "),
+    });
+  }
+
+  /* M5-P3, criterion p3-paperwork-budget. A change below the dual-review tier
+     is not forced through the two-verdict rule, and it says which tier and
+     which paths put it there, as an EVALUATED precondition (SC-011) rather than
+     as a silence. */
+  if (run.status === "not-applicable" && run.budget !== undefined) {
+    const precondition = budgetPrecondition(run.budget);
+    return emit(options, {
+      status: "not-applicable",
+      units: 0,
+      startedAt,
+      detail: precondition.reason,
+      precondition,
+      evidenceLines: [`directory: ${options.directory}`, precondition.reason, ...precondition.evidence],
+    });
+  }
+
+  /* M5-P3, criterion p3-missing-is-red. Fewer than two admitted reviews of a
+     dual-tier change is RED with the missing count, and every verdict that WAS
+     read and excluded is named with the route that excluded it, because "no
+     review exists" and "two reviews exist and both reviewed older shipped
+     bytes" are different facts with the same status. */
+  if (run.missing !== undefined) {
+    process.stdout.write(
+      `${GATE_ID}: ${String(run.units)} verdict document(s) admitted${describeAnchor(run.anchor)}\n`,
+    );
+    for (const line of run.admittedLines ?? []) {
+      process.stdout.write(`${GATE_ID}: ADMITTED ${line}\n`);
+    }
+    for (const line of run.offHeadLines ?? []) {
+      process.stdout.write(`${GATE_ID}: EXCLUDED ${line}\n`);
+    }
+    for (const line of run.lines) {
+      process.stdout.write(`${line}\n`);
+    }
+    return emit(options, {
+      status: "red",
+      units: run.units,
+      startedAt,
+      detail:
+        run.lines.join("; ") +
+        ((run.offHeadLines ?? []).length > 0
+          ? `; ${String(run.offHeadLines.length)} committed verdict document(s) are NOT evidence about this commit: ${run.offHeadLines.join("; ")}`
+          : ""),
+      evidenceLines: [
+        `directory: ${options.directory}`,
+        `anchor:${describeAnchor(run.anchor)}`,
+        ...(run.admittedLines ?? []).map((line) => `ADMITTED ${line}`),
+        ...(run.offHeadLines ?? []).map((line) => `EXCLUDED ${line}`),
+        ...run.lines,
+      ],
     });
   }
 
@@ -700,11 +909,13 @@ function main(argv) {
         ", so there is no pair of reviews to compare" +
         (run.offHeadLines.length > 0
           ? `; ${String(run.offHeadLines.length)} committed verdict document(s) review other work and are NOT evidence about this commit: ${run.offHeadLines.join("; ")}`
-          : ""),
+          : "") +
+        (run.headlessOnly === true ? `; ${HEADLESS_ONLY_WARNING}` : ""),
       evidenceLines: [
         `directory: ${options.directory}`,
         `anchor:${describeAnchor(run.anchor)}`,
         ...run.offHeadLines,
+        ...(run.headlessOnly === true ? [HEADLESS_ONLY_WARNING] : []),
       ],
     });
   }

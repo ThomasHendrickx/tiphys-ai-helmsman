@@ -1,0 +1,32 @@
+{
+  "id": "m5-p3-merge-preconditions-missing-is-red",
+  "behavior": "m5-p3-merge-preconditions-missing-review-is-red",
+  "tests": [
+    "merge-preconditions, the review gate the pull-request bundle runs, is red through the real runner for zero and one committed review",
+    "with --base, a shipped change with fewer than two committed reviews is red before any network request"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    tier: \"dual\",\n    source: \"DR-0027 row 1",
+      "replace": "    tier: \"none\",\n    source: \"DR-0027 row 1"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  const short = budget !== undefined && budget.tier === \"dual\" && review.forHead.length < REQUIRED_VERDICTS;",
+      "replace": "  const short = false;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m5-p3-git-review-budget.json"
+    ],
+    "provenance": "Real output of git rev-parse --show-prefix and git diff -z --no-renames --name-only base...head, the two commands classifyReviewBudget runs, captured 2026-09-23 against a scratch repository with the project nested at kernel/; the named tests stage that repository again and compare git's live output with the recorded stdout before trusting the classifier with it."
+  }
+}

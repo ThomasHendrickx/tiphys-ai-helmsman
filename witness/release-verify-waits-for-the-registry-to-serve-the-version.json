@@ -1,0 +1,52 @@
+{
+  "id": "release-verify-waits-for-the-registry-to-serve-the-version",
+  "behavior": "release-verify-waits-for-the-registry-to-serve-the-version",
+  "tests": [
+    "release-verify in registry mode waits until the registry serves the version, then verifies it",
+    "release-verify in registry mode times out with NOT SERVED and exit 75 when the registry never serves the version",
+    "release-verify in registry mode fails a served but broken version at its steps without waiting out the deadline"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "if [ -z \"$TARBALL\" ]; then\n  wait_for_registry\nfi",
+      "replace": "if [ -z \"$TARBALL\" ]; then\n  :\nfi"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "    if [ $((now + POLL_SECONDS)) -gt \"$deadline\" ]; then\n      break\n    fi",
+      "replace": "    if true; then\n      break\n    fi"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "    if [ \"$code\" -eq 0 ] && [ \"$observed\" = \"$VERSION\" ]; then",
+      "replace": "    if [ \"$code\" -eq 0 ] && [ \"$observed\" = \"v$VERSION\" ]; then"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "    sleep \"$POLL_SECONDS\"\n  done",
+      "replace": "  done"
+    },
+    {
+      "kind": "mutation",
+      "file": "scripts/release-verify.sh",
+      "find": "; last npm error: ${last_error:-none})",
+      "replace": ")"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "npm cache add, npm view and npm install against the public registry, spawned by scripts/release-verify.sh",
+    "captures": [
+      "witness/captures/release-verify-registry-not-served.txt",
+      "witness/captures/release-verify-cache-add-not-served.txt"
+    ],
+    "provenance": "Both captures are real output from npm 11.18.0 on node v26.6.0, 2026-09-23, against registry.npmjs.org with a fresh cache per command; the tests' stub npm replays their exit codes and stderr rather than typed strings. rule (f)'s shell arm binds scripts/release-verify.sh because it is a *.sh that spawns npm and node. RESIDUE: the captures are of a version that is NEVER served, not of a version during its propagation window; that a propagating version answers the same way is inferred from the incident (release run 35839356656) and has not been captured during a real propagation. FIVE MEMBERS at five points of one pipeline: member 0 removes the wait (the incident); member 1 gives up after one poll; member 2 misclassifies a served version as not served; member 3 (fix round 1, Opus CR-003) drops the pause between polls, which the never-served test's upper bound on attempts reddens; member 4 (fix round 1, Opus CR-004) drops the last npm error from the NOT SERVED line."
+  }
+}

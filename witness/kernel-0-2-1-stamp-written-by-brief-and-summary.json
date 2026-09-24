@@ -1,0 +1,24 @@
+{
+  "id": "kernel-0-2-1-stamp-written-by-brief-and-summary",
+  "behavior": "stamp-written-by-brief-and-summary",
+  "tests": [
+    "a composed clean-room-reviewer brief and a gate bundle's summary.json are stamped with the running kernel version"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/stamp.ts",
+      "find": "    return parseKernelVersion(own) === undefined ? undefined : own;",
+      "replace": "    return undefined;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/brief.ts",
+      "find": "    ...(stampVersion === undefined ? [] : [`${STAMP_FIELD}: ${stampVersion}`]),",
+      "replace": "    ...[],"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

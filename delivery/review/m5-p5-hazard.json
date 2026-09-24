@@ -1,0 +1,141 @@
+{
+  "kind": "verdict",
+  "phase": "M5-P5",
+  "head": "c1be4a89e9a537b3afa0ba59597afdcda6248d94",
+  "verdict": "APPROVE",
+  "produced-by": "claude-fable-5-1",
+  "framing": "hazard-first",
+  "review-contract": "hazard",
+  "findings": [
+    {
+      "id": "CR-003",
+      "severity": "low",
+      "evidence": [
+        "Probe P07 at c1be4a8: a ```` fence with a ``` line inside and the Never list after it: ruleFileFindings=[] and checkDiet=[]; CommonMark requires the closer to be at least as long as the opener",
+        "The info-string half is fixed at c1be4a8: probe P08 ('```md' line inside a fence) is now LOUD (CLAUDE.md@6dc5b06 lines 1339-1349), and mutation K4 (fence closes on any line starting with its marker) reddens the relocation test",
+        "The length half is declared residue in the work history's complete list ('a three-backtick line still closes a four-backtick fence') and accepted by the owner as a low"
+      ],
+      "concrete-fix": "Store the whole run of fence characters and close only on a run of the same character at least that long; one RELOCATIONS row of P07's shape witnesses it. Accepted residue; no round owed."
+    },
+    {
+      "id": "CR-004",
+      "severity": "low",
+      "evidence": [
+        "Probes P13, P13b, P13c at c1be4a8: deleting a post-baseline paragraph or sentence of CLAUDE.md is silent (ruleFileFindings=[] and checkDiet=[]); control P13d (the corrected replacement sentence) is loud",
+        "Now stated in the work history's complete residue list, the inventory document's residue paragraph and the test-file header: the sweep protects the text that existed at 6dc5b06 and later text is protected by review of the diff only"
+      ],
+      "concrete-fix": "Stated residue, accepted by the owner. If forward protection is ever wanted, a second sweep against git merge-base HEAD origin/main with content-hash dispositions belongs in its own phase."
+    },
+    {
+      "id": "CR-005",
+      "severity": "low",
+      "evidence": [
+        "Probe P15 at c1be4a8: 16 of 16 unlisted disclaimer words before the red-witness paragraph are silent; Q26 ('Former text, kept only so searches still find it') silent; control P15c: 8 of 8 listed words loud",
+        "Stated in the work history's complete residue list with example words; the core (a disclaimer in fresh words is prose meaning) is inherent"
+      ],
+      "concrete-fix": "Accepted residue. Optionally widen DISCLAIMER with formerly, previously, rescinded, revoked, struck, dropped, defunct, stale, void, inactive, disabled, 'not in force', 'does not apply', 'out of date', 'kept only', acknowledging the real hits."
+    },
+    {
+      "id": "CR-006",
+      "severity": "low",
+      "evidence": [
+        "Probe P12 at c1be4a8: the Never list deleted plus a shape-valid history-moved entry whose history pointer is another entry's and whose rule-kept is an unrelated six-word quote: silent; control P11 (no entry) loud",
+        "Stated in the work history's complete residue list; the inventory document already says the quote check shows the text is AT the named place, not that it is the right home"
+      ],
+      "concrete-fix": "Accepted residue. Optionally refuse a history pointer or rule-kept quote that another diet entry already uses."
+    },
+    {
+      "id": "CR-008",
+      "severity": "low",
+      "evidence": [
+        "Probes R4, R5, R6 at c1be4a8: rewording a sentence in a declared-stable STATE.md section reddens diet-state-01/-03/-15, -06, -02 with 'superseded-by quote is not in the live text of delivery/STATE.md', a message that does not name the section or the pin option; R7: a three-word A-14 register item is green while A-14 is on OPEN_ACTION_EXEMPT",
+        "Loud direction; stated in the work history's complete residue list"
+      ],
+      "concrete-fix": "Accepted residue. Optionally extend the stable-section miss message to name the section and say 'update the entry's quote or pin it', and make the A-14 exemption self-expire."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "p5-size",
+      "quote": "The combined byte count of CLAUDE.md, AGENTS.md and delivery/STATE.md is at least 35 percent below the 287544-byte baseline, printed by wc -c in the work history.",
+      "evidence": [
+        "read last: the work history prints wc -c 73276 + 36192 + 34622 = 144090, under the 186903 ceiling; the round after d353faf changed none of the three files (git log --stat d353faf..c1be4a8 lists only the test file, the inventory document and the work history)"
+      ],
+      "met": true
+    },
+    {
+      "id": "p5-no-weak-port",
+      "quote": "Every removed instruction block has a machine-readable disposition naming an exact equivalent rule or enforcing command; a sibling keyword grep alone is rejected by a test.",
+      "evidence": [
+        "node --test test/retirement-inventory.test.ts at c1be4a8: 56 pass, 0 fail, 0 skipped, exit 0",
+        "the fourteen relocation rows (nine prior plus five new) are loud as the test's control; four new-arm mutations (strike tripwire, blockquote indent, html-block indent, fence close) each redden the relocation test on a byte-identical harness copy; the six earlier arm mutations were red at d353faf and the arms are unchanged",
+        "caveat: dispositions are verified for shape, not relatedness (CR-006, accepted residue)"
+      ],
+      "met": true
+    },
+    {
+      "id": "p5-current-state",
+      "quote": "delivery/STATE.md begins with the current M5 standing, contains no superseded daily status blocks, and links to M4 closure, its deliberate residue and git history.",
+      "evidence": [
+        "checkState on the live STATE.md at c1be4a8 returns []; delivery/STATE.md is unchanged since d353faf; my own routine standing update (R1) keeps checkDiet and checkState green, an M6 header (R3) is green, a new open action with no register item (R2) and a renamed register heading (R9) are red"
+      ],
+      "met": true
+    },
+    {
+      "id": "p5-boundary",
+      "quote": "git diff --name-only contains no path under delivery/evidence, delivery/review, delivery/decisions, delivery/tuition or .claude/skills.",
+      "evidence": [
+        "git diff --name-only origin/main...c1be4a8: the same seven paths as at d353faf (CLAUDE.md, delivery/STATE.md, the inventory JSON and MD, the work history, test/behaviors.json, test/retirement-inventory.test.ts); the round added no path; the scope gate was green on the correctly named branch at d353faf and no declaration entry was added since"
+      ],
+      "met": true
+    },
+    {
+      "id": "p5-gates",
+      "quote": "npm run build, node --test, check-agents-references, agent-rules-drift, brief-drift, clause-map and citations all exit 0 with nonzero applicable units where defined.",
+      "evidence": [
+        "re-executed at c1be4a8 on node v26.6.0: npm run build exit 0 with a clean tree; node --test test/retirement-inventory.test.ts 56/56; citations gate green, 22 citations resolved in 2 changed documents, exit 0; node scripts/check-authored-bytes.mjs exit 0",
+        "not re-executed here: the full npm test (work history: 1463 pass, 0 fail, 0 skipped at ca8d36b; c1be4a8 adds work-history text only), check-agents-references, agent-rules-drift, brief-drift and clause-map, which read files the round did not change"
+      ],
+      "met": true
+    }
+  ],
+  "deviations-judged": [
+    {
+      "deviation": "A mid-round push at a82c084 failed the build (TS7022 on an untyped got); fixed in 2f7cc29 and every later push preceded by npm run build",
+      "serves-plan-intent": true,
+      "reasoning": "A red intermediate commit, corrected before the reviewed heads; the build at c1be4a8 exits 0 here. Recorded rather than hidden."
+    },
+    {
+      "deviation": "diet-claude-md-02 reclassified from mechanically-enforced to history-moved, the smaller honest guard",
+      "serves-plan-intent": true,
+      "reasoning": "The plan's disposition vocabulary includes a historical explanation moved to an existing record; the T-010 pointer and the kept rule are both evidenced and the retreat is stated. A narrow true guard over a wide false one."
+    },
+    {
+      "deviation": "A-14 is not copied onto main; it stays exempt by id until M5-P1 lands its register item",
+      "serves-plan-intent": true,
+      "reasoning": "Writing another phase's register entry would cross the pre-pass boundary. The exemption is by id, and its non-expiry is stated residue (CR-008)."
+    },
+    {
+      "deviation": "The last short round fixed CR-001 and CR-002 with a tripwire and a regex widening rather than parsing inline markup, and fixed only the one-line half of CR-003",
+      "serves-plan-intent": true,
+      "reasoning": "The owner asked for a tripwire, not a parser. The routes that found the mediums are loud with red witnesses, the unfixed half is named as residue, and a smaller true guard is what the fix-round brief asked for."
+    }
+  ],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "semantic-rule-loss",
+      "probed": "At c1be4a8, every probe from the d353faf review re-run unchanged against the real parser, register and files: 68 CLAUDE.md rows and 10 STATE.md rows, plus four new-arm mutations on a byte-identical harness copy. The routes that produced the two mediums are now loud: ~~ around a paragraph and a mid-line <s> trip the strike tripwire; > and <s> at four spaces inside standing warning 12 are containers; a '```md' line no longer closes a fence. Still silent, each on the work history's complete residue list and accepted by the owner as low: a table row, a '- > ' bullet, a code span, a '```' line inside a '````' fence, deletion of post-baseline text, a disclaimer in unlisted words, and a shape-valid disposition with unrelated evidence. No new silent route was found.",
+      "cleared-because": "The words-kept-force-removed shape a routine editor takes (strikethrough, a quoted or struck continuation inside a numbered warning, an emptied binding heading, an unregistered heading, a relocation into a comment, fence, details, blockquote or indented code, a new linked file) is loud at this head with a red witness per arm, and every remaining silent route is stated as residue that a diff reviewer sees as plain edits."
+    },
+    {
+      "class-id": "history-rewrite",
+      "probed": "git diff --name-only origin/main...c1be4a8 lists the same seven paths, none under delivery/evidence, delivery/review, delivery/decisions, delivery/tuition or .claude/skills; the round touched the test file, the inventory document and the work history only; every history pointer resolves at the baseline commit into a delivery/ file that existed there (live test green); the archived STATE.md block stays reachable through the derived pointer paragraph.",
+      "cleared-because": "No evidence file is deleted or rewritten by the branch, and the last round added no path."
+    },
+    {
+      "class-id": "stale-state-survives",
+      "probed": "delivery/STATE.md is byte-identical between d353faf and c1be4a8. checkState on it returns []; my routine standing update, an M6 header and a deleted standing-reminders section stay green; a new open action without a register item and a renamed register heading are red; rewording a declared-stable sentence is red (CR-008, loud direction).",
+      "cleared-because": "The compacted file begins with the one current standing, no superseded or dated block survives, and the shape checks survive a routine update while reddening on the lost-content routes tried."
+    }
+  ]
+}

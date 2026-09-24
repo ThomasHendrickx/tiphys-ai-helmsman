@@ -9,6 +9,10 @@
 # every row is derived from a record that already exists, which is why the
 # document can be dense while the archive stays verbose.
 
+# `tiphys-version` is the kernel version this report is written to (DR-0055).
+# Copy the version of the kernel you run. A report without it is read as
+# history from before stamping and is not held to rules added since 0.1.0.
+tiphys-version: 0.2.0
 kind: final-report
 subject: M3-P3, assurance modes and role-to-model configuration, rounds 1 to 10
 
@@ -45,6 +49,25 @@ input-findings:
       CLOSED BY REMOVAL. git grep for both constants outside delivery/
       returns nothing at exit 1, and the derivation is stated in the true
       form rather than as an impossibility.
+
+# THE JOIN FROM PHASE INTENT TO OUTCOME (M5-P2). One object, four fields, no
+# score. The intent is M3-P3's own, verbatim from
+# delivery/plan/kernel-plan-m3.md:2321. `delivered` is a yes or no, and
+# `delivered: true` with an empty evidence list is rejected by the schema.
+delivered-outcome:
+  phase-intent: >-
+    Define the three assurance modes as validated data (pipeline stages, gate
+    sets by reference, merge authority), define `full` as the current proven
+    process's sequence (R-096), gate the adversarial plan review on mode
+    declaration (R-024), and ship the kernel's role-to-model defaults (R-075).
+  delivered: true
+  evidence:
+    - delivery/review/verification-m3-p3-round-8.md:766
+    - assurance-modes.yaml and role-model-config.yaml, both shipped at the repository root
+  explanation: >-
+    The modes and the role-to-model defaults shipped. Five of the six
+    verification findings above closed with reproduced evidence. V-5 was put
+    out of scope by the orchestrator and is not claimed as delivered here.
 
 decisions-owed:
   none: false

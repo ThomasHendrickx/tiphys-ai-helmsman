@@ -1,0 +1,30 @@
+{
+  "id": "kernel-0-2-1-final-report-delivered-outcome-since",
+  "behavior": "final-report-delivered-outcome-since",
+  "tests": [
+    "a final report written before delivered-outcome existed validates as history, and one stamped 0.2.0 or later still needs it"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/stamp.ts",
+      "find": "    type: \"final-report\",",
+      "replace": "    type: \"final-report-not-gated\","
+    },
+    {
+      "kind": "mutation",
+      "file": "src/stamp.ts",
+      "find": "    entry: \"delivered-outcome\",",
+      "replace": "    entry: undefined,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/validate.ts",
+      "find": "      list.splice(at, 1);",
+      "replace": "      list.splice(0, list.length);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

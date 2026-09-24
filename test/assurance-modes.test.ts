@@ -161,9 +161,10 @@ test("the shipped assurance-modes.yaml and role-model-config.yaml validate and r
      WORDS EXITS 1. That is not a defect in either half: criterion 3(d) and the
      hazard map require `mode-gate-sets-resolve` to be a context-requiring
      check precisely so a cross-document rule cannot pass by not running, and
-     M3-P1 criterion 4c's standing rule is that such a check without --context
-     prints SKIPPED and exits nonzero. The two sentences cannot both hold for
-     the same invocation. The context-bearing form is asserted here and the
+     M3-P1 criterion 4c's rule was that such a check without --context
+     prints SKIPPED and exits nonzero. The two sentences did not both hold for
+     the same invocation. (Kernel 0.2.1 changed the exit to 0 for a
+     skipped-only run; the SKIPPED line is unchanged.) The context-bearing form is asserted here and the
      bare form is asserted, with its SKIPPED lines, in the gate-set test below;
      delivery/work-history/m3-p3.md records the discrepancy rather than
      choosing one and staying quiet. */
@@ -848,6 +849,11 @@ test("a mode naming a gate set the registry does not declare is rejected, and th
     /* MEMBER 1: a reference to a gate id that is in no registry at all. */
     const invented = loadModes();
     const inventedMode = modeNamed(invented, "full");
+    /* The pushed entry's index is DERIVED, not pinned. It read `/14` until
+       M5-P4 added seven full-mode ids to the list, and a pinned index over an
+       appended list is a count claim about every future phase (CLAUDE.md
+       convention 5). */
+    const inventedIndex = (inventedMode["gate-sets"] as string[]).length;
     (inventedMode["gate-sets"] as string[]).push("performance-budget");
     const inventedPath = writeDocument(dir, invented, "gate-set-invented.yaml");
     const inventedRun = runCli([
@@ -861,7 +867,10 @@ test("a mode naming a gate set the registry does not declare is rejected, and th
     assert.equal(inventedRun.status, 1, inventedRun.stdout + inventedRun.stderr);
     assert.match(
       inventedRun.stdout,
-      /^INVALID #\/modes\/0\/gate-sets\/14 gate set performance-budget is not declared in .*gate-registry\.yaml \(check: mode-gate-sets-resolve\)$/m,
+      new RegExp(
+        `^INVALID #/modes/0/gate-sets/${String(inventedIndex)} gate set performance-budget is not declared in .*gate-registry\\.yaml \\(check: mode-gate-sets-resolve\\)$`,
+        "m",
+      ),
       inventedRun.stdout,
     );
 
@@ -889,11 +898,13 @@ test("a mode naming a gate set the registry does not declare is rejected, and th
       excludedRun.stdout,
     );
 
-    /* THE STANDING RULE (M3-P1 criterion 4c): the same check invoked WITHOUT
-       --context does not quietly pass. This is the arm that makes the whole
-       cross-document mechanism worth having. */
+    /* M3-P1 criterion 4c, AS KERNEL 0.2.1 AMENDS IT: the same check invoked
+       WITHOUT --context is reported SKIPPED, by name, and is never printed as
+       a pass. Since 0.2.1 a run whose only non-pass results are skips exits 0
+       (orchestrator ruling; delivery/plan/kernel-plan-m3.md:1809 said
+       nonzero), so the SKIPPED line is what keeps "did not run" readable. */
     const noContext = runCli(["validate", "--type", "assurance-modes", modesPath]);
-    assert.equal(noContext.status, 1, noContext.stdout + noContext.stderr);
+    assert.equal(noContext.status, 0, noContext.stdout + noContext.stderr);
     assert.match(noContext.stdout, /^SKIPPED mode-gate-sets-resolve no context$/m);
     assert.ok(
       !noContext.stdout.includes("INVALID"),
