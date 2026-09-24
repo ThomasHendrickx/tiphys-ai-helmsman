@@ -343,6 +343,312 @@ written.
   project, because those context checks expect the kernel's own tree. The merge
   regime does not run them.
 
+### 4f. Q-9 and Q-5 measured: kernel gates from the INSTALLED package
+
+This section answers Q-9 (how a project registry invokes a kernel gate) and Q-5
+(which kernel version hemma pins). Everything here was run against the
+PUBLISHED package `@tiphys/kernel@0.2.1` from npm, in a scratch project, not
+against this repository's tree. Hemma was not touched: no clone, no read, no
+write. The scratch project stands in for hemma's shape (an npm project, a git
+repository with an `origin/main`, phase branches).
+
+**Answer to Q-9, in one line.** A project registry invokes a kernel gate by
+naming the gate module inside the project's OWN installed dependency:
+
+```
+command: [node, node_modules/@tiphys/kernel/dist/src/gates/scope.js, --declarations, phases]
+```
+
+That path is created by the project's own `npm ci` from its own lockfile. It is
+not a path on an operator's machine, so it is not the dependency that
+`init --project` rejected for the modes document. It works as-is in 0.2.1,
+measured below. No kernel change is needed for `scope`.
+
+**What 0.2.1 is, measured.**
+
+- `npm view @tiphys/kernel versions dist-tags` lists `0.0.0`, `0.1.0`, `0.2.0`,
+  `0.2.1`; `latest` is `0.2.1`.
+- Installed into the scratch project with `npm install --save-dev
+  @tiphys/kernel@0.2.1`: exit 0. `npx tiphys version` prints `0.2.1`.
+- The installed tree was compared with this branch's own build at `9d83db7`
+  (`diff -rq dist/src`, and `cmp` on the shipped top-level files). The ONLY
+  differences are the M5-P6 changes: `dist/src/cli.js` and
+  `dist/src/commands/init.js` differ, `dist/src/commands/conflicts.js` and
+  `templates/gate-registry.example.yaml` exist only here. `scope.js`,
+  `merge-preconditions.js`, `run.js`, `checks.js`, `schemas/`, `roles/`,
+  `checklists/`, `tuition/`, `assurance-modes.yaml`, `gate-registry.yaml`,
+  `gates.manifest.json` and `AGENTS.md` are byte-identical. So the source
+  citations below, taken from this repository, describe 0.2.1's gates exactly.
+- 0.2.1 has no `init --project` and no `conflicts`. Captured:
+
+```
++ npx tiphys init --project .
+usage: tiphys init <dir> [--shared-exclusion]
+exit 64
++ npx tiphys conflicts
+usage: tiphys <brief | checklist | cutover | doctor | gates | init | lock | mode | next | plan | pool | resume | spawn | status | sync | teardown | tuition | validate | version | watch>
+exit 64
+```
+
+- The package's `exports` map is `.` and `./package.json` only (package.json:19).
+  `node <path>` does not go through `exports`, so the gate path above is
+  reachable. It is NOT a declared public contract, though: a later release could
+  move the file. The exact pin (below) is what keeps it stable.
+
+**The scratch registry.** Written from `templates/gate-registry.example.yaml`
+(this branch): the template's `unit-tests` gate kept, with a stand-in adapter
+that writes one GateResult with 1 unit; the `typecheck` and `lint` placeholder
+gates dropped; `preflight` replaced by `[node, --version]`. Then two kernel
+gates added:
+
+```
+  - id: scope
+    command: [node, node_modules/@tiphys/kernel/dist/src/gates/scope.js, --declarations, phases]
+    unitLabel: changed paths audited
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr]
+    events: [pull_request]
+    parameters: [base, head, phase]
+
+  - id: merge-preconditions
+    command: [node, node_modules/@tiphys/kernel/dist/src/gates/merge-preconditions.js, --token-env, GH_TOKEN]
+    unitLabel: merge preconditions evaluated
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr]
+    events: [pull_request]
+    parameters: [base, head, phase]
+```
+
+One phase declaration, `phases/m1-p1.json`, with `branch: claude/m1-p1-demo`
+and `filesToTouch: ["src/a.txt"]`, was committed to `main` and pushed to a
+local bare `origin` before the branch was cut. Every run below is
+`npx tiphys gates run --registry gate-registry.yaml --mode full --evidence <dir>
+--base origin/main --head HEAD` plus the flags shown, on node v26.6.0 unless
+stated. Lines are verbatim; the JSON records the runner writes after each run
+are left out.
+
+**Runs, what works and what fails.**
+
+| run | state | result |
+|---|---|---|
+| A | phase branch, one declared path changed | scope GREEN, 1 unit, exit 0 |
+| B | same branch plus an UNDECLARED path | scope RED naming the path, exit 1 |
+| C | no `--phase` | scope ERROR, exit 21 |
+| D | a branch not named in the declaration | scope ERROR, exit 21 |
+| E | detached HEAD, as `actions/checkout` gives by default | scope ERROR, exit 21 |
+| F | non-phase branch, scope `required` with a branch precondition | scope NOT-APPLICABLE, run exit 20 |
+| G | non-phase branch, scope `conditional` with the same precondition | scope NOT-APPLICABLE, run exit 0 |
+| H | phase branch, undeclared path, scope `conditional` | scope RED, exit 1 |
+| I | merge-preconditions, no `charter.yaml` in the commit | ERROR, exit 21 |
+| J | merge-preconditions, charter and modes committed, no verdicts | RED, exit 1 |
+| K | run A plus J on node v22.22.2 and on node v24.21.0 | same verdicts as on v26 |
+
+Run A:
+
+```
++ branch: claude/m1-p1-demo head: 1fef5e0
+gates: declared 2 applicable 2 verdict 2 green 2 red 0 not-applicable 0 error 0 vacuous 0
+gates: unit-tests: green: probe adapter: 1 test executed
+gates: scope: green: 1 changed path(s) audited against declaration phases/m1-p1.json at merge base f062712c1d41d8ba82ab8ec49a56c3d38c988449 (sha256 20c3243f35510a2a1a1fc48cc406546fbecda5eac557af925ec69e255f72fcbf)
+gates: every applicable gate is green
+exit 0
+```
+
+Run B, the red witness for the same invocation:
+
+```
++ branch: claude/m1-p1-demo head: 472d91f
+gates: scope: red: touched path(s) outside the declared scope: src/b.txt (declaration phases/m1-p1.json at merge base f062712c1d41d8ba82ab8ec49a56c3d38c988449, sha256 20c3243f35510a2a1a1fc48cc406546fbecda5eac557af925ec69e255f72fcbf)
+gates: 1 gate(s) reported red: scope
+exit 1
+```
+
+Runs C, D and E, the three ways a CI job can call it wrongly. All three fail
+CLOSED, as `error`, never green:
+
+```
+gates: scope: error: gate scope requires --phase, which was not supplied
+exit 21
++ branch: feature/hemma-style head: cfd87fc
+gates: scope: error: the current branch feature/hemma-style does not match declaration phases/m1-p1.json's own branch claude/m1-p1-demo (read from merge base f062712c1d41d8ba82ab8ec49a56c3d38c988449); refusing to audit a branch against a declaration that does not claim to govern it
+exit 21
++ branch: HEAD head: cc45c03
+gates: scope: error: the current branch HEAD does not match declaration phases/m1-p1.json's own branch claude/m1-p1-demo (read from merge base 0955ee419e92b6a5fb0932ad18cb869c575cb8c2); refusing to audit a branch against a declaration that does not claim to govern it
+exit 21
+```
+
+Runs F and G, a non-phase pull request (for example a typo fix on
+`fix/typo`). The kernel's own registry handles this with a `branch-matches`
+precondition (quoted from `gate-registry.yaml` in this repository, the entry
+for `scope`), evaluated by src/gates/run.ts:1213. Copied into the scratch
+registry, it behaves as follows:
+
+```
+F (applicability: required)
+gates: scope: not-applicable: precondition scope-branch-is-a-phase-branch evaluated and unmet: branch fix/typo does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
+gates: required gate(s) not applicable: scope
+exit 20
+G (applicability: conditional)
+gates: scope: not-applicable: precondition scope-branch-is-a-phase-branch evaluated and unmet: branch fix/typo does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
+gates: every applicable gate is green
+exit 0
+```
+
+Run H confirms that `conditional` does not weaken the phase-branch case:
+
+```
+gates: scope: red: touched path(s) outside the declared scope: src/c.txt (declaration phases/m1-p1.json at merge base 0955ee419e92b6a5fb0932ad18cb869c575cb8c2, sha256 20c3243f35510a2a1a1fc48cc406546fbecda5eac557af925ec69e255f72fcbf)
+exit 1
+```
+
+This repository's own CI accepts F's exit 20 because its harness,
+`scripts/m2-exit-test.sh`, asserts scope's expected status per branch kind.
+Hemma will have no such harness, so G is the form hemma's registry should use.
+
+Runs I and J, `merge-preconditions` from the installed package:
+
+```
+I  gates: merge-preconditions: error: /tmp/claude-0/-home-user/f149de39-a9f2-5914-a54c-2f28bb0a8a27/scratchpad/q9/proj/charter.yaml does not exist in commit 1fef5e054c8feb3423f185ff7e4397e002481f11, resolved from HEAD, so the declared mode's merge-authority is unknown and no decorrelation verdict can be reached; a merge check that cannot determine the regime reports error, never green
+   exit 21
+J  gates: merge-preconditions: red: DR-0012 at head cc45c0336b69c029281db13f2732c9117932de3d, phase m1-p1: the diff origin/main...cc45c0336b69c029281db13f2732c9117932de3d changes 1 path(s), 1 of them in the dual-review tier (src/a.txt), so DR-0012 requires 2 approving, decorrelated verdicts for the commit under audit cc45c0336b69c029281db13f2732c9117932de3d; 0 of 2 are admitted and 2 missing. A missing review is RED, never not-applicable (M5-P3); conditions 1 to 6 and the branch-protection encoding were NOT evaluated, because a shipped change without its two reviews is refused whatever they would say
+   exit 1
+```
+
+For J, `charter.yaml` (the package's `templates/charter.example.yaml`) and
+`assurance-modes.yaml` (copied from the installed package, byte-identical to
+this branch's) were committed to `main`, which is what post-init steps 2 and 3
+in 4e produce. So the gate RUNS from the installed package and fails closed.
+Beyond J, it was not run further, because the next conditions need committed
+review verdicts and live GitHub reads against a real repository. What it would
+need next, read from source and NOT measured:
+
+- verdict documents committed under `delivery/` (src/checks.ts:3234);
+- an arbitration document at `delivery/review/arbitration-<phase>.md`,
+  overridable by `--arbitrations` (src/gates/merge-preconditions.ts:1641);
+- the scope record from the same bundle at `<evidence>/../scope/result.json`
+  (src/gates/merge-preconditions.ts:1628), so scope must run in the same run;
+- a repository slug from `origin` or `--repo`
+  (src/gates/merge-preconditions.ts:1484), a required check named `gates`
+  (src/gates/merge-preconditions.ts:115), and an active branch ruleset;
+- a review-tier table that names THIS repository's paths
+  (src/gates/merge-preconditions.ts:876), so every hemma path falls to the
+  dual-review tier. Measured in J: `src/a.txt` is dual tier.
+
+Also, the kernel registry declares this gate `conditional` with a precondition
+that runs `scripts/check-dual-review.mjs`, and `scripts/` is not in the
+package's `files` list (package.json:26); the installed tree has no `scripts/`
+directory (`ls` exit 2). A `conditional` gate must carry a precondition (the
+runner refused the registry without one: `INVALID #/gates/2/precondition
+required property precondition is missing`), so a project copying the kernel's
+entry has to write its own precondition or declare the gate `required`, as
+this probe did.
+
+Run K, the toolchain. Hemma's CI pins Node 24 (section 1), and the kernel
+declares `engines.node >=26` (package.json:11). On v24.21.0 (fetched to scratch,
+SHA-256 checked), `npm ci` printed `npm warn EBADENGINE` and exited 0, and the
+run gave the same verdicts as on v26:
+
+```
++ node --version: v24.21.0; tiphys version: 0.2.1
+gates: scope: green: 1 changed path(s) audited against declaration phases/m1-p1.json at merge base 0955ee419e92b6a5fb0932ad18cb869c575cb8c2 (sha256 20c3243f35510a2a1a1fc48cc406546fbecda5eac557af925ec69e255f72fcbf)
+gates: merge-preconditions: red: DR-0012 at head cc45c0336b69c029281db13f2732c9117932de3d, phase m1-p1: [same sentence as J]
+exit 1
+```
+
+The bracket in that block is the only edit to a capture in this section: it
+stands for the verbatim J sentence, repeated in the run, to avoid printing it
+twice. v22.22.2 also gave the same three verdicts. This is a measurement of
+these two gates only. It is not support: Node 24 is below the kernel's
+declared floor.
+
+**The conflict pre-pass is an orchestrator tool, not a hemma gate.** It reads
+declaration FILES given as paths, so it runs from a kernel checkout against
+hemma's declarations without being installed in hemma. Measured from this
+branch at `9d83db7`, on two scratch declarations:
+
+```
+conflicts: 2 declaration(s): M1-P1 (decl/m1-p1.json), M1-P2 (decl/m1-p2.json)
+append-only, union-resolved, never an overlap: test/behaviors.json, gates.manifest.json, delivery/requirements/clause-map.json
+DISJOINT M1-P1 M1-P2
+conflicts: 0 overlapping pair(s), 1 disjoint pair(s), 0 overlapping path(s)
+exit 0
+```
+
+The default append-only list names this repository's registries
+(src/commands/conflicts.ts:66). For hemma those paths are harmless and match
+nothing. Any hemma file that should be union-resolved has to be passed with
+`--append-only`.
+
+**Recommendations for step 3's hemma registry (step 3 decides and records any
+change).**
+
+1. Add `@tiphys/kernel` to hemma's `devDependencies` at the EXACT version
+   `0.2.1`, with no range, and commit the lockfile change.
+2. Declare `scope` as in G: the installed-path command, `applicability:
+   conditional`, and the `branch-matches` precondition
+   `claude/m[0-9]+-p[0-9]+-.*`. Point `--declarations` at hemma's declaration
+   directory (I-12).
+3. The CI job that runs the gates must: check out `github.head_ref` (not the
+   default detached HEAD, run E); fetch full history, so the merge base
+   resolves (this repository's `gates` workflow records `fetch-depth: 0` as
+   load-bearing); and pass `--phase` derived from the branch name, lowercase,
+   the same way this repository's workflow does.
+4. Do NOT put `merge-preconditions` in hemma's registry for step 3 unless the
+   merge is to go through the kernel regime. If it is, hemma must adopt the
+   `delivery/review/` verdict and arbitration layout and a required check named
+   `gates`, and accept that every hemma path is dual tier. That is a process
+   choice for the orchestrator, not a gate command.
+5. Run the gates job on Node 26 (the floor), even if hemma's other jobs stay on
+   Node 24. Run K shows 24 works for these gates today, but that is not a
+   promise the kernel makes.
+6. Scope gives hemma phases two standing extras and two evidence directories
+   (`test/behaviors.json`, `delivery/work-history/<phase>.md`, and
+   `delivery/review/` and `delivery/verification/` for the phase's own evidence;
+   src/gates/scope.ts:979, src/gates/scope.ts:565). A hemma phase may touch
+   those paths without declaring them. That is a small, named widening. It is
+   not an error.
+
+**Answer to Q-5.**
+
+- Pin: `@tiphys/kernel@0.2.1`, exact, in hemma's `devDependencies` and in the
+  charter's `identity.kernel-version-pin`. It is the latest published version.
+- What step 3 CAN use from 0.2.1: the gate runner with `--registry`, the
+  `scope` gate (runs A to H), `merge-preconditions` if the regime is chosen
+  (runs I and J), the schemas, `assurance-modes.yaml` and the charter template.
+- What step 3 CANNOT use from 0.2.1, and the replacement for each:
+  - `tiphys init --project`: absent. Replacement: copy
+    `node_modules/@tiphys/kernel/assurance-modes.yaml` to hemma's root and
+    commit it. It is a byte copy, which is exactly what `init --project` writes,
+    and 0.2.1's file is byte-identical to this branch's.
+  - `tiphys conflicts`: absent. Replacement: the orchestrator runs it from a
+    kernel checkout at this branch (or `main` after merge) against hemma's
+    declaration files. It is a pre-pass, not a hemma gate.
+  - `templates/gate-registry.example.yaml`: absent. Replacement: copy it from
+    this repository. It is a text starting point with no kernel command in it,
+    so hemma does not depend on it at run time.
+
+**Is a kernel release or a kernel change needed before step 3? No.** The
+evidence is runs A to K above. Every run-time use step 3 plans in hemma (the
+runner with `--registry`, `scope`, and `merge-preconditions` if chosen) ran
+from 0.2.1 in those runs, and the three absent items each have a replacement
+that gives the same result. What those runs did not exercise is listed in the
+work history (delivery/work-history/m5-p6.md), under "What the measurement did
+NOT cover". Two things would make this cleaner later. Neither is
+needed for step 3, and neither was made:
+
+- A release (0.2.2 or later) after M5-P6 merges would put `init --project`,
+  `conflicts` and the registry template into the published package, so hemma
+  could run `npx tiphys init --project .` itself. This is optional.
+- The gate path `dist/src/gates/scope.js` is not in the package's `exports`
+  (package.json:19), so it is an internal path. A kernel change giving gates a
+  stable public entry would make the registry command independent of the
+  package layout: for example a `tiphys gate <id>` subcommand in `src/cli.ts`,
+  or `exports` entries in `package.json`. It would touch `src/cli.ts` (or
+  `package.json`), a test, and a declaration grant, and it needs a decision.
+  Until then, the exact pin keeps the path stable.
+
 ## 5. Suitability against the applicability envelope
 
 The envelope is DR-0029 Part 3, which the owner approved: the six APPLIES
@@ -527,7 +833,10 @@ then ship changed production code, against K-3.
   them.
 - Q-2: do hemma's gates pass on Node 24, CI's pinned version? Measured here on
   v22.22.2 only. CI push run 35845441652 on the same head is green, and that is
-  the Node 24 evidence available.
+  the Node 24 evidence available. (Section 4f adds a narrower fact: the kernel
+  0.2.1 gates `scope` and `merge-preconditions` gave the same verdicts on
+  v24.21.0 as on v26.6.0 in a scratch project. That says nothing about hemma's
+  own gates.)
 - Q-3: does a repository ruleset govern hemma `main`? Classic protection is
   absent; a ruleset read is unavailable through both paths this session has.
 - Q-4: where does the charter live for a fleet home with a separate project
@@ -536,6 +845,9 @@ then ship changed production code, against K-3.
   different files, and a check reading one does not see the other.
 - Q-5: which `@tiphys/kernel` version is published and installable today, and
   does it carry `conflicts` (this branch is unmerged)?
+  ANSWERED in section 4f: 0.2.1 is the latest published version and hemma pins
+  it exactly. It does not carry `conflicts` or `init --project`; each has a
+  replacement that gives the same result, so no release is needed first.
 - Q-6: are two frozen-clock phases "trivial single changes" under DR-0029 3b.3?
   They were chosen for safety under K-3. A reviewer may judge that they exercise
   the parallel mechanism without much product value; the higher-value
@@ -550,8 +862,15 @@ then ship changed production code, against K-3.
   installed kernel, which is the operator-machine dependency `init --project`
   avoided for the modes document. Open; it must be settled before step 3
   writes hemma's registry (section 4e).
+  ANSWERED in section 4f, measured: the command names the gate module inside
+  hemma's OWN installed dependency
+  (`node_modules/@tiphys/kernel/dist/src/gates/scope.js`), which hemma's
+  `npm ci` creates from its lockfile. No kernel change is needed.
 
 **Verdict: FITS WITH NAMED CONDITIONS K-1 to K-5. Step 1 is complete; step 3 is
 blocked on the owner action in section 7 and the scope decision in Q-8.**
 (Updated by the kernel fix round 1: Q-8 is answered by DR-0058; step 3 is now
 blocked on section 7 and on Q-9.)
+(Updated again by section 4f: Q-9 and Q-5 are answered, with no kernel
+release or change needed. Step 3 is blocked on section 7 only, which is owner
+action A-18.)
