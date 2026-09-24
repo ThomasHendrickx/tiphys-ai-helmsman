@@ -1551,8 +1551,23 @@ kernel-0-2-1-history-well-formed member 1 (1, '0', '1')
 kernel-0-2-1-history-well-formed RESTORED (0, '1', '0')
 ```
 
-(tuples are exit, pass, fail). The red-witness gate over the bundle is under
-Gates below.
+(tuples are exit, pass, fail).
+
+**A stale PATCH that fr2-finds.py did not look for.** fr2-finds.py checked
+mutation finds only, and a patch's presence. The first bundle run (below)
+put red-witness at `error`: witness/patches/kernel-0-2-1-verdict-framing-not-required.patch
+no longer applied, because its context line `"phase",` is now followed by
+`"head",` in `required`. The hunk header and context were moved one line
+(`@@ -12,7 +12,6 @@`, context `"head",`); the removed line is still
+`"framing",`. scratch fr2-patchfix.py then ran `git apply --check` on all 13
+files in witness/patches and printed only `checked 13`. Hand trial after:
+
+```
+kernel-0-2-1-pulse-non-verdict-stays-invalid HEAD (0, '1', '0')
+kernel-0-2-1-pulse-non-verdict-stays-invalid member 0 (1, '0', '1')
+kernel-0-2-1-pulse-non-verdict-stays-invalid member 1 (1, '0', '1')
+kernel-0-2-1-pulse-non-verdict-stays-invalid RESTORED (0, '1', '0')
+```
 
 ## Open questions
 

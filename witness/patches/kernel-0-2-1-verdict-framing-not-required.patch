@@ -1,7 +1,7 @@
 --- a/schemas/verdict.schema.json
 +++ b/schemas/verdict.schema.json
-@@ -11,7 +11,6 @@
-     "phase",
+@@ -12,7 +12,6 @@
+     "head",
      "verdict",
      "produced-by",
 -    "framing",
