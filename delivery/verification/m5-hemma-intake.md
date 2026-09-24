@@ -1,6 +1,6 @@
 # M5-P6 step 1: hemma intake (verification-first, read-only)
 
-Status: IN PROGRESS. Sections are appended as evidence is gathered.
+Status: step 1 complete; the verdict line is at the end of section 8.
 
 Governing plan section: delivery/plan/value-delivery-plan.yaml:395
 
@@ -103,9 +103,13 @@ results below are about v22, not v24.
 | `npm run lint` | 0 | `795 problems (0 errors, 795 warnings)`; warnings include hemma's own rule `hemma-lint/no-untimed-clock-in-specs` |
 | `npx vitest run --project unit` (CI's exact unit invocation, with CI's `CACHE_DIR`/`XDG_CACHE_HOME` redirect and `CI=true`) | 0 | `Test Files 628 passed \| 3 skipped (631)`; `Tests 8540 passed \| 14 skipped \| 7 todo (8561)`; 93.41s |
 
-Declared transliteration: the lint summary line begins with U+2716 in the raw
-capture, rendered here as nothing (the line is quoted from its first ASCII
-character); 1 occurrence. Nothing else in any quoted output was altered.
+Declared transliteration: two quoted lines begin with a non-ASCII glyph in the
+raw capture, and each is quoted here from its first ASCII character, so the
+glyph is rendered as nothing. U+2716 at the head of the lint summary line, 1
+occurrence. U+2713 at the head of the `next typegen` line, 1 occurrence.
+Inside table cells, a literal `|` from the captured output is written `\|`
+so the table renders, and runs of spaces are collapsed to one. Nothing else in
+any quoted output was altered.
 
 NOT RUN locally, and why: `npm run build`, Playwright e2e, the direct-upload
 and credit-concurrency specs, and `npm run test:full` all need a migrated
@@ -165,7 +169,7 @@ Read from the kernel source, not predicted:
 
 - `tiphys init <dir> [--shared-exclusion]` is the whole interface
   (src/commands/init.ts:95). It takes a directory and one optional flag.
-- It refuses any non-empty directory (src/commands/init.ts:112), so it can
+- It refuses any non-empty directory (src/commands/init.ts:113), so it can
   never run IN hemma's repository. It creates a SEPARATE fleet home, the shape
   the only precedent used (`ThomasHendrickx/pulse-fleet` beside
   `ThomasHendrickx/pulse`, src/commands/init.ts:114 treats `.git` as a marker).
@@ -217,7 +221,7 @@ and choosing between them is not this intake's decision:
 1. a kernel change makes init (or a resolver) produce or locate I-7, I-8 and
    I-10, and I-9 is replaced by a hemma-authored registry (I-6). This touches
    src/commands/init.ts, which is NOT on this phase's files-to-touch
-   (delivery/plan/value-delivery-plan.yaml:423), so it needs a plan amendment;
+   (delivery/plan/value-delivery-plan.yaml:424), so it needs a plan amendment;
 2. the handwork is performed and DECLARED, and the exit report records
    p6-charter-only as failed with each item named. That is honest and it fails
    the criterion.
@@ -232,3 +236,208 @@ A shallow clone shows the symlinks exist at that head, not when or by whom they
 were added. A read-only clone of `ThomasHendrickx/pulse` itself was refused by
 this session's permission layer, so the project side of the precedent is
 unobserved here.
+
+## 5. Suitability against the applicability envelope
+
+The envelope is DR-0029 Part 3, which the owner approved: the six APPLIES
+conditions at
+delivery/decisions/DR-0029-the-ownership-boundary-and-the-applicability-envelope.md:136,
+the normative DOES NOT APPLY list at
+delivery/decisions/DR-0029-the-ownership-boundary-and-the-applicability-envelope.md:151,
+and the degraded band at
+delivery/decisions/DR-0029-the-ownership-boundary-and-the-applicability-envelope.md:182.
+
+### 5a. APPLIES conditions (3a), all six must hold
+
+| # | condition | hemma | evidence |
+|---|---|---|---|
+| 1 | intent stateable before work | holds | `docs/phases/` carries 12 phase-definition files; hemma `CLAUDE.md:335-346` fixes a definition of done |
+| 2 | lands as a reviewable change in version control | holds | PR-based (PR #454, #455 in section 2b) |
+| 3 | done decidable by something other than opinion, for `correctness` | holds | `tsc`, `eslint`, 8540 unit tests, Playwright, all exit-code gates (section 2c) |
+| 4 | decomposes into phases with a dependency order | holds | `docs/phases/phase-0` to `phase-11` definitions |
+| 5 | horizon longer than one sitting | holds | 1332 workflow runs; release `2026.06.1-1` |
+| 6 | a wrong merge costs more than the process | holds, strongly | every `main` push deploys to Vercel production and may migrate the production database (section 3) |
+
+### 5b. DOES NOT APPLY list (3b), none may hold for the selected work
+
+| # | exclusion | hemma |
+|---|---|---|
+| 1 | spikes and exploration | not the repository as a whole; excluded per phase |
+| 2 | a human is the only oracle | HOLDS FOR PART OF HEMMA: design, copy and brand work (hemma `CLAUDE.md:216-233`, design system and brand identity) has no falsifiable form. Such phases must not be selected; section 6 selects none |
+| 3 | trivial single changes | judged per phase; the section 6 candidates are deliberately small, and whether they count as "trivial" under 3b.3 is a reviewer judgement (Q-6) |
+| 4 | incident response | not the selected work |
+| 5 | outside version control | no |
+| 6 | discovery where requirements are the deliverable | not the selected work |
+| 7 | untrusted contributors | does NOT hold: GitHub MCP `list_repository_collaborators` returns exactly one entry, `ThomasHendrickx`, `role_name: admin`. Hemma is private (section 3) |
+
+### 5c. Degraded band (3c)
+
+- **Solo project, no second human reviewer**: holds (one collaborator). The
+  `review` class needs the charter's `review-families` declaration (I-4), so
+  that one reviewer is not counted as two.
+- **No CI**: does NOT hold, hemma has strong CI. But the kernel's own gates are
+  not IN that CI (I-14), so kernel evidence stays local-only until a step is
+  added.
+
+### 5d. Verdict
+
+**FITS, WITH NAMED CONDITIONS.** Hemma is inside the envelope. Nothing here
+requires bending the kernel to admit it. The conditions:
+
+- K-1: p6-charter-only cannot be met by the kernel as it stands (section 4d,
+  H-1 to H-4). This is a KERNEL finding, not a hemma unsuitability.
+- K-2: phases are selected from the falsifiable part of hemma (3b.2).
+- K-3: every merge is a production deploy, so the phases carry no migration
+  and no production-code change (section 3).
+- K-4: nothing observed requires green CI to merge in hemma (`main`
+  unprotected, rulesets unknown, Q-3). The kernel's merge preconditions and the
+  orchestrator's observation of each post-merge push run are the only
+  enforcement.
+- K-5: an owner action for push access (section 7).
+
+## 6. Candidate disjoint phase pair for step 3
+
+Selection rule, stated so it can be checked: test-only changes (spec files are
+not in the Vercel bundle, so each post-merge deploy ships an unchanged
+application), no migration, a mechanical predicate that is RED today, and
+literally disjoint file sets.
+
+Source: hemma's own lint rule `hemma-lint/no-untimed-clock-in-specs`, 70 sites
+today. Full warning distribution from the section 2c lint log: 720
+`max-lines-per-function`, 70 `no-untimed-clock-in-specs`, 4
+`@typescript-eslint/no-unused-vars`, 1 `storybook/no-redundant-story-name`
+(795 total). The rule's own message: "`Date.now()` in a spec file without
+`vi.useFakeTimers()` reads the real wall clock and is flake-prone under
+parallel load". This is a quality outcome hemma itself named, not an invented
+task.
+
+| phase | files to touch | predicate, red today | tests today |
+|---|---|---|---|
+| M1-P1 site-shed frozen clock | `domain/site-shed/site-shed.service.spec.ts`, `docs/work-history/<date>.site-shed-frozen-clock.md` | `npx eslint --max-warnings 0 domain/site-shed/site-shed.service.spec.ts` exit 1, 7 `no-untimed-clock-in-specs` warnings | pass |
+| M1-P2 calendar-oauth frozen clock | `integrations/google-calendar/oauth.spec.ts`, `docs/work-history/<date>.google-calendar-oauth-frozen-clock.md` | `npx eslint --max-warnings 0 integrations/google-calendar/oauth.spec.ts` exit 1, 7 warnings | pass |
+
+Measured baseline, both files: `npx vitest run --project unit
+domain/site-shed/site-shed.service.spec.ts integrations/google-calendar/oauth.spec.ts`
+exit 0, `Test Files 2 passed (2)`, `Tests 64 passed (64)`. Proposed acceptance
+per phase: the eslint command exits 0; the vitest invocation exits 0 with the
+SAME per-file test count as before, so freezing the clock deleted no
+assertion; and the `validate` job is green on the PR and on the post-merge
+push run.
+
+Each phase also adds its own hemma declaration as an extra. The ids and
+branches follow the kernel's forced pattern (I-12).
+
+### 6a. Conflict pre-pass, run with this branch's command
+
+Fixture declarations were written to scratch in the phase-declaration schema's
+shape, carrying the file sets above. Toolchain node v26.6.0. `<scratch>` stands
+for `/tmp/claude-0/-home-user/f149de39-a9f2-5914-a54c-2f28bb0a8a27/scratchpad/hemma-intake`.
+
+```
+$ node bin/tiphys.ts conflicts <scratch>/decl/h-p1.json <scratch>/decl/h-p2.json
+conflicts: 2 declaration(s): M1-P1 (<scratch>/decl/h-p1.json), M1-P2 (<scratch>/decl/h-p2.json)
+append-only, union-resolved, never an overlap: test/behaviors.json, gates.manifest.json, delivery/requirements/clause-map.json
+DISJOINT M1-P1 M1-P2
+conflicts: 0 overlapping pair(s), 1 disjoint pair(s), 0 overlapping path(s)
+semantic coupling: NOT CHECKED. Literal file overlap is the only thing this command computes; zero overlap is not proof of independence. A reviewer must still judge semantic coupling for EVERY pair, disjoint ones included (a test in one phase asserting on what another phase changes, related behaviour in disjoint files, merge order).
+exit 0
+```
+
+Control, so the green above is shown able to go red: the same pair with
+`tests/setup.ts` (hemma's shared unit setup) added to both.
+
+```
+$ node bin/tiphys.ts conflicts <scratch>/decl/h-p1-control.json <scratch>/decl/h-p2-control.json
+conflicts: 2 declaration(s): M1-P1 (<scratch>/decl/h-p1-control.json), M1-P2 (<scratch>/decl/h-p2-control.json)
+append-only, union-resolved, never an overlap: test/behaviors.json, gates.manifest.json, delivery/requirements/clause-map.json
+OVERLAP M1-P1 M1-P2 tests/setup.ts
+conflicts: 1 overlapping pair(s), 0 disjoint pair(s), 1 overlapping path(s)
+semantic coupling: NOT CHECKED. Literal file overlap is the only thing this command computes; zero overlap is not proof of independence. A reviewer must still judge semantic coupling for EVERY pair, disjoint ones included (a test in one phase asserting on what another phase changes, related behaviour in disjoint files, merge order).
+exit 1
+```
+
+The only edit to the captured output is the `<scratch>` substitution above.
+
+Two observations on the command applied to another project:
+
+- The printed append-only list is THIS repository's three registries, the
+  default at src/commands/conflicts.ts:66. None of those paths exist in hemma,
+  so the line is harmless here and misleading. Step 3 should pass
+  `--append-only` with hemma's own registries. Hemma's generated manifests
+  (`check:consumer-manifest`, `check:invalidation-manifest`,
+  `check:service-graph`) are the plausible candidates; neither candidate phase
+  touches them.
+- The first attempt used ids `H-P1` and `H-P2` and got exit 2, `NO VERDICT`
+  (I-12). That is correct behaviour, recorded because it is the first
+  observation of the kernel's id vocabulary meeting a project that has its own.
+
+### 6b. Semantic coupling: a REVIEWER OBLIGATION, not a result
+
+Zero literal overlap is not independence. What a reviewer of step 3 must
+judge, with what this intake did and did not check:
+
+- Shared test infrastructure: both specs load `tests/setup.ts` and
+  `.env.test`. Neither phase may edit them; the control run shows the command
+  names a literal edit. Vitest isolates fake-timer state per test file, so two
+  files freezing their clocks should not interact. That is a Vitest property
+  this intake did NOT test.
+- Reverse dependencies: a `grep -rln` for importers found the site-shed
+  service used by `server/api/routers/site-shed.ts`,
+  `domain/site-shed/site-shed.repository.ts` and two stories, and the calendar
+  oauth module used by `app/api/integrations/google-calendar/callback/route.ts`
+  and `domain/storage-provider/make-storage-provider-service.ts`. No importer is
+  shared between the two sets. Neither phase changes a non-spec file, so these
+  are context, not coupling.
+- Merge order: either order is valid. The second merge re-runs CI on the union,
+  and the post-merge push run is observed for EACH head (hemma does not cancel
+  `main` runs, section 2a).
+- Lint-rule coupling: both phases clear warnings of one rule. A change to the
+  rule itself (`eslint.config.mjs`) would couple them, so it is excluded from
+  both file sets.
+
+An alternative pair with a production-code outcome exists (the two
+`no-unused-vars` warnings in `components/documents/ui/document-list.tsx` and
+`components/mobile/capture-radial.tsx`). It is NOT recommended: each merge would
+then ship changed production code, against K-3.
+
+## 7. What is blocked
+
+- **Step 3 cannot run.** It needs the orchestrator session to create branches,
+  push and open pull requests on `ThomasHendrickx/hemma`, and to create and push
+  a fleet-home repository. Push access to hemma is not granted to the
+  orchestrator session. This intake attempted no write to test that, because a
+  dry-run does not probe push authorization (CLAUDE.md standing warning 14).
+  OWNER ACTION CANDIDATE, id to be allocated by the register in
+  delivery/STATE.md:1, NOT allocated here: grant the orchestrator push access to
+  hemma, and create or authorise a fleet-home repository for it.
+- **p6-charter-only is blocked on a scope decision** (section 4d): either a plan
+  amendment adding the init or resolver change, or an accepted and declared
+  failure of that criterion.
+
+## 8. Open questions
+
+- Q-1: which of the 3 skipped unit test files skip for a reason other than the
+  unset `APPLICABILITY_TEST_DATABASE_URL`? The default reporter does not name
+  them.
+- Q-2: do hemma's gates pass on Node 24, CI's pinned version? Measured here on
+  v22.22.2 only. CI push run 35845441652 on the same head is green, and that is
+  the Node 24 evidence available.
+- Q-3: does a repository ruleset govern hemma `main`? Classic protection is
+  absent; a ruleset read is unavailable through both paths this session has.
+- Q-4: where does the charter live for a fleet home with a separate project
+  repository: `charter.yaml` in the context directory the checks read, or
+  `charter/<project>.yaml` as the pulse precedent stored it? These are
+  different files, and a check reading one does not see the other.
+- Q-5: which `@tiphys/kernel` version is published and installable today, and
+  does it carry `conflicts` (this branch is unmerged)?
+- Q-6: are two frozen-clock phases "trivial single changes" under DR-0029 3b.3?
+  They were chosen for safety under K-3. A reviewer may judge that they exercise
+  the parallel mechanism without much product value; the higher-value
+  alternative conflicts with K-3.
+- Q-7: `npm run build`, Playwright and `test:full` were not run locally (no
+  Postgres). Their current state is known only from CI.
+- Q-8: is p6-charter-only to be met by a kernel change (plan amendment) or
+  recorded as a declared failure (section 4d)? This is the orchestrator's call.
+
+**Verdict: FITS WITH NAMED CONDITIONS K-1 to K-5. Step 1 is complete; step 3 is
+blocked on the owner action in section 7 and the scope decision in Q-8.**
