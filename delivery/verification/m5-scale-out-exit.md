@@ -751,8 +751,8 @@ in any run.
   LOCAL `hemma_e2e` only (its environment's `DATABASE_URL` host is
   `localhost:5432`).
 - **Lesson for the next bootstrap:** give each E2E run its own port pair and
-  assert the port is free before starting, or kill by the port's owner, never by
-  a process-name pattern.
+  assert the port is free before starting, and stop a server by the port's
+  owner rather than by a process-name pattern.
 
 ### 1i. What this step did NOT cover
 
@@ -849,7 +849,8 @@ kernel's dual-review check compares `produced-by` as a string
 there. Whether two tiers from one vendor meet the intent of DR-0012
 condition 1 is not judged here. The two bootstrap review documents do not
 record a family at all. That they ran on different families is the
-orchestrator's statement, and it cannot be checked from the files.
+orchestrator's statement. The files do not carry it: `grep -n -i 'opus|sonnet|fable|produced|family'`
+over both finds one hit, an unrelated word on hazard line 106.
 
 Two review-evidence limits, recorded rather than smoothed over:
 
@@ -961,8 +962,8 @@ These commits are on the branch only. They are in no pull request and have no
 CI run, and they are deliberately not landed. `main` records the merged work,
 and the addendum adds no acceptance evidence that `main` lacks. Class: an
 orchestration timing event (a message reached the implementer after the merge),
-NOT a failure. The push time itself cannot be read from commit data, only the
-author dates.
+NOT a failure. The push time is not in the commit data read here, which
+carries author and committer dates only.
 
 **Verdict on p6-parallel-value: MET.** Two disjoint phases were active at the
 same time (2b). Each was reviewed twice at a named head and merged at exactly
@@ -1002,7 +1003,7 @@ or orchestrator holds). Severity is the finder's.
 | A-20 | CR-B-001, low: the workflow runs the registry from the pull request's HEAD, so a phase can delete its own scope gate | PROJECT PREDICATE (hemma wiring; a design residue the kernel shares) | the criteria reviewer's run F: scope entry deleted plus an undeclared path, green, exit 0 (delivery/review/m5-p6-hemma-review-bootstrap-criteria.md:117) |
 | A-21 | CR-B-005, low: `${{ github.head_ref }}` interpolated straight into the shell | PROJECT PREDICATE (hemma workflow; this step wrote the line) | the `--phase` line of `.github/workflows/tiphys-gates.yml` in hemma (delivery/review/m5-p6-hemma-review-bootstrap-criteria.md:178) |
 | A-22 | HZ-B-002, low-medium: the fleet `.gitignore` does not exclude `node_modules/` | KERNEL (`tiphys init` writes it) | `npm ci` in a fleet clone, then `git status` shows `?? node_modules/`; init's list at src/fleet.ts:29 |
-| A-23 | HZ-B-004, informational: the registry's per-gate `events` field is declared and never enforced | KERNEL | `grep -rn events` over the runner source (delivery/review/m5-p6-hemma-review-bootstrap-hazard.md:108) |
+| A-23 | HZ-B-004, informational: the registry's per-gate `events` field is declared and not read by the runner | KERNEL | `grep -rn events` over the runner source (delivery/review/m5-p6-hemma-review-bootstrap-hazard.md:108) |
 | A-24 | CR-B-004, low: hemma's clock lint rule is file-level; one `vi.useFakeTimers()` silences it for the whole file | PROJECT PREDICATE (hemma's lint rule and plan) | the rule source, `infrastructure/lint/no-untimed-clock-in-specs.mjs` in hemma; both phases' reviewers closed the gap with executed probes (2e) |
 | A-25 | HZ-M1P1-003, low: roster fixtures sit far from the 7 and 28 day thresholds, so mutation sensitivity is weak | PROJECT PREDICATE (pre-existing in hemma, outside M1-P1's scope) | the M1-P1 hazard verdict JSON |
 | A-26 | CR-M1P1-001, low: stale line numbers in the M1-P1 work history's claim-grep section | PROJECT PREDICATE (hemma document) | the M1-P1 criteria verdict JSON |
@@ -1022,7 +1023,7 @@ breach, or the reverse.
 
 | criterion | verdict | evidence |
 |---|---|---|
-| p6-prepass | MET | the kernel half, APPROVED by both clean-room reviews at `45a0d54` (delivery/review/clean-room-m5-p6-kernel-criteria.md:775); used for real on hemma's declarations (1c, corrected run) |
+| p6-prepass | MET | the kernel half, APPROVED by both clean-room reviews at `45a0d54` (delivery/review/clean-room-m5-p6-kernel-criteria.md:360 and delivery/review/clean-room-m5-p6-kernel-hazard.md:775); used for real on hemma's declarations (1c, corrected run) |
 | p6-charter-only | **NOT MET on released 0.2.1**, because of H-6. MET by this branch's `tiphys init --project` once a release carries it; that release is a follow-up | 1g |
 | p6-parallel-value | MET | section 2 |
 | p6-attribution | MET | section 3, 30 rows, each with its class and what establishes it |
@@ -1062,7 +1063,8 @@ omitted. Nothing else is changed. `git status --porcelain` printed nothing.)
   `node_modules`. The kernel's were reinstalled for this report's gate runs, and
   hemma's only in a temporary worktree that has since been removed.
 - Postgres installed but stopped (A-10). The ambient remote `DATABASE_URL`
-  (A-11) was never used: every hemma command in this step forced local URLs.
+  (A-11) was not used by any command this step ran: every hemma script
+  forced each database variable to a local URL and refused to run otherwise.
 - The npm 11 `fsevents` flip (A-3). hemma developers on npm 11 will see it on
   any install.
 - The leftover `next-server`, pid 26960 (A-5, A-6). Still running.
