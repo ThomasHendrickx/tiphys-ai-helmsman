@@ -7,6 +7,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   statSync,
   symlinkSync,
@@ -439,4 +440,38 @@ test("init prints the next steps naming the fleet charter location and the proje
     result.stdout,
   );
   assert.match(result.stdout, /^next: in the project repository run tiphys init --project <repo>$/m);
+});
+
+test("the captured rev-parse contract init --project parses is reproduced live", (t) => {
+  /* init --project decides "is this the top level of a git work tree" from
+     git's own output. The capture below is a real run; this test re-runs each
+     block and requires the live stdout and exit to equal the recorded ones, so
+     the refusal tests above rest on git's behaviour rather than on strings
+     chosen to match the implementation. */
+  const capture = readFileSync(kernelFile("witness/captures/init-project-rev-parse-toplevel.txt"), "utf8");
+  const blocks = new Map<string, { stdout: string; exit: number }>();
+  for (const chunk of capture.split(/^## /m).slice(1)) {
+    const [label, ...lines] = chunk.split("\n");
+    const stdout = lines.find((line) => line.startsWith("stdout:"));
+    const exit = lines.find((line) => line.startsWith("exit="));
+    assert.ok(stdout !== undefined && exit !== undefined, `capture block ${label} is incomplete`);
+    blocks.set(label as string, { stdout: stdout.slice("stdout:".length).trim(), exit: Number(exit.slice(5)) });
+  }
+  const scratch = realpathSync(makeTempDir(t));
+  mkdirSync(join(scratch, "plain"));
+  mkdirSync(join(scratch, "project"));
+  assert.equal(gitIn(join(scratch, "project"), ["init", "--quiet", "--initial-branch=main"]).status, 0);
+  mkdirSync(join(scratch, "project", "packages"));
+  const dirs: Record<string, string> = {
+    "repository root": join(scratch, "project"),
+    "subdirectory of a repository": join(scratch, "project", "packages"),
+    "directory outside any repository": join(scratch, "plain"),
+  };
+  assert.deepEqual([...blocks.keys()].sort(), Object.keys(dirs).sort(), "the capture's blocks changed");
+  for (const [label, dir] of Object.entries(dirs)) {
+    const live = gitIn(dir, ["rev-parse", "--show-toplevel"]);
+    const recorded = blocks.get(label) as { stdout: string; exit: number };
+    assert.equal(live.status, recorded.exit, `${label}: exit`);
+    assert.equal(live.stdout.trim().split(scratch).join("<scratch>"), recorded.stdout, `${label}: stdout`);
+  }
 });

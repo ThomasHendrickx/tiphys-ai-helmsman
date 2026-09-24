@@ -27,7 +27,9 @@
     "witness/init-project-reports-project-documents.json",
     "witness/init-project-refuses-non-repo.json",
     "witness/gate-registry-template-project-owned.json",
-    "witness/init-prints-next-steps.json"
+    "witness/init-prints-next-steps.json",
+    "witness/init-project-rev-parse-contract-reproduced.json",
+    "witness/captures/init-project-rev-parse-toplevel.txt"
   ],
   "declaredExtras": [
     "test/behaviors.json",

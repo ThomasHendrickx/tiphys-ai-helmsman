@@ -1379,5 +1379,6 @@
   "init-project-reports-project-documents": "init --project reports the project charter and gate registry and never writes them",
   "init-project-refuses-non-repo": "init --project refuses a directory that is not the top level of a git work tree",
   "gate-registry-template-project-owned": "the shipped gate registry template validates and names no kernel command",
-  "init-prints-next-steps": "init prints the next steps naming the fleet charter location and the project arm"
+  "init-prints-next-steps": "init prints the next steps naming the fleet charter location and the project arm",
+  "init-project-rev-parse-contract-reproduced": "the captured rev-parse contract init --project parses is reproduced live"
 }
