@@ -38,7 +38,10 @@ the merge gate rather than not-applicable.
 - Kernel 0.2.1, old history validates again and content is version-stamped
   (DR-0053, DR-0054, DR-0055): PR #216, in fix round 1 after its first two
   reviews.
-- M5-P1, pulse value proof: `claude/m5-p1-pulse-value-proof`, waiting on A-14.
+- M5-P1, pulse value proof: `claude/m5-p1-pulse-value-proof`. A-14 is done:
+  pulse M3-P4 merged on kernel 0.2.0 as pulse PR #22, pulse `main` `b7036d7`.
+  The exit-test evidence is filled on the branch and not yet reviewed; three
+  of its rows fail the rule written for them in advance.
 - M5-P6, scale-out proof: `claude/m5-p6-scale-out-proof`, wave D.
 
 ### Owner decisions open
@@ -48,11 +51,6 @@ the merge gate rather than not-applicable.
 
 ### Owner actions open
 
-- A-14: restart pulse and bump pulse-fleet to kernel 0.2.0. Its register
-  entry was allocated on the M5-P1 branch and reaches this register when that
-  phase merges; it is not yet on `main`. The owner reports pulse is running a
-  real phase on 0.2.0, not yet pushed; pulse `main` was still d4e491b at
-  19:40 UTC.
 - A-15: tag and release v0.2.0. The tag was still absent at 17:03 UTC.
 - A-10: fleet default branch and six probe branches.
 - A-9 and A-8: scratch and superseded branches on this repository. Both were
@@ -124,33 +122,33 @@ The full runnable text of every open action is in the register below.
   six branches and altered its default branch. Same constraint as A-9: ref
   deletion is refused here.
 
-- **A-14: REBOOT THE PULSE PILOT SESSION, SO IT RUNS ITS NEXT PHASE ON THE
-  KERNEL.** Opened 2026-09-23 by M5-P1. OPEN, not yet done.
+- **A-14: DONE (owner, 2026-09-23; observed read-only by M5-P1 on 2026-09-24).
+  REBOOT THE PULSE PILOT SESSION, SO IT RUNS ITS NEXT PHASE ON THE KERNEL.**
+  Opened 2026-09-23 by M5-P1. The owner restarted the `pulse` session, and it
+  ran pulse phase M3-P4 through to a merge. Ids A-11 to A-13 stay skipped:
+  those strings appear in history as fixture row labels.
 
-  What the owner does: start the `pulse` delivery session again, the way the
-  owner offered in DR-0042. That session then runs one bounded `pulse` phase
-  through to a merged pull request and a verified deploy. This orchestrator
-  does not start it and does not write to `pulse` (DR-0037).
+  What was observed, all read-only (DR-0037 held; nothing was pushed to
+  either pilot repository):
 
-  Why: the M4 exit test needs the pilot's next phase merged and
-  deploy-verified on v1 (delivery/plan/kernel-plan-v1.md:368). M5-P1 cannot
-  finish without it. The trigger's four arms are satisfied; this is the step
-  after them.
+  - pulse `main` moved from `d4e491b` to `b7036d7`, the merge of pulse pull
+    request #22 (`GET /repos/ThomasHendrickx/pulse/pulls/22`, HTTP 200,
+    merged 2026-09-23T22:18:50Z, head `ec51961`).
+  - pulse pins `"@tiphys/kernel": "0.2.0"` at that head, and its lock's
+    integrity equals `npm view @tiphys/kernel@0.2.0 dist.integrity`.
+  - Vercel reports a `Production` deployment of `b7036d7` with status
+    `success`.
 
-  How the orchestrator checks it, read-only: `git ls-remote` on `pulse` or
-  `pulse-fleet` shows a `main` other than `d4e491b` or `7656f67`, then the
-  pilot's own pushed evidence names the phase, its reviewed head, the merged
-  pull request, the post-merge push run and the deploy verification. The rows
-  are fixed in advance at delivery/verification/m4-exit-test-pulse.md:1.
+  What was NOT observed, and is not claimed:
 
-  Checked before opening: no reboot is recorded anywhere, and neither pilot
-  head has moved since 2026-09-16 (both last committed 2026-08-29). Ids A-11
-  to A-13 were skipped because those strings already appear in history as
-  fixture row labels.
-
-  **Settle before asking the owner:** which kernel release the pilot should
-  run. Only `@tiphys/kernel` 0.1.0 is published, from 2026-08-15, which is
-  before M4. That question is open in the evidence document named above.
+  - `pulse-fleet` has not moved. Its `main` is still `7656f67` and it still
+    pins `@tiphys/kernel` 0.1.0, so no pushed bump of `pulse-fleet` is
+    visible. An unpushed local bump would leave no trace this side can read.
+  - Three exit-test rows fail the rule written for them before the result
+    was known: the merged head is not the reviewed head, pulse has no CI
+    workflow and so no post-merge push run, and its charter's release
+    verification is still `reserved`. The rows, with the commands, are at
+    delivery/verification/m4-exit-test-pulse.md:180.
 
 **This section is the sole allocator of `A-n` ids** (CLAUDE.md identifier
 schemes). An `A-n` is an ACT the owner must perform because it needs access an
@@ -560,7 +558,9 @@ full closure block, with the six HIGH defects the sweep's fix round fixed, is at
 **The M4 exit test did not run.** Its criterion at
 delivery/plan/kernel-plan-v1.md:366 is the pilot's next phase merged and
 deploy-verified entirely on v1. DR-0041 keeps it bound to the pilot, and DR-0042
-permits reading the pilot and rebooting it. M5-P1 carries it; it waits on A-14.
+permits reading the pilot and rebooting it. M5-P1 carries it. A-14 is done, and
+the observed result, with the rows that do not meet their rule, is at
+delivery/verification/m4-exit-test-pulse.md:180.
 
 ### Residue, carried deliberately rather than lost
 

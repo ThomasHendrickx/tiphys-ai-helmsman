@@ -841,11 +841,11 @@ const MIN_RULE_WORDS = 6;
 const MIN_ACTION_WORDS = 25;
 const DIET_BASELINE = "6dc5b06";
 /**
- * Open owner actions whose register item is not on this branch, BY ID. A-14
- * was allocated on claude/m5-p1-pulse-value-proof and reaches the register
- * when that phase merges. A phrase in the bullet exempts nothing.
+ * Open owner actions whose register item is not on this branch, BY ID. Empty
+ * since M5-P1 landed A-14's register item and closed it. A phrase in the
+ * bullet exempts nothing.
  */
-const OPEN_ACTION_EXEMPT = ["A-14"];
+const OPEN_ACTION_EXEMPT: readonly string[] = [];
 /**
  * The disclaimer tripwire. Broad on purpose: a false hit costs one reviewed
  * acknowledgement, a miss costs a rule. It is still a word list, so it is a
@@ -2010,7 +2010,11 @@ test("the open-action exemption is an id list, so a bullet's wording exempts not
     .replace(/^- A-15: .*$/m, "- A-15: tag and release v0.2.0. The tag is not yet on `main`.");
   assert.ok(reworded.includes("The tag is not yet on `main`."));
   assert.ok(openActionFindings(reworded).includes("open owner action A-15 has no register item"));
-  // Member B: the exempt id itself is exempt only while it is on the list.
+  // Member B: an id is exempt only while it is on the list. The same cut
+  // (A-15's item deleted, its open bullet untouched) is refused with an empty
+  // list and passes only with A-15 named on it.
+  const cut = [...lines.slice(0, a), ...lines.slice(b)].join("\n");
   assert.deepEqual(openActionFindings(now), []);
-  assert.ok(openActionFindings(now, []).includes("open owner action A-14 has no register item"));
+  assert.ok(openActionFindings(cut, []).includes("open owner action A-15 has no register item"));
+  assert.deepEqual(openActionFindings(cut, ["A-15"]), []);
 });
