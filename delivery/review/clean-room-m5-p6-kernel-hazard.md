@@ -1009,3 +1009,10 @@ bar is a fact for the merge gate to apply, not a reason to withhold this
 review's APPROVE. Fresh verdict JSON at m5-p6-hazard.json (head
 8c17a5f469f7820de8101aca382f13e2d0212efc), validated with `node bin/tiphys.ts
 validate --type verdict`, exit 0.
+
+**Addendum, same head:** removed CR-009 from `findings[]` in m5-p6-hazard.json
+and folded its resolution into CR-KH-005's evidence instead, because the
+verdict schema has no resolution field, so listing it made check-dual-review
+read it as unresolved and redden the delegated merge; it was never this
+review's finding, DR-0059 answers it directly and holds up under re-reading,
+and the criteria reviewer already dropped it as FIXED. Re-validated, exit 0.

@@ -23,20 +23,10 @@
       "severity": "low",
       "evidence": [
         "Resolved at the decision-record level rather than in code: DR-0058 carries a 22-line Addendum (2026-09-24) naming CR-KH-005 directly and recording that I-8 and I-10 are dispositioned not-needed rather than produced by init, citing delivery/verification/m5-hemma-intake.md:244",
-        "The exit report's own section 1g repeats the same disposition and states the honest consequence: p6-charter-only is NOT MET on released kernel 0.2.1 because H-6 (assurance-modes.yaml) is still hand-placed there; it is MET by this branch's tiphys init --project only once a release ships it"
+        "The exit report's own section 1g repeats the same disposition and states the honest consequence: p6-charter-only is NOT MET on released kernel 0.2.1 because H-6 (assurance-modes.yaml) is still hand-placed there; it is MET by this branch's tiphys init --project only once a release ships it",
+        "CR-009 (the criteria review's finding that nothing recorded a decision to merge in this state, medium) is answered the same way at 8c17a5f: DR-0059 records that decision, states why closing the gap before merging is not available (a release is cut from main, and the code that closes H-6 reaches main only when this phase merges), and registers the release-plus-hemma-run follow-up in delivery/STATE.md. DR-0059 does not soften the NOT MET verdict: it restates 'NOT MET on the released kernel 0.2.1' and 'The one criterion not met is stated as not met, with its cause.' The criteria reviewer's own list drops CR-009 as FIXED at this head; not carried as a separate finding here because it was never this review's finding and the decision record it asked for now exists and holds up"
       ],
-      "concrete-fix": "No code fix owed; the addendum is the fix. The remaining gap (a released kernel producing I-8/I-10, or a documented reason they stay project-owned) is tracked as a follow-up, not a defect in this PR."
-    },
-    {
-      "id": "CR-009",
-      "severity": "medium",
-      "evidence": [
-        "Raised by the final criteria review: nothing recorded a decision to merge M5-P6 with p6-charter-only not met on released 0.2.1",
-        "Answered at 8c17a5f by DR-0059, which records the decision, states why option B (close the gap before merging) is not available (a release is cut from main, and the code that closes the gap reaches main only when this phase merges), and registers the follow-up release-then-hemma-run under delivery/STATE.md 'Kernel 0.2.1 follow-ups'",
-        "DR-0059 does not soften the NOT MET verdict: its own situation section restates 'NOT MET on the released kernel 0.2.1' and 'The one criterion not met is stated as not met, with its cause'; the STATE.md addition pairs 'met on the branch' with 'not on a release' in the same sentence rather than dropping the qualifier",
-        "The intake gains a pointer (delivery/verification/m5-hemma-intake.md:215) at section 4d directing a reader to the exit report's as-performed inventory and to DR-0059, rather than rewriting the superseded 4d verdict in place"
-      ],
-      "concrete-fix": "No further fix owed; DR-0059 is the fix. Tracked follow-up (not this PR's scope): publish a kernel release carrying init --project, run it in hemma, and show it reports the H-6 copy as present and identical, which is what would move p6-charter-only to MET."
+      "concrete-fix": "No code fix owed; the addendum and DR-0059 are the fix. The remaining gap (a released kernel producing I-8/I-10, or a documented reason they stay project-owned) is tracked as a follow-up, not a defect in this PR."
     }
   ],
   "criteria": [
