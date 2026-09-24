@@ -1020,3 +1020,146 @@ found" (none). Each is either a direct quote from source/output or
 immediately paired with the captured command and output that settles it.
 The four read-verified-not-tested items above are stated as NOT tested,
 never as "cannot be forced".
+
+## Delta re-verification at fc44f28
+
+Quick delta round, hazard contract, budgeted 20 to 30 minutes. Coordinator's
+brief: f39daae (delivery-only verdict commit, skipped) then fix round 3,
+TEST FILES ONLY. Six "no repository" test files get GIT_CEILING_DIRECTORIES
+at os.tmpdir() plus a strip of inherited GIT_DIR and friends; a new witness
+test/git-ceiling.test.ts; and, in ad33779, a rename-out helper replaces a
+recursive .git delete for a git-2.55/node-26 race. Read
+delivery/work-history/kernel-0-2-1-history-compat.md, "Fix round 3" (the
+mechanism, derivation, fix, red witness, what it did not cover) and "Stopped
+here" (the git 2.55 follow-up, explicitly deferred by the orchestrator) in
+full before attacking.
+
+### Scope confirmed
+
+  git diff --stat 281d8925f06dbb81cca16fd32d7199e600908c23 fc44f28e0cf473fecf6de6bf443fa04d0853d37b
+
+21 files changed, all under delivery/review, delivery/work-history,
+test/behaviors.json, test/, and witness/. No src/, schemas/, roles/, bin/ or
+tuition/ path in the list. Confirmed exactly as claimed.
+
+### Hazard question 1: can the module-load env change leak into or mask kernel
+production behavior?
+
+No. Read directly: the GIT_CEILING_DIRECTORIES/strip block lives at the top
+of the six TEST files (test/dual-review.test.ts:55-76 read directly, matches
+the work history's own line citations exactly), never in src/, bin/, or a
+script the kernel ships. Node's test runner gives each test FILE its own
+process (already established in fix round 3's own derivation and consistent
+with everything observed this round), so the mutation does not even leak
+between sibling test files in the same suite run, let alone into a
+consumer's production use of the kernel. Confirmed by the diff-stat above:
+zero src/ lines changed.
+
+### Hazard question 2: does the ceiling hide a real kernel bug, for a
+consumer whose project sits under a directory that holds a repository?
+
+No new hazard, and none hidden. The ceiling is TEST-ONLY isolation, set
+solely so these six tests exercise a genuine "no repository anywhere in
+range" state rather than accidentally reading whatever ancestor repository
+happens to sit above the CI runner's scratch root. It changes nothing about
+how the shipped kernel itself resolves a repository: src/checks.ts's
+resolveCorpusSource and gitIn are untouched by this round (confirmed by the
+diff-stat), so a real consumer whose project directory sits nested under a
+directory that IS a git repository gets the SAME git-discovery behavior
+after this PR as before it: ordinary upward walk, no ceiling, because the
+kernel process was never given one. That behavior (git's own discovery
+walking up to an ancestor) is a pre-existing design property of the kernel,
+not something this round introduced, changed, or concealed. This round only
+makes the TEST SUITE stop being fooled by its own scratch-directory layout;
+it does not touch, and could not touch, what a real invocation of the
+kernel does.
+
+### Hazard question 3: is the rename in ad33779 safe, no leftover scratch,
+no cross-test race?
+
+Read test/support/remove-git-directory.ts directly. The mechanism: rename
+`.git` out to a fresh mkdtemp under the caller-supplied `graveyard` (one
+atomic directory-entry move, so the directory has a COMPLETE `.git` or NONE,
+never a partial one observable mid-operation), assert with existsSync that
+the original location no longer holds `.git`, then recursively rmSync the
+MOVED copy. This closes the exact race the work history diagnoses: git
+2.55's detached maintenance child unlinks by the OLD path
+(`dir/.git/objects/maintenance.lock`); after the rename that path no longer
+exists, so the child's unlink is a silent no-op against a name nobody owns
+any more, and the recursive rmSync of the graveyard copy has no concurrent
+writer left to race.
+
+No leftover scratch: every call site passes a `graveyard` that is itself a
+per-test scratch root (test/single-family-exception.test.ts:1318 passes
+scratch(), test/resume.test.ts:367 and :442 pass makeTempDir(t)), both
+patterns already used elsewhere in the same files for directories the test
+harness cleans up; the graveyard's mkdtemp'd subdirectory is itself removed
+by the final rmSync in the same function call, so nothing survives even
+transiently past removeGitDirectory's own return. No cross-test race: each
+call receives a graveyard scoped to ITS OWN test/scratch instance (scratch()
+and makeTempDir(t) each mint a fresh directory), so two tests calling
+removeGitDirectory concurrently rename into disjoint graveyards; nothing is
+shared.
+
+One caveat, stated rather than smoothed: this review did not independently
+re-run test/remove-git-directory.test.ts's own forced-race trial outside the
+suite run below (it is covered by the run recorded there, 40 tests file-wide
+pass 0 fail), and did not attempt to force the git-2.55 race a second,
+independent time under this review's own toolchain (git 2.43.0 here, same as
+the implementer's; CI's 2.55.0 was never reproduced by either of us). The
+implementer's own work history states plainly that the unforced race was not
+reproduced (0 failures in 2,900 trials) and that whether ad33779 fixes CI's
+intermittent failure is unknown until CI itself is observed; this review
+does not go further than that and does not claim CI-level confirmation.
+
+### Hazard question 4: named tests, run and counted
+
+Toolchain: node v26.6.0, dist/ built (npm run build exit 0, git status
+clean after). Ran test/git-ceiling.test.ts plus the six changed "no
+repository" test files plus test/remove-git-directory.test.ts and
+test/resume.test.ts (the two other files ad33779 touches) in one
+node --test invocation:
+
+  node --test test/git-ceiling.test.ts test/dual-review.test.ts \
+    test/exit-test-local.test.ts test/kernel-charter.test.ts \
+    test/merge-preconditions.test.ts test/single-family-exception.test.ts \
+    test/verdict-head.test.ts test/remove-git-directory.test.ts \
+    test/resume.test.ts
+
+164 tests, 164 pass, 0 fail, 0 cancelled, 0 skipped, 0 todo.
+
+### Full suite
+
+  node --test "test/**/*.test.ts"
+
+node v26.6.0, dist/ built: 1486 tests, 1486 pass, 0 fail, 0 cancelled,
+0 skipped, 0 todo. One more than fix round 3's own reported 1485 (the
+work history's own count at ad1263a, before this round's coordinator commit
+f39daae, which the coordinator said adds one delivery-only verdict document,
+not a test), consistent with no regression introduced between 281d892 and
+fc44f28.
+
+### Verdict
+
+**APPROVE.** No findings. The scope is exactly as claimed (test-only, no
+src/ or shipped-artifact change). The env mutation is confined to test-file
+module scope and cannot reach production behavior. The ceiling does not
+mask or change any kernel-shipped discovery behavior for a real consumer;
+it only corrects the test harness's own exposure to CI's scratch-directory
+ancestry. The rename-based removal in ad33779 is read-verified safe against
+leftover scratch and cross-test interference, with one honestly stated
+limit: this round did not independently force the underlying git-2.55 race
+a second time, matching the implementer's own stated boundary. All 164
+targeted tests pass, 0 fail, 0 skipped.
+
+### Claim grep (delta section)
+
+  tr '\n' ' ' < delivery/review/clean-room-kernel-0-2-1-sonnet-hazard.md \
+    | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to'
+
+New hits in this section: "never" (x3, each describing a design property
+read directly from source, e.g. discovery behavior being untouched, or a
+per-call-site graveyard never being shared), "no leftover scratch" restates
+a finding this round's own read and the suite run support, not an untested
+assertion. The race-reproduction caveat above is stated as NOT independently
+retried, never as "cannot be forced".

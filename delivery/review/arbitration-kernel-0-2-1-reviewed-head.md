@@ -68,3 +68,26 @@ The high did not recur. Both reviewers approve 281d892.
 - The verdict commit carrying this file touches only `delivery/review/`.
 - The version stays 0.2.0 on this branch. The bump to 0.2.1 and the publish
   follow the merge (owner approved publishing 0.2.1 once green).
+
+## Addendum: reviewed head moved to fc44f28
+
+The verdict commit f39daae (which carried the section above) went red in CI
+on one suite test, test/single-family-exception.test.ts:1318, only on the
+runner. Fix round 3 is test isolation only: `git diff --stat 281d892 fc44f28`
+shows no change under src/, schemas/, roles/, bin/ or tuition/.
+
+- The six no-repository test files set GIT_CEILING_DIRECTORIES at
+  os.tmpdir() and strip inherited GIT_DIR and its relatives.
+- ad33779 removes a test repository's `.git` by rename, then delete. The
+  implementer matched both CI failures to the failing test's OWN commits:
+  a recursive delete on Node 26 left part of `.git` behind while git 2.55's
+  detached maintenance child was still removing its lock.
+- The root-cause investigation was stopped by orchestrator decision to
+  release 0.2.1. What is not known (the race was not reproduced unforced; the
+  maintenance child is inferred) is recorded in the work history as a
+  follow-up, with src/exec/env.ts:420 named as the same shape in shipped code.
+
+Both reviewers re-verified the delta 281d892..fc44f28, and the verdict JSONs
+now name fc44f28e0cf473fecf6de6bf443fa04d0853d37b.
+
+- reviewed head: fc44f28e0cf473fecf6de6bf443fa04d0853d37b

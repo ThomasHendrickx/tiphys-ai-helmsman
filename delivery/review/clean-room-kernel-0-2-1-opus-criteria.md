@@ -813,3 +813,149 @@ or record this red run in the work history as the round did for CR-005.
 - The full PR bundle and the full suite (single files and single gates only).
 - Consumers other than pulse.
 - The `error` arm through a direct check call (see above).
+
+## Delta re-verification at fc44f28
+
+Head fc44f28e0cf473fecf6de6bf443fa04d0853d37b, detached in the review
+worktree. Delta 281d892..fc44f28; f39daae (the coordinator's delivery-only
+verdict commit) skipped. Toolchain node v26.6.0 (scratch prefix), git 2.43.0,
+`dist/` built (`npm run build` exit 0). Every path below is quoted because the
+branch changes it; the one resolving citation is the merge rule this verdict
+feeds, delivery/decisions/DR-0012-delegated-merge-authority.md:23.
+
+### Scope of the delta
+
+`git diff --stat 281d892 fc44f28` touches no path under `src/`, `schemas/`,
+`roles/`, `bin/` or `tuition/`. It changes: six "no repository" test files
+(`test/dual-review.test.ts`, `test/exit-test-local.test.ts`,
+`test/kernel-charter.test.ts`, `test/merge-preconditions.test.ts`,
+`test/single-family-exception.test.ts`, `test/verdict-head.test.ts`, each
++40), `test/resume.test.ts`, three new test files
+(`test/git-ceiling.test.ts`, `test/remove-git-directory.test.ts`,
+`test/support/remove-git-directory.ts`), `test/behaviors.json` (+2 rows),
+two witness specs, two captures, and delivery paperwork.
+
+### 1. Correct and limited to test isolation: YES
+
+- Each of the six files prepends `realpath(os.tmpdir())` and `os.tmpdir()` to
+  any inherited `GIT_CEILING_DIRECTORIES` at module load, and deletes
+  inherited `GIT_DIR`, `GIT_WORK_TREE`, `GIT_COMMON_DIR`, `GIT_INDEX_FILE`,
+  `GIT_OBJECT_DIRECTORY` and `GIT_ALTERNATE_OBJECT_DIRECTORIES`.
+  `test/exit-test-local.test.ts` also puts the ceiling back into its
+  identity-less environment, which strips every `GIT_*` name. This is the
+  right mechanism: the ceiling stops discovery above tmpdir, and the strip
+  covers the one route the ceiling does not stop (an inherited `GIT_DIR`).
+- The ceiling does not hide repositories the tests stage themselves: they sit
+  BELOW tmpdir. The capture `witness/captures/kernel-0-2-1-git-ceiling.json`
+  records the three cases (no ceiling finds the ancestor, exit 0; ceiling at
+  the ancestor, exit 128 "not a git repository"; a repository below the
+  ceiling still found, exit 0), and `test/git-ceiling.test.ts` compares live
+  git with it before trusting the ceiling.
+- ad33779 replaces three recursive `rmSync` of a `.git` (two in
+  `test/resume.test.ts`, one in `test/single-family-exception.test.ts`) with
+  `removeGitDirectory`, which renames `.git` out, THROWS if a `.git` is still
+  present, then deletes the moved copy. The rename is atomic within one
+  filesystem (every caller passes a fresh temp directory as the graveyard), so a
+  concurrent unlinker inside the old tree can no longer leave a partial
+  `.git` in place.
+- No `src/` change, so no shipped behavior changed. Nothing in the kernel's
+  own git calls is touched.
+
+### 2. Did any assertion get weaker: NO
+
+I read every removed line in `test/` and `witness/` in the delta. There are
+four: the old last row of `test/behaviors.json` (re-emitted only to gain a
+trailing comma) and the three `rmSync(join(<dir>, ".git"), ...)` calls named
+above. No `assert` line, no expected string and no test was removed or
+relaxed. `test/resume.test.ts` keeps its assertion that `.git` is absent
+after removal; the helper adds a stronger, earlier check of the same
+property. The ceiling blocks make the "no repository" arms test what they
+claim; they do not widen what those arms accept, because a staged repository
+below tmpdir is still discovered (capture probe 3).
+
+### 3. Is the witness honest: YES, with two notes
+
+Red-witness gate at this head, run by me (single gate, not the bundle):
+
+```
+node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --only red-witness \
+  --evidence <scratch>/rv5-ev-rw --base origin/main --head HEAD --phase claude/kernel-0-2-1-history-compat
+gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0
+gates: red-witness: green: 115 witness(es) evaluated (24 own, 91 stored re-evaluated in 912944ms); every witness red against every declared dangerous state and green at head
+exit=0
+```
+
+115 and 24 own, against the work history's 114 and 23 at 485aef5: the extra
+one is the ad33779 witness, which the work history says was NOT put through
+the gate (the orchestrator asked to skip it). It is now gated, and green.
+Per-member runs from `witness-records.json`:
+
+| witness | member | mutated file | runs (exit, red) | head |
+|---|---|---|---|---|
+| no-repository-arms-ceiling | m0 ceiling off | single-family-exception | 1 red, 1 red | 0 green |
+| no-repository-arms-ceiling | m1 ceiling off | dual-review | 1 red, 1 red | 0 green |
+| no-repository-arms-ceiling | m2 ceiling off | exit-test-local | 1 red, 1 red | 0 green |
+| no-repository-arms-ceiling | m3 strip off | dual-review | 1 red, 1 red | 0 green |
+| removed-git-renamed-out | m0 rename to rmSync | support helper | 1 red x3 | 0 green |
+| removed-git-renamed-out | m1 same, no check | support helper | 1 red x3 | 0 green |
+
+- The ceiling witness has structurally different members: three victim
+  shapes (a removed `.git`, a never-a-repository context, a `GIT_*`-stripping
+  environment) and a second route (inherited `GIT_DIR`). That meets "one
+  witness is not a class".
+- Note A: the two `removed-git-renamed-out` members are close relatives (the
+  second only also drops the existence check). This witness guards one helper,
+  not a class, so I do not raise it as a finding.
+- Note B: the control arm of `test/remove-git-directory.test.ts` asserts that
+  a bare recursive `rmSync` leaves a `.git` at least once in 24 forced trials
+  on node 26 or later. That is probabilistic. Measured here, six runs:
+  6, 8, 8, 9, 10 and 10 of 24 left. At about one in three per trial, zero in
+  24 is roughly 1 in 10,000 per run on this box. The rate on a CI runner is
+  not measured. Not a finding; worth watching if it ever reds alone.
+- The captures look real: `kernel-0-2-1-git-ceiling.json` is git 2.43.0
+  output with its lab path redacted as `<lab>`, and the strace capture shows
+  the commit's pid exiting at .552018 and a different pid unlinking
+  `maintenance.lock` at .554315, with the redaction stated in its header. The
+  test reads both files, so a hand-edited capture would change what it
+  asserts.
+- The follow-up is recorded honestly. The work history (section "Fix round
+  3" and its "Stopped here" note) says: the CI ancestor repository was NOT
+  found; the unforced race was not reproduced (0 in 2,900 trials); it is NOT
+  known whether ad33779 fixes the CI failure seen with git 2.55; the same
+  `rmSync` shape in `src/exec/env.ts` was not checked; and one unexplained
+  flake occurred in `test/implementer-brief.test.ts`. None of these is
+  overstated.
+
+### 4. Counts
+
+```
+node --test test/git-ceiling.test.ts test/remove-git-directory.test.ts test/dual-review.test.ts \
+  test/exit-test-local.test.ts test/kernel-charter.test.ts test/merge-preconditions.test.ts \
+  test/single-family-exception.test.ts test/verdict-head.test.ts test/resume.test.ts
+rc=0
+tests 164 pass 164 fail 0 cancelled 0 skipped 0
+```
+
+The count line is the six reporter summary lines joined. Each began with
+U+2139, removed (6 removals, nothing else changed). `rc=` and `exit=` are my
+own echo of the exit status.
+
+Then `test/remove-git-directory.test.ts` alone five more times: rc=0 each.
+`git status --short` afterwards showed only my review file.
+
+### Findings
+
+- CR-008 (low) from 281d892 is unchanged by this delta and stays open.
+- No new finding.
+
+### Verdict at fc44f28: APPROVE
+
+No high or medium finding. The delta is test isolation only, no assertion is
+weaker, and both new witnesses redden on every declared member and pass at
+head through the gate.
+
+### Not covered
+
+- The full PR bundle and the full suite (single files and one gate only).
+- CI behavior with git 2.55: not reproducible here (git 2.43.0 locally).
+- `src/exec/env.ts` and its `rmSync` shape (outside this delta).

@@ -1,7 +1,7 @@
 {
   "kind": "verdict",
   "phase": "claude/kernel-0-2-1-history-compat",
-  "head": "281d8925f06dbb81cca16fd32d7199e600908c23",
+  "head": "fc44f28e0cf473fecf6de6bf443fa04d0853d37b",
   "tiphys-version": "0.2.0",
   "verdict": "APPROVE",
   "produced-by": "claude-opus-5-5",
@@ -24,7 +24,7 @@
       "id": "1",
       "quote": "Pulse's 49 real verdicts must validate with no INVALID line and exit 0, except genuinely malformed ones, which must each carry a stated reason.",
       "evidence": [
-        "At 281d892: 42 of 49 no INVALID and exit 0; 7 INVALID and exit 1, the same seven kind: finding files. Zero #/head INVALID lines: the head-required rule prints HISTORY for unstamped history."
+        "At 281d892 (the delta to fc44f28 changes no src, schemas, roles, bin or tuition path): 42 of 49 no INVALID and exit 0; 7 INVALID and exit 1, the same seven kind: finding files. Zero #/head INVALID lines: the head-required rule prints HISTORY for unstamped history."
       ],
       "met": true
     },
@@ -85,13 +85,20 @@
       "quote": "Every new behavior has a red witness.",
       "evidence": [
         "24 changed rows resolve by name, none removed. The provenance witness has three structurally different members (comparison dropped, provenance never established, base read at the wrong revision).",
-        "Red-witness gate at 281d892, local: green, 113 witness(es) evaluated (22 own, 91 stored), every witness red against every declared dangerous state and green at head, exit 0.",
-        "validate-verdict-head-required-from-0-2-0 has no spec (CR-008); its test reddens under two reviewer mutations."
+        "red-witness gate at fc44f28e0cf473fecf6de6bf443fa04d0853d37b (node v26.6.0, --only red-witness, --base origin/main): exit 0, green, 115 witnesses evaluated (24 own, 91 stored), zero red, zero error, zero vacuous.",
+        "validate-verdict-head-required-from-0-2-0 has no spec (CR-008); its test reddens under two reviewer mutations.",
+        "Delta to fc44f28 (fix round 3, test files only): witness kernel-0-2-1-no-repository-arms-ceiling has four members (ceiling removed in three structurally different victim files, GIT_* strip removed) and kernel-0-2-1-removed-git-renamed-out two; every member run red, head green, per witness-records.json.",
+        "node --test on git-ceiling, remove-git-directory, the six changed no-repository files and resume: rc 0, 164 tests 164 pass 0 fail 0 skipped (v26.6.0, dist built). No assertion removed or relaxed in the delta."
       ],
       "met": true
     }
   ],
   "deviations-judged": [
+    {
+      "deviation": "Fix round 3 sets GIT_CEILING_DIRECTORIES at os.tmpdir() and strips inherited GIT_DIR and friends in six test files, and removes a .git by rename instead of a recursive rmSync.",
+      "serves-plan-intent": true,
+      "reasoning": "Test isolation only, no shipped path changed. Repositories staged below tmpdir are still discovered (capture probe 3). The CI ancestor and the git 2.55 race are recorded as unresolved in the work history, not claimed fixed."
+    },
     {
       "deviation": "A head-less same-phase sibling is history only if its blob at the audited commit equals its blob at the merge base; one the change adds or changes is refused (fix round 2, orchestrator design).",
       "serves-plan-intent": true,
