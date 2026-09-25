@@ -9,7 +9,7 @@
     {
       "kind": "mutation",
       "file": "templates/final-report.example.yaml",
-      "find": "tiphys-version: 0.2.1\n",
+      "find": "tiphys-version: 0.2.2\n",
       "replace": "tiphys-version: 0.1.0\n"
     },
     {
