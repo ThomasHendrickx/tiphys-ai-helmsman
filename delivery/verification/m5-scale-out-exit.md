@@ -466,6 +466,22 @@ and withdrawn before push when `tiphys resume` was found to produce them (F-2,
 and the step 3a work history). The id stays retired and is not reused. H-6 is
 the one hand-placed kernel item (CR-B-006 c).
 
+**Update 2026-09-25: p6-charter-only is MET on released kernel 0.2.2.** The
+owner approved the release; kernel 0.2.2 was published by release run
+36105882477 from main 7f7d15e (PR #224). In a fresh clone of hemma at main
+5bf2e57, with `@tiphys/kernel@0.2.2` installed from npm into a separate
+directory, `tiphys init --project .` exited 0 and printed, verbatim:
+
+```
+present assurance-modes.yaml: identical to kernel 0.2.2's copy
+project charter.yaml: present
+project gate-registry.yaml: present
+```
+
+`git status --short` in that clone printed nothing afterwards, so the command
+changed nothing in hemma. The file placed by hand (H-6) is exactly what the
+released command produces. The verdict below, as first written, is kept.
+
 **Verdict on p6-charter-only: NOT MET on released kernel 0.2.1.** The
 criterion requires that no kernel-specific configuration beyond the charter
 and project-owned predicates was hand-added. H-6, `assurance-modes.yaml`
@@ -1024,7 +1040,7 @@ breach, or the reverse.
 | criterion | verdict | evidence |
 |---|---|---|
 | p6-prepass | MET | the kernel half, APPROVED by both clean-room reviews at `45a0d54` (delivery/review/clean-room-m5-p6-kernel-criteria.md:360 and delivery/review/clean-room-m5-p6-kernel-hazard.md:775); used for real on hemma's declarations (1c, corrected run) |
-| p6-charter-only | **NOT MET on released 0.2.1**, because of H-6. MET by this branch's `tiphys init --project` once a release carries it; that release is a follow-up | 1g |
+| p6-charter-only | **MET on released 0.2.2** (2026-09-25, release run 36105882477; `init --project` reports the H-6 copy identical). Was NOT MET on released 0.2.1, because of H-6 | 1g |
 | p6-parallel-value | MET | section 2 |
 | p6-attribution | MET | section 3, 30 rows, each with its class and what establishes it |
 | p6-suite | MET: `npm run build` exit 0, `npm test` exit 0, 1512 tests, 1512 pass, 0 skipped, node v26.6.0 | 4a |
