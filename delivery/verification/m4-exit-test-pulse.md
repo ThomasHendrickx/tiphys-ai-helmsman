@@ -2,7 +2,15 @@
 
 - date opened: 2026-09-23
 - phase: M5-P1 (delivery/plan/value-delivery-plan.yaml:27)
-- status: **NOT DISCHARGED.** Re-run 2026-09-24 against pulse M3-P5 (pulse
+- status: **DISCHARGED (2026-09-25)**, by owner decision on row 5,
+  delivery/decisions/DR-0060-pulse-ci-push-run-counts-as-the-m4-deploy-verification.md:1.
+  Rows 1 to 4 were met on 2026-09-24 against pulse M3-P5. Row 5, deploy
+  verification, was NOT MET as written; the owner accepted pulse's post-merge
+  CI push run at `1796ff8` (run 36035853808, fast gate plus Playwright, both
+  success) as the deploy verification. DR-0060 does not decide pulse DR-0014
+  and does not claim a run against the deployed site. The NOT MET analysis
+  below is kept as the record of why the decision was needed.
+- status before DR-0060 (2026-09-24): **NOT DISCHARGED.** Re-run 2026-09-24 against pulse M3-P5 (pulse
   PR #25, Part 3). Four of the five pre-written rules are now met, including
   the two PR #22 failed on the merged head and the push run. ONE row still
   fails: **deploy verification**. Pulse's charter still declares
@@ -481,7 +489,18 @@ result" in Part 2, unchanged.
    `pull_request` run, 36028645734, success on both gates. That is a
    different event and is not offered as the push run.
 
-5. **Deploy verification from the pilot's own pushed evidence: NOT MET.**
+5. **Deploy verification from the pilot's own pushed evidence: NOT MET as
+   written (2026-09-24); MET by owner decision DR-0060 (2026-09-25).**
+
+   Added 2026-09-25: the owner accepted pulse's post-merge CI push run at
+   `1796ff8`, run 36035853808 (fast gate plus the Playwright slow gate, both
+   success), as this row's deploy verification: it is pulse's own named
+   candidate, run green on a commit whose code equals the merged `35d2e55`.
+   The decision is
+   delivery/decisions/DR-0060-pulse-ci-push-run-counts-as-the-m4-deploy-verification.md:1.
+   It relaxes the rule's "pushed files" wording, it does not decide pulse
+   DR-0014, and it does not verify the deployed site. The analysis below, as
+   written on 2026-09-24, is unchanged and is why the decision was needed.
 
    What exists:
    - Vercel production deployments of both merges, each with deployment
@@ -546,9 +565,17 @@ Registering it is the orchestrator's call, since the register allocates.
 | 2 ran on v1 | met (0.2.0) | met (0.2.1) |
 | 3 reviewed head equals merged head | NOT MET | **met** (`98fbadc`, trees equal) |
 | 4 post-merge push run | NOT MET (no CI) | **met** by T-009's cancelled-run discharge (`1796ff8` run 36035853808 success; the `35d2e55` run was cancelled by it) |
-| 5 deploy verification | NOT MET | **NOT MET** (charter `reserved`, no pushed record) |
+| 5 deploy verification | NOT MET | NOT MET as written (charter `reserved`, no pushed record); **met by owner decision DR-0060** (2026-09-25), accepting the `1796ff8` push run 36035853808 |
 
-**M4 exit verdict: NOT DISCHARGED**, on row 5 alone. Criterion p1-value
+**M4 exit verdict, 2026-09-25: DISCHARGED**, by owner decision DR-0060 on
+row 5. Residue, kept listed: both round-two verdicts are one model family
+(pulse DR-0003, not this repository's DR-0012); the verdicts were committed 37
+seconds after the merge, so their precedence is the pilot's claim, not an
+observation; the push run at `35d2e55` was cancelled and row 4 rests on
+T-009's discharge; row 5 is a CI run against a local stack, not a verification
+of the deployed site.
+
+**M4 exit verdict as first written, 2026-09-24: NOT DISCHARGED**, on row 5 alone. Criterion p1-value
 (delivery/plan/value-delivery-plan.yaml:73) asks the document to name one
 pulse phase, its reviewed head, merged pull request, post-merge push run and
 deploy verification. For M3-P5 it now names the first four, each tied to an
