@@ -1,0 +1,79 @@
+{
+  "kind": "verdict",
+  "phase": "claude/kernel-0-2-2-release-bump",
+  "head": "43ecd8386cf97c5b458d0fe7827f3f0e90665a5e",
+  "tiphys-version": "0.2.1",
+  "verdict": "APPROVE",
+  "produced-by": "claude-fable-5-1",
+  "framing": "hazard-attack",
+  "review-contract": "hazard",
+  "hazard-classes-addressed": [
+    {
+      "class-id": "delta-is-exactly-the-version-bump",
+      "probed": "git diff --stat origin/main...e48499bc4b9f654cc43537feb38690931dee15bb, then read every hunk; compared the file set and hunk shape against the 0.2.1 bump (2c49ab3, PR #218).",
+      "cleared-because": "One commit, five files, 7 insertions, 7 deletions, all version strings: package.json, plugin/package.json, templates/final-report.example.yaml, package-lock.json (root version, root package version, plugin devDependency pin) and witness/kernel-0-2-1-final-report-template-stamped.json (mutation find string). Identical file set and hunk shape to the 0.2.1 bump."
+    },
+    {
+      "class-id": "build-and-suite-green-with-clean-tree",
+      "probed": "Scratch worktree of the head, node v26.6.0: npm ci, npm run build, git status --porcelain, npm test.",
+      "cleared-because": "npm ci exit 0, npm run build exit 0, git status --porcelain after build printed 0 lines (plan decision D-17), npm test: 1512 tests, 1512 pass, 0 fail, 0 skipped, exit 0. Matches the orchestrator's report."
+    },
+    {
+      "class-id": "packed-artifact-matches-release-listing-check",
+      "probed": "node bin/tiphys.ts version; npm pack --dry-run --json on the head; replayed the release.yml listing check against the entry list.",
+      "cleared-because": "tiphys version prints 0.2.2. npm pack --dry-run reports name @tiphys/kernel, version 0.2.2, filename tiphys-kernel-0.2.2.tgz, 214 entries. Required entries LICENSE, AGENTS.md, gate-registry.yaml, assurance-modes.yaml, role-model-config.yaml all present; forbidden trees delivery/, test/, sandbox/, src/, scripts/, witness/ all absent."
+    },
+    {
+      "class-id": "production-dependencies-unchanged",
+      "probed": "Compared package.json dependencies on origin/main and the head; read every changed line of package-lock.json.",
+      "cleared-because": "dependencies identical on both sides ({ajv 8.20.0, commonmark 0.31.2, yaml 2.9.0}). package-lock.json changes only the three self-version lines: root version, root package version, and the plugin devDependency pin, each 0.2.1 -> 0.2.2."
+    },
+    {
+      "class-id": "release-workflow-cannot-refuse-a-0-2-2-dispatch",
+      "probed": "Read release.yml (workflow_dispatch only): the version-agreement guard at step \"Decide whether this dispatch publishes\" and the tag job's existing-tag refusal; git ls-remote --tags origin; git ls-tree grep for change/release/version filenames.",
+      "cleared-because": "The guard compares inputs.version to package.json, which reads 0.2.2. The tag job refuses only if v0.2.2 exists locally or on the remote; git ls-remote --tags origin lists v0.1.0 and v0.2.1 only, so v0.2.2 is free. No step reads a changelog or release-notes file, and no file in the tree lists released versions (ls-tree grep: no hits)."
+    },
+    {
+      "class-id": "stored-witness-still-applies-after-the-bump",
+      "probed": "node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --only red-witness --base origin/main --head HEAD on the head, node v26.6.0; read the stored witness's find string against templates/final-report.example.yaml on the head.",
+      "finding": "CR-001"
+    },
+    {
+      "class-id": "no-stale-0-2-1-version-check-remains",
+      "probed": "grep for the literal string 0.2.1 across the head outside delivery/, and read each hit; read plugin/package.json peerDependencies.",
+      "cleared-because": "Every remaining 0.2.1 literal outside delivery/ is historical prose in schema $comment fields, src/, scripts/ and test/ describing what changed in kernel 0.2.1. None is a version check. plugin/package.json peerDependency ^0.2.0 admits 0.2.2."
+    },
+    {
+      "class-id": "merge-of-main-adds-nothing-outside-delivery-beyond-main-itself",
+      "probed": "git diff --stat e48499b 43ecd83 (16 files, 2464 insertions, 26 deletions); for every changed path compared the 43ecd83 blob id against 0e29760 (origin/main) or 2283ff4 (the verdict commit); compared the branch delta hunks of test/retirement-inventory.test.ts against git diff 9813a86 0e29760 for that path; compared the five bumped file blobs at e48499b and 43ecd83; git grep for conflict markers at 43ecd83; git status --porcelain; node --test test/retirement-inventory.test.ts on node v26.6.0 with dist built.",
+      "cleared-because": "The only non-delivery path in the delta is test/retirement-inventory.test.ts and its blob at 43ecd83 equals the origin/main blob at 0e29760 with hunks identical to the main-side diff 9813a86..0e29760. Every other delta path is either a byte-identical origin/main blob (10 M5-P1 paperwork files) or a byte-identical 2283ff4 blob (the 5 release-bump review files). All five bumped files (package.json, plugin/package.json, package-lock.json, templates/final-report.example.yaml, witness/kernel-0-2-1-final-report-template-stamped.json) have the same blob id at e48499b and 43ecd83. Conflict-marker grep exit 1 (no hits), git status --porcelain 0 lines, 43ecd83 is a two-parent merge of 2283ff4 and 0e29760. node --test test/retirement-inventory.test.ts: 56 tests, 56 pass, 0 fail, 0 skipped, exit 0."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "release-bump-nothing-fails-dispatch-or-ships-wrong-artifact",
+      "quote": "Nothing found that could make release.yml fail on a 0.2.2 dispatch or ship a wrong artifact.",
+      "evidence": [
+        "tiphys version prints 0.2.2; npm pack --dry-run --json: @tiphys/kernel 0.2.2, tiphys-kernel-0.2.2.tgz, 214 entries, release.yml listing check replayed with no problems",
+        "release.yml version-agreement guard reads package.json 0.2.2; git ls-remote --tags origin shows v0.1.0 and v0.2.1 only, so the tag job's refusal does not fire for v0.2.2",
+        "red-witness gate on the head against origin/main: green, 4 witnesses evaluated (1 own, 3 stored re-evaluated), vacuous false, every witness red against every dangerous state and green at head",
+        "Delta re-verification at 43ecd83: the merge of origin/main (0e29760) changes only delivery/ files and test/retirement-inventory.test.ts, each byte-identical to its origin/main blob; the five bumped files carry the same blob ids as at e48499b; no conflict markers; node --test test/retirement-inventory.test.ts 56 pass, 0 fail, 0 skipped, exit 0 on node v26.6.0"
+      ],
+      "met": true
+    }
+  ],
+  "findings": [
+    {
+      "id": "CR-001",
+      "severity": "low",
+      "evidence": [
+        "witness/kernel-0-2-1-final-report-template-stamped.json line 12 on the head: \"find\": \"tiphys-version: 0.2.2\\n\", while the filename still says 0-2-1",
+        "templates/final-report.example.yaml line 15 on the head reads tiphys-version: 0.2.2, so the find string matches and the mutation applies",
+        "red-witness gate result on the head: status green, units 4, vacuous false, applicable true; without the find update the mutation would not apply and the witness would go vacuous"
+      ],
+      "concrete-fix": "Optional housekeeping for a later phase, not owed by this bump: rename the stored witness to a version-neutral name (for example witness/kernel-final-report-template-stamped.json) so the filename stops naming a version its find string no longer carries.",
+      "analysis": "Informational. Functionally correct: the gate is green and non-vacuous, and this is the same shape the 0.2.1 bump (#218) shipped. No release hazard."
+    }
+  ],
+  "deviations-judged": []
+}

@@ -1,0 +1,73 @@
+{
+  "kind": "verdict",
+  "phase": "claude/kernel-0-2-2-release-bump",
+  "head": "43ecd8386cf97c5b458d0fe7827f3f0e90665a5e",
+  "tiphys-version": "0.2.1",
+  "verdict": "APPROVE",
+  "produced-by": "claude-sonnet-5",
+  "framing": "criteria-contract",
+  "review-contract": "criteria",
+  "findings": [],
+  "criteria": [
+    {
+      "id": "1",
+      "quote": "the diff is a byte-for-byte structural match to the #218 bump shape",
+      "evidence": [
+        "Non-delivery files changed, identical set to #218's shape: package.json, package-lock.json, plugin/package.json, templates/final-report.example.yaml, witness/kernel-0-2-1-final-report-template-stamped.json",
+        "Scope compared against the #218 shape via diff 2c49ab3^1 2c49ab3 -- ':!delivery'",
+        "Lockfile diff touches only the version fields shown above (root name/version block and the plugin workspace's devDependency pin); no dependency graph changes"
+      ],
+      "met": true
+    },
+    {
+      "id": "2",
+      "quote": "every 0.2.1 version-metadata site is bumped, no unrelated file is touched",
+      "evidence": [
+        "package.json: version 0.2.1 -> 0.2.2",
+        "package-lock.json: root name/version and plugin devDependency pin, both 0.2.1 -> 0.2.2",
+        "plugin/package.json: devDependency @tiphys/kernel 0.2.1 -> 0.2.2",
+        "templates/final-report.example.yaml: tiphys-version: 0.2.1 -> 0.2.2",
+        "witness/kernel-0-2-1-final-report-template-stamped.json: the mutation find target updated 0.2.1 -> 0.2.2 (filename itself is historical and was never renamed at the 0.2.1 bump either, per #218's own diff of the same file: same pattern, not a regression)"
+      ],
+      "met": true
+    },
+    {
+      "id": "3",
+      "quote": "None of these are version-metadata sites; they are correctly left alone, same as prior bumps leave prior-version history comments in place",
+      "evidence": [
+        "git grep '0.2.1' across the branch tree (excluding delivery/) returns only narrative/doc comments in src/, test/, schemas/, scripts/, witness/captures/ that describe what changed AT kernel 0.2.1 (DR-0053/0054/0055 fix-round history, RULES_SINCE commentary)"
+      ],
+      "met": true
+    },
+    {
+      "id": "4",
+      "quote": "init --project is present on main so the release carries it",
+      "evidence": [
+        "src/commands/init.ts on main at the merge base carries the --project arm (PROJECT_FLAG = \"--project\", initProject, DR-0058/M5-P6), confirmed at lines 101-359 of that file at origin/main"
+      ],
+      "met": true
+    },
+    {
+      "id": "5",
+      "quote": "Orchestrator-reported test evidence: npm test on node v26, 1512 pass, 0 skipped",
+      "evidence": [
+        "npm test on node v26 (PATH=.../node-v26.6.0-linux-x64/bin:$PATH), 1512 pass, 0 skipped",
+        "Not independently re-run in this fast review; taken as reported per the 15-minute budget for this pass"
+      ],
+      "met": true
+    },
+    {
+      "id": "6",
+      "quote": "delta re-verification at 43ecd83: merge of origin/main (0e29760, M5-P1) plus the delivery-only verdict commit 2283ff4 changes nothing outside delivery/ beyond what main itself carries",
+      "evidence": [
+        "git diff --stat e48499b 43ecd83: 16 files changed, all under delivery/ except test/retirement-inventory.test.ts",
+        "git diff e48499b 43ecd83 -- test/retirement-inventory.test.ts is byte-identical to git diff 9813a86 0e29760 -- test/retirement-inventory.test.ts (both hunks match exactly), confirming that change came from main unchanged",
+        "git diff --stat e48499b 43ecd83 -- package.json package-lock.json plugin/package.json templates/final-report.example.yaml witness/kernel-0-2-1-final-report-template-stamped.json is empty: the five bumped files are untouched by the merge",
+        "git status --short in the worktree is clean; no unmerged paths; grep for conflict markers across the changed file set found none",
+        "node --test test/retirement-inventory.test.ts on node v26.6.0 (PATH=.../node-v26.6.0-linux-x64/bin:$PATH), dist prebuilt, not rebuilt: 56 tests, 56 pass, 0 fail, 0 skipped"
+      ],
+      "met": true
+    }
+  ],
+  "deviations-judged": []
+}
