@@ -1,0 +1,99 @@
+{
+  "kind": "verdict",
+  "phase": "M5-P1",
+  "head": "3d61080d180c5e9d53867e192a42f7a3301de6e4",
+  "tiphys-version": "0.2.1",
+  "verdict": "APPROVE",
+  "produced-by": "claude-fable-5-1",
+  "framing": "hazard-first",
+  "review-contract": "hazard",
+  "deviations-judged": [
+    {
+      "deviation": "test/retirement-inventory.test.ts is edited although the plan section lists only three files; the declaration is amended at head to grant it and the DR-0060 file (both named by the scope gate at explicit shas: green, 7 paths audited, 2 entries ADDED at head)",
+      "serves-plan-intent": true,
+      "reasoning": "The old member B asserted openActionFindings(now, []) names A-14, true only while A-14 was open; closing A-14 in STATE.md (this phase's own step) reddens it, so the test edit is forced by the closure and not optional. The rewrite cuts A-15's register item and asserts refusal with an empty list and pass with A-15 exempted. Re-run here: unmutated 56 tests pass; mutant filter id===id gives 1 test 0 pass 1 fail; mutant id!==id gives 1 test 0 pass 1 fail; file restored, cmp equal. Additive grant only, per src/gates/scope.ts:110."
+    },
+    {
+      "deviation": "Row 5 (deploy verification) is met by owner decision DR-0060 rather than by the rule as written (pushed pilot files); DR-0060 was taken in chat and the owner's answer Ok is not verifiable from files",
+      "serves-plan-intent": true,
+      "reasoning": "The decision is settled and not reopened. Checked for faithful recording: every fact DR-0060 rests on was re-measured read-only on 2026-09-25 and matched (run 36035853808 push at 1796ff8 completed success; run 36032643312 push at 35d2e55 cancelled; compare 35d2e55...1796ff8 ahead 2 behind 0, three records files; deployments 6643693281 and 6644236912 Production, status success; charter release-verification mode reserved; ci.yml e2e after supabase start against a local stack). DR-0060 names the relaxation as a relaxation, states what it does not decide, and the exit test keeps the NOT MET analysis under the MET-by-decision paragraph. The cited lines resolve: m4-exit-test-pulse.md:492 and :273, CLAUDE.md:538 and :548, value-delivery-plan.yaml:89. The chat answer itself is taken as the orchestrator's relay, which the task framed as an owner decision."
+    },
+    {
+      "deviation": "p1-probe's record (pulse-re-probe-m5.md) holds the 2026-09-23 pre-reboot heads d4e491b and 7656f67; the pilot has since moved to 1796ff8 and 8fa9a82, and the probe was not re-run",
+      "serves-plan-intent": true,
+      "reasoning": "The criterion asks for the command to exit 0 and name targets, heads, transports and excluded writes, which run 3 does with its deviations (NODE_USE_ENV_PROXY=1, --force) declared. The later heads are carried by Part 3 of the exit test with API results, so the reading offered as the product result is current, not month-old."
+    },
+    {
+      "deviation": "Full npm test at 3d61080 in this reviewer's worktree (node v26.6.0, dist built) reported tests 1512, pass 1507, fail 4, skipped 1, exit 1",
+      "serves-plan-intent": true,
+      "reasoning": "All four failures are ENOENT or a missing-schema-document error on dist/src/gates/schemas/gate-manifest.schema.json (test/gates.test.ts at 891, 928, 1811 and 2659). The worktree path is shared with the concurrent criteria reviewer, whose npm ci and build ran during this suite: node_modules vanished once mid-review and the schema file's mtime is 05:48:31, inside the run. Isolated rerun of the four by name: 4 tests, 4 pass, 0 fail. The retirement-inventory file this branch touches passed 56 of 56 in its own run. The failures are environmental and not attributed to the branch; CI at this head remains the authority for the whole suite, and the branch changes no src/ or bin/ file."
+    }
+  ],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "stale-pilot-evidence",
+      "probed": "Re-read pulse main (1796ff8) and pulse-fleet main (8fa9a82) on 2026-09-25 by GET /branches/main, and re-read PR 25, the two commits, the three push runs, the compare, the four verdict files at 1796ff8, both package.json pins and the charter. Every value in Part 3 and DR-0060 matched.",
+      "cleared-because": "The result offered for p1-value is the 2026-09-24 M3-P5 reading and it is still the current state of both pilot repositories; no newer pilot push exists (pulse events end at the 1796ff8 push on 2026-09-24T17:39:42Z)."
+    },
+    {
+      "class-id": "simulated-owner-action",
+      "probed": "Checked that the reboot is stated as the owner's act with an observed effect (pulse main d4e491b to b7036d7, then to 1796ff8), and listed every pulse and pulse-fleet event since 2026-09-22: all pushes and pull requests are on the pilot session branch claude/tender-albattani-2btl5u by ThomasHendrickx, plus vercel[bot] comments; zero pull-request review comments. git diff origin/main...3d61080 names seven files, all in this repository.",
+      "cleared-because": "Nothing in the diff is pulse content or a pulse ref, and no pilot event is attributable to this repository. The actor identity is shared with the owner, so this is consistent with, not proof of, no write; the documents say the same rather than claiming more."
+    },
+    {
+      "class-id": "green-without-delivery",
+      "probed": "Ran the CLAUDE.md claim grep on the work history (1 hit, line 479, Part 2, backed by GET /actions/workflows total zero; wrap-insensitive count also 1), the exit test (4 hits, each backed by a command or restated as pending) and DR-0060 (0 hits). Checked that no kernel gate result is offered for any exit-test row and that Part 3 discloses the cancelled 35d2e55 run, the single-family reviews, the 37-second verdict commit, and that ci.yml never runs tiphys gates.",
+      "cleared-because": "The delivered thing is a merged, production-deployed pulse phase with its post-merge push run green over the same tree, and the one substitution made (a CI run for pushed files) is an owner decision recorded as a relaxation with its residue listed, not a green relabelled as delivery."
+    }
+  ],
+  "findings": [
+    {
+      "id": "CR-M5P1-H-001",
+      "severity": "low",
+      "evidence": [
+        "test/retirement-inventory.test.ts member B at the rewritten lines cuts A-15's register item and asserts openActionFindings(cut, []) names A-15 and openActionFindings(cut, ['A-15']) is empty; that requires A-15 to be an OPEN action in delivery/STATE.md (open bullet at delivery/STATE.md:126, register item at delivery/STATE.md:173)",
+        "This is the same shape that forced this branch's edit for A-14: when A-15 is closed, both member A and member B of that test need a new subject. The work history says no NEW dependency is added, which is true (member A already used A-15), but the test remains coupled to a live owner action rather than a fixture",
+        "Not a defect at this head: 56 tests pass, and both mutants redden"
+      ],
+      "concrete-fix": "Optional, later: build the member A and B inputs from a synthetic STATE.md fragment containing one open action and one register item, so the test stops depending on which real owner action is open. No change owed for this phase."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "p1-trigger",
+      "quote": "node scripts/check-cutover-entry.mjs --fleet <the kernel fleet home> exits 0 with drain, exclusion, retirement and pre-freeze-ruleset each reported satisfied; any other vocabulary is a failure. A scratch fleet from tiphys init does not satisfy this.",
+      "evidence": [
+        "delivery/verification/m4-exit-test-pulse.md Part 1 step 1 quotes the four ARM lines as satisfied and exit 0, with the full capture at delivery/work-history/m5-p1.md:108; the fleet was a copy of the kernel fleet home at main 2058490 rehydrated by tiphys resume, not a tiphys init scratch fleet",
+        "The document states the weakness itself: drain's worktree half is empty by construction on a rehydrated clone. That is disclosed, not hidden. Not re-run here; the capture is spot-read, not re-derived"
+      ],
+      "met": true
+    },
+    {
+      "id": "p1-probe",
+      "quote": "node scripts/probe-pilot-readonly.mjs --out delivery/verification/pulse-re-probe-m5.md exits 0 and the output names every target, observed head, transport and excluded write operation.",
+      "evidence": [
+        "delivery/verification/pulse-re-probe-m5.md names both targets with heads d4e491b and 7656f67 and the refused-then-satisfied run history (runs 1 and 2 exit 3, run 3 exit 0) with the NODE_USE_ENV_PROXY=1 and --force deviations declared",
+        "The record is the 2026-09-23 pre-reboot reading; the heads have since moved (pulse 1796ff8, pulse-fleet 8fa9a82, re-measured 2026-09-25), and Part 3 of the exit test carries the later heads, so the stale-pilot-evidence hazard is addressed by the later document rather than by re-running the probe"
+      ],
+      "met": true
+    },
+    {
+      "id": "p1-value",
+      "quote": "delivery/verification/m4-exit-test-pulse.md names one pulse phase, its reviewed head, merged pull request, post-merge push run and deploy verification, with every referenced artifact resolving and every conclusion tied to an exit code or API result.",
+      "evidence": [
+        "Names pulse M3-P5, reviewed head 98fbadc, PR 25 merge 35d2e55, push run 36035853808 at 1796ff8 (success) with the cancelled 36032643312 at 35d2e55 disclosed, and the deploy verification as DR-0060's acceptance of that run. Each fact re-measured by GET on 2026-09-25 and matched (PR 25, commits 35d2e55 and 98fbadc trees equal, runs, compare, verdict files, deployments 6643693281 and 6644236912 success)",
+        "The deploy-verification part is met by owner decision DR-0060, which is settled and recorded faithfully: it names the run, the three reasons, what it does not decide, and the residue; the exit test keeps the NOT MET analysis visible under the decision"
+      ],
+      "met": true
+    },
+    {
+      "id": "p1-boundary",
+      "quote": "git diff on this phase contains no pulse repository content or ref update and the report states that the owner performed the reboot action.",
+      "evidence": [
+        "git diff origin/main...3d61080 --name-only lists seven files, all in this repository; the pulse mentions are quoted paths, API results and short descriptions, not copied pulse files or refs",
+        "Part 1 update (2026-09-24) and Part 2 row 1 state the owner performed the reboot, with pulse main moving from d4e491b to b7036d7 as the observed effect. Pulse and pulse-fleet events since 2026-09-22 show only the pilot session's own pushes and PRs plus vercel[bot] comments"
+      ],
+      "met": true
+    }
+  ]
+}

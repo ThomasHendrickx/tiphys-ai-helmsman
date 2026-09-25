@@ -4,7 +4,9 @@
   "filesToTouch": [
     "delivery/verification/pulse-re-probe-m5.md",
     "delivery/verification/m4-exit-test-pulse.md",
-    "delivery/STATE.md"
+    "delivery/STATE.md",
+    "test/retirement-inventory.test.ts",
+    "delivery/decisions/DR-0060-pulse-ci-push-run-counts-as-the-m4-deploy-verification.md"
   ],
   "declaredExtras": [
     "delivery/plan/phase-declarations/m5-p1.json"
