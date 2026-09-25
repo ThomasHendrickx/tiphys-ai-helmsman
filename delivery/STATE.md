@@ -61,7 +61,9 @@ the merge gate rather than not-applicable.
   36035853808, fast gate plus Playwright, both success) counts as the deploy
   verification. It does not decide pulse DR-0014 and does not verify the
   deployed site. Evidence: delivery/verification/m4-exit-test-pulse.md:1.
-  Next step: open the M5-P1 pull request and run its reviews.
+  MERGED 2026-09-25 as PR #225 (merge 0e29760, verdict commit 22b5ed3,
+  both verdicts APPROVE at 3d61080); the push run on 0e29760 is green (gates
+  36103050403, macOS smoke 36103050406). A-17 is DONE.
 - M5-P6, scale-out proof: `claude/m5-p6-scale-out-proof`, wave D. The kernel
   half (conflicts command, DR-0058 init change, hemma intake) is reviewed:
   both clean-room reviews APPROVE at 45a0d54 after one fix round. Step 3 is
@@ -73,8 +75,12 @@ the merge gate rather than not-applicable.
   released 0.2.1 (H-6), met by this branch's `init --project` once released,
   which is a follow-up release. MERGED 2026-09-24 as PR #220 (merge
   de2f999, verdict commit 5110bb7, both verdicts APPROVE at 8c17a5f,
-  merge-preconditions green on all 8). Follow-up per DR-0059: a release
-  carrying `init --project`, then a hemma run.
+  merge-preconditions green on all 8). The DR-0059 follow-up is DONE
+  2026-09-25: kernel 0.2.2 (PR #224, merge 7f7d15e) was published by release
+  run 36105882477, and the published `tiphys init --project .` at hemma main
+  5bf2e57 exits 0 printing `present assurance-modes.yaml: identical to kernel
+  0.2.2's copy`, with an empty `git status` after. p6-charter-only is now MET
+  on a released kernel: delivery/verification/m5-scale-out-exit.md:469.
 
 ### Owner decisions open
 
@@ -592,11 +598,10 @@ expectation row (present at scripts/m2-exit-test.sh:221).
 **Kernel 0.2.1 follow-ups, added 2026-09-24.** None is assigned. Each one names
 what is known and what is not.
 
-- **M5-P6 criterion p6-charter-only is met on the branch, not on a release
-  (DR-0059).** hemma received `assurance-modes.yaml` by hand because 0.2.1 has
-  no `init --project`. Closing it: after M5-P6 merges, publish a release that
-  carries `init --project` (owner approval needed), run it in hemma, and
-  record that it reports the copy as present and identical.
+- **M5-P6 criterion p6-charter-only (DR-0059): CLOSED 2026-09-25.** The
+  owner approved the 0.2.2 release; it was published and its
+  `init --project` reports hemma's copy present and identical. See the M5-P6
+  entry under "In flight".
 
 - **merge-preconditions has no arm for a non-phase branch in the dual-review
   tier.** Condition 5 reads red whenever the scope record is not green
