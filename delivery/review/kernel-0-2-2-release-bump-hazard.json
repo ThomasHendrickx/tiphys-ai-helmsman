@@ -1,7 +1,7 @@
 {
   "kind": "verdict",
   "phase": "claude/kernel-0-2-2-release-bump",
-  "head": "e48499bc4b9f654cc43537feb38690931dee15bb",
+  "head": "43ecd8386cf97c5b458d0fe7827f3f0e90665a5e",
   "tiphys-version": "0.2.1",
   "verdict": "APPROVE",
   "produced-by": "claude-fable-5-1",
@@ -42,6 +42,11 @@
       "class-id": "no-stale-0-2-1-version-check-remains",
       "probed": "grep for the literal string 0.2.1 across the head outside delivery/, and read each hit; read plugin/package.json peerDependencies.",
       "cleared-because": "Every remaining 0.2.1 literal outside delivery/ is historical prose in schema $comment fields, src/, scripts/ and test/ describing what changed in kernel 0.2.1. None is a version check. plugin/package.json peerDependency ^0.2.0 admits 0.2.2."
+    },
+    {
+      "class-id": "merge-of-main-adds-nothing-outside-delivery-beyond-main-itself",
+      "probed": "git diff --stat e48499b 43ecd83 (16 files, 2464 insertions, 26 deletions); for every changed path compared the 43ecd83 blob id against 0e29760 (origin/main) or 2283ff4 (the verdict commit); compared the branch delta hunks of test/retirement-inventory.test.ts against git diff 9813a86 0e29760 for that path; compared the five bumped file blobs at e48499b and 43ecd83; git grep for conflict markers at 43ecd83; git status --porcelain; node --test test/retirement-inventory.test.ts on node v26.6.0 with dist built.",
+      "cleared-because": "The only non-delivery path in the delta is test/retirement-inventory.test.ts and its blob at 43ecd83 equals the origin/main blob at 0e29760 with hunks identical to the main-side diff 9813a86..0e29760. Every other delta path is either a byte-identical origin/main blob (10 M5-P1 paperwork files) or a byte-identical 2283ff4 blob (the 5 release-bump review files). All five bumped files (package.json, plugin/package.json, package-lock.json, templates/final-report.example.yaml, witness/kernel-0-2-1-final-report-template-stamped.json) have the same blob id at e48499b and 43ecd83. Conflict-marker grep exit 1 (no hits), git status --porcelain 0 lines, 43ecd83 is a two-parent merge of 2283ff4 and 0e29760. node --test test/retirement-inventory.test.ts: 56 tests, 56 pass, 0 fail, 0 skipped, exit 0."
     }
   ],
   "criteria": [
@@ -51,7 +56,8 @@
       "evidence": [
         "tiphys version prints 0.2.2; npm pack --dry-run --json: @tiphys/kernel 0.2.2, tiphys-kernel-0.2.2.tgz, 214 entries, release.yml listing check replayed with no problems",
         "release.yml version-agreement guard reads package.json 0.2.2; git ls-remote --tags origin shows v0.1.0 and v0.2.1 only, so the tag job's refusal does not fire for v0.2.2",
-        "red-witness gate on the head against origin/main: green, 4 witnesses evaluated (1 own, 3 stored re-evaluated), vacuous false, every witness red against every dangerous state and green at head"
+        "red-witness gate on the head against origin/main: green, 4 witnesses evaluated (1 own, 3 stored re-evaluated), vacuous false, every witness red against every dangerous state and green at head",
+        "Delta re-verification at 43ecd83: the merge of origin/main (0e29760) changes only delivery/ files and test/retirement-inventory.test.ts, each byte-identical to its origin/main blob; the five bumped files carry the same blob ids as at e48499b; no conflict markers; node --test test/retirement-inventory.test.ts 56 pass, 0 fail, 0 skipped, exit 0 on node v26.6.0"
       ],
       "met": true
     }

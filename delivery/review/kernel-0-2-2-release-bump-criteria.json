@@ -1,7 +1,7 @@
 {
   "kind": "verdict",
   "phase": "claude/kernel-0-2-2-release-bump",
-  "head": "e48499bc4b9f654cc43537feb38690931dee15bb",
+  "head": "43ecd8386cf97c5b458d0fe7827f3f0e90665a5e",
   "tiphys-version": "0.2.1",
   "verdict": "APPROVE",
   "produced-by": "claude-sonnet-5",
@@ -53,6 +53,18 @@
       "evidence": [
         "npm test on node v26 (PATH=.../node-v26.6.0-linux-x64/bin:$PATH), 1512 pass, 0 skipped",
         "Not independently re-run in this fast review; taken as reported per the 15-minute budget for this pass"
+      ],
+      "met": true
+    },
+    {
+      "id": "6",
+      "quote": "delta re-verification at 43ecd83: merge of origin/main (0e29760, M5-P1) plus the delivery-only verdict commit 2283ff4 changes nothing outside delivery/ beyond what main itself carries",
+      "evidence": [
+        "git diff --stat e48499b 43ecd83: 16 files changed, all under delivery/ except test/retirement-inventory.test.ts",
+        "git diff e48499b 43ecd83 -- test/retirement-inventory.test.ts is byte-identical to git diff 9813a86 0e29760 -- test/retirement-inventory.test.ts (both hunks match exactly), confirming that change came from main unchanged",
+        "git diff --stat e48499b 43ecd83 -- package.json package-lock.json plugin/package.json templates/final-report.example.yaml witness/kernel-0-2-1-final-report-template-stamped.json is empty: the five bumped files are untouched by the merge",
+        "git status --short in the worktree is clean; no unmerged paths; grep for conflict markers across the changed file set found none",
+        "node --test test/retirement-inventory.test.ts on node v26.6.0 (PATH=.../node-v26.6.0-linux-x64/bin:$PATH), dist prebuilt, not rebuilt: 56 tests, 56 pass, 0 fail, 0 skipped"
       ],
       "met": true
     }

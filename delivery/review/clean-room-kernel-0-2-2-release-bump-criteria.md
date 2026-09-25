@@ -45,3 +45,27 @@ unrelated file is touched, and init --project is present on main so the
 release carries it.
 
 VERDICT: APPROVE
+
+## Re-verification at 43ecd83
+
+Delta re-verification of claude/kernel-0-2-2-release-bump at local commit
+43ecd8386cf97c5b458d0fe7827f3f0e90665a5e (not yet pushed), which is e48499b
+plus the delivery-only verdict commit 2283ff4 plus a merge of origin/main
+(0e29760, M5-P1).
+
+git diff --stat e48499b 43ecd83 at test/retirement-inventory.test.ts:846
+lists 16 changed files: all under delivery/ except test/retirement-
+inventory.test.ts. That file's diff between e48499b and 43ecd83 is byte-
+identical to git diff 9813a86 0e29760 for the same path, so the change came
+from main unchanged, not from this branch. git diff --stat e48499b 43ecd83
+restricted to the five bumped files (package.json, package-lock.json,
+plugin/package.json, templates/final-report.example.yaml, witness/
+kernel-0-2-1-final-report-template-stamped.json) is empty: the merge left
+them untouched. git status --short in the worktree is clean and a grep for
+conflict markers across the changed file set found none: no residue.
+
+node --test test/retirement-inventory.test.ts on node v26.6.0 (dist
+prebuilt, not rebuilt): 56 tests, 56 pass, 0 fail, 0 skipped.
+
+VERDICT: APPROVE (unchanged; new verdict recorded at v2-kernel-0-2-2-
+release-bump-criteria.json, head 43ecd83)

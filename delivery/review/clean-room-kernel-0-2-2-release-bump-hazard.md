@@ -44,3 +44,32 @@ No medium or high finding. Nothing found that could make release.yml fail on a 0
 dispatch or ship a wrong artifact.
 
 VERDICT: APPROVE
+
+## Re-verification at 43ecd83
+
+Re-verified 43ecd8386cf97c5b458d0fe7827f3f0e90665a5e (local, not pushed): the
+approved head e48499b, plus the delivery-only verdict commit 2283ff4, plus a merge
+of origin/main at 0e29760 (M5-P1). Parents of 43ecd83: 2283ff4 and 0e29760.
+
+- git diff --stat e48499b 43ecd83: 16 files, 2464 insertions, 26 deletions. The only
+  path outside delivery/ is test/retirement-inventory.test.ts (+16 -16 lines).
+- test/retirement-inventory.test.ts at 43ecd83 has the same blob id as at 0e29760, and
+  the branch-delta hunks are identical to git diff 9813a86 0e29760 for that path
+  (diff of the two patches with index lines removed: empty).
+- Every other delta path is byte-identical to its origin/main blob (10 M5-P1 files:
+  STATE.md, DR-0060, m5-p1.json, the two M5-P1 clean-room reviews and JSONs, the two
+  verification documents, the M5-P1 work history) or to its 2283ff4 blob (the five
+  release-bump review files). Nothing in the delta originates in the merge commit.
+- The five bumped files (package.json, plugin/package.json, package-lock.json,
+  templates/final-report.example.yaml,
+  witness/kernel-0-2-1-final-report-template-stamped.json) have the same blob ids at
+  e48499b and 43ecd83: untouched by the merge.
+- git grep for conflict markers at 43ecd83 across the whole tree: exit 1, no hits.
+  git status --porcelain: 0 lines.
+- node --test test/retirement-inventory.test.ts, node v26.6.0, dist present, not
+  rebuilt: 56 tests, 56 pass, 0 fail, 0 skipped, exit 0.
+
+Findings unchanged: CR-001 (low) only. Verdict JSON:
+v2-kernel-0-2-2-release-bump-hazard.json, head 43ecd83.
+
+VERDICT: APPROVE
