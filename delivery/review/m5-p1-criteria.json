@@ -1,0 +1,68 @@
+{
+  "kind": "verdict",
+  "phase": "M5-P1",
+  "head": "3d61080d180c5e9d53867e192a42f7a3301de6e4",
+  "tiphys-version": "0.2.1",
+  "verdict": "APPROVE",
+  "produced-by": "claude-sonnet-5",
+  "framing": "criteria-contract-first-review-of-the-pulse-value-proof-at-3d61080",
+  "review-contract": "criteria",
+  "findings": [
+    {
+      "id": "CR-M5P1-001",
+      "severity": "low",
+      "evidence": [
+        "delivery/STATE.md's short 'Owner actions open' summary bullet for A-14, unchanged by this branch from origin/main, still reads 'it closes when M5-P1 merges, not here', while the full owner-action register entry for A-14 further down in the SAME file, edited by this branch, already reads DONE",
+        "So within one commit, one part of STATE.md says A-14 is open pending merge and another says it is closed; self-resolving once this branch reaches main, and it does not affect any acceptance criterion"
+      ],
+      "concrete-fix": "Update the short A-14 bullet under 'Owner actions open' to say DONE, matching the full register entry, or delete the now-stale 'closes when M5-P1 merges, not here' clause."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "p1-trigger",
+      "quote": "node scripts/check-cutover-entry.mjs --fleet <the kernel fleet home> exits 0 with drain, exclusion, retirement and pre-freeze-ruleset each reported satisfied; any other vocabulary is a failure. A scratch fleet from tiphys init does not satisfy this.",
+      "evidence": [
+        "delivery/verification/m4-exit-test-pulse.md:48-89 captures the run against a copy of the real kernel fleet home (ThomasHendrickx/tiphys-ai-helmsman-fleet, main 2058490, confirmed against the remote by git ls-remote the same day), not a scratch tiphys init fleet",
+        "All four arms report satisfied and the process exits 0; the document states honestly that arm a (drain) is weaker on a rehydrated clone than on a live fleet home, without claiming more than it observed"
+      ],
+      "met": true
+    },
+    {
+      "id": "p1-probe",
+      "quote": "node scripts/probe-pilot-readonly.mjs --out delivery/verification/pulse-re-probe-m5.md exits 0 and the output names every target, observed head, transport and excluded write operation.",
+      "evidence": [
+        "delivery/verification/m4-exit-test-pulse.md:91-125: third run exits 0, OVERALL satisfied, both targets named with agreeing heads",
+        "delivery/verification/pulse-re-probe-m5.md (98 lines) names both targets, heads, transports and excluded writes",
+        "The document corrects its own earlier draft (the refusal was NODE_USE_ENV_PROXY, not the missing attach) rather than leaving the wrong explanation standing"
+      ],
+      "met": true
+    },
+    {
+      "id": "p1-value",
+      "quote": "delivery/verification/m4-exit-test-pulse.md names one pulse phase, its reviewed head, merged pull request, post-merge push run and deploy verification, with every referenced artifact resolving and every conclusion tied to an exit code or API result.",
+      "evidence": [
+        "Part 3 names pulse M3-P5, PR #25, reviewed head 98fbadc, merge 35d2e55, post-merge push run 36035853808 (on 1796ff8), and deploy verification met by owner decision DR-0060",
+        "Spot-checked live against the pulse repository (GH_TOKEN, REST, read-only): GET /pulls/25 (merged true, merge_commit_sha 35d2e55..., head 98fbadc...), GET /commits/35d2e55 and /commits/98fbadc (trees both 8edba117..., equal), GET /actions/runs/36035853808 (push, completed, success, head 1796ff8...), GET /actions/runs/36032643312 (the 35d2e55 push run, cancelled), GET /deployments?sha=35d2e55... (Production, id 6643693281, status success), GET /contents/charter.yaml?ref=1796ff8 (release-verification mode reserved) -- every one matched the document exactly",
+        "Row 5 is stated as NOT MET as originally written and MET only by DR-0060, which is recorded as a relaxation of the rule's 'pushed files' wording rather than a re-labelling; delivery/decisions/DR-0060-...md:1 records the owner's 'Ok' and the reasoning, and states plainly what it does NOT decide (pulse DR-0014, or a check against the deployed site)"
+      ],
+      "met": true
+    },
+    {
+      "id": "p1-boundary",
+      "quote": "git diff on this phase contains no pulse repository content or ref update and the report states that the owner performed the reboot action.",
+      "evidence": [
+        "git diff origin/main...HEAD (7 files: STATE.md, DR-0060, the phase declaration, the two verification files, the work history, and test/retirement-inventory.test.ts) contains no pulse file, path or ref",
+        "delivery/STATE.md and delivery/work-history/m5-p1.md both state the owner performed the A-14 reboot action, and that every pulse read was git ls-remote, a read-only clone, or a GET, never a write (DR-0037)"
+      ],
+      "met": true
+    }
+  ],
+  "deviations-judged": [
+    {
+      "deviation": "The M4 exit test's row 5 asked for the pilot's own deploy-verification evidence for the merged sha, read from its pushed files. Pulse never pushed such a file (its charter still reads release-verification: mode: reserved). Owner decision DR-0060 instead accepts pulse's post-merge CI push run at 1796ff8 as the deploy verification, so p1-value is met by a relaxed rule rather than the rule as originally written.",
+      "serves-plan-intent": true,
+      "reasoning": "Independently spot-checked against the live pulse repository (REST, read-only): the accepted run (36035853808) is completed/success, ran over code whose tree is byte-identical to the merged release commit 35d2e55 (both trees 8edba117...), and both the merged commit and the accepted run's commit have a Vercel production deployment with status success. DR-0060 states plainly what it does not do (it does not decide pulse DR-0014 and does not verify the deployed site), so the relaxation is recorded honestly rather than relabelled as full compliance, matching the green-without-delivery hazard's own addressed-by criterion (p1-value)."
+    }
+  ]
+}
