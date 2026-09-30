@@ -109,10 +109,10 @@ const REQUIRED_CHECK_CONTEXT = "gates";
  *
  * SC-011: `not-applicable` ASSERTS that a precondition was evaluated. The
  * precondition here is "a merge is being proposed at this head", evidenced by
- * at least one committed verdict document naming it. A head with no such
- * document is not a merge waiting on six conditions; it is a branch nobody has
- * reviewed yet, and reporting red for that would make the gate unusable on
- * every push while making it say something false.
+ * a counted kernel review of it or by a committed verdict that refuses it
+ * (M6-P5). A head with neither is not a merge waiting on six conditions; it is
+ * a branch nobody has reviewed yet, and reporting red for that would make the
+ * gate unusable on every push while making it say something false.
  */
 const PRECONDITION_ID = "merge-preconditions-verdict-names-this-head";
 
@@ -2029,17 +2029,51 @@ export async function runGate(flags: Flags): Promise<number> {
     review = read;
 
     if (review.forHead.length === 0) {
+      /* THE REFUSALS ARE READ BEFORE THIS ARM IS DECIDED (M6-P5 fix round 5,
+         CR-M6P5A-10). A committed verdict that refuses this head, which no
+         counted record names, says a merge was proposed here and refused, so
+         "no merge is being proposed" would be false. It is red, with a
+         condition-2 row naming each refusal in the sentences the `--base`
+         arm prints. */
+      const refusals = unclaimedRefusalFaults(review, head);
+      if (refusals.length > 0) {
+        rows.push(selectionRow(review, head, budget));
+        rows.push({
+          id: "condition-2",
+          clause: "DR-0012:23 no unresolved finding at medium or above",
+          status: "red",
+          head,
+          sentence: refusals.join(" | "),
+        });
+        return emit(
+          resultPath,
+          {
+            ...shared,
+            status: "red",
+            units: rows.length,
+            endedAt: now(),
+            detail:
+              `DR-0063 ${tier} at head ${head}, phase ${phase}: no kernel review record counts a verdict at this head, ` +
+              `and ${String(refusals.length)} committed verdict(s) refuse it: ${refusals.join(" | ")}; ` +
+              "CI, scope, arbitration and the branch-protection encoding were NOT evaluated, because the " +
+              "committed review evidence already refuses this merge",
+          },
+          rows,
+        );
+      }
       /* SC-011: the not-applicable arm of the M4-P12 order, and it carries an
          EVALUATED precondition rather than a silence. A head with no counted
-         review is not a merge waiting on six conditions. REACHABLE ONLY
-         WITHOUT `--base` since M5-P3: with it, a change of either DR-0063
-         tier and no counted review is red above (M6-P2). */
+         review and no committed refusal is not a merge waiting on six
+         conditions. REACHABLE ONLY WITHOUT `--base` since M5-P3: with it, a
+         change of either DR-0063 tier and no counted review is red above
+         (M6-P2). */
       const precondition: PreconditionRecord = {
         id: PRECONDITION_ID,
         met: false,
         reason:
-          `no committed kernel review record counts a verdict for phase ${phase} at head ${head}, so no merge ` +
-          "is being proposed at this head and DR-0012's conditions have no subject",
+          `no committed kernel review record counts a verdict for phase ${phase} at head ${head}, and no ` +
+          "committed verdict refuses that head, so no merge is being proposed at this head and DR-0012's " +
+          "conditions have no subject",
         evidence: [
           `${String(review.read)} committed verdict document(s) and ` +
             `${String(review.records.length + review.invalidRecords.length)} review record(s) were read and examined`,

@@ -2839,6 +2839,52 @@ test("a single change with one counted approving review and one committed FIX-RO
   }
 });
 
+test("without --base, a head whose only committed verdict reads FIX-ROUND-NEEDED and no record names it is red at condition-2 naming the refusal, while an unclaimed APPROVE alone stays not-applicable", async () => {
+  /* M6-P5 fix round 5, CR-M6P5A-10. The dangerous state is the arm as it
+     stood at 284d374: with no counted review, the not-applicable arm was
+     taken before the refusals were read, and its reason said no merge was
+     being proposed. The API is a GREEN one, so the red is the refusal's. The
+     control arm is the same repository with the verdict reading APPROVE:
+     nothing refuses the head, so the not-applicable arm still stands. */
+  const refusing = fixture("decorrelated-hazard.yaml", [["verdict: APPROVE", "verdict: FIX-ROUND-NEEDED"]]);
+  const arms: [string, string, string][] = [
+    ["refusing", refusing, "red"],
+    ["approving", fixture("decorrelated-hazard.yaml"), "not-applicable"],
+  ];
+  for (const [arm, body, expected] of arms) {
+    const { staged, head } = stageTierBranch("src", { "m3-p9-hazard.yaml": body }, DECLARED_RUNTIME_SET, {
+      omit: ["m3-p9-hazard.yaml"],
+    });
+    try {
+      assert.equal(readdirSync(join(staged.dir, "delivery", "review", "records")).length, 0, `${arm}: a record was staged`);
+      const run = await withApi(greenApi(head), (apiBase) => runGate(gateSource, staged, apiBase, [], head));
+      assert.equal(run.record["status"], expected, `${arm}: ${run.stdout}${run.stderr}`);
+      const printed = rows(run.stdout);
+      if (expected === "red") {
+        assert.equal(run.record["precondition"], undefined, `${arm}: ${run.stdout}`);
+        assert.equal(status(printed.get("condition-2")), "red", `${arm}: ${run.stdout}`);
+        assert.match(
+          printed.get("condition-2") ?? "",
+          /delivery\/review\/m3-p9-hazard\.yaml reads FIX-ROUND-NEEDED for head [0-9a-f]{40}, a paperwork-only ancestor of [0-9a-f]{40}, and no counted kernel record names it/,
+          `${arm}: ${run.stdout}`,
+        );
+        assert.match(String(run.record["detail"]), /^DR-0063 pair at head [0-9a-f]{40}, phase m3-p9: .*1 committed verdict\(s\) refuse it/);
+        assert.doesNotMatch(run.stdout, /no merge is being proposed/, `${arm}: ${run.stdout}`);
+        assert.notEqual(run.exit, 0, run.stdout);
+      } else {
+        assert.equal(printed.size, 0, `${arm}: ${run.stdout}`);
+        assert.match(
+          String(run.record["detail"]),
+          /and no committed verdict refuses that head, so no merge is being proposed at this head/,
+          `${arm}: ${run.stdout}`,
+        );
+      }
+    } finally {
+      cleanup(staged);
+    }
+  }
+});
+
 test("two counted reviews on different families minted under different vocabulary ids are red at condition-1, naming both ids", async () => {
   /* CR-M6P5A-05. The families differ (vendor-a, vendor-b), so a compare that
      ignored the vocabulary would read two distinct families and go green. */
