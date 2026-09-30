@@ -27,14 +27,14 @@
     {
       "kind": "mutation",
       "file": "src/gates/schemas/gate-manifest.schema.json",
-      "find": "\"enum\": [\"base\", \"head\", \"phase\", \"base?\", \"head?\", \"phase?\"]",
-      "replace": "\"enum\": [\"base\", \"head\", \"phase\", \"base?\", \"head?\"]"
+      "find": "\"enum\": [\"base\", \"head\", \"phase\", \"event\", \"base?\", \"head?\", \"phase?\", \"event?\"]",
+      "replace": "\"enum\": [\"base\", \"head\", \"phase\", \"event\", \"base?\", \"head?\", \"event?\"]"
     },
     {
       "kind": "mutation",
       "file": "schemas/gate-registry.schema.json",
-      "find": "\"enum\": [\"base\", \"head\", \"phase\", \"base?\", \"head?\", \"phase?\"]",
-      "replace": "\"enum\": [\"base\", \"head\", \"phase\", \"base?\", \"head?\"]"
+      "find": "\"enum\": [\"base\", \"head\", \"phase\", \"event\", \"base?\", \"head?\", \"phase?\", \"event?\"]",
+      "replace": "\"enum\": [\"base\", \"head\", \"phase\", \"event\", \"base?\", \"head?\", \"event?\"]"
     }
   ],
   "deterministic": true,

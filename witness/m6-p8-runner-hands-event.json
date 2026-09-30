@@ -1,0 +1,24 @@
+{
+  "id": "m6-p8-runner-hands-event",
+  "behavior": "gate-runner-hands-event-parameter",
+  "tests": [
+    "the runner hands a gate that declares event the run's --event, hands it nothing when the run names no event, and still errors a missing --base"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/manifest.ts",
+      "find": "new Set<RunParameter>([\"event\"])",
+      "replace": "new Set<RunParameter>()"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/schemas/gate-manifest.schema.json",
+      "find": "\"enum\": [\"base\", \"head\", \"phase\", \"event\", \"base?\", \"head?\", \"phase?\", \"event?\"]",
+      "replace": "\"enum\": [\"base\", \"head\", \"phase\", \"base?\", \"head?\", \"phase?\", \"event?\"]"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

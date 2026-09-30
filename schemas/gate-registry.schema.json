@@ -193,11 +193,11 @@
           }
         },
         "parameters": {
-          "description": "Run parameters this gate's command takes: a bare name is required and its absence is error (M2-C-3); a trailing ? is passed only when the run has it.",
+          "description": "Run parameters this gate's command takes: a bare name is required and its absence is error (M2-C-3), except event: a run naming no --event is a run over every gate, so a gate declaring event is then told nothing and takes its no-event arm (M6-P8). A trailing ? is passed only when the run has it (M6-P4).",
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["base", "head", "phase", "base?", "head?", "phase?"]
+            "enum": ["base", "head", "phase", "event", "base?", "head?", "phase?", "event?"]
           }
         },
         "precondition": {

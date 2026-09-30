@@ -2479,10 +2479,219 @@ test("a stored witness gone green under the diff is red naming it with its rate"
 
 test("reverting the change that broke a stored witness returns exit zero", () => {
   const fixture = storedFixture(false);
-  const outcome = runGate(fixture);
+  /* On pull_request (M6-P8): the stored witness the diff does not touch is
+     skipped, so exactly the one whose mutated file changed is evaluated. With
+     no event every stored witness is evaluated and the count would be two. */
+  const outcome = runGate(fixture, { event: "pull_request" });
   assert.equal(outcome.result.status, "green", reasonsOf(outcome));
   assert.equal(outcome.exitCode, 0);
   assert.equal(outcome.result.units, 1);
+});
+
+// ---------------------------------------------------------------------------
+// M6-P8 (DR-0066): on a pull request, re-evaluate a stored witness only when
+// the diff changes a file it mutates or a test file it runs
+// ---------------------------------------------------------------------------
+
+/**
+ * REAL captured git output for a test file moved between the merge base and
+ * the head (witness/captures/m6-p8-git-diff-test-file-move.txt). The gate's
+ * phase diff is `--no-renames`, and the selection counts a moved test file as
+ * changed because git reports the move as a D of the old path and an A of
+ * the new one. Bound once and read through the binding, like
+ * `gateStdioCapturePath` above, so this file stays not text-asserting.
+ */
+const testFileMoveCapturePath = fileURLToPath(
+  new URL("../witness/captures/m6-p8-git-diff-test-file-move.txt", import.meta.url),
+);
+
+function capturedTestFileMove(block: string): string {
+  const body = readFileSync(testFileMoveCapturePath, "utf8");
+  const begin = `--- BEGIN ${block} ---\n`;
+  const end = `--- END ${block} ---`;
+  const from = body.indexOf(begin);
+  assert.notEqual(from, -1, `capture block ${block} is absent`);
+  const to = body.indexOf(end, from);
+  assert.notEqual(to, -1, `capture block ${block} is unterminated`);
+  return body.slice(from + begin.length, to);
+}
+
+const SELECTION_THING_SPEC = {
+  id: "thing-guard",
+  behavior: "thing-big",
+  tests: ["thing classifies big inputs"],
+  class: "additive",
+  dangerousStates: [
+    {
+      kind: "mutation",
+      file: "src/thing.ts",
+      find: THING_MEMBER_FIND,
+      replace: THING_MEMBER_FIND.replace('"big"', '"small"'),
+    },
+  ],
+  deterministic: true,
+  repeats: 1,
+};
+
+const SELECTION_UTIL_SPEC = {
+  id: "util-guard",
+  behavior: "util-doubles",
+  tests: ["util doubles its input"],
+  class: "additive",
+  dangerousStates: [
+    {
+      kind: "mutation",
+      file: "src/util.ts",
+      find: "return x * 2;",
+      replace: "return x * 3;",
+    },
+  ],
+  deterministic: true,
+  repeats: 1,
+};
+
+type SelectionChange =
+  | "util-source"
+  | "thing-test-edit"
+  | "thing-test-move"
+  | "thing-test-rename";
+
+/**
+ * Two STORED witnesses (both specs exist at the base and are unchanged), and
+ * one head commit that changes exactly one kind of thing:
+ *   util-source        src/util.ts, the file util-guard's member mutates
+ *   thing-test-edit    test/thing.test.ts, the file thing-guard's test is in
+ *   thing-test-move    git mv test/thing.test.ts test/thing-moved.test.ts
+ *   thing-test-rename  the test inside test/thing.test.ts renamed, so the
+ *                      witness's name is found only in the merge-base source
+ */
+function selectionFixture(change: SelectionChange): Fixture {
+  const dir = mkdtempSync(join(tmpdir(), "wfx-"));
+  fixtureDirs.push(dir);
+  git(dir, "init", "-q", "-b", "main");
+  writeTree(dir, {
+    "gate-registry.yaml": fixtureManifest([]),
+    "test/behaviors.json": fixtureBehaviors({
+      "thing-big": "thing classifies big inputs",
+      "util-doubles": "util doubles its input",
+    }),
+    "src/thing.ts": THING_SRC_BASE,
+    "src/util.ts": UTIL_SRC_BASE,
+    "test/thing.test.ts": THING_TEST,
+    "test/util.test.ts": UTIL_TEST,
+    "witness/thing.json": fixtureSpec(SELECTION_THING_SPEC),
+    "witness/util.json": fixtureSpec(SELECTION_UTIL_SPEC),
+  });
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "base");
+  const base = git(dir, "rev-parse", "HEAD");
+  if (change === "util-source") {
+    writeTree(dir, { "src/util.ts": UTIL_SRC_BASE + "// audited\n" });
+  } else if (change === "thing-test-edit") {
+    writeTree(dir, { "test/thing.test.ts": THING_TEST + "// edited\n" });
+  } else if (change === "thing-test-move") {
+    git(dir, "mv", "test/thing.test.ts", "test/thing-moved.test.ts");
+  } else {
+    writeTree(dir, {
+      "test/thing.test.ts": THING_TEST.replace(
+        "thing classifies big inputs",
+        "thing classifies large inputs",
+      ),
+    });
+  }
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "head");
+  const head = git(dir, "rev-parse", "HEAD");
+  return { dir, base, head };
+}
+
+function evaluatedIds(outcome: ReturnType<typeof runRedWitnessGate>): string[] {
+  return outcome.evaluations.map((evaluation) => evaluation.witness).sort();
+}
+
+test("on pull_request a stored witness whose mutated files and test files the diff leaves untouched is skipped and counted in the detail line", () => {
+  const outcome = runGate(selectionFixture("util-source"), { event: "pull_request" });
+  assert.deepEqual(outcome.skippedStored, ["thing-guard"], reasonsOf(outcome));
+  assert.equal(outcome.evaluations.some((evaluation) => evaluation.witness === "thing-guard"), false);
+  assert.match(
+    outcome.result.detail,
+    /^2 witness\(es\): 0 own, 1 stored evaluated in \d+ms, 1 stored skipped \(no file they mutate or run changed\); /,
+  );
+});
+
+test("on pull_request a stored witness is evaluated because the diff changes a file its member mutates", () => {
+  const outcome = runGate(selectionFixture("util-source"), { event: "pull_request" });
+  assert.deepEqual(evaluatedIds(outcome), ["util-guard"], reasonsOf(outcome));
+  assert.equal(outcome.result.status, "green", reasonsOf(outcome));
+  assert.equal(outcome.result.units, 1);
+});
+
+test("on pull_request a stored witness is evaluated because the diff changes, moves or renames inside a test file it runs", () => {
+  /* EDITED in place: the test file is M in the diff. */
+  const edited = runGate(selectionFixture("thing-test-edit"), { event: "pull_request" });
+  assert.deepEqual(evaluatedIds(edited), ["thing-guard"], reasonsOf(edited));
+  assert.deepEqual(edited.skippedStored, ["util-guard"]);
+  assert.equal(edited.result.status, "green", reasonsOf(edited));
+
+  /* MOVED: the phase diff is --no-renames, so git reports the move as D of
+     the old path and A of the new one. The fixture's own name-status is the
+     same as the REAL captured output for this exact move, so the selection is
+     exercised against what git actually prints, not a hand-written shape. */
+  const movedFixture = selectionFixture("thing-test-move");
+  const nameStatus = spawnSync(
+    "git",
+    ["diff", "--name-status", "--no-renames", `${movedFixture.base}...${movedFixture.head}`],
+    { cwd: movedFixture.dir, encoding: "utf8", env: GIT_ENV },
+  );
+  assert.equal(nameStatus.status, 0, nameStatus.stderr);
+  assert.equal(
+    nameStatus.stdout,
+    capturedTestFileMove("git diff --name-status --no-renames base...head"),
+  );
+  const moved = runGate(movedFixture, { event: "pull_request" });
+  assert.deepEqual(evaluatedIds(moved), ["thing-guard"], reasonsOf(moved));
+  assert.deepEqual(moved.skippedStored, ["util-guard"]);
+  assert.equal(moved.result.status, "green", reasonsOf(moved));
+
+  /* RENAMED INSIDE the file: the witness's test name is gone from the head
+     source and survives only in the merge-base source. Skipping it would hide
+     exactly the change that broke it; evaluated, it is not green. */
+  const renamed = runGate(selectionFixture("thing-test-rename"), { event: "pull_request" });
+  assert.deepEqual(evaluatedIds(renamed), ["thing-guard"], reasonsOf(renamed));
+  assert.deepEqual(renamed.skippedStored, ["util-guard"]);
+  assert.notEqual(renamed.result.status, "green", reasonsOf(renamed));
+});
+
+test("on push every stored witness is evaluated, and so on a run naming no event", () => {
+  const push = runGate(selectionFixture("util-source"), { event: "push" });
+  assert.deepEqual(evaluatedIds(push), ["thing-guard", "util-guard"], reasonsOf(push));
+  assert.deepEqual(push.skippedStored, []);
+  assert.equal(push.result.status, "green", reasonsOf(push));
+  assert.match(
+    push.result.detail,
+    /^2 witness\(es\): 0 own, 2 stored evaluated in \d+ms, 0 stored skipped \(event push evaluates every stored witness\); /,
+  );
+
+  const none = runGate(selectionFixture("util-source"));
+  assert.deepEqual(evaluatedIds(none), ["thing-guard", "util-guard"], reasonsOf(none));
+  assert.deepEqual(none.skippedStored, []);
+  assert.match(none.result.detail, /0 stored skipped \(event none evaluates every stored witness\)/);
+});
+
+test("a phase diff that cannot be computed is error on pull_request and never skips a stored witness", () => {
+  const fixture = selectionFixture("util-source");
+  /* A base the repository cannot resolve, the shape of a push whose previous
+     tip was force-pushed away. */
+  const outcome = runGate(fixture, { event: "pull_request", base: "0".repeat(39) + "1" });
+  assert.equal(outcome.result.status, "error", reasonsOf(outcome));
+  assert.equal(outcome.result.vacuous, undefined, reasonsOf(outcome));
+  assert.match(
+    outcome.result.detail,
+    /^the phase diff could not be computed, so no stored witness is skipped: the base revision 0{39}1 does not resolve/,
+  );
+  assert.doesNotMatch(outcome.result.detail, /stored skipped/);
+  assert.deepEqual(outcome.skippedStored, []);
+  assert.equal(outcome.evaluations.length, 0);
 });
 
 // ---------------------------------------------------------------------------
