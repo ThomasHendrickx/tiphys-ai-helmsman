@@ -555,7 +555,7 @@ test(
      * and there is no kernel-side counterpart to ask.
      */
     assert.ok((vocabulary.modelForTier("cheaper") ?? "").length > 0);
-    assert.equal(vocabulary.familyOf(OBSERVED_MODEL), "opus");
+    assert.equal(vocabulary.familyOf(OBSERVED_MODEL), "anthropic");
     assert.equal(vocabulary.familyOf("a-model-from-another-vendor"), undefined);
     assert.equal(Object.hasOwn(kernel, "familyOf"), false);
     assert.equal(Object.hasOwn(kernel, "modelForTier"), false);
