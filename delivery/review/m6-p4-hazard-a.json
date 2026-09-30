@@ -1,0 +1,45 @@
+{
+  "kind": "verdict",
+  "phase": "M6-P4",
+  "head": "0d64d681bf28f8934794328950909f49739acca9",
+  "tiphys-version": "0.2.2",
+  "verdict": "APPROVE",
+  "produced-by": "claude-sonnet-5-5",
+  "framing": "hazard-final-head",
+  "review-contract": "hazard",
+  "findings": [
+    {
+      "id": "CR-M6P4A-01",
+      "severity": "low",
+      "evidence": [
+        "test/behaviors.json row release-verification-comment-cites-dr-0014 is on parent 2 of merge 64c5e1c (main 65d4ca5, test/behaviors.json:378) and absent from the merge and from HEAD: scratch rows.mjs over both merges prints 'lost: 1 [p2:release-verification-comment-cites-dr-0014], changed-value: 0, extra: []' for 64c5e1c (p1 1156 rows, p2 1142, union 1162, merged 1161) and for b4149eb (p1 1162, p2 1149, union 1170, merged 1169). Every other row on either parent survives with an identical value.",
+        "The drop is not a resolution choice: the row is absent on parent 1 (07122be) too. Commit c258ff1 (before the reviewed head 41e886a) deleted the row and its test in test/schemas.test.ts together, because the schema diet removed the $comment the test asserted; delivery/work-history/m6-p4.md:307-309 declares it. Main still carries the test at test/schemas.test.ts:626 and the row; the merge kept the branch's deletion of both, so HEAD has no row without a test and no test without a row (git grep of the key and of the title at HEAD outside delivery/: empty).",
+        "Nothing mechanical enforces append-only for behaviors.json (src/commands/conflicts.ts only exempts it from overlap), so no gate reports this; it is recorded because the brief names a dropped row as a finding."
+      ],
+      "concrete-fix": "No code change needed. The deletion was reviewed at 41e886a and its subject (the $comment) no longer exists; re-adding the row would need its test and the comment back. If the owner reads append-only strictly, record the retirement in the phase's merge notes instead."
+    }
+  ],
+  "deviations-judged": [],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "check-1-mediums-closed-by-named-tests",
+      "probed": "For CR-M6P4B-01, -02, -03 and ruled item 1, named the fix commit and the guarding test and witness spec, then ran the guard red and green at HEAD. Fix commits: B-01 and B-02 and B-03 are code in 9ec8f24 (src/gates/suite.ts, src/criteria.ts, src/commands/brief.ts, templates/plan.example.yaml, roles/plan-writer.md), tests in bf371b0, specs in 7103470 and 59e2954; item 1 is 442c50f (src/commands/plan.ts). Guards: B-01 test/criteria.test.ts:657 with witness/m6-p4-criterion-pass-shaped-red.json (6 members); B-02 :704 with witness/m6-p4-brief-compose-invalid-plan.json (2); B-03 :729 with witness/m6-p4-template-names-tests.json (2); item 1 :841 with witness/m6-p4-plan-project-invalid-plan.json (1). Each behavior key is in test/behaviors.json and each named title is found in test/ (scratch witness-check.mjs: bad 0). Item 1, run once: named test alone at HEAD exit 0, 1 test, 1 pass, 0 fail, 0 skipped. Mutated (the invalidPlan refusal block of src/commands/plan.ts deleted, the witness member's own find text): exit 1, 1 test, 0 pass, 1 fail, AssertionError at test/criteria.test.ts:851 (status 0 expected 1). Restored from a copy, git status clean. Beyond the brief, because the merges could have moved code under the specs, every member of the three medium specs was applied and its named test run alone (scratch mutrun.mjs, mut-mediums.txt): pass-shaped-red members 1-6, brief-compose members 1-2 and template members 1-2 each exit 1 with 1 test, 0 pass, 1 fail; greens exit 0 with 1 pass; tree clean after each. All 920 mutation members in witness/ were also checked for find text present in the file at HEAD: every m6-p4 member occurs, none is absent; nine other specs (none M6-P4's) have a find that occurs twice, and src/witness/run.ts:896 replaces every occurrence, so they are applied whole.",
+      "cleared-because": "All four items have a named test and a witness spec, each red when its fix is mutated away at HEAD and green with it. No medium is unguarded."
+    },
+    {
+      "class-id": "check-2-merges-kept-both-sides",
+      "probed": "The two merges of the branch are 64c5e1c (parents 07122be and 65d4ca5, main at M6-P3) and b4149eb (parents 48092ab and 55a7850, M6-P8). git show --remerge-diff 64c5e1c shows one conflicted file, test/behaviors.json, resolved as the union of the two appended blocks. git show --remerge-diff b4149eb shows conflicts in src/gates/run.ts (import now takes OPTIONAL_PARAMETERS and readParameterDeclaration together), schemas/gate-registry.schema.json and src/gates/schemas/gate-manifest.schema.json (parameter enum base, head, phase, event plus each with ?, identical in both schemas; each description carries the M6-P8 event exception and the M6-P4 trailing-? sentence), test/behaviors.json (union), and two hand re-anchors of witness finds (witness/m6-p4-runner-optional-parameter.json, witness/m6-p8-runner-hands-event.json) to the merged enum. For run.ts, manifest.ts and the two schemas, every line added on either side relative to the merge base (mb 34feb90) is present in the merge result, except the conflicted lines themselves (the import, the two descriptions, the two enums), which I read above. run.ts at HEAD keeps P8's missing-parameter filter (run.ts:1505, && !OPTIONAL_PARAMETERS.has(name)) and P4's optionalParameters loop (run.ts:1633) and manifest.ts keeps both readParameterDeclaration and OPTIONAL_PARAMETERS. Row survival in test/behaviors.json by script (scratch rows.mjs): no value changed, no row invented, exactly one row absent from the union of parents in each merge, the same one (CR-M6P4A-01).",
+      "finding": "CR-M6P4A-01 (low): one row, release-verification-comment-cites-dr-0014, is absent from the merges. It is the branch's own reviewed deletion (c258ff1, declared at delivery/work-history/m6-p4.md:307), not a resolution drop; nothing else from either side is lost."
+    },
+    {
+      "class-id": "check-3-nothing-unreviewed-rides-in",
+      "probed": "git diff --stat 07122be HEAD -- . ':!delivery' reports 39 files changed, 1894 insertions, 74 deletions. The files the two merges brought from main, from git diff --name-only <merge>^1 <merge> -- . ':!delivery' (22 for 64c5e1c, 16 for b4149eb), plus the four files of the item-1 commit 442c50f (src/commands/plan.ts, test/criteria.test.ts, test/behaviors.json, witness/m6-p4-plan-project-invalid-plan.json), cover all 39: the set difference is empty (scratch c3-*.txt). The other two first-parent commits after 07122be, 48092ab and 0d64d68, touch only delivery/work-history/m6-p4.md. The merge commits' own edits beyond the brought files are exactly the conflict resolutions and the two witness re-anchors shown by --remerge-diff. The item-1 diff (git show 442c50f) is one planSchemaRefusal call in src/commands/plan.ts, its test, its behavior row and its witness spec.",
+      "cleared-because": "Nothing of substance beyond the item-1 fix and the declared merge content rides in the non-delivery diff."
+    },
+    {
+      "class-id": "suite-at-head",
+      "probed": "npm test once at HEAD 0d64d681bf28f8934794328950909f49739acca9, node v26.6.0 from /home/user/.toolchains/node-v26.6.0-linux-x64/bin, dist built, invocation npm test (node --test test/**/*.test.ts): exit 0, tests 1271, pass 1271, fail 0, cancelled 0, SKIPPED 0, todo 0, duration 747 s (scratch npm-test.txt). The count equals the work history's step 5 line (1271). git status clean afterwards except this verdict file.",
+      "cleared-because": "Zero failures and zero skipped at the landing head on the floor-satisfying toolchain."
+    }
+  ]
+}

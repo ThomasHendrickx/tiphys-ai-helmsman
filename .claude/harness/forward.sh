@@ -18,12 +18,13 @@ R=/tmp/claude-0/fwd
 
 # The container default is node v22.22.2 and the declared floor is >=26. Since
 # 2026-08-20 the default does not merely SKIP the floor-gated tests, it FAILS
-# test/doctor.test.ts:934 at heads whose CI is green, which trains a reader to
-# wave a real failure through. Use the floor-satisfying toolchain so a red here
-# means a red branch. It lives under /tmp, and so does R, which matters: the
-# suite's grantTraversalWhenUnderTmp opens /tmp/claude-0 only when the REPO is
-# under /tmp, and runCliUnprivileged spawns process.execPath, so a scratch
-# toolchain is reachable only in that combination (standing warning 1).
+# a floor-dependent test in test/doctor.test.ts at heads whose CI is green, which
+# trains a reader to wave a real failure through. Use the floor-satisfying
+# toolchain so a red here means a red branch. It lives under /tmp, and so does R,
+# which matters: the suite's grantTraversalWhenUnderTmp opens /tmp/claude-0 only
+# when the REPO is under /tmp, and runCliUnprivileged spawns process.execPath, so
+# a scratch toolchain is reachable only in that combination
+# (delivery/tuition/T-029-the-precondition-test-flakes-only-here.md:87).
 export PATH=/tmp/claude-0/n26/bin:$PATH
 P="$1"
 [ -n "$P" ] || { echo "usage: forward.sh <phase-id>   e.g. m4-p13"; exit 64; }

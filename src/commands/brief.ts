@@ -56,9 +56,13 @@ import {
   splitFrontmatter,
 } from "../roles.ts";
 import { locateCharters } from "../charter.ts";
+import { planSchemaRefusal, renderNotTestableQuestions } from "../criteria.ts";
+import { duplicatePhaseIdRefusal } from "../plan.ts";
 import { readRegistryDocument } from "../gates/run.ts";
 import { refuseOpenForWrite, readRegularFileIfPresent } from "../task.ts";
 import { decodeDocument, formatDiagnostics, readOperatorPath } from "../validate.ts";
+import type { SchemaDocument } from "../validate.ts";
+import { loadTypeSchema } from "./validate.ts";
 
 /** Exit code for usage errors, per BSD sysexits EX_USAGE. */
 export const EX_USAGE = 64;
@@ -399,7 +403,10 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
     if (!gateList.ok) {
       return { ok: false, reason: gateList.reason };
     }
-    body = body.replace(BRIEF_GATE_LIST_PLACEHOLDER, gateList.text);
+    /* A FUNCTION, not a replacement string (M6-P3 fix round 2, CR-M6P3B-01):
+       a string would have the replacement patterns $' $& $` and $$ in the
+       project's registry text interpreted rather than copied. */
+    body = body.replace(BRIEF_GATE_LIST_PLACEHOLDER, () => gateList.text);
   } else if (options.roleId === "implementer") {
     return {
       ok: false,
@@ -415,7 +422,28 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
   if (!planDecoded.ok) {
     return { ok: false, reason: planDecoded.reason };
   }
+  /* M6-P4 fix round 1 (CR-M6P4B-02): the plan is VALIDATED before anything is
+     read out of it, as `tiphys validate --type plan` and the suite gate do. A
+     criterion with neither `check` nor `not-testable` would otherwise reach
+     the hazard reviewer's brief as "none" in the not-testable section. */
+  let planSchema: SchemaDocument;
+  try {
+    planSchema = loadTypeSchema("plan");
+  } catch (caught) {
+    return { ok: false, reason: (caught as Error).message };
+  }
+  const invalidPlan = planSchemaRefusal(planDecoded.value, options.planFile, planSchema);
+  if (invalidPlan !== undefined) {
+    return { ok: false, reason: invalidPlan };
+  }
   const plan = asRecord(planDecoded.value);
+  /* CR-M6P3A-01: the `.find` below takes the first match, so a duplicated
+     phase id is refused before it, by the same function `tiphys plan project`
+     uses. */
+  const duplicated = duplicatePhaseIdRefusal(plan, options.planFile);
+  if (duplicated !== undefined) {
+    return { ok: false, reason: duplicated };
+  }
   const phases = Array.isArray(plan?.["phases"]) ? (plan["phases"] as unknown[]) : [];
   const phase = phases
     .map((candidate) => asRecord(candidate))
@@ -482,6 +510,11 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
   lines.push("");
   lines.push(...renderIntent(productIntent, phase));
   lines.push(...renderPhase(phase));
+  /* M6-P4 (DR-0064): no test or command proves a not-testable criterion, so
+     the hazard reviewer is handed each one as a question to answer. */
+  if (options.roleId === REVIEW_CONTRACT_ROLE) {
+    lines.push(...renderNotTestableQuestions(phase));
+  }
 
   const warnings = readRegularFileIfPresent(
     join(options.workingDirectory, WARNINGS_FILE),
@@ -501,20 +534,30 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
 
 /**
  * The gate list for a composed brief: the project's `gate-registry.yaml` in the
- * working directory, or the kernel's shipped one when the project has none,
- * validated and rendered for BRIEF_GATE_BLOCK_MODE. A registry that selects no
- * gate for that mode is refused rather than rendered as an empty table.
+ * working directory, validated and rendered for BRIEF_GATE_BLOCK_MODE. A
+ * project with no registry is refused, naming the file, rather than handed the
+ * kernel's own list labelled as the project's (M6-P3 fix round 1,
+ * CR-M6P3A-02); `tiphys mode show` refuses the same way. A registry that
+ * selects no gate for that mode is refused rather than rendered as an empty
+ * table.
  */
 function renderProjectGateList(
   workingDirectory: string,
   root: string,
 ): { ok: true; text: string } | { ok: false; reason: string } {
-  const projectPath = join(workingDirectory, "gate-registry.yaml");
-  const project = readRegularFileIfPresent(projectPath);
+  const path = join(workingDirectory, "gate-registry.yaml");
+  const project = readRegularFileIfPresent(path);
   if (project.kind === "refused") {
     return { ok: false, reason: project.reason };
   }
-  const path = project.kind === "read" ? projectPath : join(root, "gate-registry.yaml");
+  if (project.kind !== "read") {
+    return {
+      ok: false,
+      reason:
+        `the gate list could not be rendered: ${path} does not exist; the project writes its own, ` +
+        `starting from ${join(root, "templates", "gate-registry.example.yaml")}`,
+    };
+  }
   const registry = readRegistryDocument(path);
   if (!registry.ok) {
     return {

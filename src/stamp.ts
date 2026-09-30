@@ -185,6 +185,18 @@ export const RULES_SINCE: readonly RuleSince[] = [
     entry: "delivered-outcome",
     statement: "a final report carries a delivered-outcome answering the phase intent (M5-P2)",
   },
+  {
+    /* M6-P4 (DR-0064). Gated so an unstamped report keeps validating as
+       history. The since is the current package version rather than the next
+       release's, because every row must apply to a current stamp and the
+       shipped template carries the package version. */
+    id: "final-report-not-testable-required",
+    type: "final-report",
+    since: "0.2.2",
+    schemaPath: "/required",
+    entry: "not-testable",
+    statement: "a final report states each phase's not-testable criterion count (M6-P4)",
+  },
 ];
 
 /** Whether a rule introduced at `since` applies to a document with this stamp. */

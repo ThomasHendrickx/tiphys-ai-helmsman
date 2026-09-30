@@ -1,0 +1,18 @@
+{
+  "id": "m6-p4-plan-project-invalid-plan",
+  "behavior": "m6-p4-plan-project-invalid-plan",
+  "tests": [
+    "tiphys plan project refuses a plan that does not validate against the plan schema, naming the plan and the invalid criterion"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/plan.ts",
+      "find": "  if (invalidPlan !== undefined) {\n    process.stderr.write(`tiphys plan project: ${invalidPlan}\\n`);\n    return 1;\n  }\n",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

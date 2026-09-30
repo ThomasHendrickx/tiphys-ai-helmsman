@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tiphys.dev/schemas/charter.schema.json",
   "title": "Tiphys project charter",
-  "description": "Blueprint section 7. The charter is what a project realizes the kernel against. A missing required field BLOCKS realization, which is what this document's required list means.",
+  "description": "Blueprint section 7: what a project realizes the kernel against; a missing required field blocks realization.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -31,19 +31,16 @@
         "name": { "type": "string", "minLength": 1 },
         "repo": { "type": "string", "minLength": 1 },
         "kernel-version-pin": {
-          "$comment": "An exact version, never a range. A range makes the delivery process a moving target.",
           "type": "string",
           "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(-[0-9A-Za-z.-]+)?$"
         }
       }
     },
     "delivery-mode": {
-      "$comment": "The enum is declared HERE and the mode DEFINITIONS are owned by M3-P3's assurance-modes.yaml. The derived check charter-mode-enum-matches-modes (M3-P3) asserts the two agree, so the duplication cannot drift. M3-P1's placeholder list (full, standard, fast, yolo) was REPLACED by M3-P3 with the three ids blueprint section 8 actually declares; `standard`, `fast` and `yolo` named no mode definition anywhere and a charter could select one and get a delivery mode with no pipeline behind it. CLOSED VOCABULARY AT v0.1.0 (DR-0020): the three values are the tiphys kernel's OWN mode ids and this enum rejects every other value, so a consuming project's charter cannot select a delivery mode of its own name at v0.1.0. Extension is an M4 question, deferred to a real pilot consumer.",
       "type": "string",
       "enum": ["full", "direct-pr", "local-only"]
     },
     "assurance-tier": {
-      "$comment": "The SAME vocabulary as delivery-mode and watched by the same check. M3-P1 shipped the identical placeholder enum on both fields, so a check that watched only one would leave the other free to drift, which is the hazard rather than a smaller version of it. CLOSED VOCABULARY AT v0.1.0 (DR-0020): the same closed set as delivery-mode, with the same consequence for a consuming project and the same M4 deferral.",
       "type": "string",
       "enum": ["full", "direct-pr", "local-only"]
     },
@@ -60,7 +57,6 @@
       }
     },
     "irreversible-decisions": {
-      "$comment": "Blueprint section 7's named list. Every one of the seven is required, because an irreversible decision left unstated is one the delivery process will improvise.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -83,7 +79,6 @@
       }
     },
     "product-intent": {
-      "$comment": "One page, authored as a YAML block scalar.",
       "type": "string",
       "minLength": 1
     },
@@ -92,13 +87,11 @@
       "items": { "type": "string", "minLength": 1 }
     },
     "escalation-contract": {
-      "$comment": "R-022 and R-090: owner decisions are never pre-empted.",
       "type": "object",
       "additionalProperties": false,
       "required": ["stop-for", "route"],
       "properties": {
         "stop-for": {
-          "$comment": "Its DEFAULT entries, shipped in templates/charter.example.yaml, are 'any irreversible choice the charter is silent on' and 'a change from a declared release verification to `none`'. They are defaults rather than schema constants because the charter is the owner's document; the second one is what makes turning verification off an owner decision instead of an implementer's edit (delivery/verification/release-verification-interface.md section 4.1).",
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 }
@@ -107,7 +100,6 @@
       }
     },
     "release-verification": {
-      "$comment": "RESERVED, NOT DESIGNED (DR-0014, D-M3-29). The field's real shape is NOT decided here. delivery/verification/release-verification-interface.md section 8 item 4: 'the charter field is M3's, and M3 should reserve the space rather than design it', settled by the first real project charter at M4's pilot. This schema enumerates no adapters, models no N verifications, expresses no outcome enum, and carries no charter coherence check. The two currently-valid shapes are the oneOf below; any other shape is a rejection, which is the guard that stops a project inventing the field's real shape before M4's pilot decides it.",
       "type": "object",
       "additionalProperties": false,
       "required": ["mode"],
@@ -120,7 +112,6 @@
         "note": { "type": "string", "minLength": 1 }
       },
       "if": {
-        "$comment": "Investigation defence 2: silence is never permission. Disabling verification costs visibility, so mode none REQUIRES a stated reason.",
         "type": "object",
         "required": ["mode"],
         "properties": { "mode": { "const": "none" } }
@@ -152,50 +143,42 @@
       ]
     },
     "review-families": {
-      "$comment": "DR-0038's DECLARATION, and it is a declaration rather than the exception itself (M4-D-28, kernel plan M4 section 4.2.6). DR-0012 condition 1 requires two clean-room reviews on different model FAMILIES. Since M6-P5 (DR-0062) a family is the VENDOR of the model the kernel observed when it launched the reviewer, named by the executor's vocabulary (the Claude Code plugin maps every `claude-*` id to `anthropic`), and the merge gate reads it from the kernel's review records. An environment that serves one vendor can meet the requirement only through this declaration, so this field is where a project states WHICH families its environment has, in the same vocabulary. The schema does not encode the exception: single-family is `available.length === 1`, and the merge gate applies it (`judgeFamilies`, src/review.ts). OPTIONAL, AND ITS ABSENCE IS NOT PERMISSION: an absent `review-families` leaves the cross-family requirement applying unchanged, so a same-family pair stays red (src/gates/release.ts:1037 states the same rule for the sibling case). WHY THE CHARTER AND NOT assurance-modes.yaml: DR-0029's split asks whether a fact is process or predicate, and 'which model families exist in this environment' is a fact about the PROJECT's environment, so it belongs to the project's own declaration; the assurance-mode vocabularies are closed by DR-0020 and bound to a derived check.",
       "type": "object",
       "additionalProperties": false,
       "required": ["available", "reason"],
       "properties": {
         "available": {
-          "$comment": "The model families, in the executor vocabulary's tokens, this environment can dispatch a clean-room review on. NOT an enum: no closed vocabulary of families can be kept current, and a stale enum here would refuse a true declaration. Each entry is canonicalised the way every governance scalar is and compared with the family a kernel review record carries.",
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1 }
         },
         "reason": {
-          "$comment": "Investigation defence 2, the same rule release-verification mode none is held to: narrowing an owner-reserved merge condition costs a stated reason. A declaration nobody has to justify is the shape DR-0038 exists to replace.",
           "type": "string",
           "minLength": 1
         }
       }
     },
     "runtime-set": {
-      "$comment": "M6-P2 (DR-0063): what this project SHIPS, for the review tier. A change touching the set is `pair` (two hazard reviews), anything else is `single` (one). The merge gates read it from the MERGE BASE's committed charter, so a change cannot shrink the set that judges it, and a change to this block is itself `pair`. OPTIONAL, and its absence is not `single`: a project with no declaration, or one the gates cannot read, is all `pair` (fail closed).",
       "type": "object",
       "additionalProperties": false,
       "required": ["paths"],
       "properties": {
         "paths": {
-          "$comment": "Project-relative. An entry ending in `/` is a directory prefix; any other entry is an exact path. An exact entry that is a DIRECTORY at the merge base, or a prefix entry that is a FILE or nothing there, makes the declaration invalid (so pair). The pattern refuses a leading ./ or /, a . or .. segment and an empty segment (M6-P2 fix round 1), and a backslash or a leading or trailing space (M6-P5), which match no path git prints, and a glob character (* ? [), which is compared literally and so does not mean what it looks like. The gate's reader, readRuntimeSet in src/gates/merge-preconditions.ts, refuses the same shapes.",
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!\\./)(?!.*//)(?!(?:.*/)?\\.{1,2}(?:/|$))(?!\\s)(?!.*\\s$)[^*?\\[\\\\]+$" }
         },
         "manifests": {
-          "$comment": "JSON manifests (package.json, a lockfile) that count only when something other than a version field changes: the top-level version, a lockfile's root or workspace entry version (a packages key with no node_modules segment), or a pin on a package named in version-pins in dependencies, devDependencies or optionalDependencies of the root or a lockfile workspace entry. Judged BEFORE paths, so a manifest under a declared prefix can still be a version-only bump. Same shape rules as paths, and no trailing /: a manifest is one file.",
           "type": "array",
           "items": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!\\./)(?!.*//)(?!.*/$)(?!(?:.*/)?\\.{1,2}(?:/|$))(?!\\s)(?!.*\\s$)[^*?\\[\\\\]+$" }
         },
         "version-pins": {
-          "$comment": "Package names whose pin counts as a version field, in dependencies, devDependencies or optionalDependencies of a declared manifest's root or of a lockfile workspace entry. Not in peerDependencies, and not inside a node_modules entry.",
           "type": "array",
           "items": { "type": "string", "minLength": 1, "pattern": "\\S" }
         }
       }
     },
     "retention": {
-      "$comment": "Consumed by M3-P8 for R-098.",
       "type": "object",
       "additionalProperties": false,
       "required": ["work-history", "evidence", "tuition"],

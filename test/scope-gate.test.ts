@@ -370,6 +370,81 @@ test("renaming a declared file to an undeclared path is red naming the new path,
 });
 
 /* ------------------------------------------------------------------ */
+/* M6-P3 fix round 3 (CR-M6P3B-05): names git quotes.                   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * REAL git output for the fixture below, recorded once and compared with
+ * git's live output before the gate runs (rule (f): src/gates/scope.ts spawns
+ * git and parses what it prints).
+ */
+const pathListingsCapturePath = fileURLToPath(
+  new URL("../witness/captures/m6-p3-git-path-listings.json", import.meta.url),
+);
+
+/**
+ * Re-run every command the capture records for one case, in `dir`, and require
+ * git's live stdout to equal the recorded stdout. `<base>` in a recorded argv
+ * is the fixture's base sha; nothing else is substituted.
+ */
+function replayPathListings(dir: string, name: string, base: string): void {
+  const capture = JSON.parse(readFileSync(pathListingsCapturePath, "utf8")) as {
+    cases: Array<{ case: string; commands: Array<{ argv: string[]; exit: number; stdout: string }> }>;
+  };
+  const recorded = capture.cases.find((entry) => entry.case === name);
+  assert.ok(recorded !== undefined, `m6-p3-git-path-listings.json records no ${name} case`);
+  for (const command of recorded.commands) {
+    const argv = command.argv.slice(1).map((arg) => arg.split("<base>").join(base));
+    const live = spawnSync("git", argv, { cwd: dir, encoding: "utf8", env: GIT_ENV });
+    assert.equal(live.status, command.exit, `git ${argv.join(" ")}: ${live.stderr}`);
+    assert.equal(live.stdout, command.stdout, `git ${argv.join(" ")} no longer prints what the capture recorded`);
+  }
+}
+
+test("a declared file whose name git quotes is audited by its own name: editing it is green, and renaming it to an undeclared quoted name is red naming the new name", () => {
+  /* git prints `M "src/caf\303\251.ts"` for this edit. Read from line output
+     that quoted text matched no declared entry, so a phase that touched only
+     what it declared was red. */
+  const { dir, outside } = initRepo();
+  try {
+    const declDir = join(dir, "delivery/plan/phase-declarations");
+    mkdirSync(join(dir, "src"), { recursive: true });
+    const body = Array.from({ length: 10 }, (_, index) => `export const line${String(index)} = ${String(index)};`);
+    writeFileSync(join(dir, "src", "caf\u00e9.ts"), `${body.join("\n")}\n`);
+    writeDeclaration(declDir, "m2-p4", { filesToTouch: ["src/caf\u00e9.ts"] });
+    git(dir, ["add", "-A"]);
+    git(dir, ["commit", "-q", "-m", "base"]);
+    const base = git(dir, ["rev-parse", "HEAD"]);
+    git(dir, ["checkout", "-q", "-b", fixtureBranch("m2-p4")]);
+
+    // DIRECTION 1: edit the declared file.
+    body[0] = "export const line0 = 100;";
+    writeFileSync(join(dir, "src", "caf\u00e9.ts"), `${body.join("\n")}\n`);
+    git(dir, ["commit", "-q", "-am", "edit the declared file"]);
+    const head1 = git(dir, ["rev-parse", "HEAD"]);
+    replayPathListings(dir, "scope-edit", base);
+    const r1 = runScope(dir, outside, ["--base", base, "--head", head1, "--phase", "m2-p4"]);
+    assert.equal(r1.run.status, 0, r1.run.stdout + r1.run.stderr);
+    assert.equal(r1.record?.status, "green", r1.record?.detail ?? "");
+    assert.equal(r1.record?.units, 1);
+
+    // DIRECTION 2: rename it to an undeclared name git also quotes.
+    git(dir, ["mv", join("src", "caf\u00e9.ts"), join("src", "na\u00efve.ts")]);
+    git(dir, ["commit", "-q", "-m", "rename to undeclared"]);
+    const head2 = git(dir, ["rev-parse", "HEAD"]);
+    replayPathListings(dir, "scope-rename", base);
+    const r2 = runScope(dir, outside, ["--base", base, "--head", head2, "--phase", "m2-p4"]);
+    assert.notEqual(r2.run.status, 0);
+    assert.equal(r2.record?.status, "red", r2.record?.detail ?? "");
+    assert.ok((r2.record?.detail ?? "").includes("src/na\u00efve.ts"), r2.record?.detail);
+    assert.ok(!(r2.record?.detail ?? "").includes('"src/'), `no quoted path in: ${r2.record?.detail ?? ""}`);
+    assert.equal(r2.record?.units, 2);
+  } finally {
+    cleanup(dir, outside);
+  }
+});
+
+/* ------------------------------------------------------------------ */
 /* Criterion 4: deletions, both directions.                              */
 /* ------------------------------------------------------------------ */
 

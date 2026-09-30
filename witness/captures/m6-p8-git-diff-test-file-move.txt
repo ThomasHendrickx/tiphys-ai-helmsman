@@ -1,0 +1,12 @@
+# Real captured git output (M6-P8): a test file MOVED between the merge base and the head.
+# git version: 2.43.0
+# repository: a scratch repository, base commit adds test/thing.test.ts, head commit runs
+#   git mv test/thing.test.ts test/thing-moved.test.ts
+# Captured 2026-09-30 by the M6-P8 implementer. Nothing below the BEGIN lines is edited.
+--- BEGIN git diff --name-status --no-renames base...head ---
+A	test/thing-moved.test.ts
+D	test/thing.test.ts
+--- END git diff --name-status --no-renames base...head ---
+--- BEGIN git diff --name-status base...head ---
+R100	test/thing.test.ts	test/thing-moved.test.ts
+--- END git diff --name-status base...head ---

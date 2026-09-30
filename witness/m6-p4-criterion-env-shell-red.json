@@ -1,0 +1,31 @@
+{
+  "id": "m6-p4-criterion-env-shell-red",
+  "behavior": "m6-p4-criterion-env-shell-red",
+  "tests": [
+    "a check command that hands an inline script to a shell behind env and assignments is red, and env before any other program is run"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/criteria.ts",
+      "find": "  while (argv[start] !== undefined && basename(argv[start] as string) === \"env\") {",
+      "replace": "  while (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/criteria.ts",
+      "find": "const ENV_PREFIX_WORD = /^(?:[A-Za-z_][A-Za-z0-9_]*=[\\s\\S]*|-i|-|--ignore-environment)$/;",
+      "replace": "const ENV_PREFIX_WORD = /^(?:-i|-|--ignore-environment)$/;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node src/gates/suite.ts, the suite gate CLI, which spawns the configured node:test run and parses its reporter stream, and runs each criterion's check.command through src/criteria.ts",
+    "captures": [
+      "witness/captures/m6-p4-criteria-gate-cli.txt"
+    ],
+    "provenance": "Captured 2026-09-30 in the kernel container on node v26.6.0 by running the gate CLI over the fixtures test/criteria.test.ts builds (the command and exit are recorded above each block; this witness's test compares block env-shell-red). The named test drives a real node:test run or a real spawned command and, where it names a block, compares the live gate stdout with it byte for byte; nothing asserted is a hand-written string standing in for another program's output."
+  }
+}

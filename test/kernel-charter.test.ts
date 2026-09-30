@@ -173,6 +173,23 @@ function stageRealCharterContext(): string {
   return dir;
 }
 
+/**
+ * The same staging with the root charter's `review-families` block removed
+ * (M6-P6). The staged directory is not a git repository, so a declaration in
+ * it is uncommitted by construction, and DR-0038 makes an uncommitted
+ * declaration `error`. These tests are about the merge-authority regime; the
+ * declared exception has its own tests in test/single-family-exception.test.ts.
+ */
+function stageRealCharterContextWithoutFamilies(): string {
+  const dir = stageRealCharterContext();
+  const staged = join(dir, "charter.yaml");
+  const text = readFileSync(staged, "utf8");
+  const stripped = text.replace(/^review-families:\n(?:[ \t]+[^\n]*\n)*/m, "");
+  assert.notEqual(stripped, text, "the root charter declares no review-families block to strip");
+  writeFileSync(staged, stripped);
+  return dir;
+}
+
 test("the repository root carries a charter, so the merge check can determine the regime", () => {
   /* THE EXACT COMMAND THE GATE REGISTRY RUNS, against the real repository root,
      from the real repository root. Staging a copy would prove something about a
@@ -192,7 +209,7 @@ test("the repository root carries a charter, so the merge check can determine th
 });
 
 test("with a committed pair of verdicts the root charter is what lets the check reach a verdict", () => {
-  const dir = stageRealCharterContext();
+  const dir = stageRealCharterContextWithoutFamilies();
   try {
     /* `are distinct on` is printed ONLY after the declared mode has been found
        in `assurance-modes.yaml` and its `merge-authority` has been read as the
@@ -216,7 +233,7 @@ test("removing the root charter from that same context makes the merge check err
      error the phase exists against, reproduced inside the suite, and it is a
      separate test so that a reader of the suite output sees the dangerous state
      named rather than buried inside a green one. */
-  const dir = stageRealCharterContext();
+  const dir = stageRealCharterContextWithoutFamilies();
   try {
     const before = runScript(dir);
     assert.equal(before.status, 0, `the control arm was not green: ${before.output}`);
@@ -241,7 +258,7 @@ test("a root charter that is present and unusable fails loudly, and two differen
      decodes perfectly and names a mode that does not exist. They travel
      different branches of the check and must print different sentences, so
      "could not be read" and "does not define" never collapse into one. */
-  const undecodable = stageRealCharterContext();
+  const undecodable = stageRealCharterContextWithoutFamilies();
   try {
     writeFileSync(join(undecodable, "charter.yaml"), "kind: charter\ndelivery-mode: [unclosed\n");
     const run = runScript(undecodable);
@@ -251,7 +268,7 @@ test("a root charter that is present and unusable fails loudly, and two differen
     rmSync(undecodable, { recursive: true, force: true });
   }
 
-  const undefinedMode = stageRealCharterContext();
+  const undefinedMode = stageRealCharterContextWithoutFamilies();
   try {
     const text = readFileSync(join(undefinedMode, "charter.yaml"), "utf8");
     const retargeted = text.replace(/^delivery-mode: .*$/m, "delivery-mode: not-a-declared-mode");

@@ -1,0 +1,30 @@
+{
+  "id": "plan-project-duplicate-phase-id",
+  "behavior": "plan-project-duplicate-phase-id-refused",
+  "tests": [
+    "plan project refuses a plan declaring phase M9-P1 twice with the wider entry first, naming the id, and writes no declaration"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/ids.ts",
+      "find": "    .filter(([, indexes]) => indexes.length > 1)",
+      "replace": "    .filter(() => false)"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/plan.ts",
+      "find": "  return duplicates.length === 0 ? undefined : describeDuplicateIds(source, \"phase\", duplicates);",
+      "replace": "  return undefined;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/plan.ts",
+      "find": "  if (duplicated !== undefined) {\n    return { ok: false, reason: duplicated };\n  }",
+      "replace": "  if (false) {\n    return { ok: false, reason: duplicated };\n  }"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -20,9 +20,9 @@
  *
  * WHAT IT CANNOT SEE, stated rather than left to be discovered: it has no
  * network, so open pull requests, CI conclusions and post-merge push runs are
- * invisible; and it does not RUN the gate bundle, because several gates are
- * wall-clock sensitive and this box is routinely loaded above the band that
- * reddens `coverage` (delivery/verification/wall-clock-budgets-are-load-dependent.md).
+ * invisible; and it does not RUN the gates, because several are wall-clock
+ * sensitive and this box is routinely loaded above the band where they report
+ * false reds (delivery/verification/wall-clock-budgets-are-load-dependent.md).
  * It tells you to run those separately, on a quiet machine, and says so in its
  * output rather than letting a silent omission read as a pass.
  *
@@ -179,18 +179,18 @@ if (ref !== undefined) {
     }
   }
 
-  /* 5. A CONFORMING VERDICT, WHICH IS WHAT ARMS THE MERGE CHECK. Measured
-        2026-09-16: `check-dual-review` has never asserted anything on this
-        repository, because a markdown review is filtered out before it is read
-        and no top-level verdict document has ever been committed. Both regime
-        documents must also be present or the gate errors rather than running. */
+  /* 5. A CONFORMING VERDICT, WHICH IS WHAT THE MERGE GATE READS. The
+        `merge-preconditions` gate counts only verdict documents (JSON or YAML
+        directly under delivery/review/); a markdown review counts for nothing,
+        and a missing review is red. Both regime documents must also be present
+        or the gate reports error. */
   const verdicts = reviewFiles.filter((p) => /\.(ya?ml|json)$/i.test(p) && p.split("/").length === 3);
   if (verdicts.length === 0) {
-    notes.push(`NO conforming verdict document: check-dual-review will report not-applicable, not green. Markdown reviews are filtered out before they are read.`);
+    notes.push(`NO conforming verdict document: merge-preconditions counts no review, and a missing review is red. Markdown reviews are not read.`);
   } else {
     for (const document of ["charter.yaml", "assurance-modes.yaml"]) {
       if (!exists(ref, document)) {
-        unmet.push(`${verdicts.length} verdict document(s) will ARM check-dual-review, and ${document} is absent, so it reports error (exit 21), not green`);
+        unmet.push(`${verdicts.length} verdict document(s) are on the branch, and ${document} is absent, so merge-preconditions reports error, not green`);
       }
     }
   }
@@ -213,8 +213,8 @@ for (const u of unmet) lines.push(`  UNMET  ${u}`);
 if (unmet.length === 0) lines.push("  every locally computable condition is met.");
 lines.push("");
 lines.push("NOT CHECKED HERE, and each is a real condition:");
-lines.push("  - the gate bundle. Several gates are wall-clock sensitive and this box is often");
-lines.push("    loaded past the band that reddens `coverage`. Run them on a quiet machine:");
+lines.push("  - the gates. Several are wall-clock sensitive and this box is often loaded");
+lines.push("    past the band where they report false reds. Run them on a quiet machine:");
 lines.push("    read /proc/loadavg first and say what it was.");
 lines.push("  - the suite. Quote interpreter, build state, invocation, checkout-vs-archive,");
 lines.push("    and the SKIPPED count beside the pass count.");

@@ -1,0 +1,24 @@
+{
+  "id": "m6-p4-template-names-tests",
+  "behavior": "m6-p4-template-names-tests",
+  "tests": [
+    "the shipped plan template names tests in check.tests and never proves a criterion with a test runner's exit code"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "templates/plan.example.yaml",
+      "find": "        check:\n          tests:\n            - a CSV row is imported as one record\n            - a malformed row is refused naming its line\n            - a staged 429 is retried twice and the third failure propagates\n            - a 500 response is not retried\n",
+      "replace": "        check:\n          command: [node, --test, test/importer.test.ts]\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "templates/plan.example.yaml",
+      "find": "            - a 500 response is not retried\n",
+      "replace": "            - a 500 response is not retried\n          command: [npm, test]\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

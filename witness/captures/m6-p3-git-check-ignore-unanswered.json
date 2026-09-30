@@ -1,0 +1,133 @@
+{
+  "provenance": "Real git output, captured 2026-09-30 by the M6-P3 fix round 4 implementer with a recording script (delivery/work-history/m6-p3.md, fix round 4, capture section), for what src/commands/doctor.ts reads from `git -C <root> check-ignore -q -- <path>` when the retention check decides whether a declared path survives a clone. git 2.34.1 is the packaged git of Ubuntu 22.04 (git_2.34.1-1ubuntu1.17_amd64.deb from archive.ubuntu.com, sha256 8794fcf2c4606c445df0db3dc963c8fb852772208bfb12727a12717c03767af7), extracted into a scratch directory and run through a wrapper, never installed; git 2.43.0 is the container git. Every run had exactly PATH=/usr/bin:/bin, HOME=/nonexistent-home and LC_ALL=C/LANG=C as its environment. Each of <tmp>/repo, <tmp>/bad and <tmp>/plain holds notes/evidence/keep.md, notes/tuition/keep.md and a .gitignore of the single line `notes/evidence/`; <tmp>/repo is a fresh `git init`, <tmp>/bad is a fresh `git init` whose .git/config then had the malformed line `[core` appended, and <tmp>/plain is not a repository (no parent of it is one either). Cases: ignored-path (exit 0) and unignored-path (exit 1) are the two answers; not-a-repository and bad-config are two structurally different ways git gives no answer, both exit 128 with a fatal line. It extends witness/captures/doctor-git-check-ignore-resolution.txt, which recorded not-a-repository on git 2.43.0 only and named the 1-versus-128 conflation as a residue. Substitution, the only bytes rewritten: the scratch directory is spelled <tmp>. JSON escapes newlines as \\n, so this file is ASCII.",
+  "cases": [
+    {
+      "case": "ignored-path",
+      "git": "git version 2.43.0",
+      "argv": [
+        "git",
+        "-C",
+        "<tmp>/repo",
+        "check-ignore",
+        "-q",
+        "--",
+        "notes/evidence"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "case": "unignored-path",
+      "git": "git version 2.43.0",
+      "argv": [
+        "git",
+        "-C",
+        "<tmp>/repo",
+        "check-ignore",
+        "-q",
+        "--",
+        "notes/tuition"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "case": "not-a-repository",
+      "git": "git version 2.43.0",
+      "argv": [
+        "git",
+        "-C",
+        "<tmp>/plain",
+        "check-ignore",
+        "-q",
+        "--",
+        "notes/tuition"
+      ],
+      "exit": 128,
+      "stdout": "",
+      "stderr": "fatal: not a git repository (or any of the parent directories): .git\n"
+    },
+    {
+      "case": "bad-config",
+      "git": "git version 2.43.0",
+      "argv": [
+        "git",
+        "-C",
+        "<tmp>/bad",
+        "check-ignore",
+        "-q",
+        "--",
+        "notes/tuition"
+      ],
+      "exit": 128,
+      "stdout": "",
+      "stderr": "fatal: bad config line 6 in file .git/config\n"
+    },
+    {
+      "case": "ignored-path",
+      "git": "git version 2.34.1",
+      "argv": [
+        "git",
+        "-C",
+        "<tmp>/repo",
+        "check-ignore",
+        "-q",
+        "--",
+        "notes/evidence"
+      ],
+      "exit": 0,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "case": "unignored-path",
+      "git": "git version 2.34.1",
+      "argv": [
+        "git",
+        "-C",
+        "<tmp>/repo",
+        "check-ignore",
+        "-q",
+        "--",
+        "notes/tuition"
+      ],
+      "exit": 1,
+      "stdout": "",
+      "stderr": ""
+    },
+    {
+      "case": "not-a-repository",
+      "git": "git version 2.34.1",
+      "argv": [
+        "git",
+        "-C",
+        "<tmp>/plain",
+        "check-ignore",
+        "-q",
+        "--",
+        "notes/tuition"
+      ],
+      "exit": 128,
+      "stdout": "",
+      "stderr": "fatal: not a git repository (or any of the parent directories): .git\n"
+    },
+    {
+      "case": "bad-config",
+      "git": "git version 2.34.1",
+      "argv": [
+        "git",
+        "-C",
+        "<tmp>/bad",
+        "check-ignore",
+        "-q",
+        "--",
+        "notes/tuition"
+      ],
+      "exit": 128,
+      "stdout": "",
+      "stderr": "fatal: bad config line 6 in file .git/config\n"
+    }
+  ]
+}

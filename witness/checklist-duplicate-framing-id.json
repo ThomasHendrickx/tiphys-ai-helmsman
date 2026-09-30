@@ -1,0 +1,24 @@
+{
+  "id": "checklist-duplicate-framing-id",
+  "behavior": "checklist-duplicate-framing-id-refused",
+  "tests": [
+    "a checklist declaring framing fix-round twice with the weaker entry first is refused at load naming the id, rather than resolved under the first"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/ids.ts",
+      "find": "    .filter(([, indexes]) => indexes.length > 1)",
+      "replace": "    .filter(() => false)"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checklists.ts",
+      "find": "  if (duplicatedFramings.length > 0) {",
+      "replace": "  if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

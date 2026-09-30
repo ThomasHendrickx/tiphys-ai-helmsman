@@ -43,7 +43,7 @@ escalation-contract:
     The orchestrator raises a decision record and notifies the owner
     asynchronously; work on the affected phase stops.
 release-verification:
-  # RESERVED, NOT DESIGNED (DR-0014, D-M3-29). See the schema's $comment.
+  # RESERVED, NOT DESIGNED (DR-0014, D-M3-29).
   mode: reserved
   note: >-
     The real shape of this field is settled by the first real project charter

@@ -1,0 +1,31 @@
+{
+  "id": "m6-p4-hazard-brief-not-testable-questions",
+  "behavior": "m6-p4-hazard-brief-not-testable-questions",
+  "tests": [
+    "the composed hazard review brief carries each not-testable criterion as a question, and says so when there is none"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/brief.ts",
+      "find": "    lines.push(...renderNotTestableQuestions(phase));\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/criteria.ts",
+      "find": "    lines.push(`- ${criterion.id}: ${oneLine(criterion.criterion)}`);\n",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node src/gates/suite.ts, the suite gate CLI, which spawns the configured node:test run and parses its reporter stream, and runs each criterion's check.command through src/criteria.ts",
+    "captures": [
+      "witness/captures/m6-p4-criteria-gate-cli.txt"
+    ],
+    "provenance": "Captured 2026-09-30 in the kernel container on node v26.6.0 by running the gate CLI over the two red fixtures test/criteria.test.ts builds (the command and exit are recorded above each block). test/criteria.test.ts compares two live gate runs with those blocks byte for byte, and every named test here drives a real node:test run or a real spawned command; nothing asserted is a hand-written string standing in for another program's output."
+  }
+}
