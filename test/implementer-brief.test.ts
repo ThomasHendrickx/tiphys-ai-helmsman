@@ -24,6 +24,7 @@ import {
   mkdtempSync,
   readFileSync,
   rmSync,
+  statSync,
   symlinkSync,
   writeFileSync,
 } from "node:fs";
@@ -57,6 +58,7 @@ const rolesModule = (await import(new URL("../src/roles.ts", import.meta.url).hr
   ) => { text: string; units: number };
   BRIEF_GATE_BLOCK_MODE: string;
   briefGateBlockBeginMarker: (mode: string) => string;
+  INCLUDE_PATTERN: RegExp;
 };
 
 interface Run {
@@ -854,4 +856,36 @@ test("the fix-round-mechanism clause names all three items and cites the M1 meas
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* M6-P6 p6-reading: what an implementer is told to read stays small     */
+/* ------------------------------------------------------------------ */
+
+/** The byte budget for the brief, every file it includes, and its mandated reading. */
+const READING_BUDGET_BYTES = 48_000;
+
+test("the implementer brief, the files it includes and every mandated-reading file sum to at most 48,000 bytes", () => {
+  const brief = readFileSync(briefPath, "utf8");
+  /* The set is read from the brief itself: its include directives and its
+     frontmatter list, each counted once. */
+  const files = new Set<string>([briefPath]);
+  for (const line of brief.split("\n")) {
+    const include = rolesModule.INCLUDE_PATTERN.exec(line);
+    if (include !== null) {
+      files.add(join(dirname(briefPath), include[1] as string));
+    }
+  }
+  const reading = mandatedReading();
+  assert.ok(reading.length > 0, "the brief declares no mandated reading");
+  for (const entry of reading) {
+    files.add(join(repoRoot, entry));
+  }
+  const sizes = [...files].map((path) => ({ path, bytes: statSync(path).size }));
+  const total = sizes.reduce((sum, file) => sum + file.bytes, 0);
+  assert.ok(
+    total <= READING_BUDGET_BYTES,
+    `the implementer reads ${String(total)} bytes, over the ${String(READING_BUDGET_BYTES)} budget: ` +
+      sizes.map((file) => `${file.path.slice(repoRoot.length + 1)} ${String(file.bytes)}`).join(", "),
+  );
 });

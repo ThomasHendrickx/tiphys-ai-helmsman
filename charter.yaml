@@ -21,7 +21,8 @@
 #
 # WHAT VALIDATES IT: `node bin/tiphys.ts validate --type charter charter.yaml`
 # against schemas/charter.schema.json, which requires all eleven top-level
-# fields, forbids any twelfth, and requires all seven irreversible decisions.
+# fields, allows only the optional `runtime-set` and `review-families` beside
+# them, and requires all seven irreversible decisions.
 kind: charter
 
 identity:
@@ -170,6 +171,13 @@ runtime-set:
   paths: [src/, bin/, plugin/, schemas/]
   manifests: [package.json, package-lock.json, plugin/package.json]
   version-pins: ["@tiphys/kernel"]
+
+review-families:
+  available: [anthropic]
+  reason: >-
+    Reviewers are dispatched through one harness, which serves models of one
+    vendor only, so two kernel-recorded reviews of one head carry the same
+    family.
 
 retention:
   work-history: delivery/work-history/

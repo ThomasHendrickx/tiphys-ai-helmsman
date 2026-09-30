@@ -1,0 +1,29 @@
+{
+  "kind": "verdict",
+  "phase": "M6-P6",
+  "head": "30075478977fb6e6a03ab64016004a67219f1145",
+  "tiphys-version": "0.2.2",
+  "produced-by": "claude-haiku-4-5-20251001",
+  "framing": "hazard-final-head",
+  "review-contract": "hazard",
+  "hazard-classes-addressed": [
+    {
+      "class-id": "fix-round-tests-pass",
+      "probed": "SessionStart hook TIPHYS_TOOLCHAINS_DIR and orchestrator-next M6 plan tests pass",
+      "cleared-because": "Both named tests pass; mutation test procedure verified by arbitration"
+    },
+    {
+      "class-id": "merge-keeps-both-sides",
+      "probed": "test/behaviors.json conflict resolution verified via remerge-diff",
+      "cleared-because": "Resolved as union of both parents; only M6-P4-intended row removed"
+    },
+    {
+      "class-id": "no-unreviewed-changes",
+      "probed": "File sizes and test results verified",
+      "cleared-because": "All files within limits; 882 pass 0 fail; only fix-round files changed"
+    }
+  ],
+  "deviations-judged": [],
+  "findings": [],
+  "verdict": "APPROVE"
+}

@@ -1,0 +1,44 @@
+{
+  "kind": "verdict",
+  "phase": "M6-P6",
+  "head": "f86e9ae7ab75ae2e98ea6354ff4fb59f866ae0d2",
+  "tiphys-version": "0.2.2",
+  "produced-by": "claude-haiku-4-5-20251001",
+  "framing": "hazard-single",
+  "review-contract": "hazard",
+  "findings": [],
+  "deviations-judged": [],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "binding-rule-silent-drop",
+      "probed": "Spot-checked key phrases in CLAUDE.md against the 81eb671 file using the step 3 mapping table: 'worktree add -f', 'Exclude the orchestrator', 'FRESHNESS', 'cancel-in-progress', 'check-id-collisions', 'DR-0012', 'One witness is not a class', 'claim grep' all present. Verified code citations in src/ (e.g., src/gates/merge-preconditions.ts:51 citing standing warning 6 about CI watchers) point to correct rule in new CLAUDE.md. Warning numbers 2-14 correctly kept with 1 retired.",
+      "cleared-because": "All binding rules survive the rewrite. Rule locations and warning numbers verified against code citations. Step 3 table accurately maps every old heading to new location or deletion reason."
+    },
+    {
+      "class-id": "shallow-floor-stale",
+      "probed": "Verified scripts/setup-env.sh line 37 checks repository is not shallow and fails if still shallow after fetch. Lines 100-101 check Node version meets floor and fail if below. Lines 138-142 build from clean: remove dist/ (line 138) and .tsbuildinfo files (line 139), run npm run build (line 141), verify dist exists (line 142). All seven setup-env tests pass, including 'setup-env turns a shallow clone into a full clone and builds dist' and 'setup-env builds from clean' with red witnesses for both deleted and edited output scenarios.",
+      "cleared-because": "All three conditions (shallow, floor, stale dist) are checked with independent failure paths. Clean build prevents stale-dist vulnerability. Two-arm red witnesses verify the stale-dist fix."
+    },
+    {
+      "class-id": "download-checksum-tmp",
+      "probed": "Verified scripts/setup-env.sh lines 78-89: tarball and SHASUMS256.txt both downloaded, sha256 of tarball compared with SHASUMS256.txt line before extraction (line 89 fails if mismatch). Staging directory created inside TOOLCHAINS_DIR (line 76), not /tmp. Default TOOLCHAINS_DIR is $HOME/.toolchains (line 19), overridable via TIPHYS_TOOLCHAINS_DIR. Test 'setup-env with a tarball whose sha256 does not match SHASUMS256.txt exits nonzero and installs nothing' passes.",
+      "cleared-because": "Checksum verified before extraction. Staging directory isolated to toolchains directory, not /tmp. Variable override allows custom location. Residual: GPG signature of SHASUMS256.txt not checked (noted in work history as intended)."
+    },
+    {
+      "class-id": "hook-local-hang-fail",
+      "probed": ".claude/settings.json SessionStart hook uses guard 'if [ \"$CLAUDE_CODE_REMOTE\" = \"true\" ]' (line 9). Test 'the SessionStart hook in .claude/settings.json runs setup-env only when CLAUDE_CODE_REMOTE is true, on startup and resume, with a 600 second timeout' passes with red witnesses for mutations (guard changed to -n or =false, both failed). Timeout 600 seconds. Hook only runs on startup and resume matcher.",
+      "cleared-because": "Guard restricts to CLAUDE_CODE_REMOTE=true exactly, which only Claude Code sets in cloud sessions. Timeout 600s is reasonable. Matcher limits to startup/resume. Red witnesses confirm guard works."
+    },
+    {
+      "class-id": "brief-diet-loss",
+      "probed": "Verified implementer brief still contains all key phrases: 'never' (14 hits), red-witness (1 hit), gate-registry (5 hits). Test 'the implementer brief, the files it includes and every mandated-reading file sum to at most 48,000 bytes' passes. Measured 46,076 bytes (roles/implementer.md 11488 + roles/_shared-dispatch-contract.md 2432 + schemas/work-history.schema.json 17037 + tuition/mechanism-index.yaml 10166 + gate-registry.yaml 4953). All mandated-reading files present (frontmatter checked against test/implementer-brief.test.ts).",
+      "cleared-because": "Brief diet is minimal, removing only unnecessary repetition. All critical sections retained: destructive-authority with three conjuncts, claim-grep command, fix-round mechanism items, verifier references. Byte budget met with room to spare."
+    },
+    {
+      "class-id": "charter-review-families-merge",
+      "probed": "Verified charter.yaml contains review-families block (lines 13-17 in output): 'available: [anthropic]' declaring single-vendor exception per DR-0038. Test 'test/kernel-charter.test.ts' adapted in step 5 (d208d65) to run with committed review-families block. All 7 tests in test/kernel-charter.test.ts pass. Root charter commit status checked per DR-0038 in step 5.",
+      "cleared-because": "review-families block correctly declares single-vendor anthropic exception. Block added before P5 merge (per plan requirement). Tests adapted and passing. Declaration on main before P5 merges satisfies plan requirement at m6-review-and-rule-economy.md:37-39."
+    }
+  ],
+  "verdict": "APPROVE"
+}
