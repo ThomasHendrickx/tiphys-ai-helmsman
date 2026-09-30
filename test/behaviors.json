@@ -1134,5 +1134,5 @@
   "setup-env-unshallow-failure-nonzero": "setup-env exits nonzero naming the full-clone step when the clone cannot be unshallowed",
   "implementer-reading-within-budget": "the implementer brief, the files it includes and every mandated-reading file sum to at most 48,000 bytes",
   "setup-env-builds-from-clean": "setup-env builds from clean, so an output deleted or edited since the last build is rebuilt even when the incremental build would skip it",
-  "setup-env-hook-remote-only": "the SessionStart hook in .claude/settings.json runs setup-env only when CLAUDE_CODE_REMOTE is true, on startup and resume, with a 600 second timeout"
+  "setup-env-hook-remote-only": "the SessionStart hook in .claude/settings.json runs setup-env only when CLAUDE_CODE_REMOTE is true, with TIPHYS_TOOLCHAINS_DIR=/opt/tiphys-toolchains, on startup and resume, with a 600 second timeout"
 }

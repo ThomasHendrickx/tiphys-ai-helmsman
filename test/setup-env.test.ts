@@ -297,7 +297,7 @@ test("setup-env builds from clean, so an output deleted or edited since the last
   }
 });
 
-test("the SessionStart hook in .claude/settings.json runs setup-env only when CLAUDE_CODE_REMOTE is true, on startup and resume, with a 600 second timeout", (t) => {
+test("the SessionStart hook in .claude/settings.json runs setup-env only when CLAUDE_CODE_REMOTE is true, with TIPHYS_TOOLCHAINS_DIR=/opt/tiphys-toolchains, on startup and resume, with a 600 second timeout", (t) => {
   const settings = JSON.parse(readFileSync(join(repoRoot, ".claude", "settings.json"), "utf8")) as {
     hooks?: { SessionStart?: Array<{ matcher?: string; hooks?: Array<{ type?: string; command?: string; timeout?: number }> }> };
   };
@@ -312,11 +312,15 @@ test("the SessionStart hook in .claude/settings.json runs setup-env only when CL
   assert.equal(typeof hook.command, "string");
 
   /* Run the hook's own command against a project whose setup-env.sh only
-     leaves a marker, under each value an owner's local session can carry. */
+     leaves a marker recording the toolchain directory it was given, under
+     each value an owner's local session can carry. The directory matters:
+     the default $HOME/.toolchains is /root/.toolchains in a cloud session,
+     and /root is drwx------, so the unprivileged-uid tests could not run a
+     Node installed there. */
   const project = scratch(t);
   writeExecutable(
     join(project, "scripts", "setup-env.sh"),
-    '#!/bin/sh\necho ran > "$CLAUDE_PROJECT_DIR/ran"\n',
+    '#!/bin/sh\necho "ran TIPHYS_TOOLCHAINS_DIR=${TIPHYS_TOOLCHAINS_DIR-unset}" > "$CLAUDE_PROJECT_DIR/ran"\n',
   );
   const marker = join(project, "ran");
   const arms: Array<{ remote: string | undefined; runs: boolean }> = [
@@ -329,6 +333,7 @@ test("the SessionStart hook in .claude/settings.json runs setup-env only when CL
     rmSync(marker, { force: true });
     const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_PROJECT_DIR: project };
     delete env["CLAUDE_CODE_REMOTE"];
+    delete env["TIPHYS_TOOLCHAINS_DIR"];
     if (arm.remote !== undefined) {
       env["CLAUDE_CODE_REMOTE"] = arm.remote;
     }
@@ -336,5 +341,12 @@ test("the SessionStart hook in .claude/settings.json runs setup-env only when CL
     const label = `CLAUDE_CODE_REMOTE=${arm.remote === undefined ? "(unset)" : JSON.stringify(arm.remote)}`;
     assert.equal(run.status, 0, `${label}: stdout=${run.stdout} stderr=${run.stderr}`);
     assert.equal(existsSync(marker), arm.runs, `${label}: setup-env ${arm.runs ? "did not run" : "ran"}`);
+    if (arm.runs) {
+      assert.equal(
+        readFileSync(marker, "utf8"),
+        "ran TIPHYS_TOOLCHAINS_DIR=/opt/tiphys-toolchains\n",
+        `${label}: the hook did not give setup-env TIPHYS_TOOLCHAINS_DIR=/opt/tiphys-toolchains`,
+      );
+    }
   }
 });
