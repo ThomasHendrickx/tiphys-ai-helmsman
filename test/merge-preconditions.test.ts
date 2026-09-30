@@ -572,7 +572,7 @@ test("the merge-preconditions gate reports one row per DR-0012 condition plus th
             "branch-protection",
             "condition-1",
             "condition-2",
-            "condition-3",
+            /* condition-3 (criteria walked) was removed by M6-P2: DR-0064. */
             "condition-4",
             "condition-5",
             "condition-6",
@@ -588,7 +588,7 @@ test("the merge-preconditions gate reports one row per DR-0012 condition plus th
                had nothing to say. */
             "verdict-selection",
           ],
-          `expected eight rows, saw: ${run.stdout}`,
+          `expected seven rows, saw: ${run.stdout}`,
         );
         for (const [id, value] of printed) {
           assert.equal(
@@ -598,7 +598,7 @@ test("the merge-preconditions gate reports one row per DR-0012 condition plus th
           );
         }
         assert.equal(run.record["status"], "green", `expected green, saw ${run.stdout}${run.stderr}`);
-        assert.equal(run.record["units"], 8);
+        assert.equal(run.record["units"], 7);
         assert.equal(run.record["unitLabel"], gateModule.UNIT_LABEL);
         assert.equal(run.exit, 0);
       },
@@ -1361,10 +1361,10 @@ test("an approving pair evaluated inside the unconcluded CI of its own head is n
         precondition.evidence.some((line) => /^IN FLIGHT .*in_progress/.test(line)),
         precondition.evidence.join("\n"),
       );
-      /* WHAT WAS ESTABLISHED TRAVELS WITH IT: the selection and conditions 1 to
-         3 were evaluated and green, and a not-applicable that dropped them
+      /* WHAT WAS ESTABLISHED TRAVELS WITH IT: the selection and conditions 1
+         and 2 were evaluated and green, and a not-applicable that dropped them
          would read exactly like one that never looked at the reviews. */
-      for (const id of ["verdict-selection", "condition-1", "condition-2", "condition-3"]) {
+      for (const id of ["verdict-selection", "condition-1", "condition-2"]) {
         assert.ok(
           precondition.evidence.some((line) => line.startsWith(`ESTABLISHED ${id}`) && /green/.test(line)),
           `${id}: ${precondition.evidence.join("\n")}`,
@@ -1561,4 +1561,400 @@ test("the registry and the manifest both declare the token variable in merge-pre
   const step = /- name: M2 exit test \(pull request\)\n((?: {8}.*\n)+)/.exec(workflow);
   assert.ok(step !== null, "no pull-request M2 exit step in gates.yml");
   assert.match(step[1] as string, /env:\n {10}GH_TOKEN: \$\{\{ github\.token \}\}\n/);
+});
+
+/* ================================================================== */
+/* M6-P2: the review tier follows the diff (DR-0063)                  */
+/* ================================================================== */
+
+interface TierPath {
+  path: string;
+  tier: string;
+  reason: string;
+}
+
+const tierModule = (await import(new URL("../src/gates/merge-preconditions.ts", import.meta.url).href)) as {
+  readRuntimeSet: (
+    text: string | undefined,
+    label: string,
+  ) =>
+    | { kind: "declared"; set: { paths: string[]; manifests: string[]; versionPins: string[] } }
+    | { kind: "undeclared"; reason: string }
+    | { kind: "invalid"; reason: string };
+  classifyTier: (input: {
+    declaration: unknown;
+    changed: { path: string; projectPath: string | undefined }[];
+    sides: ReadonlyMap<string, { base: string | undefined; head: string | undefined }>;
+  }) => { tier: string; paths: TierPath[] };
+  classifyReviewBudget: (
+    contextDirectory: string,
+    base: string,
+    head: string,
+  ) => { ok: true; budget: { tier: string; paths: TierPath[] } } | { ok: false; reason: string };
+};
+
+/** This repository's own declaration, read from its committed charter. */
+function repositoryDeclaration(): ReturnType<typeof tierModule.readRuntimeSet> {
+  const reading = tierModule.readRuntimeSet(readFileSync(join(repoRoot, "charter.yaml"), "utf8"), "charter.yaml");
+  assert.equal(reading.kind, "declared", JSON.stringify(reading));
+  return reading;
+}
+
+/** One file of this repository at one commit, through git. */
+function atCommit(commit: string, path: string): string {
+  const shown = spawnSync("git", ["show", `${commit}:${path}`], { cwd: repoRoot, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  assert.equal(shown.status, 0, `git show ${commit}:${path} failed: ${shown.stderr}`);
+  return shown.stdout;
+}
+
+function atRoot(paths: readonly string[]): { path: string; projectPath: string }[] {
+  return paths.map((path) => ({ path, projectPath: path }));
+}
+
+/** The three manifests PR #224 bumped, at its two ends. */
+const BUMP_BASE = "0e29760";
+const BUMP_HEAD = "7c9602d";
+const BUMP_MANIFESTS = ["package.json", "package-lock.json", "plugin/package.json"] as const;
+
+/**
+ * Both sides of the three manifests. Unedited, the head side is the REAL bytes
+ * at 7c9602d; an edit is applied to the parsed head and re-serialised,
+ * which the classifier cannot tell apart because it compares parsed values.
+ */
+function bumpSides(
+  edit?: (path: string, head: Record<string, unknown>) => void,
+): Map<string, { base: string; head: string }> {
+  const sides = new Map<string, { base: string; head: string }>();
+  for (const path of BUMP_MANIFESTS) {
+    const real = atCommit(BUMP_HEAD, path);
+    if (edit === undefined) {
+      sides.set(path, { base: atCommit(BUMP_BASE, path), head: real });
+      continue;
+    }
+    const head = JSON.parse(real) as Record<string, unknown>;
+    edit(path, head);
+    sides.set(path, { base: atCommit(BUMP_BASE, path), head: `${JSON.stringify(head, null, 2)}\n` });
+  }
+  return sides;
+}
+
+test("the real 0.2.2 version bump of package.json, package-lock.json and plugin/package.json classifies single under this repository's runtime-set declaration", () => {
+  const sides = bumpSides();
+  for (const path of BUMP_MANIFESTS) {
+    const entry = sides.get(path) as { base: string; head: string };
+    assert.notEqual(entry.base, atCommit(BUMP_HEAD, path), `${path} did not change between ${BUMP_BASE} and ${BUMP_HEAD}`);
+  }
+  const classified = tierModule.classifyTier({
+    declaration: repositoryDeclaration(),
+    changed: atRoot(BUMP_MANIFESTS),
+    sides,
+  });
+  assert.equal(classified.tier, "single", JSON.stringify(classified.paths));
+  for (const entry of classified.paths) {
+    assert.equal(entry.tier, "single", `${entry.path}: ${entry.reason}`);
+    assert.match(entry.reason, /version fields only/, `${entry.path}: ${entry.reason}`);
+  }
+  /* The plugin manifest is under the declared `plugin/` prefix and is still
+     single: the manifest rule is judged before the path prefixes. */
+  assert.match(
+    (classified.paths.find((entry) => entry.path === "plugin/package.json") as TierPath).reason,
+    /@tiphys~1kernel 0\.2\.1 -> 0\.2\.2/,
+  );
+});
+
+test("adding a dependency to package.json and the lockfile classifies pair, and so does changing the version of a package not in version-pins", () => {
+  const arms: [string, (path: string, head: Record<string, unknown>) => void, RegExp][] = [
+    [
+      "added dependency",
+      (path, head) => {
+        if (path === "package.json") {
+          (head["dependencies"] as Record<string, string>)["left-pad"] = "1.3.0";
+        }
+        if (path === "package-lock.json") {
+          const packages = head["packages"] as Record<string, Record<string, unknown>>;
+          (packages[""]?.["dependencies"] as Record<string, string>)["left-pad"] = "1.3.0";
+          packages["node_modules/left-pad"] = { version: "1.3.0", license: "WTFPL" };
+        }
+      },
+      /dependencies~1left-pad added|dependencies\/left-pad added/,
+    ],
+    [
+      "unpinned version bump",
+      (path, head) => {
+        if (path === "package.json") {
+          const dev = head["devDependencies"] as Record<string, string>;
+          const name = Object.keys(dev).find((key) => key !== "@tiphys/kernel") as string;
+          dev[name] = "99.0.0";
+        }
+      },
+      /devDependencies\/.* changed/,
+    ],
+  ];
+  for (const [name, edit, reason] of arms) {
+    const classified = tierModule.classifyTier({
+      declaration: repositoryDeclaration(),
+      changed: atRoot(BUMP_MANIFESTS),
+      sides: bumpSides(edit),
+    });
+    assert.equal(classified.tier, "pair", `${name}: ${JSON.stringify(classified.paths)}`);
+    const manifest = classified.paths.find((entry) => entry.path === "package.json") as TierPath;
+    assert.equal(manifest.tier, "pair", `${name}: ${manifest.reason}`);
+    assert.match(manifest.reason, reason, `${name}: ${manifest.reason}`);
+  }
+});
+
+test("a diff touching src/ classifies pair under this repository's declaration", () => {
+  const classified = tierModule.classifyTier({
+    declaration: repositoryDeclaration(),
+    changed: atRoot(["delivery/work-history/x.md", "src/gates/merge-preconditions.ts"]),
+    sides: new Map(),
+  });
+  assert.equal(classified.tier, "pair");
+  assert.deepEqual(
+    classified.paths.map((entry) => `${entry.path}=${entry.tier}`),
+    ["delivery/work-history/x.md=single", "src/gates/merge-preconditions.ts=pair"],
+  );
+});
+
+test("a delivery-only diff classifies single under this repository's declaration", () => {
+  const classified = tierModule.classifyTier({
+    declaration: repositoryDeclaration(),
+    changed: atRoot(["delivery/work-history/x.md", "delivery/review/x-hazard.json"]),
+    sides: new Map(),
+  });
+  assert.equal(classified.tier, "single", JSON.stringify(classified.paths));
+  /* And shipped prose is single too, as DR-0063 lists it. */
+  const prose = tierModule.classifyTier({
+    declaration: repositoryDeclaration(),
+    changed: atRoot(["roles/clean-room-reviewer.md", "AGENTS.md", "templates/charter.example.yaml"]),
+    sides: new Map(),
+  });
+  assert.equal(prose.tier, "single", JSON.stringify(prose.paths));
+});
+
+test("a project with no runtime-set declaration classifies a delivery-only diff pair, and so does an unreadable or invalid declaration", () => {
+  const readings: [string, string | undefined][] = [
+    ["no charter", undefined],
+    ["a charter with no runtime-set block", "kind: charter\ndelivery-mode: full\n"],
+    ["a charter that is not YAML", "kind: charter\nruntime-set: [unclosed\n"],
+    ["an empty paths list", "kind: charter\nruntime-set:\n  paths: []\n"],
+    ["paths as a string", "kind: charter\nruntime-set:\n  paths: src/\n"],
+    ["an unknown key", "kind: charter\nruntime-set:\n  paths: [src/]\n  exclude: [delivery/]\n"],
+  ];
+  for (const [name, text] of readings) {
+    const declaration = tierModule.readRuntimeSet(text, "charter.yaml");
+    assert.notEqual(declaration.kind, "declared", `${name}: ${JSON.stringify(declaration)}`);
+    const classified = tierModule.classifyTier({
+      declaration,
+      changed: atRoot(["delivery/notes.md"]),
+      sides: new Map(),
+    });
+    assert.equal(classified.tier, "pair", `${name}: ${JSON.stringify(classified.paths)}`);
+    assert.match((classified.paths[0] as TierPath).reason, /no usable runtime-set declaration at the merge base/, name);
+  }
+  /* CONTROL: the same diff under a declaration that does not name delivery/. */
+  const declared = tierModule.readRuntimeSet("kind: charter\nruntime-set:\n  paths: [src/]\n", "charter.yaml");
+  assert.equal(
+    tierModule.classifyTier({ declaration: declared, changed: atRoot(["delivery/notes.md"]), sides: new Map() }).tier,
+    "single",
+  );
+});
+
+/* ------------------------------------------------------------------ */
+/* M6-P2 through git: the declaration is read at the MERGE BASE          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE CLASSIFIER CONSUMES git's OUTPUT, so the assertion is made against REAL
+ * captured output: witness/captures/m6-p2-git-runtime-set.json was taken from
+ * this exact staging (fixed identity and dates, so the commit and blob shas are
+ * reproducible), the test re-stages it, re-runs every command, requires the
+ * live output to equal the recorded bytes, and only then asks the shipped
+ * classifier.
+ */
+const RUNTIME_SET_CAPTURE = join(repoRoot, "witness", "captures", "m6-p2-git-runtime-set.json");
+
+const SHRINK_GIT_ENV = {
+  ...GIT_IDENTITY,
+  GIT_AUTHOR_DATE: "2026-09-29T00:00:00+0000",
+  GIT_COMMITTER_DATE: "2026-09-29T00:00:00+0000",
+};
+
+function shrinkGit(dir: string, args: string[]): string {
+  const run = spawnSync("git", args, { cwd: dir, encoding: "utf8", env: { ...process.env, ...SHRINK_GIT_ENV } });
+  assert.equal(run.status, 0, `git ${args.join(" ")} failed: ${run.stderr}`);
+  return run.stdout ?? "";
+}
+
+/** Base declares src/; the head drops src/ from its own declaration AND edits src/. */
+function stageShrinkRepo(): { dir: string; base: string; head: string } {
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-runtime-set-shrink-"));
+  mkdirSync(join(dir, "src"), { recursive: true });
+  writeFileSync(join(dir, "charter.yaml"), "kind: charter\nruntime-set:\n  paths: [src/]\n");
+  writeFileSync(join(dir, "src", "feature.ts"), "export const feature = 1;\n");
+  shrinkGit(dir, ["init", "-q", "-b", "main", "."]);
+  shrinkGit(dir, ["add", "-A"]);
+  shrinkGit(dir, ["commit", "-q", "-m", "base"]);
+  const base = shrinkGit(dir, ["rev-parse", "HEAD"]).trim();
+  writeFileSync(join(dir, "charter.yaml"), "kind: charter\nruntime-set:\n  paths: [bin/]\n");
+  writeFileSync(join(dir, "src", "feature.ts"), "export const feature = 2;\n");
+  shrinkGit(dir, ["add", "-A"]);
+  shrinkGit(dir, ["commit", "-q", "-m", "shrink the set and touch what it dropped"]);
+  const head = shrinkGit(dir, ["rev-parse", "HEAD"]).trim();
+  return { dir, base, head };
+}
+
+test("a head that removes src/ from its runtime-set declaration while touching src/ is pair, because the declaration is read at the merge base", () => {
+  const recorded = JSON.parse(readFileSync(RUNTIME_SET_CAPTURE, "utf8")) as {
+    commands: { argv: string[]; exit: number; stdout: string }[];
+  };
+  const { dir, base, head } = stageShrinkRepo();
+  try {
+    for (const command of recorded.commands) {
+      const argv = command.argv
+        .slice(1)
+        .map((arg) => arg.replace("<base>", base).replace("<head>", head));
+      const live = spawnSync("git", argv, { cwd: dir, encoding: "utf8" });
+      assert.equal(live.status, command.exit, live.stderr);
+      assert.equal(
+        live.stdout.replaceAll(base, "<base>").replaceAll(head, "<head>"),
+        command.stdout,
+        `git ${argv.join(" ")} no longer prints what was captured`,
+      );
+    }
+    const classified = tierModule.classifyReviewBudget(dir, base, head);
+    assert.ok(classified.ok, classified.ok ? "" : classified.reason);
+    const byPath = new Map(classified.budget.paths.map((entry) => [entry.path, entry]));
+    assert.equal(classified.budget.tier, "pair");
+    /* THE SRC FILE IS PAIR BY THE MERGE BASE'S SET, which the head removed. */
+    assert.equal(byPath.get("src/feature.ts")?.tier, "pair", JSON.stringify(classified.budget.paths));
+    assert.match(byPath.get("src/feature.ts")?.reason ?? "", /in the declared runtime set \(src\/\)/);
+    /* AND THE DECLARATION CHANGE IS ITSELF PAIR. */
+    assert.equal(byPath.get("charter.yaml")?.tier, "pair", JSON.stringify(classified.budget.paths));
+    assert.match(byPath.get("charter.yaml")?.reason ?? "", /runtime-set declaration itself changed/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M6-P2: the merge gate by tier                                         */
+/* ------------------------------------------------------------------ */
+
+const DECLARED_RUNTIME_SET = "\nruntime-set:\n  paths: [src/, bin/]\n  manifests: [package.json]\n  version-pins: []\n";
+
+/**
+ * A real repository in the phase-branch shape, with this project's charter
+ * DECLARING a runtime set at the base: a base, the change under review (under
+ * `src/` for pair, under `delivery/` for single), and the reviews naming it.
+ */
+function stageTierBranch(
+  change: "src" | "delivery",
+  verdicts: Record<string, string>,
+): { staged: { dir: string; evidence: string }; base: string; head: string } {
+  const staged = stage({ verdicts, scopeRecord: scopeRecord("green") });
+  writeFileSync(join(staged.dir, "charter.yaml"), `${readFileSync(join(staged.dir, "charter.yaml"), "utf8")}${DECLARED_RUNTIME_SET}`);
+  git(staged.dir, ["init", "-q", "."]);
+  git(staged.dir, ["add", "charter.yaml", "assurance-modes.yaml"]);
+  git(staged.dir, ["commit", "-q", "-m", "base"]);
+  const base = git(staged.dir, ["rev-parse", "HEAD"]);
+  if (change === "src") {
+    mkdirSync(join(staged.dir, "src"), { recursive: true });
+    writeFileSync(join(staged.dir, "src", "feature.ts"), "export const feature = 2;\n");
+    git(staged.dir, ["add", "src"]);
+  } else {
+    mkdirSync(join(staged.dir, "delivery", "notes"), { recursive: true });
+    writeFileSync(join(staged.dir, "delivery", "notes", "state.md"), "paperwork only\n");
+    git(staged.dir, ["add", "delivery/notes"]);
+  }
+  git(staged.dir, ["commit", "-q", "-m", "the change under review"]);
+  const reviewed = git(staged.dir, ["rev-parse", "HEAD"]);
+  for (const name of Object.keys(verdicts)) {
+    const path = join(staged.dir, "delivery", "review", name);
+    const body = readFileSync(path, "utf8");
+    const anchored = body.replace(/^head: .*$/m, `head: ${reviewed}`);
+    assert.notEqual(anchored, body, `${name} has no single-line head to rewrite`);
+    writeFileSync(path, anchored);
+  }
+  git(staged.dir, ["add", "delivery"]);
+  git(staged.dir, ["commit", "-q", "--allow-empty", "-m", "the reviews"]);
+  const head = git(staged.dir, ["rev-parse", "HEAD"]);
+  return { staged, base, head };
+}
+
+test("a single change with one approving hazard verdict and no arbitration document is green, with no decorrelation and no arbitration row", async () => {
+  const { staged, base, head } = stageTierBranch("delivery", {
+    "m3-p9-hazard.yaml": fixture("decorrelated-hazard.yaml"),
+  });
+  try {
+    await withApi(greenApi(head), async (apiBase) => {
+      const run = await runGate(gateSource, staged, apiBase, ["--base", base], head);
+      const printed = rows(run.stdout);
+      assert.deepEqual(
+        [...printed.keys()].sort(),
+        ["branch-protection", "condition-2", "condition-4", "condition-5", "verdict-selection"],
+        run.stdout,
+      );
+      assert.equal(status(printed.get("verdict-selection")), "green", run.stdout);
+      assert.equal(status(printed.get("condition-2")), "green", run.stdout);
+      assert.match(printed.get("condition-2") ?? "", /every admitted review of this head approves/);
+      assert.equal(run.record["status"], "green", `${run.stdout}${run.stderr}`);
+      assert.match(String(run.record["detail"]), /^DR-0063 single at head/);
+      assert.equal(run.exit, 0, run.stdout);
+    });
+  } finally {
+    cleanup(staged);
+  }
+});
+
+test("a pair change with one approving verdict is red naming 1 of 2, and a single change with none is red naming 0 of 1", async () => {
+  const port = await closedPort();
+  const arms: ["src" | "delivery", Record<string, string>, string, RegExp][] = [
+    ["src", { "m3-p9-hazard.yaml": fixture("decorrelated-hazard.yaml") }, "pair", /1 of 2 are admitted and 1 missing/],
+    ["delivery", {}, "single", /0 of 1 are admitted and 1 missing/],
+  ];
+  for (const [change, verdicts, tier, missing] of arms) {
+    const { staged, base, head } = stageTierBranch(change, verdicts);
+    try {
+      const run = await runGate(gateSource, staged, `http://127.0.0.1:${String(port)}`, ["--base", base], head);
+      assert.equal(run.record["status"], "red", `${tier}: ${run.stdout}`);
+      assert.notEqual(run.exit, 0, run.stdout);
+      assert.match(String(run.record["detail"]), new RegExp(`^DR-0063 ${tier} at head`), String(run.record["detail"]));
+      assert.match(String(run.record["detail"]), missing, String(run.record["detail"]));
+    } finally {
+      cleanup(staged);
+    }
+  }
+});
+
+test("two approving hazard verdicts with distinct produced-by and the same framing are green on the review rows of a pair change", async () => {
+  const verdicts = {
+    "m3-p9-hazard-a.yaml": fixture("decorrelated-hazard.yaml"),
+    "m3-p9-hazard-b.yaml": fixture("shared-family-hazard.yaml"),
+  };
+  const { staged, base, head } = stageTierBranch("src", verdicts);
+  try {
+    /* THE PAIR SHARES framing AND review-contract, which the M4-P10 rule
+       refused; DR-0064 dropped both comparisons, so only produced-by must
+       differ, and it does. */
+    for (const name of Object.keys(verdicts)) {
+      const body = readFileSync(join(staged.dir, "delivery", "review", name), "utf8");
+      assert.match(body, /^framing: destructive-paths$/m, name);
+      assert.match(body, /^review-contract: hazard$/m, name);
+    }
+    await withApi(greenApi(head), async (apiBase) => {
+      const run = await runGate(gateSource, staged, apiBase, ["--base", base], head);
+      const printed = rows(run.stdout);
+      assert.equal(status(printed.get("verdict-selection")), "green", run.stdout);
+      assert.equal(status(printed.get("condition-1")), "green", run.stdout);
+      assert.equal(status(printed.get("condition-2")), "green", run.stdout);
+      assert.match(printed.get("condition-1") ?? "", /reported no violation over the 2 verdict/);
+      /* The arbitration row is the pair tier's and is present (red here, the
+         staging writes no arbitration document); it is not a review row. */
+      assert.ok(printed.has("condition-6"), run.stdout);
+      assert.match(String(run.record["detail"]), /^DR-0063 pair at head/);
+    });
+  } finally {
+    cleanup(staged);
+  }
 });

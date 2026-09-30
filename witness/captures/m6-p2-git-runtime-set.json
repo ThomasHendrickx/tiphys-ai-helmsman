@@ -1,0 +1,74 @@
+{
+  "provenance": "Real output of the git commands classifyReviewBudget in src/gates/merge-preconditions.ts runs to classify a change by DR-0063's runtime set (the prefix, the NUL-separated name list, the merge base, and the ls-tree presence probe of charter.yaml at the merge base and at the head), captured 2026-09-29 by the M6-P2 implementer against the scratch repository test/merge-preconditions.test.ts stages in stageShrinkRepo: a base whose charter declares paths [src/], and a head that changes the declaration to [bin/] and edits src/feature.ts. Identity and dates are fixed, so the blob ids are the real ones and the two commit shas are spelled <base> and <head>; no other byte is rewritten. The test stages the repository again, re-runs every command and compares git's live output with the stdout recorded here before trusting the classifier. JSON escapes NUL as \\u0000 and TAB as \\t, so this file is ASCII.",
+  "git": "git version 2.43.0",
+  "staging": {
+    "base": [
+      "charter.yaml declaring runtime-set paths [src/]",
+      "src/feature.ts"
+    ],
+    "change": [
+      "charter.yaml runtime-set paths [bin/]",
+      "modify src/feature.ts"
+    ]
+  },
+  "commands": [
+    {
+      "argv": [
+        "git",
+        "rev-parse",
+        "--show-prefix"
+      ],
+      "exit": 0,
+      "stdout": "\n"
+    },
+    {
+      "argv": [
+        "git",
+        "diff",
+        "-z",
+        "--no-renames",
+        "--name-only",
+        "<base>...<head>",
+        "--"
+      ],
+      "exit": 0,
+      "stdout": "charter.yaml\u0000src/feature.ts\u0000"
+    },
+    {
+      "argv": [
+        "git",
+        "merge-base",
+        "<base>",
+        "<head>"
+      ],
+      "exit": 0,
+      "stdout": "<base>\n"
+    },
+    {
+      "argv": [
+        "git",
+        "--literal-pathspecs",
+        "ls-tree",
+        "-z",
+        "<base>",
+        "--",
+        "charter.yaml"
+      ],
+      "exit": 0,
+      "stdout": "100644 blob 341bdec3d9dc406c41ff09173f5d689de39ee554\tcharter.yaml\u0000"
+    },
+    {
+      "argv": [
+        "git",
+        "--literal-pathspecs",
+        "ls-tree",
+        "-z",
+        "<head>",
+        "--",
+        "charter.yaml"
+      ],
+      "exit": 0,
+      "stdout": "100644 blob abe8dc41deabf1dc381e2b62795e056343fd4e3b\tcharter.yaml\u0000"
+    }
+  ]
+}
