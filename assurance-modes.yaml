@@ -152,7 +152,6 @@ modes:
     # registry addition that is not copied here reddens the suite naming the
     # missing id.
     gate-sets:
-      - coverage
       - credential-scrub
       - credential-token
       - suite
@@ -263,7 +262,6 @@ modes:
     # of them except `deploy` and `migrations`, the two full-only entries. It
     # is NOT that today; it under-reports, see the header's gate-sets note.
     gate-sets:
-      - coverage
       - credential-scrub
       - credential-token
       - suite

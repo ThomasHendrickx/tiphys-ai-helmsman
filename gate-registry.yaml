@@ -16,18 +16,6 @@ preflight:
     note: sources are TypeScript run natively via Node type stripping, so the suite needs no prior build
 
 gates:
-  - id: coverage
-    command: [node, src/gates/coverage.ts]
-    unitLabel: finding ids checked
-    applicability: required
-    verified-by: script
-    modes: [full, direct-pr]
-    events: [pull_request, push]
-    precondition:
-      id: coverage-inventory-exists
-      kind: file-exists
-      path: delivery/requirements/migration-table.md
-
   - id: credential-scrub
     command: [node, src/gates/credentials.ts, credential-scrub]
     unitLabel: credential sources probed

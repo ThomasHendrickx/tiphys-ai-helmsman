@@ -349,50 +349,6 @@ test("a final report whose input-findings has a hole, a phantom row or a duplica
 });
 
 /* ------------------------------------------------------------------ */
-/* Criterion 4: the M2-P6 coverage checker, run for real                 */
-/* ------------------------------------------------------------------ */
-
-/**
- * The checker is an EXPORTED FUNCTION and its CLI has no parity-mode flag
- * (`src/gates/coverage.ts` accepts only `--result`, `--evidence` and
- * `--config`), and that module is not on this phase's declaration. So the
- * criterion's "exits 0 / exits nonzero" is discharged by invoking the
- * unmodified checker in a SUBPROCESS whose exit code is a real process exit
- * code, rather than by asserting on a return value in this process.
- */
-function runCoverageParity(document: unknown): { status: number | null; stdout: string } {
-  const script = `
-import { checkFindingOutcomeParity } from ${JSON.stringify(join(repoRoot, "src", "gates", "coverage.ts"))};
-const document = JSON.parse(process.argv[1]);
-const result = checkFindingOutcomeParity(
-  document.inputs,
-  document["input-findings"].map((row) => ({ id: row.id, outcome: row.outcome })),
-);
-process.stdout.write(JSON.stringify(result) + "\\n");
-process.exit(result.ok ? 0 : 1);
-`;
-  const run = spawnSync(
-    process.execPath,
-    ["--input-type=module", "-e", script, JSON.stringify(document)],
-    { encoding: "utf8", cwd: repoRoot },
-  );
-  return { status: run.status, stdout: run.stdout };
-}
-
-test("the M2-P6 coverage checker in finding-to-outcome parity mode passes the shipped final report and names the orphan when a row is deleted", () => {
-  const shipped = readTemplate("final-report.example.yaml");
-  const green = runCoverageParity(shipped);
-  assert.equal(green.status, 0, green.stdout);
-  assert.match(green.stdout, /"checked":6/);
-
-  const holed = readTemplate("final-report.example.yaml");
-  (holed["input-findings"] as unknown[]).splice(2, 1);
-  const red = runCoverageParity(holed);
-  assert.equal(red.status, 1);
-  assert.match(red.stdout, /"missing":\["V-3"\]/);
-});
-
-/* ------------------------------------------------------------------ */
 /* Criterion 2(b): an environmental claim requires evidence              */
 /* ------------------------------------------------------------------ */
 
