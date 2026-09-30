@@ -1,0 +1,28 @@
+M6-P4: the real stdout of the suite gate CLI proving acceptance criteria.
+
+Captured 2026-09-30 in the kernel container on node v26.6.0
+(/home/user/.toolchains/node-v26.6.0-linux-x64/bin/node), git 2.43.0. Each block is
+the gate's stdout, byte for byte, from the command above it, run in a scratch
+repository built exactly as test/criteria.test.ts builds it (the plan template
+with its phase's acceptance replaced, a suite of real node:test files run by
+the fixture's own test script). Nothing below is hand-written; the named tests
+reproduce each block live and compare it with assert.equal.
+
+WHY THIS FILE EXISTS. Red-witness rule (f) binds witnesses whose members touch
+src/gates/suite.ts or src/criteria.ts, because both spawn another program (the
+test runner, a check command) and judge what it reports. The behaviour those
+witnesses guard is what the gate prints, so the contract is the gate's output.
+
+# node src/gates/suite.ts --result <evidence>/result.json --evidence <evidence> --base <base> --plan plan.json --phase M9-P1
+# exit 1
+--- BEGIN tests-red ---
+suite: red (3 tests reported)
+5 finding(s): criterion c-skip: test "beta is skipped" was skipped (test/a.test.ts); criterion c-todo: test "gamma is a todo" is a todo (test/a.test.ts); criterion c-filtered: test "epsilon is filtered out" was not reported by the suite, so nothing proves it; criterion c-prefix: test "alpha pass" was not reported by the suite, so nothing proves it; criterion c-longer: test "alpha passes too" was not reported by the suite, so nothing proves it; criteria of M9-P1 in plan.json: 6 criterion(s), 1 proven by their check, 5 unproven, 0 not-testable
+--- END tests-red ---
+
+# node src/gates/suite.ts --result <evidence>/result.json --evidence <evidence> --base <base> --plan plan.json --phase M9-P1 --check-timeout 2
+# exit 1
+--- BEGIN commands-red ---
+suite: red (3 tests reported)
+4 finding(s): criterion c-exit: check.command ["node","-e","console.log('tail-marker-c-exit'); process.exit(3)"] exited 3; output tail: tail-marker-c-exit; criterion c-literal: check.command ["false","||","true"] exited 1; no output; criterion c-shell: check.command ["sh","-c","exit 0"] was not proven: it hands an inline script to sh, whose exit is its last command's; name the program instead; criterion c-slow: check.command ["node","-e","setTimeout(() => {}, 30000)"] timed out after 2s; no output; criteria of M9-P1 in plan.json: 5 criterion(s), 1 proven by their check, 4 unproven, 0 not-testable
+--- END commands-red ---
