@@ -32,7 +32,7 @@
 
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join, relative } from "node:path";
 import { decodeDocument, readOperatorPath } from "./validate.ts";
 import type { Diagnostic } from "./validate.ts";
@@ -177,6 +177,14 @@ function readContextDocument(
 
 /** Where a project's committed review verdicts live (DR-0012 condition 1). */
 const REVIEW_DIRECTORY = join("delivery", "review");
+
+/**
+ * M6-P5: the kernel's review records live under the review directory and are
+ * NEVER verdicts. The verdict loaders skip this subtree by path, and the record
+ * loader (src/review.ts) reads only it, so neither can take the other's
+ * document whatever its `kind` says.
+ */
+const REVIEW_RECORDS_SUBDIRECTORY = "records";
 
 /**
  * The dimension two verdicts of one head must differ on. `framing` and
@@ -489,7 +497,86 @@ export function loadCommittedVerdicts(
   if (!listed.ok) {
     return { ok: false, reason: listed.reason };
   }
-  return readCommittedVerdicts(contextDirectory, refSha, listed.paths, source);
+  const recordsPrefix = `${REVIEW_DIRECTORY}/${REVIEW_RECORDS_SUBDIRECTORY}/`;
+  return readCommittedVerdicts(
+    contextDirectory,
+    refSha,
+    listed.paths.filter((path) => !path.startsWith(recordsPrefix)),
+    source,
+  );
+}
+
+/**
+ * M6-P5: every file under one directory of the corpus source, as paths
+ * relative to the context directory. The same two arms as the verdict loader:
+ * the commit when the context resolves one, else the working tree. An absent
+ * directory is an empty list.
+ */
+export function listSourceFiles(
+  contextDirectory: string,
+  source: VerdictCorpusSource,
+  directory: string,
+): { ok: true; paths: string[] } | { ok: false; reason: string } {
+  if (source.kind === "commit") {
+    return listCommittedTree(contextDirectory, source.refSha, directory, true);
+  }
+  const absolute = join(contextDirectory, directory);
+  const entry = classifyEntry(absolute);
+  if (entry.kind === "absent" || entry.kind === "dangling") {
+    return { ok: true, paths: [] };
+  }
+  try {
+    return {
+      ok: true,
+      paths: readdirSync(absolute, { recursive: true })
+        .map((name) => join(directory, String(name)))
+        .filter((path) => classifyEntry(join(contextDirectory, path)).kind === "regular")
+        .sort(),
+    };
+  } catch (error) {
+    return { ok: false, reason: `${absolute} could not be listed: ${String(error)}` };
+  }
+}
+
+/** M6-P5: one file's exact bytes at the corpus source, with absent kept apart from unreadable. */
+export function readSourceBytes(
+  contextDirectory: string,
+  source: VerdictCorpusSource,
+  relativePath: string,
+): { kind: "read"; bytes: Buffer } | { kind: "absent" } | { kind: "error"; reason: string } {
+  if (source.kind === "commit") {
+    const typed = gitIn(["cat-file", "-t", `${source.refSha}:./${relativePath}`], contextDirectory);
+    if (!typed.ok) {
+      return { kind: "absent" };
+    }
+    if (typed.stdout.trim() !== "blob") {
+      return { kind: "error", reason: `${source.refSha}:./${relativePath} is a ${typed.stdout.trim()}, not a file` };
+    }
+    const shown = spawnSync("git", ["show", `${source.refSha}:./${relativePath}`], {
+      cwd: contextDirectory,
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    if (shown.error !== undefined || shown.status !== 0) {
+      return {
+        kind: "error",
+        reason: `${source.refSha}:./${relativePath} could not be read: ${String(shown.error ?? shown.stderr ?? "")}`,
+      };
+    }
+    return { kind: "read", bytes: shown.stdout };
+  }
+  const path = join(contextDirectory, relativePath);
+  const entry = classifyEntry(path);
+  if (entry.kind === "absent" || entry.kind === "dangling") {
+    return { kind: "absent" };
+  }
+  if (entry.kind !== "regular") {
+    return { kind: "error", reason: entry.reason };
+  }
+  try {
+    return { kind: "read", bytes: readFileSync(path) };
+  } catch (error) {
+    return { kind: "error", reason: `${path} could not be read: ${String(error)}` };
+  }
 }
 
 /**
@@ -900,7 +987,7 @@ function loadVerdictsFromWorktree(
   const documents: CorpusDocument[] = [];
   const unreadable: Diagnostic[] = [];
   for (const name of names.sort()) {
-    if (!VERDICT_FILE_PATTERN.test(name)) {
+    if (!VERDICT_FILE_PATTERN.test(name) || name.startsWith(`${REVIEW_RECORDS_SUBDIRECTORY}/`)) {
       continue;
     }
     const path = join(directory, name);
@@ -3339,27 +3426,7 @@ export const verdictPairApproves: DerivedCheck = {
     }
 
     for (const candidate of group) {
-      const reading = establishField(candidate.record, "verdict");
-      if (reading.kind !== "established") {
-        violations.push({
-          pointer: "#/verdict",
-          message: `${candidate.path} ${unestablishedReason(reading, "verdict") as string}, so whether this review approves the merge could not be established, and a merge check that cannot read a verdict must not report the pair clean`,
-        });
-      } else {
-        const raw = candidate.record["verdict"] as string;
-        if (!VERDICT_VOCABULARY.includes(raw)) {
-          violations.push({
-            pointer: "#/verdict",
-            message: `${candidate.path} declares verdict ${raw}, which is not one of the two words the closed vocabulary admits (${VERDICT_VOCABULARY.join(", ")}), so it cannot be read as an authorisation however it is spelled`,
-          });
-        } else if (raw !== APPROVING_VERDICT) {
-          violations.push({
-            pointer: "#/verdict",
-            message: `${candidate.path} reads ${raw} for phase ${phase} at head ${headKey}, so the pair does not approve this head and the delegated grant's condition 2 is not met`,
-          });
-        }
-      }
-      violations.push(...blockingFindings(candidate, phase, headKey));
+      violations.push(...verdictApprovalFaults(candidate, phase, headKey));
     }
 
     const headlessReports = grouped.headless.map((sibling) =>
@@ -3377,6 +3444,38 @@ export const verdictPairApproves: DerivedCheck = {
     };
   },
 };
+
+/**
+ * Why one verdict does not approve the merge: its verdict word is not the raw
+ * APPROVE, or it carries a finding at a blocking severity. Empty when it
+ * approves. Shared by `verdict-pair-approves` and the merge gate, which since
+ * M6-P5 runs it over the verdicts the kernel's review records count.
+ */
+export function verdictApprovalFaults(candidate: LoadedVerdict, phase: string, headKey: string): Diagnostic[] {
+  const faults: Diagnostic[] = [];
+  const reading = establishField(candidate.record, "verdict");
+  if (reading.kind !== "established") {
+    faults.push({
+      pointer: "#/verdict",
+      message: `${candidate.path} ${unestablishedReason(reading, "verdict") as string}, so whether this review approves the merge could not be established, and a merge check that cannot read a verdict must not report the pair clean`,
+    });
+  } else {
+    const raw = candidate.record["verdict"] as string;
+    if (!VERDICT_VOCABULARY.includes(raw)) {
+      faults.push({
+        pointer: "#/verdict",
+        message: `${candidate.path} declares verdict ${raw}, which is not one of the two words the closed vocabulary admits (${VERDICT_VOCABULARY.join(", ")}), so it cannot be read as an authorisation however it is spelled`,
+      });
+    } else if (raw !== APPROVING_VERDICT) {
+      faults.push({
+        pointer: "#/verdict",
+        message: `${candidate.path} reads ${raw} for phase ${phase} at head ${headKey}, so the pair does not approve this head and the delegated grant's condition 2 is not met`,
+      });
+    }
+  }
+  faults.push(...blockingFindings(candidate, phase, headKey));
+  return faults;
+}
 
 /**
  * Every finding in one verdict that DR-0012 condition 2 bars a merge over.

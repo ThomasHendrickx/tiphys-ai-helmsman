@@ -2,7 +2,7 @@
   "id": "m6-p2-hazard-pair-green",
   "behavior": "m6-p2-hazard-pair-green",
   "tests": [
-    "two approving hazard verdicts with distinct produced-by and the same framing are green on the review rows of a pair change"
+    "two approving hazard verdicts on distinct kernel-recorded families with the same framing are green on the review rows of a pair change"
   ],
   "class": "classification",
   "dangerousStates": [

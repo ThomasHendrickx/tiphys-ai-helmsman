@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tiphys.dev/schemas/review-record.schema.json",
+  "title": "Tiphys review record",
+  "$comment": "M6-P5, DR-0062. Written by `tiphys review dispatch` (src/review.ts), never by the reviewer. The merge gate counts a verdict only when a committed record under delivery/review/records/ names its path and sha256, and takes the head and the family from the record. No vendor name appears here: the family vocabulary is the executor's.",
+  "description": "What the kernel recorded about one review it launched: the head it checked out, the model the harness was asked for and the model it was observed to serve, the vendor family, the verdict's sha256, cost and token usage, and the executor's exit code.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "kind",
+    "contractVersion",
+    "taskId",
+    "role",
+    "phase",
+    "head",
+    "tier",
+    "requestedModel",
+    "executor",
+    "vocabulary",
+    "observation",
+    "family",
+    "verdict",
+    "totalCostUsd",
+    "usage",
+    "modelUsage",
+    "startedAt",
+    "endedAt",
+    "executorExitCode"
+  ],
+  "properties": {
+    "kind": { "type": "string", "const": "review-record" },
+    "contractVersion": { "type": "string", "enum": ["1"] },
+    "taskId": { "type": "string", "pattern": "^review-[a-z0-9][a-z0-9-]*$" },
+    "role": { "type": "string", "enum": ["clean-room-reviewer"] },
+    "phase": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
+    "head": {
+      "$comment": "The commit the kernel checked out for the reviewer, resolved before launch.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "tier": { "type": "string", "enum": ["strongest", "cheaper"] },
+    "requestedModel": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "executor": { "type": "string", "minLength": 1, "pattern": "\\S" },
+    "vocabulary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "version"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "pattern": "\\S" },
+        "version": { "type": "integer" }
+      }
+    },
+    "observation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["model", "topLevelModels", "subagentModels", "reason"],
+      "properties": {
+        "model": {
+          "$comment": "The one model on the stream's top-level rows, or null when there was not exactly one. Never the requested model.",
+          "oneOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "pattern": "\\S" }]
+        },
+        "topLevelModels": { "type": "array", "items": { "type": "string" } },
+        "subagentModels": { "type": "array", "items": { "type": "string" } },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "family": {
+      "$comment": "The executor vocabulary's family for the observed model; `unknown` when it names none, which is never distinct from anything.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "verdict": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["path", "sha256", "reason"],
+      "properties": {
+        "path": {
+          "$comment": "Relative to the project, under delivery/review/.",
+          "type": "string",
+          "pattern": "^delivery/review/[^\\\\]+[.](ya?ml|json)$"
+        },
+        "sha256": {
+          "oneOf": [{ "type": "null" }, { "type": "string", "pattern": "^[0-9a-f]{64}$" }]
+        },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    },
+    "totalCostUsd": { "oneOf": [{ "type": "null" }, { "type": "number" }] },
+    "usage": { "oneOf": [{ "type": "null" }, { "type": "object" }] },
+    "modelUsage": { "oneOf": [{ "type": "null" }, { "type": "object" }] },
+    "startedAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$"
+    },
+    "endedAt": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}([.][0-9]+)?Z$"
+    },
+    "executorExitCode": { "oneOf": [{ "type": "null" }, { "type": "integer" }] }
+  },
+  "if": {
+    "type": "object",
+    "properties": {
+      "observation": {
+        "type": "object",
+        "properties": { "model": { "type": "null" } }
+      }
+    }
+  },
+  "then": {
+    "type": "object",
+    "properties": { "family": { "type": "string", "const": "unknown" } }
+  }
+}

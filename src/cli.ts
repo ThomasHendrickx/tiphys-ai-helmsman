@@ -11,6 +11,7 @@ import { cmdNext } from "./commands/next.ts";
 import { cmdPlan } from "./commands/plan.ts";
 import { cmdPool } from "./commands/pool.ts";
 import { cmdResume } from "./commands/resume.ts";
+import { cmdReview } from "./commands/review.ts";
 import { cmdSpawn } from "./commands/spawn.ts";
 import { cmdStatus } from "./commands/status.ts";
 import { cmdSync } from "./commands/sync.ts";
@@ -47,6 +48,8 @@ const commands = new Map<string, CommandHandler>([
   ["plan", cmdPlan],
   ["pool", cmdPool],
   ["resume", cmdResume],
+  /* M6-P5 (DR-0062): the kernel launches reviewers. */
+  ["review", cmdReview],
   ["spawn", cmdSpawn],
   ["status", cmdStatus],
   ["sync", cmdSync],

@@ -35,6 +35,16 @@ export {
   runPr,
 } from "./pr.ts";
 
+/* THE REVIEW EXECUTOR (M6-P5, DR-0062), a named export for the same reason:
+   `tiphys review dispatch` reads `reviewExecutor` and nothing else. */
+export {
+  REVIEW_EXECUTOR_NAME,
+  readResultRow,
+  readReviewStream,
+  reviewArgv,
+  reviewExecutor,
+} from "./review.ts";
+
 import { claudeCodeAdapter } from "./adapter.ts";
 
 export default claudeCodeAdapter;

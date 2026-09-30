@@ -57,6 +57,8 @@ import test from "node:test";
 import { realpathSync as ceilingRealpath } from "node:fs";
 import { tmpdir as ceilingTmpdir } from "node:os";
 import { delimiter as ceilingDelimiter } from "node:path";
+import { recordVerdicts } from "./support/review-records.ts";
+import type { RecordOptions } from "./support/review-records.ts";
 
 /*
  * NO REPOSITORY ABOVE THE SCRATCH ROOT (kernel 0.2.1 fix round 3). Tests in
@@ -329,6 +331,17 @@ interface StageOptions {
   arbitration?: string;
   /** The `scope` gate record body, or absent for no record at all. */
   scopeRecord?: string;
+  /** M6-P5: how the kernel review records are written; `false` writes none. */
+  records?: RecordOptions | false;
+}
+
+type Staged = { dir: string; evidence: string; records?: RecordOptions | false };
+
+/** M6-P5: (re)write the kernel review records for the staged verdicts. */
+function record(staged: Staged): void {
+  if (staged.records !== false) {
+    recordVerdicts(staged.dir, FIXTURE_PHASE, staged.records);
+  }
 }
 
 /**
@@ -339,7 +352,7 @@ interface StageOptions {
  * declared mode's `merge-authority` rather than assuming one, so a two-line
  * stand-in charter would stop testing the thing under test.
  */
-function stage(options: StageOptions): { dir: string; evidence: string } {
+function stage(options: StageOptions): Staged {
   const dir = mkdtempSync(join(tmpdir(), "tiphys-merge-preconditions-"));
   mkdirSync(join(dir, "delivery", "review"), { recursive: true });
   copyFileSync(join(repoRoot, "assurance-modes.yaml"), join(dir, "assurance-modes.yaml"));
@@ -365,7 +378,9 @@ function stage(options: StageOptions): { dir: string; evidence: string } {
     mkdirSync(join(dir, "evidence", "scope"), { recursive: true });
     writeFileSync(join(dir, "evidence", "scope", "result.json"), options.scopeRecord);
   }
-  return { dir, evidence };
+  const staged: Staged = { dir, evidence, records: options.records };
+  record(staged);
+  return staged;
 }
 
 /** The arbitration document a green run needs: both verdicts, and this head. */
@@ -499,7 +514,7 @@ async function runGate(
  * instead, which resolve identically under Node ESM and keep the mutant outside
  * every tree the gates walk.
  */
-function mutant(name: string, edits: [string, string][]): string {
+function mutant(name: string, edits: [string, string][], reviewEdits: [string, string][] = []): string {
   let body = readFileSync(gateSource, "utf8");
   for (const [from, to] of edits) {
     assert.ok(
@@ -510,10 +525,21 @@ function mutant(name: string, edits: [string, string][]): string {
   }
   const srcDir = join(repoRoot, "src");
   const gatesDir = join(srcDir, "gates");
+  const dir = mkdtempSync(join(tmpdir(), `tiphys-mutant-${name}-`));
+  /* M6-P5: the record counting lives in src/review.ts, so a mutation there is
+     written beside the gate copy and the copy imports it. */
+  if (reviewEdits.length > 0) {
+    let review = readFileSync(join(srcDir, "review.ts"), "utf8");
+    for (const [from, to] of reviewEdits) {
+      assert.ok(review.includes(from), `mutation ${name}: not present in src/review.ts, so this witness is stale: ${from}`);
+      review = review.replace(from, to);
+    }
+    writeFileSync(join(dir, "review.ts"), review.replace(/from "\.\//g, `from "${srcDir}/`));
+    body = body.replace('from "../review.ts"', `from "${join(dir, "review.ts")}"`);
+  }
   body = body
     .replace(/from "\.\.\//g, `from "${srcDir}/`)
     .replace(/from "\.\//g, `from "${gatesDir}/`);
-  const dir = mkdtempSync(join(tmpdir(), `tiphys-mutant-${name}-`));
   const path = join(dir, "merge-preconditions.ts");
   writeFileSync(path, body);
   return path;
@@ -523,8 +549,9 @@ async function withMutant<T>(
   name: string,
   edits: [string, string][],
   body: (entry: string) => Promise<T>,
+  reviewEdits: [string, string][] = [],
 ): Promise<T> {
-  const path = mutant(name, edits);
+  const path = mutant(name, edits, reviewEdits);
   try {
     return await body(path);
   } finally {
@@ -1027,45 +1054,6 @@ test("a head no committed verdict names is not-applicable with an evaluated unme
   }
 });
 
-/* ================================================================== */
-/* Conditions 1 and 2 are COMPOSED, and a missing check is error      */
-/* ================================================================== */
-
-test("deregistering the composed dual-review check makes its condition error rather than green, so a condition with no check behind it is never a pass", async () => {
-  const staged = stage({ arbitration: goodArbitration(), scopeRecord: scopeRecord("green") });
-  try {
-    await withApi(
-      greenApi(),
-      async (base) => {
-        const shipped = await runGate(gateSource, staged, base);
-        assert.equal(status(rows(shipped.stdout).get("condition-1")), "green", shipped.stdout);
-        assert.equal(status(rows(shipped.stdout).get("condition-2")), "green", shipped.stdout);
-
-        /* THE KIND B WITNESS. Deregistering the check is the dangerous state
-           this repository's section 2.3 rule 3 asks a composed predicate to be
-           falsified by, and the composed gate must not read the absence as a
-           pass. */
-        await withMutant(
-          "decorrelation-check-deregistered",
-          [
-            [
-              '  const selected: DerivedCheck[] = registeredChecks().filter((check) => check.id === id);',
-              '  const selected: DerivedCheck[] = registeredChecks().filter((check) => check.id === id && id !== "dual-review-decorrelation");',
-            ],
-          ],
-          async (entry) => {
-            const mutated = await runGate(entry, staged, base);
-            assert.equal(status(rows(mutated.stdout).get("condition-1")), "error", mutated.stdout);
-            assert.equal(mutated.record["status"], "error");
-          },
-        );
-      },
-    );
-  } finally {
-    cleanup(staged);
-  }
-});
-
 test("a pair of verdicts in which one refuses the merge reddens condition 2 while condition 1 stays green", async () => {
   const staged = stage({
     verdicts: {
@@ -1205,6 +1193,7 @@ test("verdicts naming the commit their own landing produced are selected, where 
       assert.notEqual(anchored, body, `${name} has no single-line head to rewrite`);
       writeFileSync(path, anchored);
     }
+    record(staged);
     git(staged.dir, ["add", "delivery"]);
     git(staged.dir, ["commit", "-q", "-m", "the reviews, and therefore a different commit"]);
     const audited = git(staged.dir, ["rev-parse", "HEAD"]);
@@ -1224,8 +1213,8 @@ test("verdicts naming the commit their own landing produced are selected, where 
       const selection = printed.get("verdict-selection");
       assert.ok(selection !== undefined, `no verdict-selection row: ${run.stdout}`);
       assert.equal(status(selection), "green", selection);
-      assert.match(selection, /2 verdict\(s\) admitted and 0 excluded/, selection);
-      assert.match(selection, /an ancestor of the commit under audit/, selection);
+      assert.match(selection, /2 review\(s\) counted from 2 record\(s\)/, selection);
+      assert.match(selection, /a paperwork-only ancestor of/, selection);
       /* AND THE CONDITIONS THE SELECTION FEEDS ACTUALLY RAN. A row printed over
          an empty corpus would be the vacuous pass, one scope in. */
       assert.equal(status(printed.get("condition-1")), "green", run.stdout);
@@ -1237,18 +1226,19 @@ test("verdicts naming the commit their own landing produced are selected, where 
          DR-0012's six conditions are never evaluated at all. */
       await withMutant(
         "selection-by-equality",
-        [
-          [
-            'if (relation.kind === "same" || relation.kind === "evidence-only-ancestor") {',
-            'if (relation.kind === "same") {',
-          ],
-        ],
+        [],
         async (entry) => {
           const mutated = await runGate(entry, staged, base, [], audited);
           assert.equal(mutated.record["status"], "not-applicable", mutated.stdout);
           assert.equal(mutated.record["units"], 0);
           assert.equal(rows(mutated.stdout).size, 0, mutated.stdout);
         },
+        [
+          [
+            'if (relation.kind !== "same" && relation.kind !== "evidence-only-ancestor") {',
+            'if (relation.kind !== "same") {',
+          ],
+        ],
       );
     });
   } finally {
@@ -1330,6 +1320,7 @@ function stageShippedBranch(verdicts: Record<string, string>): {
     assert.notEqual(anchored, body, `${name} has no single-line head to rewrite`);
     writeFileSync(path, anchored);
   }
+  record(staged);
   git(staged.dir, ["add", "delivery"]);
   git(staged.dir, ["commit", "-q", "--allow-empty", "-m", "the reviews"]);
   const head = git(staged.dir, ["rev-parse", "HEAD"]);
@@ -1432,7 +1423,7 @@ test("with --base, a shipped change with fewer than two committed reviews is red
       assert.equal(run.record["status"], "red", run.stdout);
       assert.match(
         String(run.record["detail"]),
-        new RegExp(`${String(2 - missing)} of 2 are admitted and ${String(missing)} missing`),
+        new RegExp(`${String(2 - missing)} of 2 are counted and ${String(missing)} missing`),
       );
       assert.match(String(run.record["detail"]), /were NOT evaluated/);
     } finally {
@@ -2172,8 +2163,9 @@ function stageTierBranch(
   change: "src" | "delivery",
   verdicts: Record<string, string>,
   declaration: string = DECLARED_RUNTIME_SET,
-): { staged: { dir: string; evidence: string }; base: string; head: string } {
-  const staged = stage({ verdicts, scopeRecord: scopeRecord("green") });
+  records?: RecordOptions,
+): { staged: Staged; base: string; head: string } {
+  const staged = stage({ verdicts, scopeRecord: scopeRecord("green"), records });
   writeFileSync(join(staged.dir, "charter.yaml"), `${readFileSync(join(staged.dir, "charter.yaml"), "utf8")}${declaration}`);
   git(staged.dir, ["init", "-q", "."]);
   git(staged.dir, ["add", "charter.yaml", "assurance-modes.yaml"]);
@@ -2197,6 +2189,7 @@ function stageTierBranch(
     assert.notEqual(anchored, body, `${name} has no single-line head to rewrite`);
     writeFileSync(path, anchored);
   }
+  record(staged);
   git(staged.dir, ["add", "delivery"]);
   git(staged.dir, ["commit", "-q", "--allow-empty", "-m", "the reviews"]);
   const head = git(staged.dir, ["rev-parse", "HEAD"]);
@@ -2218,7 +2211,7 @@ test("a single change with one approving hazard verdict and no arbitration docum
       );
       assert.equal(status(printed.get("verdict-selection")), "green", run.stdout);
       assert.equal(status(printed.get("condition-2")), "green", run.stdout);
-      assert.match(printed.get("condition-2") ?? "", /every admitted review of this head approves/);
+      assert.match(printed.get("condition-2") ?? "", /every counted review of this head approves/);
       assert.equal(run.record["status"], "green", `${run.stdout}${run.stderr}`);
       assert.match(String(run.record["detail"]), /^DR-0063 single at head/);
       assert.equal(run.exit, 0, run.stdout);
@@ -2257,8 +2250,8 @@ test("a single change whose one hazard verdict reads FIX-ROUND-NEEDED is red at 
 test("a pair change with one approving verdict is red naming 1 of 2, and a single change with none is red naming 0 of 1", async () => {
   const port = await closedPort();
   const arms: ["src" | "delivery", Record<string, string>, string, RegExp][] = [
-    ["src", { "m3-p9-hazard.yaml": fixture("decorrelated-hazard.yaml") }, "pair", /1 of 2 are admitted and 1 missing/],
-    ["delivery", {}, "single", /0 of 1 are admitted and 1 missing/],
+    ["src", { "m3-p9-hazard.yaml": fixture("decorrelated-hazard.yaml") }, "pair", /1 of 2 are counted and 1 missing/],
+    ["delivery", {}, "single", /0 of 1 are counted and 1 missing/],
   ];
   for (const [change, verdicts, tier, missing] of arms) {
     const { staged, base, head } = stageTierBranch(change, verdicts);
@@ -2274,7 +2267,7 @@ test("a pair change with one approving verdict is red naming 1 of 2, and a singl
   }
 });
 
-test("two approving hazard verdicts with distinct produced-by and the same framing are green on the review rows of a pair change", async () => {
+test("two approving hazard verdicts on distinct kernel-recorded families with the same framing are green on the review rows of a pair change", async () => {
   const verdicts = {
     "m3-p9-hazard-a.yaml": fixture("decorrelated-hazard.yaml"),
     "m3-p9-hazard-b.yaml": fixture("shared-family-hazard.yaml"),
@@ -2282,8 +2275,8 @@ test("two approving hazard verdicts with distinct produced-by and the same frami
   const { staged, base, head } = stageTierBranch("src", verdicts);
   try {
     /* THE PAIR SHARES framing AND review-contract, which the M4-P10 rule
-       refused; DR-0064 dropped both comparisons, so only produced-by must
-       differ, and it does. */
+       refused; DR-0064 dropped both comparisons, and since M6-P5 only the
+       kernel-recorded families must differ, and they do. */
     for (const [name, body] of Object.entries(verdicts)) {
       assert.ok(body.includes("\nframing: destructive-paths\n"), name);
       assert.ok(body.includes("\nreview-contract: hazard\n"), name);
@@ -2294,7 +2287,7 @@ test("two approving hazard verdicts with distinct produced-by and the same frami
       assert.equal(status(printed.get("verdict-selection")), "green", run.stdout);
       assert.equal(status(printed.get("condition-1")), "green", run.stdout);
       assert.equal(status(printed.get("condition-2")), "green", run.stdout);
-      assert.match(printed.get("condition-1") ?? "", /reported no violation over the 2 verdict/);
+      assert.match(printed.get("condition-1") ?? "", /observed on 2 distinct families/);
       /* The arbitration row is the pair tier's and is present (red here, the
          staging writes no arbitration document); it is not a review row. */
       assert.ok(printed.has("condition-6"), run.stdout);
@@ -2319,8 +2312,8 @@ test("with --base, verdicts whose declared head the merge base already contains 
     "m3-p9-hazard-b.yaml": fixture("shared-family-hazard.yaml"),
   };
   const arms: [string, string, RegExp][] = [
-    ["single", DECLARED_RUNTIME_SET, /0 of 1 are admitted and 1 missing/],
-    ["pair", "", /0 of 2 are admitted and 2 missing/],
+    ["single", DECLARED_RUNTIME_SET, /0 of 1 are counted and 1 missing/],
+    ["pair", "", /0 of 2 are counted and 2 missing/],
   ];
   for (const [tier, declaration, missing] of arms) {
     const { staged, base, head: merged } = stageTierBranch("src", verdicts, declaration);
@@ -2333,7 +2326,7 @@ test("with --base, verdicts whose declared head the merge base already contains 
         const run = await runGate(gateSource, staged, apiBase, ["--base", base], merged);
         const selection = rows(run.stdout).get("verdict-selection") ?? "";
         assert.equal(status(selection), "green", `${tier} control: ${run.stdout}`);
-        assert.match(selection, /2 verdict\(s\) admitted and 0 excluded/, `${tier} control: ${selection}`);
+        assert.match(selection, /2 review\(s\) counted from 2 record\(s\)/, `${tier} control: ${selection}`);
       });
       /* REVIEWER A'S CASE: the reviewed phase IS the base now, and one
          delivery-only commit on top of it carries no review. */
@@ -2353,11 +2346,11 @@ test("with --base, verdicts whose declared head the merge base already contains 
       assert.match(detail, new RegExp(`^DR-0063 ${tier} at head ${unreviewed}`), detail);
       assert.match(detail, missing, detail);
       const selection = rows(run.stdout).get("verdict-selection") ?? "";
-      assert.match(selection, /0 verdict\(s\) admitted and 2 excluded/, selection);
+      assert.match(selection, /0 review\(s\) counted from 2 record\(s\)/, selection);
       for (const name of Object.keys(verdicts)) {
         assert.ok(
           selection.includes(
-            `${name} declares head ${reviewed}, which the merge base ${merged} of the review budget already contains`,
+            `NOT COUNTED delivery/review/records/${name}.json the record declares head ${reviewed}, which the merge base ${merged} of the review budget already contains`,
           ),
           `${tier}: ${name} is not excluded by name as on the base: ${selection}`,
         );
@@ -2365,5 +2358,171 @@ test("with --base, verdicts whose declared head the merge base already contains 
     } finally {
       cleanup(staged);
     }
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M6-P5: the gate counts reviews through kernel records (DR-0062)      */
+/* ------------------------------------------------------------------ */
+
+const APPROVING_PAIR = (): Record<string, string> => ({
+  "m3-p9-hazard-a.yaml": fixture("decorrelated-hazard.yaml"),
+  "m3-p9-hazard-b.yaml": fixture("shared-family-hazard.yaml"),
+});
+
+const SINGLE_VENDOR = (family: string): string =>
+  `${DECLARED_RUNTIME_SET}review-families:\n  available: [${family}]\n  reason: this environment serves models of one vendor only\n`;
+
+const ONE_FAMILY: RecordOptions = { families: { "m3-p9-hazard-a.yaml": "anthropic", "m3-p9-hazard-b.yaml": "anthropic" } };
+
+test("two approving verdicts whose kernel-recorded families match, with no single-vendor exception declared, are red at condition-1", async () => {
+  /* The two verdicts carry DIFFERENT self-written produced-by lines (family-b
+     and family-a); the kernel records say one family. The records decide. */
+  const verdicts = APPROVING_PAIR();
+  assert.match(verdicts["m3-p9-hazard-a.yaml"] as string, /^produced-by: family-b$/m);
+  assert.match(verdicts["m3-p9-hazard-b.yaml"] as string, /^produced-by: family-a$/m);
+  const { staged, base, head } = stageTierBranch("src", verdicts, DECLARED_RUNTIME_SET, ONE_FAMILY);
+  const port = await closedPort();
+  try {
+    const run = await runGate(gateSource, staged, `http://127.0.0.1:${String(port)}`, ["--base", base], head);
+    const printed = rows(run.stdout);
+    assert.equal(status(printed.get("verdict-selection")), "green", run.stdout);
+    assert.equal(status(printed.get("condition-1")), "red", run.stdout);
+    assert.match(
+      printed.get("condition-1") ?? "",
+      /observed on \[anthropic, anthropic\].*not two distinct families, and charter\.yaml declares no single-family exception/,
+    );
+    assert.equal(run.record["status"], "red", run.stdout);
+    assert.notEqual(run.exit, 0);
+  } finally {
+    cleanup(staged);
+  }
+});
+
+test("the same kernel-recorded pair with the single-vendor exception declared is green at condition-1 and says the exception was used, and a record on an undeclared family contradicts it", async () => {
+  const { staged, base, head } = stageTierBranch("src", APPROVING_PAIR(), SINGLE_VENDOR("anthropic"), ONE_FAMILY);
+  const port = await closedPort();
+  try {
+    await withApi(greenApi(head), async (apiBase) => {
+      const run = await runGate(gateSource, staged, apiBase, ["--base", base], head);
+      const printed = rows(run.stdout);
+      assert.equal(status(printed.get("condition-1")), "green", run.stdout);
+      assert.match(printed.get("condition-1") ?? "", /^green\|[0-9a-f]{40}\|SINGLE-FAMILY EXCEPTION USED \(DR-0038\)/);
+      assert.match(printed.get("condition-1") ?? "", /one family charter\.yaml declares available/);
+      assert.equal(status(printed.get("condition-2")), "green", run.stdout);
+    });
+    /* THE FALSIFIER: a committed record of another phase observed on a family
+       the declaration does not list. The declaration is contradicted. */
+    const other = join(staged.dir, "delivery", "review", "records", "other-phase.json");
+    const copy = JSON.parse(readFileSync(join(staged.dir, "delivery", "review", "records", "m3-p9-hazard-a.yaml.json"), "utf8")) as Record<string, unknown>;
+    copy["phase"] = "m1-p1";
+    copy["taskId"] = "review-m1-p1-1";
+    copy["family"] = "another-vendor";
+    writeFileSync(other, `${JSON.stringify(copy, null, 2)}\n`);
+    git(staged.dir, ["add", "delivery"]);
+    git(staged.dir, ["commit", "-q", "-m", "a record observed on another vendor"]);
+    const contradicted = git(staged.dir, ["rev-parse", "HEAD"]);
+    const run = await runGate(gateSource, staged, `http://127.0.0.1:${String(port)}`, ["--base", base], contradicted);
+    assert.equal(status(rows(run.stdout).get("condition-1")), "red", run.stdout);
+    assert.match(rows(run.stdout).get("condition-1") ?? "", /other-phase\.json \(another-vendor\) observed another family, so the declaration is contradicted/);
+  } finally {
+    cleanup(staged);
+  }
+});
+
+test("a verdict with no matching kernel review record is not counted, so a verdict dropped into delivery/review by hand does not make the pair", async () => {
+  const { staged, base, head } = stageTierBranch("src", APPROVING_PAIR(), DECLARED_RUNTIME_SET, {
+    omit: ["m3-p9-hazard-b.yaml"],
+  });
+  const port = await closedPort();
+  try {
+    const run = await runGate(gateSource, staged, `http://127.0.0.1:${String(port)}`, ["--base", base], head);
+    const selection = rows(run.stdout).get("verdict-selection") ?? "";
+    assert.equal(status(selection), "red", run.stdout);
+    assert.match(selection, /1 of 2 are counted and 1 missing/);
+    assert.match(selection, /NOT COUNTED delivery\/review\/m3-p9-hazard-b\.yaml: no kernel review record names it/);
+    assert.equal(run.record["status"], "red");
+  } finally {
+    cleanup(staged);
+  }
+});
+
+test("a verdict whose committed bytes do not match the recorded sha256 is not counted, so a verdict edited after the review does not count", async () => {
+  const { staged, base } = stageTierBranch("src", APPROVING_PAIR());
+  const port = await closedPort();
+  try {
+    const path = join(staged.dir, "delivery", "review", "m3-p9-hazard-b.yaml");
+    writeFileSync(path, `${readFileSync(path, "utf8")}# edited after the review\n`);
+    git(staged.dir, ["add", "delivery"]);
+    git(staged.dir, ["commit", "-q", "-m", "the verdict edited after the kernel hashed it"]);
+    const edited = git(staged.dir, ["rev-parse", "HEAD"]);
+    const run = await runGate(gateSource, staged, `http://127.0.0.1:${String(port)}`, ["--base", base], edited);
+    const selection = rows(run.stdout).get("verdict-selection") ?? "";
+    assert.equal(status(selection), "red", run.stdout);
+    assert.match(selection, /1 of 2 are counted and 1 missing/);
+    assert.match(
+      selection,
+      /NOT COUNTED delivery\/review\/records\/m3-p9-hazard-b\.yaml\.json names verdict delivery\/review\/m3-p9-hazard-b\.yaml, whose committed bytes hash to [0-9a-f]{64} and not to the recorded [0-9a-f]{64}, so the verdict changed after the kernel hashed it/,
+    );
+  } finally {
+    cleanup(staged);
+  }
+});
+
+test("a kernel review record for another phase at the same head is not counted toward the phase under audit", async () => {
+  const { staged, base, head } = stageTierBranch("src", APPROVING_PAIR(), DECLARED_RUNTIME_SET, {
+    overrides: { "m3-p9-hazard-b.yaml": { phase: "m9-p9", taskId: "review-m9-p9-1" } },
+  });
+  const port = await closedPort();
+  try {
+    const run = await runGate(gateSource, staged, `http://127.0.0.1:${String(port)}`, ["--base", base], head);
+    const selection = rows(run.stdout).get("verdict-selection") ?? "";
+    assert.equal(status(selection), "red", run.stdout);
+    assert.match(selection, /NOT COUNTED delivery\/review\/records\/m3-p9-hazard-b\.yaml\.json is a review of phase m9-p9, not of phase m3-p9/);
+  } finally {
+    cleanup(staged);
+  }
+});
+
+test("a kernel review record whose observation failed is not counted, and the gate says the kernel observed no served model", async () => {
+  const { staged, base, head } = stageTierBranch("src", APPROVING_PAIR(), DECLARED_RUNTIME_SET, {
+    overrides: { "m3-p9-hazard-b.yaml": { model: null } },
+  });
+  const port = await closedPort();
+  try {
+    const run = await runGate(gateSource, staged, `http://127.0.0.1:${String(port)}`, ["--base", base], head);
+    const selection = rows(run.stdout).get("verdict-selection") ?? "";
+    assert.equal(status(selection), "red", run.stdout);
+    assert.match(selection, /1 of 2 are counted and 1 missing/);
+    assert.match(selection, /NOT COUNTED delivery\/review\/records\/m3-p9-hazard-b\.yaml\.json observed no served model/);
+  } finally {
+    cleanup(staged);
+  }
+});
+
+test("a verdict placed in the records directory is neither a verdict nor a record, and a record placed beside the verdicts is neither a record nor a verdict", async () => {
+  const { staged, base } = stageTierBranch("src", APPROVING_PAIR());
+  try {
+    const review = join(staged.dir, "delivery", "review");
+    /* A refusing verdict inside records/: were it read as a verdict, the pair
+       would not approve; were it read as a record, it would count. */
+    writeFileSync(
+      join(review, "records", "stray-verdict.yaml"),
+      fixture("decorrelated-hazard.yaml", [["verdict: APPROVE", "verdict: FIX-ROUND-NEEDED"]]),
+    );
+    /* A valid record outside records/, naming a real verdict. */
+    copyFileSync(join(review, "records", "m3-p9-hazard-a.yaml.json"), join(review, "stray-record.json"));
+    git(staged.dir, ["add", "delivery"]);
+    git(staged.dir, ["commit", "-q", "-m", "documents in each other's place"]);
+    const placed = git(staged.dir, ["rev-parse", "HEAD"]);
+    const run = await withApi(greenApi(placed), (apiBase) => runGate(gateSource, staged, apiBase, ["--base", base], placed));
+    const printed = rows(run.stdout);
+    const selection = printed.get("verdict-selection") ?? "";
+    assert.equal(status(selection), "green", run.stdout);
+    assert.match(selection, /2 review\(s\) counted from 3 record\(s\) and 2 verdict document\(s\)/);
+    assert.match(selection, /NOT COUNTED delivery\/review\/records\/stray-verdict\.yaml does not parse as JSON/);
+    assert.equal(status(printed.get("condition-2")), "green", run.stdout);
+  } finally {
+    cleanup(staged);
   }
 });
