@@ -29,6 +29,18 @@
       "file": "src/gates/suite.ts",
       "find": "  if (point.passedOnAttempt !== undefined) {\n    return \"replayed\";\n  }\n",
       "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "    if (event.expectFailure !== undefined && event.expectFailure !== null && event.expectFailure !== false) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "    if (event.passedOnAttempt !== undefined) {",
+      "replace": "    if (false) {"
     }
   ],
   "deterministic": true,

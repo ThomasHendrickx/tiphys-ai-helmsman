@@ -52,8 +52,8 @@ phases:
     acceptance:
       - id: "1"
         criterion: >-
-          node --test test/importer.test.ts exits 0 and reports 4 tests, 0
-          failing.
+          The four importer tests in test/importer.test.ts run and pass, each
+          named by its title.
         check:
           tests:
             - a CSV row is imported as one record
