@@ -114,16 +114,20 @@
       }
     },
     "not-testable": {
-      "description": "Per phase, how many acceptance criteria the plan marks not-testable, as tiphys plan count prints it (DR-0064).",
+      "description": "Per phase, the ids of the criteria the plan marks not-testable, as tiphys plan count prints them; the count is the list's length (DR-0064).",
       "type": "array",
       "minItems": 1,
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["phase", "count"],
+        "required": ["phase", "criteria"],
         "properties": {
           "phase": { "type": "string", "minLength": 1, "pattern": "\\S" },
-          "count": { "type": "integer" }
+          "criteria": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
         }
       }
     },

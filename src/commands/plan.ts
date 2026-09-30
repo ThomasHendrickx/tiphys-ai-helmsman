@@ -19,8 +19,8 @@
  *
  * `tiphys plan count --plan <file> [--phase-id <id>]` (M6-P4, DR-0064) prints,
  * per phase, how many acceptance criteria the plan declares and how many are
- * `not-testable`, computed from the plan after it validates, so the count a
- * final report states comes from the plan and not from a writer's tally.
+ * `not-testable`, with their ids, computed from the plan after it validates,
+ * so what a final report states comes from the plan and not from a tally.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
@@ -116,8 +116,9 @@ function cmdPlanCount(argv: string[]): number {
     counts = counts.filter((count) => count.phase === lookup.id);
   }
   for (const count of counts) {
+    const ids = count.notTestable.length === 0 ? "" : ` (${count.notTestable.join(", ")})`;
     process.stdout.write(
-      `phase ${count.phase}: ${String(count.criteria)} criteria, ${String(count.notTestable)} not-testable\n`,
+      `phase ${count.phase}: ${String(count.criteria)} criteria, ${String(count.notTestable.length)} not-testable${ids}\n`,
     );
   }
   return 0;

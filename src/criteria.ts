@@ -169,17 +169,20 @@ export function readPlan(path: string, schema: SchemaDocument): PlanRead {
 export interface PhaseCount {
   phase: string;
   criteria: number;
-  notTestable: number;
+  /** The ids of the phase's not-testable criteria; the count is the length. */
+  notTestable: string[];
 }
 
-/** Per phase, how many criteria the plan declares and how many are not-testable. */
+/** Per phase, how many criteria the plan declares and which are not-testable. */
 export function countCriteria(plan: unknown): PhaseCount[] {
   return planPhases(plan).map((phase) => {
     const criteria = phaseCriteria(phase);
     return {
       phase: String(phase["id"]),
       criteria: criteria.length,
-      notTestable: criteria.filter((criterion) => criterion.notTestable !== undefined).length,
+      notTestable: criteria
+        .filter((criterion) => criterion.notTestable !== undefined)
+        .map((criterion) => criterion.id),
     };
   });
 }

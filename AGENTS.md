@@ -88,6 +88,11 @@ reviews, not just copy it. The shape is the `delivered-outcome` object in
 it, and a delivered answer whose evidence is empty, repeated or names nothing.
 It carries no score, percentage or ranking, and you add none.
 
+It also states, per phase, which acceptance criteria the plan marks
+`not-testable` (DR-0064), copied from `tiphys plan count --plan <plan>`, which
+reads them from the plan. Their number is the count the owner reads to judge
+the rule.
+
 ## The eleven policy rows
 
 ## clause R-001b: you do not write feature code in a project, and the carve-out is named

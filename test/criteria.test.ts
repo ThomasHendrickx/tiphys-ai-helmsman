@@ -384,13 +384,13 @@ test("tiphys plan count prints each phase's criteria and not-testable count from
 
   const all = spawnSync(process.execPath, [cliEntry, "plan", "count", "--plan", file], { encoding: "utf8" });
   assert.equal(all.status, 0, all.stderr);
-  assert.equal(all.stdout, "phase M9-P1: 2 criteria, 1 not-testable\nphase M9-P2: 3 criteria, 2 not-testable\n");
+  assert.equal(all.stdout, "phase M9-P1: 2 criteria, 1 not-testable (2)\nphase M9-P2: 3 criteria, 2 not-testable (1, 2)\n");
 
   const one = spawnSync(process.execPath, [cliEntry, "plan", "count", "--plan", file, "--phase-id", "m9-p2"], {
     encoding: "utf8",
   });
   assert.equal(one.status, 0, one.stderr);
-  assert.equal(one.stdout, "phase M9-P2: 3 criteria, 2 not-testable\n");
+  assert.equal(one.stdout, "phase M9-P2: 3 criteria, 2 not-testable (1, 2)\n");
 
   /* A criterion with neither shape is not silently counted as testable. */
   (second["acceptance"] as Record<string, unknown>[]).push({ id: "4", criterion: "f" });
@@ -405,7 +405,7 @@ test("the final report schema rejects a current report without the per-phase not
   const template = yamlModule.parse(
     readFileSync(join(repoRoot, "templates", "final-report.example.yaml"), "utf8"),
   ) as Record<string, unknown>;
-  assert.deepEqual(template["not-testable"], [{ phase: "M3-P3", count: 0 }]);
+  assert.deepEqual(template["not-testable"], [{ phase: "M3-P3", criteria: [] }]);
   const dir = mkdtempSync(join(tmpdir(), "tiphys-criteria-report-"));
   const validate = (report: Record<string, unknown>): { status: number | null; output: string } => {
     const file = join(dir, "report.json");
@@ -424,7 +424,15 @@ test("the final report schema rejects a current report without the per-phase not
   assert.equal(refused.status, 1, refused.output);
   assert.match(refused.output, /^INVALID #\/not-testable required property not-testable is missing$/m);
 
-  for (const rows of [[], [{ phase: "M3-P3" }], [{ phase: "M3-P3", count: "0" }]]) {
+  /* The count is carried as the ids, so it is never a number (the schema's
+     standing no-numeric-field rule, M5-P2): no rows, a row with no list, a
+     number in place of the list, and one id listed twice are each refused. */
+  for (const rows of [
+    [],
+    [{ phase: "M3-P3" }],
+    [{ phase: "M3-P3", criteria: 0 }],
+    [{ phase: "M3-P3", criteria: ["p1", "p1"] }],
+  ]) {
     const bad = validate({ ...template, "not-testable": rows });
     assert.equal(bad.status, 1, `${JSON.stringify(rows)}: ${bad.output}`);
   }

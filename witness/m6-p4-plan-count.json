@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "src/criteria.ts",
-      "find": "      notTestable: criteria.filter((criterion) => criterion.notTestable !== undefined).length,",
-      "replace": "      notTestable: 0,"
+      "find": "        .filter((criterion) => criterion.notTestable !== undefined)\n        .map((criterion) => criterion.id),",
+      "replace": "        .filter((criterion) => criterion.check === undefined && criterion.notTestable === undefined)\n        .map((criterion) => criterion.id),"
     },
     {
       "kind": "mutation",

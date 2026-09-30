@@ -69,13 +69,14 @@ delivered-outcome:
     verification findings above closed with reproduced evidence. V-5 was put
     out of scope by the orchestrator and is not claimed as delivered here.
 
-# THE NOT-TESTABLE COUNT PER PHASE (DR-0064). Copy each phase's line from
-# `tiphys plan count --plan <plan>`, which computes it from the plan; never
-# tally it by hand. M3-P3 predates DR-0064, so its plan marks no criterion
-# not-testable and the count is 0.
+# THE NOT-TESTABLE COUNT PER PHASE (DR-0064): the ids of the criteria the
+# plan marks not-testable, so the count is the list's length and each id can be
+# checked against the plan. Copy them from `tiphys plan count --plan <plan>`,
+# which reads them from the plan; never tally them by hand. M3-P3 predates
+# DR-0064, so its plan marks no criterion not-testable and the list is empty.
 not-testable:
   - phase: M3-P3
-    count: 0
+    criteria: []
 
 decisions-owed:
   none: false
