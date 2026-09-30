@@ -84,7 +84,7 @@
       }
     },
     "gate-evidence": {
-      "$comment": "R-049, R-086. THE REPORT SCHEMA'S gate-results DEFINITION, by $ref, not a copy of it. THE KEY IS DIFFERENT HERE (`gate-evidence`, not `gate-results`) AND THAT DIFFERENCE IS LOAD-BEARING: the derived check `report-parity-arithmetic` guards this definition, and a check registered for one type reading one hard-coded key was blind on this document even though the keywords were shared, so a work history claiming 9999 tests discovered and 1 passed validated while the identical counts in a report did not (M3-P4 round-1 finding CR-001). src/checks.ts now enumerates the key per type in `GATE_RESULT_SITES` and the check declares `alsoTypes: [work-history]`.",
+      "$comment": "R-049, R-086. THE REPORT SCHEMA'S gate-results DEFINITION, by $ref, not a copy of it. THE KEY IS DIFFERENT HERE (`gate-evidence`, not `gate-results`) AND THAT DIFFERENCE IS LOAD-BEARING: the derived check `report-parity-arithmetic` (deleted by M6-P3) guards this definition, and a check registered for one type reading one hard-coded key was blind on this document even though the keywords were shared, so a work history claiming 9999 tests discovered and 1 passed validated while the identical counts in a report did not (M3-P4 round-1 finding CR-001). src/checks.ts now enumerates the key per type in `GATE_RESULT_SITES` and the check declares `alsoTypes: [work-history]`.",
       "type": "array",
       "items": { "$ref": "report.schema.json#/$defs/gateResult" }
     },

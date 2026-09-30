@@ -877,7 +877,25 @@ function checkRetention(root: string): CheckResult {
           detail: `${declaration.charter} declares retention path ${relative}, which does not exist`,
         };
       }
-      const kept = present.filter((base) => !isGitIgnored(base, relative));
+      /* AN UNANSWERED PROBE IS NOT "NOT IGNORED" (M6-P3 fix round 4). A root
+         where git could not answer (not a repository, a config git cannot
+         parse) used to count as keeping the path, so a retention path in a
+         directory no clone will ever carry printed PASS "present and
+         tracked". Only an answered "not ignored" keeps a path now; a root
+         that answered nothing is named when no root keeps it. */
+      const answers = present.map((base) => ({ base, answer: gitIgnoreAnswer(base, relative) }));
+      const kept = answers.filter((entry) => entry.answer.kind === "not-ignored");
+      const unanswered = answers.find((entry) => entry.answer.kind === "unanswered");
+      if (kept.length === 0 && unanswered !== undefined) {
+        return {
+          name: "retention",
+          status: "FAIL",
+          detail:
+            `${declaration.charter} declares retention path ${relative}, and whether git ignores it in ` +
+            `${unanswered.base} is not established (${describeIgnoreAnswer(unanswered.answer)}), so it is ` +
+            "not known to survive a clone",
+        };
+      }
       if (kept.length === 0) {
         return {
           name: "retention",
@@ -908,14 +926,49 @@ function describeRetentionValue(value: unknown): string {
   return `a ${typeof value}`;
 }
 
-/** True when git reports the path ignored in that repository. */
-function isGitIgnored(repository: string, relative: string): boolean {
+/**
+ * git's answer to "is this path ignored in that repository".
+ *
+ * THE THREE EXIT CODES ARE NOT TWO, which src/commands/sync.ts already says
+ * of the same command. `git check-ignore -q` exits 0 for ignored, 1 for not
+ * ignored, and 128 when it could not answer (not a repository, a config it
+ * cannot parse); witness/captures/doctor-git-check-ignore-resolution.txt
+ * records all three. Folding 128 into "not ignored" is the fail-open
+ * direction, so anything but 0 and 1 is `unanswered` and carries git's
+ * reason.
+ */
+type IgnoreAnswer =
+  | { kind: "ignored" }
+  | { kind: "not-ignored" }
+  | { kind: "unanswered"; status: number | null; stderr: string; error?: string };
+
+function gitIgnoreAnswer(repository: string, relative: string): IgnoreAnswer {
   const result = spawnSync(
     "git",
     ["-C", repository, "check-ignore", "-q", "--", relative],
     { encoding: "utf8" },
   );
-  return result.error === undefined && result.status === 0;
+  if (result.error !== undefined) {
+    return { kind: "unanswered", status: null, stderr: "", error: String(result.error) };
+  }
+  if (result.status === 0) {
+    return { kind: "ignored" };
+  }
+  if (result.status === 1) {
+    return { kind: "not-ignored" };
+  }
+  return { kind: "unanswered", status: result.status, stderr: result.stderr ?? "" };
+}
+
+/** One line naming why git gave no answer. */
+function describeIgnoreAnswer(answer: IgnoreAnswer): string {
+  if (answer.kind !== "unanswered") {
+    return answer.kind;
+  }
+  if (answer.error !== undefined) {
+    return `git check-ignore could not be run: ${answer.error}`;
+  }
+  return `git check-ignore exited ${String(answer.status)}: ${firstStderrLine(answer.stderr)}`;
 }
 
 /**

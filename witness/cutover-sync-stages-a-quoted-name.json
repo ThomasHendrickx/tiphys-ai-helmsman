@@ -1,0 +1,31 @@
+{
+  "id": "cutover-sync-stages-a-quoted-name",
+  "behavior": "cutover-sync-stages-a-quoted-name",
+  "tests": [
+    "a scoped rollback commit stages a path whose name git quotes and does not call it stray"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "  const staged = runGit(fleetRoot, [\"diff\", \"--cached\", \"-z\", \"--name-only\"]);\n  if (staged.status !== 0) {\n    return { ok: false, reason: `git diff --cached failed: ${staged.stderr.trim()}` };\n  }\n  const stagedPaths = nulSeparatedPaths(staged.stdout);",
+      "replace": "  const staged = runGit(fleetRoot, [\"diff\", \"--cached\", \"--name-only\"]);\n  if (staged.status !== 0) {\n    return { ok: false, reason: `git diff --cached failed: ${staged.stderr.trim()}` };\n  }\n  const stagedPaths = nonEmptyLines(staged.stdout);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "[\"diff\", \"--cached\", \"-z\", \"--name-only\"]",
+      "replace": "[\"diff\", \"--cached\", \"--name-only\"]"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p3-git-path-listings.json"
+    ],
+    "provenance": "Real git 2.43.0 output of the path listings src/cutover.ts reads, in the line form it read before M6-P3 fix round 3 and the -z form it reads now, recorded 2026-09-30 inside the named tests against the fixtures they stage (the capture's own provenance says how). Required by rule (f) because every member mutates a file the spawn/parse derivation matches. The named tests re-run each recorded command and require git's live stdout to equal the recorded stdout before the code under test runs."
+  },
+  "deterministic": true,
+  "repeats": 2
+}

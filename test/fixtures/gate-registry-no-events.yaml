@@ -13,6 +13,7 @@ preflight:
     note: install exactly the lockfile
 gates:
   - id: suite
+    prevents: a fixture failure
     command: [node, src/gates/suite.ts, --pin-root, src]
     unitLabel: tests reported
     applicability: required

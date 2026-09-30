@@ -247,7 +247,7 @@ test("the state list in src/status.ts and the enum in the shipped schema are the
      DRIFTS. The CLI needs the list to compose a usage line; the schema is the
      contract. This is the comparison that stops the two from diverging
      silently, and it is the same shape as M3-P3's
-     charter-mode-enum-matches-modes one milestone earlier. */
+     charter-mode-enum-matches-modes one milestone earlier (since deleted). */
   const schema = JSON.parse(
     readFileSync(join(repoRoot, "schemas", "status-line.schema.json"), "utf8"),
   ) as { properties: { state: { enum: string[] } } };

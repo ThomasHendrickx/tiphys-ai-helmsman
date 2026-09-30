@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -813,80 +814,106 @@ test("a credential.helper injected via the GIT_CONFIG_COUNT family is caught by 
 });
 
 // ---------------------------------------------------------------------------
-// credential-token (criterion 6, and the fail-closed token-present arm)
+// M6-P3 fix round 4: a git config read that did not answer is not "not set"
 // ---------------------------------------------------------------------------
 
-test("credential-token without an implementer token is not-applicable naming owner action A-3", (t) => {
-  const tmp = makeTempDir(t);
-  const bin = ghFreeBinDir(t);
-  const resultPath = join(tmp, "result.json");
-  const evidence = join(tmp, "evidence");
-  mkdirSync(evidence);
-  const gate = spawnSync(
-    process.execPath,
-    [
-      credentialsGateEntry,
-      "credential-token",
-      "--result",
-      resultPath,
-      "--evidence",
-      evidence,
-    ],
-    // TIPHYS_IMPLEMENTER_TOKEN deliberately absent from this environment.
-    { encoding: "utf8", env: { PATH: bin } },
-  );
-  assert.equal(gate.status, 20, `${gate.stdout}\n${gate.stderr}`);
-  const record = JSON.parse(readFileSync(resultPath, "utf8")) as {
-    status: string;
-    detail: string;
-  };
-  assert.equal(record.status, "not-applicable");
-  assert.notEqual(record.status, "green");
-  assert.match(record.detail, /A-3/);
-  assert.match(record.detail, /TIPHYS_IMPLEMENTER_TOKEN/);
-});
+const configHelperCapturePath = fileURLToPath(
+  new URL("../witness/captures/m6-p3-git-config-credential-helper.json", import.meta.url),
+);
 
-test("credential-token with a token present fails closed until the capture-derived probe exists", (t) => {
-  const tmp = makeTempDir(t);
-  const bin = ghFreeBinDir(t);
-  const resultPath = join(tmp, "result.json");
-  const evidence = join(tmp, "evidence");
-  mkdirSync(evidence);
-  const gate = spawnSync(
-    process.execPath,
-    [
-      credentialsGateEntry,
-      "credential-token",
-      "--result",
-      resultPath,
-      "--evidence",
-      evidence,
-    ],
-    {
-      encoding: "utf8",
-      env: { PATH: bin, TIPHYS_IMPLEMENTER_TOKEN: "tiphys-test-token" },
-    },
-  );
-  // Fail closed (M2-C-3): error, never a green derived from an invented
-  // response shape (T-003 lesson 4), and exit 21 per the contract table.
-  assert.equal(gate.status, 21, `${gate.stdout}\n${gate.stderr}`);
-  const record = JSON.parse(readFileSync(resultPath, "utf8")) as {
-    status: string;
-    detail: string;
+interface ConfigHelperRun {
+  case: string;
+  git: string;
+  exit: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/** The recorded runs of one case in m6-p3-git-config-credential-helper.json, one per git. */
+function recordedConfigRuns(name: string): ConfigHelperRun[] {
+  const recorded = JSON.parse(readFileSync(configHelperCapturePath, "utf8")) as {
+    cases: ConfigHelperRun[];
   };
-  assert.equal(record.status, "error");
-  assert.match(record.detail, /A-3/);
-  assert.match(record.detail, /captured/);
+  const runs = recorded.cases.filter((entry) => entry.case === name);
+  assert.ok(runs.length >= 2, `m6-p3-git-config-credential-helper.json records ${name} on two gits`);
+  return runs;
+}
+
+/** git's bad-config line with its line number blanked, so two gits' configs compare. */
+function badConfigLine(stderr: string): string {
+  return stderr.trim().replace(/line \d+/, "line <n>");
+}
+
+test("credential-scrub reports error, never clean, when git config cannot answer: a global credential.helper probed from inside a repository whose own config is malformed", (t) => {
+  const tmp = realpathSync(makeTempDir(t));
+  const bin = ghFreeBinDir(t);
+  /* The child HOME sits inside a checkout whose .git/config git cannot parse,
+     and that HOME's own global config names a helper. */
+  const checkout = join(tmp, "checkout");
+  assert.equal(spawnSync("git", ["init", "-q", checkout], { encoding: "utf8" }).status, 0);
+  appendFileSync(join(checkout, ".git", "config"), "[core\n");
+  const home = join(checkout, "home");
+  mkdirSync(home);
+  writeFileSync(join(home, ".gitconfig"), "[credential]\n\thelper = store\n");
+  const healthy = join(tmp, "healthy");
+  assert.equal(spawnSync("git", ["init", "-q", healthy], { encoding: "utf8" }).status, 0);
+  /* GIT_CONFIG_NOSYSTEM is the fixed value src/exec/env.ts gives every real
+     child. Without it git also reads the machine's system config, and on the
+     macOS runner that adds an osxkeychain helper to the child's answer. */
+  const env = { PATH: bin, HOME: home, LC_ALL: "C", LANG: "C", GIT_CONFIG_NOSYSTEM: "1" };
+
+  /* THE DANGEROUS STATE IS REAL: a child working in a healthy worktree
+     resolves the helper, as both captured gits did. */
+  const child = spawnSync("git", ["config", "--get-all", "credential.helper"], {
+    encoding: "utf8",
+    env,
+    cwd: healthy,
+  });
+  for (const run of recordedConfigRuns("resolved-helper-healthy-worktree")) {
+    assert.equal(child.status, run.exit, `${run.git} recorded exit ${String(run.exit)}: ${child.stderr}`);
+    assert.equal(child.stdout, run.stdout, run.git);
+  }
+  /* And the probe's own read, from inside the malformed checkout, does not
+     answer: exit 128 and git's bad-config line, as both captured gits print it. */
+  const unanswered = spawnSync("git", ["config", "--global", "--get-all", "credential.helper"], {
+    encoding: "utf8",
+    env,
+    cwd: home,
+  });
+  for (const run of recordedConfigRuns("global-helper-malformed-local-cwd")) {
+    assert.equal(unanswered.status, run.exit, `${run.git} recorded exit ${String(run.exit)}: ${unanswered.stderr}`);
+    assert.equal(badConfigLine(unanswered.stderr), badConfigLine(run.stderr), run.git);
+  }
+
+  /* The scoped probes inherit the gate's working directory and the resolved
+     probe runs in HOME, so both read from inside the malformed checkout. */
+  const before = process.cwd();
+  process.chdir(home);
+  let probes: ReturnType<typeof credentialsModule.probeCredentialSources>;
+  try {
+    probes = credentialsModule.probeCredentialSources(env);
+  } finally {
+    process.chdir(before);
+  }
+  for (const source of ["git-global-config", "git-resolved-config"]) {
+    const row = probes.find((probe) => probe.source === source);
+    assert.ok(row !== undefined, `${source} must be probed`);
+    assert.equal(row.outcome, "error", `${source} read a probe git did not answer as ${row.outcome}: ${row.detail}`);
+    assert.ok(row.detail.includes("exited 128"), row.detail);
+    assert.ok(row.detail.includes(unanswered.stderr.trim()), row.detail);
+  }
+  const verdict = credentialsModule.verdictFromProbes(probes);
+  assert.equal(verdict.status, "error", verdict.detail);
 });
 
 // ---------------------------------------------------------------------------
 // Registration and usage
 // ---------------------------------------------------------------------------
 
-test("the gate manifest registers credential-scrub and credential-token per the section 1.4 table", () => {
-  const manifest = JSON.parse(
+test("the gate registry registers credential-scrub per the section 1.4 table", async () => {
+  const manifest = (await import("yaml")).parse(
     readFileSync(
-      fileURLToPath(new URL("../gates.manifest.json", import.meta.url)),
+      fileURLToPath(new URL("../gate-registry.yaml", import.meta.url)),
       "utf8",
     ),
   ) as {
@@ -903,20 +930,7 @@ test("the gate manifest registers credential-scrub and credential-token per the 
   assert.equal(scrub.applicability, "required");
   assert.equal(scrub.unitLabel, "credential sources probed");
   assert.equal(scrub.precondition, undefined);
-
-  const token = manifest.gates.find((gate) => gate.id === "credential-token");
-  assert.ok(token !== undefined);
-  assert.equal(token.applicability, "conditional");
-  assert.equal(token.unitLabel, "tokens probed");
-  assert.ok(token.precondition !== undefined);
-  // No `env` precondition kind exists (STATE.md, carried forward from
-  // M2-P1): the presence check is a command, and its id names A-3.
-  assert.equal(token.precondition.kind, "command-exit-zero");
-  assert.match(token.precondition.id, /a-3/);
-  assert.match(
-    (token.precondition.command ?? []).join(" "),
-    /TIPHYS_IMPLEMENTER_TOKEN/,
-  );
+  assert.deepEqual(scrub.command, ["node", "src/gates/credentials.ts", "credential-scrub"]);
 });
 
 test("credentials gate usage errors exit 64", (t) => {
@@ -1068,11 +1082,9 @@ test("every credentials gate CLI arm exits the code its own result record implie
    * criterion asks for is completed here.
    *
    *   green           credential-scrub against the constructed child.
-   *   not-applicable  credential-token with no TIPHYS_IMPLEMENTER_TOKEN
-   *                   (owner action A-3 outstanding).
-   *   error           credential-token WITH the token present: the probe's
-   *                   assertion contract is not yet derived from captured
-   *                   responses, so the gate fails closed (M2-C-3).
+   *
+   * M6-P3 deleted `credential-token`, which supplied the not-applicable and
+   * error arms here; the green arm and the round trip below remain.
    *
    * `red` for this gate needs a credential reachable from inside the
    * constructed child and is covered by the probe-level tests above rather
@@ -1092,12 +1104,6 @@ test("every credentials gate CLI arm exits the code its own result record implie
     env: Record<string, string>;
   }[] = [
     { name: "green", gate: "credential-scrub", env: { PATH: bin } },
-    { name: "not-applicable", gate: "credential-token", env: { PATH: bin } },
-    {
-      name: "error",
-      gate: "credential-token",
-      env: { PATH: bin, TIPHYS_IMPLEMENTER_TOKEN: "not-a-real-token" },
-    },
   ];
   const seen: string[] = [];
   for (const arm of arms) {
@@ -1118,7 +1124,7 @@ test("every credentials gate CLI arm exits the code its own result record implie
     assert.equal(statusForExitCode(child.status as number), record.status);
     seen.push(record.status);
   }
-  assert.deepEqual(seen, ["green", "not-applicable", "error"]);
+  assert.deepEqual(seen, ["green"]);
 });
 
 // ---------------------------------------------------------------------------

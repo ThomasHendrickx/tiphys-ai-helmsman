@@ -3,7 +3,7 @@ import { join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pathsIdentifySameObject } from "../path-identity.ts";
 import { refuseOpenForWrite, singleLine } from "../task.ts";
-import { loadManifest } from "./manifest.ts";
+import { readRegistryDocument } from "./run.ts";
 import { exitCodeForStatus, makeGateResult, renderGateResult } from "./result.ts";
 import type { GateResult, GateStatus } from "./result.ts";
 import {
@@ -35,8 +35,8 @@ import type {
 /**
  * THE RED-WITNESS GATE (kernel plan M2, M2-P2 steps 6 and 7).
  *
- * Registered in gates.manifest.json as `red-witness`, applicability
- * `required`, precondition `diff-touches` on `src/` and `bin/`, unitLabel
+ * Registered in gate-registry.yaml as `red-witness`, precondition
+ * `diff-touches` on `src/`, `bin/` and `plugin/`, unitLabel
  * `witnesses evaluated`. Invoked by the runner as
  *
  *   node src/gates/red-witness.ts --result <path> --evidence <dir>
@@ -202,13 +202,13 @@ export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
   }
   const diff: PhaseDiff = diffOutcome.diff;
 
-  const manifestPath = join(repoRoot, "gates.manifest.json");
-  const manifest = loadManifest(manifestPath);
-  if (!manifest.ok) {
+  const registryPath = join(repoRoot, "gate-registry.yaml");
+  const registry = readRegistryDocument(registryPath);
+  if (!registry.ok) {
     return errorOutcome(
       startedAt,
       `the destructiveCommands list could not be read (rule (e) needs it): ` +
-        `${manifest.reason}${manifest.diagnostics.length > 0 ? `: ${manifest.diagnostics.join("; ")}` : ""}`,
+        `${registry.reason}${registry.diagnostics.length > 0 ? `: ${registry.diagnostics.join("; ")}` : ""}`,
     );
   }
 
@@ -396,7 +396,7 @@ export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
       headSha: diff.headSha,
       baselineRef: run.baseline ?? run.base,
       diff,
-      destructiveCommands: manifest.manifest.destructiveCommands,
+      destructiveCommands: registry.document.destructiveCommands,
       behaviors,
       testFiles: testFilesOutcome.files,
       spawningChangedFiles,

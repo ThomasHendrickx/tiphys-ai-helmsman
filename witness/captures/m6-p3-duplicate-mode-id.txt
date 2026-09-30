@@ -1,0 +1,50 @@
+Real output of the SHIPPED tiphys validate and mode show commands and of
+scripts/check-dual-review.mjs over an assurance-modes document that declares
+mode full twice, the weaker copy (merge-authority owner, no granted-by, no
+conditions) placed first. Captured so that test/assurance-modes.test.ts and
+test/dual-review.test.ts assert against what the programs really printed
+(CLAUDE.md red-witness rule). Rule (f) of the red-witness gate requires it:
+members of witness/mode-ids-unique-validate-and-mode-show.json and
+witness/mode-ids-unique-merge-checks.json mutate src/checks.ts, which the
+spawn/parse derivation matches.
+
+Captured 2026-09-30, node v26.6.0, git 2.43.0, from the repository root at
+0553910 (M6-P3 fix round 1), against a scratch directory holding copies of
+gate-registry.yaml, schemas/, the duplicated assurance-modes.yaml, the charter
+template with delivery-mode full, and the dual-review fixtures
+decorrelated-criteria.yaml and shared-family-hazard.yaml (both family-a).
+
+ONE ALTERATION, declared: the scratch directory's absolute path is written
+<dir>, everywhere it occurred. Nothing else in any output below was changed.
+
+case: validate
+  command: node bin/tiphys.ts validate --type assurance-modes --context <dir> <dir>/assurance-modes.yaml
+  exit: 1
+  stdout:
+    INVALID #/modes/1/id this assurance-modes document declares mode full 2 times (entries 0, 1), so a reader taking the first would shadow the rest (check: mode-ids-are-unique)
+  stderr:
+
+case: mode-show
+  command: node bin/tiphys.ts mode show --mode full --file <dir>/assurance-modes.yaml
+  exit: 1
+  stdout:
+  stderr:
+    tiphys mode: <dir>/assurance-modes.yaml is not a valid assurance-modes document, so it is not served
+    INVALID #/modes/1/id this assurance-modes document declares mode full 2 times (entries 0, 1), so a reader taking the first would shadow the rest (check: mode-ids-are-unique)
+
+case: merge-checks
+  command: node scripts/check-dual-review.mjs <dir>
+  exit: 1
+  stdout:
+    check-dual-review: 2 verdict document(s) with NO COMMIT UNDER AUDIT, because this context has no resolvable git ref and no --head was given, so whether these documents review this work was NOT established: git rev-parse HEAD^{commit} exited 128: fatal: not a git repository (or any of the parent directories): .git
+    check-dual-review: 1 registered check(s) named dual-review-decorrelation ran over 2 verdict(s)
+    check-dual-review: 1 registered check(s) named verdict-pair-approves ran over 2 verdict(s)
+    check-dual-review: verdict APPROVE at head dcbe6704813e861736c8d394dca35f7dc31b4f93 produced-by family-a [<dir>/delivery/review/decorrelated-criteria.yaml]
+    check-dual-review: verdict APPROVE at head dcbe6704813e861736c8d394dca35f7dc31b4f93 produced-by family-a [<dir>/delivery/review/shared-family-hazard.yaml]
+    INVALID #/produced-by <dir>/assurance-modes.yaml declares mode full 2 times (entries 0, 1), so a reader taking the first would shadow the rest; the merge-authority of mode full is therefore ambiguous, and a merge check must not choose one (check: dual-review-decorrelation) [<dir>/delivery/review/decorrelated-criteria.yaml]
+    INVALID #/produced-by <dir>/assurance-modes.yaml declares mode full 2 times (entries 0, 1), so a reader taking the first would shadow the rest; the merge-authority of mode full is therefore ambiguous, and a merge check must not choose one (check: dual-review-decorrelation) [<dir>/delivery/review/shared-family-hazard.yaml]
+    INVALID #/produced-by <dir>/assurance-modes.yaml declares mode full 2 times (entries 0, 1), so a reader taking the first would shadow the rest; the merge-authority of mode full is therefore ambiguous, and a merge check must not choose one (check: verdict-pair-approves) [<dir>/delivery/review/decorrelated-criteria.yaml]
+    INVALID #/produced-by <dir>/assurance-modes.yaml declares mode full 2 times (entries 0, 1), so a reader taking the first would shadow the rest; the merge-authority of mode full is therefore ambiguous, and a merge check must not choose one (check: verdict-pair-approves) [<dir>/delivery/review/shared-family-hazard.yaml]
+    check-dual-review: red (2 review verdicts examined for decorrelation)
+    INVALID #/produced-by <dir>/assurance-modes.yaml declares mode full 2 times (entries 0, 1), so a reader taking the first would shadow the rest; the merge-authority of mode full is therefore ambiguous, and a merge check must not choose one (check: dual-review-decorrelation) [<dir>/delivery/review/decorrelated-criteria.yaml]; INVALID #/produced-by <dir>/assurance-modes.yaml declares mode full 2 times (entries 0, 1), so a reader taking the first would shadow the rest; the merge-authority of mode full is therefore ambiguous, and a merge check must not choose one (check: dual-review-decorrelation) [<dir>/delivery/review/shared-family-hazard.yaml]; INVALID #/produced-by <dir>/assurance-modes.yaml declares mode full 2 times (entries 0, 1), so a reader taking the first would shadow the rest; the merge-authority of mode full is therefore ambiguous, and a merge check must not choose one (check: verdict-pair-approves) [<dir>/delivery/review/decorrelated-criteria.yaml]; INVALID #/produced-by <dir>/assurance-modes.yaml declares mode full 2 times (entries 0, 1), so a reader taking the first would shadow the rest; the merge-authority of mode full is therefore ambiguous, and a merge check must not choose one (check: verdict-pair-approves) [<dir>/delivery/review/shared-family-hazard.yaml]
+  stderr:

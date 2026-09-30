@@ -14,8 +14,7 @@
  *   0   the step completed and its observation is printed
  *   1   the step refused, with one reason line naming what was not done
  *   3   `status` only: the question was answered and the answer is that WORK
- *       REMAINS (a switch still reads `current`, drain is not clean, or a
- *       retirement row is unported)
+ *       REMAINS (a switch still reads `current`, or drain is not clean)
  *   64  usage error (BSD sysexits EX_USAGE)
  *
  * A REFUSAL IS 1 AND NOT 64 even when the input file is malformed, because a
@@ -30,18 +29,16 @@
  */
 
 import { writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { loadFleet } from "../fleet.ts";
 import {
   CANNOT_SEE,
   CUTOVER_SWITCHES,
   PRE_FREEZE_RULESET_PATH,
-  RETIREMENT_INVENTORY_PATH,
   ROLLBACK_TRIGGERS,
   UNREHEARSABLE_REASON,
   applyRollback,
   cutoverStatePath,
-  evaluateRetirementInventory,
   generateRestoreRequest,
   inFlightItems,
   preFreezeGuard,
@@ -61,7 +58,6 @@ export const EX_USAGE = 64;
 function usage(): string {
   return [
     "usage: tiphys cutover status --fleet <dir> [--repo <dir>] [--json]",
-    "       tiphys cutover status --retirement [--repo <dir>] [--inventory <path>] [--json]",
     "       tiphys cutover rollback --trigger <drain-reversal|retirement-unmet> --fleet <dir> [--reason <text>] [--allow-no-remote] [--json]",
     "       tiphys cutover restore-files --repo <dir> --from <sha> --root <path> [--root <path>]",
     "       tiphys cutover restore-request --ruleset <path> [--out <path>]",
@@ -92,9 +88,8 @@ const VALUE_ARGS = new Set([
   "--root",
   "--ruleset",
   "--out",
-  "--inventory",
 ]);
-const FLAG_ARGS = new Set(["--json", "--allow-no-remote", "--retirement"]);
+const FLAG_ARGS = new Set(["--json", "--allow-no-remote"]);
 
 function parseArgs(argv: string[]): ParsedArgs {
   const flags = new Set<string>();
@@ -170,54 +165,6 @@ function unflippedState(): CutoverState {
 }
 
 /**
- * `tiphys cutover status --retirement`: one line per PORT row of the M4-P23
- * inventory.
- *
- * THE VACUOUS VERDICT IS WHAT THIS EXISTS AGAINST. `ported` requires the named
- * kernel artifact to exist AND that row's negative witness to be RED under it.
- * A verdict derived from the file existing alone is green and worthless: a
- * file can exist and say nothing, and the negative witness is what turns
- * "verify not weaker" from a phrase into a command.
- */
-function cmdRetirementStatus(parsed: ParsedArgs): number {
-  const repo = resolve(parsed.values.get("--repo") ?? process.cwd());
-  const inventory = parsed.values.get("--inventory");
-  const inventoryPath =
-    inventory === undefined ? join(repo, RETIREMENT_INVENTORY_PATH) : resolve(inventory);
-  const read = evaluateRetirementInventory(inventoryPath, repo);
-  if (read.kind === "refused") {
-    return fail(read.reason, 1);
-  }
-  const { results, unported } = read.report;
-  const lines = results.map(
-    (result) => `PORT ${result.id} ${result.verdict} ${result.reason}`,
-  );
-  lines.push(
-    unported === 0
-      ? `RETIREMENT complete ${String(results.length)} PORT row(s)`
-      : `RETIREMENT ${String(unported)} of ${String(results.length)} PORT row(s) unported`,
-  );
-  if (parsed.flags.has("--json")) {
-    process.stdout.write(
-      `${JSON.stringify({ inventory: inventoryPath, results, unported }, null, 2)}\n`,
-    );
-  } else {
-    process.stdout.write(`${lines.join("\n")}\n`);
-  }
-  /* A ZERO-ROW INVENTORY IS NOT A COMPLETE RETIREMENT. `unported === 0` over an
-     empty list is the vacuous green one level up from the one the row verdict
-     guards, so the row count is required to be positive before this reports
-     complete. */
-  if (results.length === 0) {
-    return fail(
-      `${inventoryPath} holds no PORT rows, so a complete verdict would assert nothing`,
-      1,
-    );
-  }
-  return unported === 0 ? 0 : EX_WORK_REMAINS;
-}
-
-/**
  * `tiphys cutover status`: the five switches, the drain predicate, and the
  * pre-freeze precondition.
  *
@@ -232,9 +179,6 @@ function cmdRetirementStatus(parsed: ParsedArgs): number {
  * blocker has the definition of drain that can never read clean.
  */
 function cmdStatus(parsed: ParsedArgs): number {
-  if (parsed.flags.has("--retirement")) {
-    return cmdRetirementStatus(parsed);
-  }
   const fleetDir = parsed.values.get("--fleet");
   if (fleetDir === undefined) {
     return fail("--fleet is required", EX_USAGE);

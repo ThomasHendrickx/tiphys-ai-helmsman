@@ -1,0 +1,31 @@
+{
+  "id": "doctor-retention-unanswered-ignore-probe-fails",
+  "behavior": "doctor-retention-unanswered-ignore-probe-fails",
+  "tests": [
+    "doctor FAILs a declared retention path when git cannot say whether it is ignored, naming git's reason, for a fleet that is no repository and for one whose config git cannot parse"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "  if (result.status === 1) {",
+      "replace": "  if (result.status !== 0) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/doctor.ts",
+      "find": "      if (kept.length === 0 && unanswered !== undefined) {",
+      "replace": "      if (false) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git -C <root> check-ignore -q -- <path>",
+    "captures": [
+      "witness/captures/m6-p3-git-check-ignore-unanswered.json"
+    ],
+    "provenance": "The retention check in src/commands/doctor.ts decides whether a declared path survives a clone from the exit code of `git check-ignore -q`, so red-witness rule (f) binds this witness. The capture records, on git 2.43.0 and on the Ubuntu 22.04 git 2.34.1, exit 0 for an ignored path, exit 1 for an unignored one, and two structurally different non-answers, both exit 128: a directory that is no repository (`fatal: not a git repository ...`) and a repository whose .git/config git cannot parse (`fatal: bad config line N ...`). The named test reproduces each non-answer live against the capture in a fleet whose retention paths are on disk, then asserts doctor FAILs naming git's own line instead of printing PASS present and tracked. Member 0 folds exit 128 back into not ignored at the classifier (the pre-fix reading, which prints PASS); member 1 keeps the classifier and drops the arm that reports the non-answer, so the FAIL names the wrong reason."
+  }
+}

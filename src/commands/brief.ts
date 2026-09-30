@@ -37,6 +37,8 @@ import { writeFileSync } from "node:fs";
 import { STAMP_FIELD, ownVersionForStamp } from "../stamp.ts";
 import { join } from "node:path";
 import {
+  BRIEF_GATE_BLOCK_MODE,
+  BRIEF_GATE_LIST_PLACEHOLDER,
   DROPPED_REVIEW_CONTRACT,
   REVIEW_CONTRACTS,
   REVIEW_CONTRACT_ROLE,
@@ -46,6 +48,7 @@ import {
   expandIncludes,
   kernelRoot,
   missingRequiredSections,
+  renderBriefGateBlock,
   renderPhase,
   resolveMandatedReading,
   roleBriefFile,
@@ -53,6 +56,8 @@ import {
   splitFrontmatter,
 } from "../roles.ts";
 import { locateCharters } from "../charter.ts";
+import { duplicatePhaseIdRefusal } from "../plan.ts";
+import { readRegistryDocument } from "../gates/run.ts";
 import { refuseOpenForWrite, readRegularFileIfPresent } from "../task.ts";
 import { decodeDocument, formatDiagnostics, readOperatorPath } from "../validate.ts";
 
@@ -386,6 +391,26 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
     };
   }
 
+  /* M6-P3: THE GATE LIST IS RENDERED HERE, from the project's registry, so the
+     brief carries no copy of it that could drift. The implementer brief must
+     carry the placeholder, or it would compose with a gate-list section that
+     lists no gate. */
+  if (body.includes(BRIEF_GATE_LIST_PLACEHOLDER)) {
+    const gateList = renderProjectGateList(options.workingDirectory, options.root);
+    if (!gateList.ok) {
+      return { ok: false, reason: gateList.reason };
+    }
+    /* A FUNCTION, not a replacement string (M6-P3 fix round 2, CR-M6P3B-01):
+       a string would have the replacement patterns $' $& $` and $$ in the
+       project's registry text interpreted rather than copied. */
+    body = body.replace(BRIEF_GATE_LIST_PLACEHOLDER, () => gateList.text);
+  } else if (options.roleId === "implementer") {
+    return {
+      ok: false,
+      reason: `${rolePath} carries no gate-list placeholder, so the composed brief would list no gate`,
+    };
+  }
+
   const planRead = readOperatorPath(options.planFile);
   if (!planRead.ok) {
     return { ok: false, reason: `plan ${options.planFile}: ${planRead.reason}` };
@@ -395,6 +420,13 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
     return { ok: false, reason: planDecoded.reason };
   }
   const plan = asRecord(planDecoded.value);
+  /* CR-M6P3A-01: the `.find` below takes the first match, so a duplicated
+     phase id is refused before it, by the same function `tiphys plan project`
+     uses. */
+  const duplicated = duplicatePhaseIdRefusal(plan, options.planFile);
+  if (duplicated !== undefined) {
+    return { ok: false, reason: duplicated };
+  }
   const phases = Array.isArray(plan?.["phases"]) ? (plan["phases"] as unknown[]) : [];
   const phase = phases
     .map((candidate) => asRecord(candidate))
@@ -476,6 +508,52 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
   }
 
   return { ok: true, text: `${lines.join("\n").replace(/\n+$/, "")}\n` };
+}
+
+/**
+ * The gate list for a composed brief: the project's `gate-registry.yaml` in the
+ * working directory, validated and rendered for BRIEF_GATE_BLOCK_MODE. A
+ * project with no registry is refused, naming the file, rather than handed the
+ * kernel's own list labelled as the project's (M6-P3 fix round 1,
+ * CR-M6P3A-02); `tiphys mode show` refuses the same way. A registry that
+ * selects no gate for that mode is refused rather than rendered as an empty
+ * table.
+ */
+function renderProjectGateList(
+  workingDirectory: string,
+  root: string,
+): { ok: true; text: string } | { ok: false; reason: string } {
+  const path = join(workingDirectory, "gate-registry.yaml");
+  const project = readRegularFileIfPresent(path);
+  if (project.kind === "refused") {
+    return { ok: false, reason: project.reason };
+  }
+  if (project.kind !== "read") {
+    return {
+      ok: false,
+      reason:
+        `the gate list could not be rendered: ${path} does not exist; the project writes its own, ` +
+        `starting from ${join(root, "templates", "gate-registry.example.yaml")}`,
+    };
+  }
+  const registry = readRegistryDocument(path);
+  if (!registry.ok) {
+    return {
+      ok: false,
+      reason: [`the gate list could not be rendered: ${registry.reason}`, ...registry.diagnostics].join("; "),
+    };
+  }
+  const rendered = renderBriefGateBlock(
+    registry.document as unknown as Parameters<typeof renderBriefGateBlock>[0],
+    BRIEF_GATE_BLOCK_MODE,
+  );
+  if (rendered.units === 0) {
+    return {
+      ok: false,
+      reason: `${path} declares no gate for mode ${BRIEF_GATE_BLOCK_MODE}, so the brief would list no gate`,
+    };
+  }
+  return { ok: true, text: rendered.text };
 }
 
 interface Options {

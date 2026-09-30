@@ -1,0 +1,78 @@
+{
+  "provenance": "Real output of the two git name listings the diff-touches precondition in src/gates/run.ts has read: the form it ran through M6-P3 fix round 1 (git diff --name-only) and the form it runs from fix round 2 (git diff -z --no-renames --name-only, the form merge-preconditions uses). Captured 2026-09-30 with git 2.43.0 by the M6-P3 fix round 2 implementer against the two scratch repositories test/gates.test.ts stages in stageDiffTouchesRepo: a rename of src/a.ts to lib/a.ts with the content unchanged, and an edit of src/caf\\u00e9.ts. The base commit sha is spelled <base>; no other byte is rewritten. JSON escapes NUL as \\u0000 and U+00E9 as \\u00e9, so this file is ASCII. The named tests stage the repositories again, re-run both commands and compare git's live stdout with the stdout recorded here before they run the gate.",
+  "git": "git version 2.43.0",
+  "staging": {
+    "rename": {
+      "base": [
+        "src/a.ts"
+      ],
+      "change": [
+        "git mv src/a.ts lib/a.ts, content unchanged"
+      ]
+    },
+    "non-ascii": {
+      "base": [
+        "src/caf\u00e9.ts (the name carries U+00E9)"
+      ],
+      "change": [
+        "modify src/caf\u00e9.ts"
+      ]
+    }
+  },
+  "cases": [
+    {
+      "case": "rename",
+      "commands": [
+        {
+          "argv": [
+            "git",
+            "diff",
+            "--name-only",
+            "<base>...HEAD"
+          ],
+          "exit": 0,
+          "stdout": "lib/a.ts\n"
+        },
+        {
+          "argv": [
+            "git",
+            "diff",
+            "-z",
+            "--no-renames",
+            "--name-only",
+            "<base>...HEAD"
+          ],
+          "exit": 0,
+          "stdout": "lib/a.ts\u0000src/a.ts\u0000"
+        }
+      ]
+    },
+    {
+      "case": "non-ascii",
+      "commands": [
+        {
+          "argv": [
+            "git",
+            "diff",
+            "--name-only",
+            "<base>...HEAD"
+          ],
+          "exit": 0,
+          "stdout": "\"src/caf\\303\\251.ts\"\n"
+        },
+        {
+          "argv": [
+            "git",
+            "diff",
+            "-z",
+            "--no-renames",
+            "--name-only",
+            "<base>...HEAD"
+          ],
+          "exit": 0,
+          "stdout": "src/caf\u00e9.ts\u0000"
+        }
+      ]
+    }
+  ]
+}

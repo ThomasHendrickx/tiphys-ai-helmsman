@@ -808,7 +808,9 @@ test("a bundle carrying the declared exception exits 0 and names the declaring g
     manifest,
     `${JSON.stringify(
       {
+        kind: "gate-registry",
         version: 1,
+        preflight: [{ command: ["npm", "ci"], note: "fixture" }],
         destructiveCommands: ["pool destroy", "teardown"],
         gates: [
           {
@@ -816,6 +818,10 @@ test("a bundle carrying the declared exception exits 0 and names the declaring g
             command: [process.execPath, greenGate],
             unitLabel: "fixture units",
             applicability: "required",
+            prevents: "a fixture failure",
+            "verified-by": "script",
+            modes: ["full"],
+            events: ["pull_request"],
           },
           {
             /* `.` AND NOT AN ABSOLUTE DIRECTORY, which is how
@@ -840,6 +846,18 @@ test("a bundle carrying the declared exception exits 0 and names the declaring g
                never reaches `requiredNotApplicable`, so before this phase the
                exception appeared nowhere in the bundle at all. */
             applicability: "conditional",
+            /* The registry requires a precondition on a conditional gate; this
+               one is always met, so the gate's OWN not-applicable is the one
+               under test. */
+            precondition: {
+              id: "fixture-always-met",
+              kind: "file-absent",
+              path: "tiphys-fixture-path-that-never-exists",
+            },
+            prevents: "a fixture failure",
+            "verified-by": "script",
+            modes: ["full"],
+            events: ["pull_request"],
           },
         ],
       },
@@ -853,7 +871,7 @@ test("a bundle carrying the declared exception exits 0 and names the declaring g
       cliEntry,
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       evidence,

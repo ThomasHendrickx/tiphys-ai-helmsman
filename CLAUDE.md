@@ -125,85 +125,6 @@ artifact behind it is treated as unknown.
 
    Silent transliteration is the failure mode this entry exists to prevent,
    because after the fact it is indistinguishable from fabricated evidence.
-3b. **A CITATION IS `path.ext:LINE`, AND ONLY OUTSIDE BACKTICKS. A bare path is
-   not a citation at all.** This was undocumented here until 2026-08-10 and it
-   has been got wrong THREE times in this delivery, twice by writing every
-   citation inside backticks and once by removing the backticks but omitting the
-   line number. Each cost a red `citations` gate and a round trip. The rule lived
-   only in `src/gates/citations.ts`, which is why reading the rules file did not
-   help.
-
-   The grammar the gate actually recognises, from its own source: a path, a
-   known extension, then a COLON and a line number, optionally a range and a
-   `@sha256:` pin. So:
-
-   | written | recognised | why |
-   |---|---|---|
-   | ``  `delivery/plan/x.md`  `` | NO | backticks mean QUOTED (M2-D-22), deliberately non-resolving |
-   | `delivery/plan/x.md` in prose | NO | no line number, so it is not a citation token |
-   | delivery/plan/x.md:2626 in prose | **YES** | this is the only form that counts |
-
-   Two consequences that bite. A document matching `citationRequired` with ZERO
-   substantive citations is RED, so a new `delivery/` document usually needs at
-   least one real `path:line`. And the count is whole-document, never
-   hunk-scoped, so adding one anywhere in the file satisfies it.
-
-   **A PATH CAN ALSO FAIL BY ITS ROOT, AND THAT IS A DIFFERENT RED FROM AN
-   OUT-OF-RANGE LINE.** The gate resolves a citation only if its path matches a
-   DECLARED ROOT, and the root list at src/gates/citations.ts:201 is narrower
-   than the repository: at the top level it declares `*.md` and `*.json` and
-   NOTHING ELSE. So `gate-registry.yaml:79` reddens with "matches no declared
-   root" however correct the line number is, and so would any root-level
-   `.yaml`, `.yml`, `.sh` or `.ts`. Inside a declared tree (`src/`, `test/`,
-   `scripts/`, `delivery/`, `schemas/`, `roles/`, `tuition/`, `bin/*.ts`) the
-   extension does not matter. Measured 2026-09-17, run 35203631442: a wave
-   pre-pass citing two `gate-registry.yaml` lines took a red `citations` and a
-   round trip for it. Quote a root-level non-markdown path instead, and cite the
-   SOURCE that reads it when you need a resolving citation.
-
-   Quoting is a real and useful tool, not a mistake to avoid: a path in backticks
-   is how you name a file you are NOT asserting exists at that line, such as one
-   on an unmerged branch. Use it deliberately, and know that it buys you nothing
-   toward the substantive-citation floor.
-
-   **THAT LAST CASE IS NOT HYPOTHETICAL AND IT COLLIDES WITH T-019.** An
-   evidence document ABOUT an unmerged branch (a clean-room review, a delta
-   verification) is caught between two rules that are each right:
-
-   - T-019 says cut the evidence branch from `main`, never from the branch under
-     review, or landing the evidence lands its subject.
-   - This gate requires a `path:line` to resolve IN THE TREE BEING LINTED, and
-     on `main` the branch's version of a changed file does not exist.
-
-   So a delta verification citing `test/foo.test.ts:1911` reddens on `main`
-   because that file is shorter there. Measured 2026-08-12, run 31628258664
-   step 8. **Quote every citation into a file the reviewed branch CHANGES**, and
-   leave resolving only those into files that are byte-identical on both sides,
-   which is a fact to CHECK rather than assume:
-
-   ```
-   git diff --name-only origin/main...<branch>    # these must be quoted
-   ```
-
-   **The citation that reddens is not the dangerous one.** Out-of-range reddens
-   loudly. A branch-line citation that happens to be IN range on `main` resolves
-   SILENTLY, against the old version, pointing at a line that is not the line
-   under discussion. In the measured case one of fifteen was out of range and
-   fourteen resolved silently.
-
-   Two further traps from the same incident, both cheap to avoid:
-
-   - **The gate lints at HEAD, not the working tree.** Staging a fix and
-     re-running gives the OLD verdict. Commit, then re-run.
-   - **A rule number is not a line number.** `CLAUDE.md:3b` is rejected as
-     malformed; the rule at 3b lives at CLAUDE.md:128.
-
-   Verify before pushing rather than after a red gate:
-
-   ```
-   node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
-     --only citations --evidence <scratch-dir> --base origin/main --head HEAD
-   ```
 4. Falsifiable acceptance criteria only; "works correctly" is banned; the
    register is "node --test exits 0 and reports N tests, N > 0".
 5. One phase = one branch = one PR, always. Parallelism is ON where a
@@ -212,9 +133,8 @@ artifact behind it is treated as unknown.
    work order is concurrent, and the pre-pass must be written down before
    dispatch, not asserted. M2's is `delivery/plan/m2-conflict-pre-pass.md`:
    M2-P1 serialises, M2-P2 to M2-P8 are mutually disjoint, M2-P9 runs last.
-   The shared registries (`test/behaviors.json`, `gates.manifest.json`,
-   `delivery/requirements/clause-map.json`) are append-only and resolved as a
-   union against the merge base; they never re-serialise phases.
+   The shared registry `test/behaviors.json` is append-only and resolved as a
+   union against the merge base; it never re-serialises phases.
 
    **A test over an append-only registry asserts BY NAME and never BY COUNT,
    and never on a specific row's presence.** The rule was written for
@@ -239,65 +159,11 @@ artifact behind it is treated as unknown.
 
 ## Gates
 
-**`gate-registry.yaml` is the canonical gate registry and the source this
-section is generated from (R-094).** The block below is RENDERED from it by
-`scripts/render-agent-rules-gates.mjs`. To change a gate, edit the registry and
-re-render with `node scripts/render-agent-rules-gates.mjs --write`; editing the
-block by hand makes `--check` exit nonzero, and the `gates` workflow runs that
-command as a step on BOTH CI events, so a hand edit fails the build. This
-replaces the hand-maintained list that line 3 of this file promised the
-registry would take over.
-
-**R-094 is PARTIALLY delivered, and the half that is not is stated here rather
-than left to be discovered.** The briefs half is done: this section is
-generated. The CI half is not: `scripts/m2-exit-test.sh` invokes the gate
-runner with `--manifest gates.manifest.json` on both arms and `--registry`
-occurs nowhere in it or in the workflow, so a gate declared only in the
-registry does not run in CI. `agent-rules-drift` is that case and runs only
-because the workflow carries a direct step for it. `test/gate-registry.test.ts`
-asserts the divergence in both directions, so a new registry-only script gate
-reddens rather than silently not running. Closing it is an edit to
-`scripts/m2-exit-test.sh` and is tracked with the orchestrator.
-
-<!-- BEGIN GENERATED GATE LIST: rendered from gate-registry.yaml by scripts/render-agent-rules-gates.mjs. Do not edit by hand; edit the registry. -->
-
-Every change must pass these, in order:
-
-1. `npm ci` (install exactly the lockfile, npm only, never pnpm or yarn)
-2. `npm run build` (the type gate (tsc -b); emits dist/, which is never committed, and git status must be clean afterwards)
-3. `node --test` (sources are TypeScript run natively via Node type stripping, so the suite needs no prior build)
-
-Then the registry's gates, run by `tiphys gates run --registry gate-registry.yaml --mode <mode>`:
-
-| Gate | Verified by | Applicability | Modes | CI events | One unit is |
-|---|---|---|---|---|---|
-| `manifest-self-check` | script | required | full, direct-pr, local-only | pull_request, push | schema documents validated |
-| `coverage` | script | required | full, direct-pr | pull_request, push | finding ids checked |
-| `credential-scrub` | script | required | full, direct-pr, local-only | pull_request, push | credential sources probed |
-| `credential-token` | script | conditional | full, direct-pr | pull_request | tokens probed |
-| `suite` | script | required | full, direct-pr, local-only | pull_request, push | tests reported |
-| `citations` | script | required | full, direct-pr | pull_request | citations resolved |
-| `scope` | script | required | full, direct-pr | pull_request | changed paths audited |
-| `deploy` | script | conditional | full | pull_request, push | release verifications satisfied |
-| `migrations` | script | conditional | full | pull_request, push | migrations compared |
-| `clause-map` | script | required | full, direct-pr | pull_request | clause-map rows checked |
-| `red-witness` | script | required | full, direct-pr | pull_request | witnesses evaluated |
-| `agent-rules-drift` | script | required | full, direct-pr, local-only | pull_request, push | rendered gate rows compared |
-| `brief-drift` | script | required | full, direct-pr, local-only | pull_request | generated brief gate rows compared |
-| `check-agents-references` | script | required | full, direct-pr, local-only | pull_request, push | references resolved |
-| `check-dual-review` | script | conditional | full, direct-pr | pull_request | review verdicts examined for decorrelation |
-| `license` | script | required | full, direct-pr, local-only | pull_request, push | production packages licensed |
-| `typecheck` | script | required | full, direct-pr, local-only | pull_request | source files type-checked |
-| `gate-classes` | script | required | full, direct-pr | pull_request | declared gate classes checked |
-| `merge-preconditions` | script | conditional | full, direct-pr | pull_request | merge preconditions evaluated |
-| `unit-tests-for-changed-service-methods` | clean-room-checklist (probe `unit-tests-for-changed-service-methods`) | conditional | full, direct-pr | pull_request | changed service methods checked |
-| `fixtures-for-changed-component-states` | clean-room-checklist (probe `fixtures-for-changed-component-states`) | conditional | full, direct-pr | pull_request | changed component states checked |
-
-<!-- END GENERATED GATE LIST -->
-
-Notes: sources are TypeScript run natively via Node type stripping (tests
-need no prior build); the build (tsc -b) is the type gate and emits dist/,
-which is never committed (plan decisions D-17, D-18).
+The gates are listed in `gate-registry.yaml`, the only gate list: every change
+passes `npm ci`, `npm run build` and `npm test`, then
+`node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --event <pull_request|push> --evidence <dir>`
+(plus `--base`, `--head` and, on a pull request, `--phase`), which is exactly
+what CI runs on each event.
 
 Beyond the mechanical gates, a phase is not done until: every acceptance
 criterion in its plan section has been walked with evidence or explicitly
@@ -568,52 +434,15 @@ for. PR #30 is what that exemption cost.
 
 ### A green BUNDLE is not evidence that a PARTICULAR gate asserted anything
 
-**UPDATED BY M5-P4: `summary.json` IS NOW UPLOADED, so read it first.** The
-`gates` job uploads exactly ONE file per event, the bundle's own summary and
-nothing else from the evidence directory, with 7-day retention:
-
-| event | artifact | file |
-|---|---|---|
-| `pull_request` | `gates-summary-pull-request-attempt-<n>` | `<evidence>/pr-bundle/summary.json` |
-| `push` | `gates-summary-push-attempt-<n>` | `<evidence>/main-bundle/summary.json` |
-
-To read it, list the run's artifacts (`GET /repos/<owner>/<repo>/actions/runs/<run-id>/artifacts`,
-or the run page), download the one for that event and attempt, unzip it, and
-read the row for the gate in `gates[]`: its `status`, `units`, `applicable`
-and `vacuous`. That row IS the per-gate evidence, so no deduction is needed.
-The procedure below still applies when there is no artifact to read: a run
-older than seven days, a run cancelled before its upload step, or a head from
-before M5-P4. The upload steps and their exactly-one-file property are
-guarded by test/gate-registry.test.ts:2090.
-
-Without an artifact to read, a reviewer asking whether gate X asserted
-anything on a head has the JOB LOG, and the log prints bundle-level counts, not
-per-gate rows.
-
-So quoting `declared N applicable N verdict N green N` as evidence about one
-gate is a bundle-level green being passed off as a gate-level one. That is the
-same substitution T-009 names, one scope smaller.
-
-Four printed facts settle it, and all four are needed:
-
-1. the gate id is in the `gates.manifest.json` **on that branch** (the harness
-   runs `--manifest`, not `--registry`, so registry membership is not enough);
-2. the bundle's `declared` count equals that manifest's gate count;
-3. the `required gate(s) not applicable:` line does NOT name the gate (a
-   required gate that was skipped is named there, which is what makes its
-   absence informative);
-4. the assertion line reports `zero error; zero vacuous`.
-
-Worked example, `brief-drift` at head `077f339`, run 31610473840: manifest 12
-ids against `main`'s 11, `declared 12`, not-applicable named only `citations`,
-`12 gate record(s) match section 1.4 ... zero error; zero vacuous`.
-
-**Say which half is observed and which is deduced.** In that example the units
-and the green came DIRECTLY from a separate workflow step; that the gate sat
-among the green inside the ASSERTED BUNDLE is a deduction from the four facts,
-because no per-gate line names it. Both are sound. Reporting the second as
-though it were the first is how a bundle-level green becomes a gate-level claim
-in the next document that cites it.
+Quote the gate's own row, never the bundle's counts. The runner prints one
+`gates: <id>: <status>: <detail>` line per gate in the job log, and the `gates`
+job uploads that run's `summary.json` (artifact
+`gates-summary-<pull-request|push>-attempt-<n>`, file
+`<evidence>/summary.json`, 7-day retention), whose `gates[]` row carries the
+gate's `status`, `units`, `applicable` and `vacuous`. Quoting
+`declared N applicable N verdict N green N` as evidence about one gate is a
+bundle-level green passed off as a gate-level one, the substitution T-009
+names, one scope smaller.
 
 ## Branch names are load-bearing, not labels (binding)
 
@@ -709,7 +538,7 @@ The schemes:
   rather than picking one. This entry exists because the namespace was
   unregistered and collided: `A-4` meant the npm publish credential in the M3
   plan and branch deletion in STATE.md, while `A-3` meant three different
-  things, one of them a literal string inside `gates.manifest.json` on `main`
+  things, one of them a literal string inside the gate manifest on `main`
   (`implementer-token-present-owner-action-a-3`). A shipped configuration
   string is why an id here is not free to renumber, so allocate a fresh id and
   never reuse a retired one.
@@ -1004,7 +833,8 @@ Each of these bit someone once. Forward them to every implementer.
     the run still exits 0.** Warning 1 says correctly that the suite needs no
     prior build to RUN; that is true and it is not the whole story. Nine tests
     exercise the built CLI and skip themselves when `dist/` is absent: five in
-    `test/gates.test.ts`, four in `test/m2-exit-test.test.ts`, each skip message
+    `test/gates.test.ts`, four in `test/m2-exit-test.test.ts` (deleted by
+    M6-P3 with the M2 harness, so today's count is lower), each skip message
     naming the dist entry it wanted. Measured 2026-08-09 on node v26.6.0, same
     head, both arms exit 0:
 

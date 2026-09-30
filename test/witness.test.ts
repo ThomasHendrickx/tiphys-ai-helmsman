@@ -170,9 +170,16 @@ function assertCallerClean(fixture: Fixture): void {
   assert.equal(git(fixture.dir, "rev-parse", "HEAD"), fixture.head);
 }
 
+/** A fixture gate registry: the red-witness gate reads `destructiveCommands` from it. */
 function fixtureManifest(destructive: string[]): string {
   return `${JSON.stringify(
-    { version: 1, gates: [], destructiveCommands: destructive },
+    {
+      kind: "gate-registry",
+      version: 1,
+      preflight: [{ command: ["npm", "ci"], note: "fixture" }],
+      gates: [],
+      destructiveCommands: destructive,
+    },
     null,
     2,
   )}\n`;
@@ -272,7 +279,7 @@ function adderSpec(overrides: Record<string, unknown>): Record<string, unknown> 
 
 function adderFixture(spec?: Record<string, unknown>, omitSpec = false): Fixture {
   const baseFiles: Record<string, string> = {
-    "gates.manifest.json": fixtureManifest([]),
+    "gate-registry.yaml": fixtureManifest([]),
     "test/behaviors.json": fixtureBehaviors({
       "adder-adds": "adder adds two numbers",
     }),
@@ -615,7 +622,7 @@ function dismantleFixture(
 ): Fixture {
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest(["bin/dismantle"]),
+      "gate-registry.yaml": fixtureManifest(["bin/dismantle"]),
       "test/behaviors.json": fixtureBehaviors({
         "dismantle-refuses-carried-commits":
           "dismantle refuses a branch carrying commits",
@@ -662,7 +669,7 @@ test("correcting the fixture so the branch carries a commit makes the same spec 
 test("a destructive witness whose only member is a baseline ref is refused citing T-003", () => {
   const fixture = makeFixture(
     {
-      "gates.manifest.json": fixtureManifest(["bin/dismantle"]),
+      "gate-registry.yaml": fixtureManifest(["bin/dismantle"]),
       "test/behaviors.json": fixtureBehaviors({
         "dismantle-refuses-carried-commits":
           "dismantle refuses a branch carrying commits",
@@ -785,7 +792,7 @@ function guardFixture(
 ): Fixture {
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({
         "guard-wired": testName,
       }),
@@ -1262,7 +1269,7 @@ const ATOMIC_TEST = fixRead(
 function atomicFixture(deterministic: boolean): Fixture {
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({
         "atomic-two-passes": "two concurrent passes both surface their turn end",
       }),
@@ -1352,7 +1359,7 @@ function classifierFixture(reaching: boolean): Fixture {
     : ["classifier calls a plain failure permanent"];
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({
         "classifier-arms": "classifier calls a plain failure permanent",
       }),
@@ -1462,7 +1469,7 @@ function retryFixture(consumes: Record<string, unknown> | undefined): Fixture {
   }
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({
         "retry-transient": "the real contention stderr is classified transient",
       }),
@@ -1602,7 +1609,7 @@ function classifyFixture(
   }
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({
         "classify-transient": testName,
       }),
@@ -1814,7 +1821,7 @@ function siblingSpec(members: Array<Record<string, unknown>>): string {
 function siblingFixture(extraHeadMembers: Array<Record<string, unknown>> = []): Fixture {
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({ "combo-works": "combo works" }),
       "src/adder.ts": SIBLING_ADDER_BASE,
       "src/legacy.ts": SIBLING_LEGACY,
@@ -1990,7 +1997,7 @@ function ownershipFixture(
 ): Fixture {
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": OWN_BEHAVIORS,
       "src/adder.ts": OWN_ADDER_BASE,
       "src/legacy.ts": OWN_LEGACY,
@@ -2191,7 +2198,7 @@ test("the ownership baseline is read at the merge base, so a spec another phase 
   fixtureDirs.push(dir);
   git(dir, "init", "-q", "-b", "main");
   writeTree(dir, {
-    "gates.manifest.json": fixtureManifest([]),
+    "gate-registry.yaml": fixtureManifest([]),
     "test/behaviors.json": OWN_BEHAVIORS,
     "src/adder.ts": OWN_ADDER_BASE,
     "src/legacy.ts": OWN_LEGACY,
@@ -2416,7 +2423,7 @@ function storedFixture(broken: boolean): Fixture {
   }
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({
         "thing-big": "thing classifies big inputs",
         "util-doubles": "util doubles its input",
@@ -2511,7 +2518,7 @@ test("the recorded baseline sha equals the fetched remote head not the local ref
   const upstream = mkdtempSync(join(tmpdir(), "wup-"));
   git(upstream, "init", "-q", "-b", "main");
   writeTree(upstream, {
-    "gates.manifest.json": fixtureManifest([]),
+    "gate-registry.yaml": fixtureManifest([]),
     "test/behaviors.json": fixtureBehaviors({
       "greeter-world": "greeter greets the world",
     }),
@@ -2579,6 +2586,178 @@ test("source changed with no witness spec covering it is red naming the file", (
     outcome.result.detail,
     /source changed with no witness spec covering it: src\/adder\.ts/,
   );
+});
+
+// ---------------------------------------------------------------------------
+// M6-P3 fix round 3 (CR-M6P3B-05): paths git quotes or decorates
+// ---------------------------------------------------------------------------
+
+/**
+ * REAL git output for the two fixtures below, recorded once and compared with
+ * git's live output before either gate runs (rule (f): src/witness/run.ts
+ * spawns git and parses what it prints). Bound through `fileURLToPath` for the
+ * reason `gateStdioCapturePath` above records.
+ */
+const pathListingsCapturePath = fileURLToPath(
+  new URL("../witness/captures/m6-p3-git-path-listings.json", import.meta.url),
+);
+
+/**
+ * Re-run every command the capture records for one case, in `dir`, and require
+ * git's live stdout to equal the recorded stdout. `<base>` in a recorded argv
+ * is the fixture's base sha; nothing else is substituted.
+ */
+function replayPathListings(dir: string, name: string, base: string): void {
+  const capture = JSON.parse(readFileSync(pathListingsCapturePath, "utf8")) as {
+    cases: Array<{ case: string; commands: Array<{ argv: string[]; exit: number; stdout: string }> }>;
+  };
+  const recorded = capture.cases.find((entry) => entry.case === name);
+  assert.ok(recorded !== undefined, `m6-p3-git-path-listings.json records no ${name} case`);
+  for (const command of recorded.commands) {
+    const argv = command.argv.slice(1).map((arg) => arg.split("<base>").join(base));
+    const live = spawnSync("git", argv, { cwd: dir, encoding: "utf8", env: GIT_ENV });
+    assert.equal(live.status, command.exit, `git ${argv.join(" ")}: ${live.stderr}`);
+    assert.equal(live.stdout, command.stdout, `git ${argv.join(" ")} no longer prints what the capture recorded`);
+  }
+}
+
+/** The adder fixture plus one UNWITNESSED source file named `src/<name>`. */
+function unwitnessedNameFixture(name: string): Fixture {
+  const baseFiles: Record<string, string> = {
+    "gate-registry.yaml": fixtureManifest([]),
+    "test/behaviors.json": fixtureBehaviors({
+      "adder-adds": "adder adds two numbers",
+    }),
+    "src/legacy.ts": 'export const legacy = "untouched";\n',
+  };
+  const headFiles: Record<string, string> = {
+    "src/adder.ts": ADDER_SRC_HEAD,
+    "test/adder.test.ts": ADDER_TEST,
+    "witness/adder-guard.json": fixtureSpec(adderSpec({})),
+    [`src/${name}`]: "export const unwitnessed = 1;\n",
+  };
+  return makeFixture(baseFiles, headFiles);
+}
+
+test("an unwitnessed source file whose name git quotes is red naming the file, beside one evaluated witness", () => {
+  /* The ASCII twin is the control: the same fixture with a name git prints
+     plainly, which was red before this round too. The accented name is the
+     reviewer's case: git lists it as "src/caf\303\251.ts", and read from line
+     output that key failed the src/ prefix test, so the gate went green. */
+  for (const name of ["cafe.ts", "caf\u00e9.ts"]) {
+    const fixture = unwitnessedNameFixture(name);
+    if (name !== "cafe.ts") {
+      replayPathListings(fixture.dir, "witness-coverage", fixture.base);
+    }
+    const outcome = runGate(fixture);
+    assert.equal(outcome.result.status, "red", `${name}: ${reasonsOf(outcome)}`);
+    assert.ok(
+      outcome.result.detail.includes(`source changed with no witness spec covering it: src/${name}`),
+      `${name}: the red must name src/${name} as git stores it: ${reasonsOf(outcome)}`,
+    );
+    assert.equal(outcome.evaluations.length, 1, `${name}: one witness is evaluated beside it`);
+  }
+});
+
+/** Source and test files whose names git decorates, with an honest witness. */
+function decoratedNamesFixture(): Fixture {
+  const spaced = "src/a b.ts";
+  const accented = "src/caf\u00e9.ts";
+  const testFile = "test/d\u00e9cor.test.ts";
+  const baseFiles: Record<string, string> = {
+    "gate-registry.yaml": fixtureManifest([]),
+    "test/behaviors.json": fixtureBehaviors({
+      "decorated-names": "decorated names add and multiply",
+    }),
+    "src/legacy.ts": 'export const legacy = "untouched";\n',
+  };
+  const headFiles: Record<string, string> = {
+    [spaced]: ["export function spaced(a, b) {", "  return a + b;", "}", ""].join("\n"),
+    [accented]: ["export function accented(a, b) {", "  return a * b;", "}", ""].join("\n"),
+    [testFile]: [
+      'import test from "node:test";',
+      'import assert from "node:assert/strict";',
+      'import { spaced } from "../src/a b.ts";',
+      'import { accented } from "../src/caf\u00e9.ts";',
+      "",
+      'test("decorated names add and multiply", () => {',
+      "  assert.equal(spaced(2, 3), 5);",
+      "  assert.equal(accented(2, 3), 6);",
+      "});",
+      "",
+    ].join("\n"),
+    "witness/decorated-names.json": fixtureSpec({
+      id: "decorated-names-guard",
+      behavior: "decorated-names",
+      tests: ["decorated names add and multiply"],
+      class: "additive",
+      dangerousStates: [
+        { kind: "mutation", file: spaced, find: "return a + b;", replace: "return a - b;" },
+        { kind: "mutation", file: accented, find: "return a * b;", replace: "return a + b;" },
+      ],
+      deterministic: true,
+      repeats: 1,
+    }),
+  };
+  return makeFixture(baseFiles, headFiles);
+}
+
+test("an honest witness over files whose names git decorates is green: a space in a hunk header, a non-ASCII byte in a listing and a hunk header, a non-ASCII test file name", () => {
+  /* Three decorations, measured on git 2.43.0 and recorded in the capture:
+     `+++ b/src/a b.ts<TAB>` (a space earns a trailing TAB, no quoting),
+     `+++ "b/src/caf\303\251.ts"` and `A "src/caf\303\251.ts"` (C-quoting), and
+     `"test/d\303\251cor.test.ts"` from ls-tree. Before this round the first
+     two left the members outside every changed hunk (rule (d) red) and the
+     third hid the named test's file. */
+  const fixture = decoratedNamesFixture();
+  replayPathListings(fixture.dir, "witness-hunks", fixture.base);
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "green", reasonsOf(outcome));
+  assert.equal(outcome.evaluations.length, 1);
+  assert.equal(outcome.evaluations[0]?.status, "green", reasonsOf(outcome));
+});
+
+/** `count` numbered lines `<prefix>1` to `<prefix><count>`, with the given lines replaced or inserted. */
+function numberedLines(prefix: string, count: number, edit: (lines: string[]) => void = () => {}): string {
+  const lines = Array.from({ length: count }, (_, index) => `${prefix}${String(index + 1)}`);
+  edit(lines);
+  return `${lines.join("\n")}\n`;
+}
+
+test("the phase diff credits every hunk to its own file: a quoted +++ header that also carries git's trailing TAB, and an added line that reads like a header", () => {
+  /* M6-P3 fix round 4, CR-M6P3A-08. git quotes `src/zcaf\303\251 x.ts` for its
+     non-ASCII byte and appends a TAB for its space, so its header is
+     `+++ "b/src/zcaf\303\251 x.ts"<TAB>` (measured on git 2.43.0, in the
+     capture). Unread, that header left the file's hunks on the file before it,
+     src/plain.ts, which has no such lines. The same file adds a line whose
+     text is `++ b/src/plain.ts`, printed `+++ b/src/plain.ts` inside the hunk,
+     which is not a header. */
+  const quoted = "src/zcaf\u00e9 x.ts";
+  const fixture = makeFixture(
+    { "src/plain.ts": numberedLines("p", 10), [quoted]: numberedLines("q", 8) },
+    {
+      "src/plain.ts": numberedLines("p", 10, (lines) => {
+        lines[0] = "p1 changed";
+      }),
+      [quoted]: numberedLines("q", 8, (lines) => {
+        lines[7] = "q8 changed";
+        lines.splice(2, 0, "++ b/src/plain.ts");
+      }),
+    },
+  );
+  replayPathListings(fixture.dir, "witness-hunks-quoted-tab", fixture.base);
+  const computed = runModule.computePhaseDiff(fixture.dir, fixture.base, fixture.head);
+  assert.ok(computed.ok, computed.ok ? "" : computed.reason);
+  const hunks = Object.fromEntries(
+    [...computed.diff.files.values()].map((file) => [file.path, file.hunks]),
+  );
+  assert.deepEqual(hunks, {
+    "src/plain.ts": [[1, 1]],
+    [quoted]: [
+      [3, 3],
+      [9, 9],
+    ],
+  });
 });
 
 test("a shallow repository is an error naming the fetch depth requirement", () => {
@@ -2874,7 +3053,7 @@ function spawnFixture(
 ): Fixture {
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({ "spare-works": "spare works" }),
       "src/spare.ts": SPAWN_SPARE_BASE,
       "test/spare.test.ts": SPAWN_TEST,
@@ -2969,7 +3148,7 @@ function oversizeReportFixture(): Fixture {
   }
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({}),
       "src/a.ts": "export const a = 1;\n",
     },
@@ -3085,7 +3264,7 @@ test("every red-witness gate CLI arm exits the code its own result record implie
   const green = adderFixture();
   const red = makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({}),
       "src/a.ts": "export const a = 1;\n",
     },

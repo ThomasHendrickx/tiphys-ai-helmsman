@@ -1,0 +1,86 @@
+{
+  "provenance": "Real git output, captured 2026-09-30 by the M6-P3 fix round 4 implementer with a recording script (delivery/work-history/m6-p3.md, fix round 4, capture section), for what src/pool.ts reads from `git worktree list --porcelain` when destroy decides whether another worktree holds the task branch. git 2.34.1 is the packaged git of Ubuntu 22.04 (git_2.34.1-1ubuntu1.17_amd64.deb from archive.ubuntu.com, sha256 8794fcf2c4606c445df0db3dc963c8fb852772208bfb12727a12717c03767af7), extracted into a scratch directory and run through a wrapper, never installed; git 2.43.0 is the container git. Every run had LC_ALL=C, as src/pool.ts runGit pins it. Cases: z-unknown-switch, git 2.34.1 refusing `-z` on a healthy repository (the option arrived in git 2.36); newline-listing-newline-path, git 2.34.1 listing a repository with a worktree whose path holds a newline and a lock reason that holds one, showing that the reason is C-quoted onto one line and the path is not; listing-fails-bad-config, both gits failing the listing, with and without -z, in a repository whose .git/config ends in the malformed line `[core`. Substitutions, the only bytes rewritten: in newline-listing-newline-path the scratch directory is spelled <tmp> and each commit sha <sha>. JSON escapes newlines as \\n, so this file is ASCII. test/pool.test.ts replays the z-unknown-switch and listing-fails-bad-config stderr and exit through a git stub on PATH, because no CI runner carries a git older than 2.36.",
+  "cases": [
+    {
+      "case": "z-unknown-switch",
+      "git": "git version 2.34.1",
+      "argv": [
+        "git",
+        "worktree",
+        "list",
+        "--porcelain",
+        "-z"
+      ],
+      "exit": 129,
+      "stdout": "",
+      "stderr": "error: unknown switch `z'\nusage: git worktree add [<options>] <path> [<commit-ish>]\n   or: git worktree list [<options>]\n   or: git worktree lock [<options>] <path>\n   or: git worktree move <worktree> <new-path>\n   or: git worktree prune [<options>]\n   or: git worktree remove [<options>] <worktree>\n   or: git worktree unlock <path>\n\n    --porcelain           machine-readable output\n    -v, --verbose         show extended annotations and reasons, if available\n    --expire <expiry-date>\n                          add 'prunable' annotation to worktrees older than <time>\n\n"
+    },
+    {
+      "case": "newline-listing-newline-path",
+      "git": "git version 2.34.1",
+      "argv": [
+        "git",
+        "worktree",
+        "list",
+        "--porcelain"
+      ],
+      "exit": 0,
+      "stdout": "worktree <tmp>/repo\nHEAD <sha>\nbranch refs/heads/main\n\nworktree <tmp>/wt\nHEAD <sha>\nbranch refs/heads/task/t-a\nlocked \"one\\ntwo\"\n\nworktree <tmp>/wt\nx\nHEAD <sha>\nbranch refs/heads/task/t-a\n\n",
+      "stderr": ""
+    },
+    {
+      "case": "listing-fails-bad-config",
+      "git": "git version 2.43.0",
+      "argv": [
+        "git",
+        "worktree",
+        "list",
+        "--porcelain",
+        "-z"
+      ],
+      "exit": 128,
+      "stdout": "",
+      "stderr": "fatal: bad config line 6 in file .git/config\n"
+    },
+    {
+      "case": "listing-fails-bad-config",
+      "git": "git version 2.43.0",
+      "argv": [
+        "git",
+        "worktree",
+        "list",
+        "--porcelain"
+      ],
+      "exit": 128,
+      "stdout": "",
+      "stderr": "fatal: bad config line 6 in file .git/config\n"
+    },
+    {
+      "case": "listing-fails-bad-config",
+      "git": "git version 2.34.1",
+      "argv": [
+        "git",
+        "worktree",
+        "list",
+        "--porcelain",
+        "-z"
+      ],
+      "exit": 128,
+      "stdout": "",
+      "stderr": "fatal: bad config line 6 in file .git/config\n"
+    },
+    {
+      "case": "listing-fails-bad-config",
+      "git": "git version 2.34.1",
+      "argv": [
+        "git",
+        "worktree",
+        "list",
+        "--porcelain"
+      ],
+      "exit": 128,
+      "stdout": "",
+      "stderr": "fatal: bad config line 6 in file .git/config\n"
+    }
+  ]
+}

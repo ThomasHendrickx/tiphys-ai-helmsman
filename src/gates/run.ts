@@ -30,7 +30,7 @@ import {
 import { loadTypeSchema } from "../commands/validate.ts";
 import { decodeDocument, formatDiagnostics, validateInstance } from "../validate.ts";
 import type { SchemaDocument } from "../validate.ts";
-import { loadManifest, validateManifestDocument, validateResultDocument } from "./manifest.ts";
+import { validateManifestDocument, validateResultDocument } from "./manifest.ts";
 import { comparePins, describePinDifference } from "./pin.ts";
 import {
   EXIT_GATE_ERROR,
@@ -153,6 +153,7 @@ function stampField(): { "tiphys-version"?: string } {
  */
 
 export interface RunOptions {
+  /** The gate registry (gate-registry.yaml). The only gate list (M6-P3). */
   manifestPath: string;
   evidenceDir: string;
   base?: string;
@@ -160,20 +161,15 @@ export interface RunOptions {
   phase?: string;
   only?: string[];
   /**
-   * M3-P2 step 4. When true, `manifestPath` names a canonical GATE REGISTRY
-   * (`gate-registry.yaml`, `schemas/gate-registry.schema.json`) rather than an
-   * M2-P1 gate manifest. The registry is a SUPERSET of the manifest, so it is
-   * projected down to one and every line below this point is the M2 runner
-   * unchanged: the same `runOneGate`, the same `ingestGateRun`, the same
-   * `makeGateResult`. That is deliberate and it is what makes M2-C-2 and
-   * M2-C-3 survive the promotion instead of being re-implemented beside it.
-   */
-  registry?: boolean;
-  /**
-   * Registry mode only: the assurance mode selecting entries, matched against
-   * each entry's `modes[]`. Defaults to `full`.
+   * The assurance mode selecting entries, matched against each entry's
+   * `modes[]`. Defaults to `full`.
    */
   mode?: string;
+  /**
+   * The CI event selecting entries, matched against each entry's `events[]`.
+   * Absent, every entry in the mode is selected.
+   */
+  event?: string;
   /** Working directory for gate subprocesses and git. Defaults to cwd. */
   cwd?: string;
 }
@@ -221,10 +217,12 @@ export interface RunSummary {
    */
   "tiphys-version"?: string;
   manifest: string;
-  /** M3-P2: true when `manifest` above named a gate registry, not a manifest. */
+  /** Always true since M6-P3: `manifest` above names the gate registry. */
   registry?: boolean;
-  /** M3-P2: the assurance mode that selected these gates. Registry runs only. */
+  /** The assurance mode that selected these gates. */
   mode?: string;
+  /** The CI event that selected these gates, when the run named one. */
+  event?: string;
   /**
    * M3-P2: registry entries selected by `mode` that the runner did not
    * execute because they are `verified-by: clean-room-checklist`. Empty for a
@@ -342,6 +340,9 @@ export function isDeclaredNotApplicable(result: {
 /** The default assurance mode when `--registry` is given without `--mode`. */
 export const DEFAULT_MODE = "full";
 
+/** The CI events a registry entry may declare, and `--event` may name. */
+export const GATE_EVENTS: readonly string[] = ["pull_request", "push"];
+
 interface RegistryGateEntry {
   id: string;
   command?: string[];
@@ -372,6 +373,14 @@ function selectsMode(entry: RegistryGateEntry, mode: string): boolean {
   return entry.modes.includes(mode);
 }
 
+/**
+ * Does this CI event select this entry? A run that names no event selects
+ * every entry, which is how a local run sees the whole mode.
+ */
+function selectsEvent(entry: RegistryGateEntry, event: string | undefined): boolean {
+  return event === undefined || entry.events.includes(event);
+}
+
 export type RegistryLoad =
   | {
       ok: true;
@@ -400,7 +409,8 @@ export type RegistryLoad =
  *      registry schema is NOT validated by `src/gates/validate.ts`: it uses
  *      `if`/`then`, which is outside M2-D-04's closed keyword set, which is
  *      exactly why it lives in the shipped `schemas/` directory.
- *   3. Entries are selected by MODE and by `verified-by`. A
+ *   3. Entries are selected by MODE, by EVENT when one is named, and by
+ *      `verified-by`. A
  *      `clean-room-checklist` entry has no process to run (D-11: R-043 and
  *      R-044 are not computable from a diff), so it is reported as declared
  *      rather than silently dropped.
@@ -417,7 +427,21 @@ export type RegistryLoad =
  * built `GateResult` literals of its own would be the realistic way those two
  * constraints get dropped by a promotion, and there is no such path.
  */
-export function loadRegistry(path: string, mode: string): RegistryLoad {
+/** The registry document itself, decoded and validated, with its bytes. */
+export type RegistryDocumentRead =
+  | {
+      ok: true;
+      document: { gates: RegistryGateEntry[]; destructiveCommands: string[]; version: number };
+      body: string;
+    }
+  | { ok: false; reason: string; diagnostics: string[] };
+
+/**
+ * Read, decode and validate a gate registry against
+ * `schemas/gate-registry.schema.json`. `loadRegistry` selects gates from it;
+ * the red-witness gate reads its `destructiveCommands` from it.
+ */
+export function readRegistryDocument(path: string): RegistryDocumentRead {
   const read = readRegularFileIfPresent(path);
   if (read.kind === "absent") {
     return { ok: false, reason: `registry ${path} does not exist`, diagnostics: [] };
@@ -447,12 +471,23 @@ export function loadRegistry(path: string, mode: string): RegistryLoad {
       diagnostics,
     };
   }
-
-  const document = decoded.value as {
-    gates: RegistryGateEntry[];
-    destructiveCommands: string[];
-    version: number;
+  return {
+    ok: true,
+    document: decoded.value as {
+      gates: RegistryGateEntry[];
+      destructiveCommands: string[];
+      version: number;
+    },
+    body: read.body,
   };
+}
+
+export function loadRegistry(path: string, mode: string, event?: string): RegistryLoad {
+  const registryRead = readRegistryDocument(path);
+  if (!registryRead.ok) {
+    return registryRead;
+  }
+  const document = registryRead.document;
   const declaredModes = new Set<string>();
   for (const entry of document.gates) {
     for (const name of entry.modes) {
@@ -474,7 +509,17 @@ export function loadRegistry(path: string, mode: string): RegistryLoad {
   }
 
   const inMode = document.gates.filter((entry) => selectsMode(entry, mode));
-  const declaredByChecklist: DeclaredChecklistGate[] = inMode
+  const selected = inMode.filter((entry) => selectsEvent(entry, event));
+  if (event !== undefined && selected.length === 0) {
+    // FAIL CLOSED for the same reason as the mode check above: an event that
+    // selects nothing would otherwise run nothing and exit on a vacuous bundle.
+    return {
+      ok: false,
+      reason: `registry ${path} declares no gate for mode ${mode} on event ${event}`,
+      diagnostics: [],
+    };
+  }
+  const declaredByChecklist: DeclaredChecklistGate[] = selected
     .filter((entry) => entry["verified-by"] === "clean-room-checklist")
     .map((entry) => ({
       id: entry.id,
@@ -482,7 +527,7 @@ export function loadRegistry(path: string, mode: string): RegistryLoad {
       applicability: entry.applicability,
     }));
 
-  const gates: GateEntry[] = inMode
+  const gates: GateEntry[] = selected
     .filter((entry) => entry["verified-by"] === "script")
     .map((entry) => {
       const projected: GateEntry = {
@@ -519,8 +564,8 @@ export function loadRegistry(path: string, mode: string): RegistryLoad {
   return {
     ok: true,
     manifest,
-    sha256: createHash("sha256").update(read.body).digest("hex"),
-    body: read.body,
+    sha256: createHash("sha256").update(registryRead.body).digest("hex"),
+    body: registryRead.body,
     declaredByChecklist,
   };
 }
@@ -715,8 +760,8 @@ type PreconditionOutcome =
  *   ./badinterp.sh (bad shebang)   status null  error ENOENT
  *
  * Rows one and two are the whole problem: identical to `spawnSync`, opposite
- * in meaning. Row two is a REAL declaration in this repository
- * (`credential-token`'s precondition, gates.manifest.json), so "exit 1 means
+ * in meaning. Row two is a REAL declaration shape (a token-presence
+ * precondition, `node -e`), so "exit 1 means
  * unmet" cannot simply be withdrawn; and rows three and four already reached
  * `error` before this phase, so they are regression guards rather than the
  * new behaviour.
@@ -875,8 +920,8 @@ export function commandPathOperands(command: string[]): string[] {
  * that is the point: it is the one piece of launcher grammar this file claims
  * to know, it is written down rather than inferred, and anything not in it is
  * treated as possibly naming a path. `node -e` and `node --eval` are the pair
- * that matters here, because `credential-token`'s real precondition in
- * gates.manifest.json:57 is exactly that shape; the others are the same
+ * that matters here, because a token-presence precondition written as
+ * `node -e <code>` is exactly that shape; the others are the same
  * construct in the launchers a precondition is most likely to use (`sh -c`,
  * `bash -c`, `python -c`, `perl -e`, `ruby -e`, `node -p`).
  */
@@ -895,7 +940,7 @@ const CODE_VALUED_OPTIONS: ReadonlySet<string> = new Set([
  * defect class this phase exists to close) is visible at all: it has no `/`,
  * so the separator test cannot see it. A closed list, deliberately, because
  * the alternative is dropping the shape test entirely and that breaks a real
- * declaration: `check-dual-review`'s precondition ends `--precondition .`, and
+ * declaration: `merge-preconditions`' precondition ends `--review-budget .`, and
  * `.` resolves to a DIRECTORY, which `probeOpenable` calls irregular, which
  * would make every run of that gate a false `error`. Measured, not assumed.
  */
@@ -1155,6 +1200,7 @@ export function attributionGaps(command: string[], cwd: string): string[] {
 function gitLines(
   cwd: string,
   args: string[],
+  separator = "\n",
 ): { ok: true; lines: string[] } | { ok: false; reason: string } {
   const result = spawnSync("git", args, { cwd, encoding: "utf8" });
   if (result.error !== undefined) {
@@ -1172,8 +1218,8 @@ function gitLines(
   return {
     ok: true,
     lines: (result.stdout ?? "")
-      .split("\n")
-      .map((line) => line.trim())
+      .split(separator)
+      .map((line) => (separator === "\n" ? line.trim() : line))
       .filter((line) => line !== ""),
   };
 }
@@ -1265,11 +1311,16 @@ function evaluatePrecondition(
       };
     }
     const head = options.head ?? "HEAD";
-    const changed = gitLines(cwd, [
-      "diff",
-      "--name-only",
-      `${options.base}...${head}`,
-    ]);
+    /* NUL-separated and rename-free (M6-P3 fix round 2, CR-M6P3B-03), the form
+       merge-preconditions reads: with rename detection a move out of a declared
+       path names only its destination, and without -z git C-quotes a non-ASCII
+       name so it no longer starts with the declared prefix. Either made this
+       precondition unmet and the gate not-applicable. */
+    const changed = gitLines(
+      cwd,
+      ["diff", "-z", "--no-renames", "--name-only", `${options.base}...${head}`],
+      "\0",
+    );
     if (!changed.ok) {
       return { kind: "error", reason: changed.reason };
     }
@@ -1767,9 +1818,9 @@ export function decideAggregate(
 ): { exitCode: number; reason: string } {
   /* M4-P11, DR-0038. THE ONE THING A DECLARED EXCEPTION MUST NEVER BE IS
      INVISIBLE, AND THE AGGREGATE IS WHERE IT WOULD BE.
-     `scripts/check-dual-review.mjs` is a CONDITIONAL gate, so its
-     not-applicable never reaches `requiredNotApplicable` and never appears in
-     the reason line. Before this clause, a bundle carrying a gate that had
+     A CONDITIONAL gate (then `check-dual-review`, deleted by M6-P3; now
+     `merge-preconditions`) has a not-applicable that never reaches
+     `requiredNotApplicable` and never appears in the reason line. Before this clause, a bundle carrying a gate that had
      declined DR-0012's cross-family requirement by declaration printed "every
      applicable gate is green" and exited 0, and the exception appeared nowhere
      a reader of the bundle would look. That is the same substitution T-009
@@ -2160,13 +2211,13 @@ function runGatesInner(options: RunOptions, runId: string): RunOutcome {
   // a measured 2.13ms the run wrote into a directory it no longer owned.
   try {
     try {
-      /* One load, two document shapes. A registry is projected onto a
-         manifest by `loadRegistry` and everything downstream is identical,
-         which is the property the promotion depends on. */
-      const loaded =
-        options.registry === true
-          ? loadRegistry(options.manifestPath, options.mode ?? DEFAULT_MODE)
-          : loadManifest(options.manifestPath);
+      /* The registry is projected onto a manifest by `loadRegistry` and
+         everything downstream is the M2 runner unchanged. */
+      const loaded = loadRegistry(
+        options.manifestPath,
+        options.mode ?? DEFAULT_MODE,
+        options.event,
+      );
       if (!loaded.ok) {
         const reason = [loaded.reason, ...loaded.diagnostics].join("\n");
         writeAbortedSummary(options, runId, reason);
@@ -2304,13 +2355,10 @@ function runClaimedBundle(
     runId,
     ...stampField(),
     manifest: options.manifestPath,
-    ...(options.registry === true
-      ? {
-          registry: true,
-          mode: options.mode ?? DEFAULT_MODE,
-          declaredByChecklist: loaded.declaredByChecklist ?? [],
-        }
-      : {}),
+    registry: true,
+    mode: options.mode ?? DEFAULT_MODE,
+    ...(options.event === undefined ? {} : { event: options.event }),
+    declaredByChecklist: loaded.declaredByChecklist ?? [],
     manifestSha256: loaded.sha256,
     startedAt,
     endedAt: now(),

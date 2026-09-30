@@ -1,0 +1,262 @@
+{
+  "kind": "verdict",
+  "phase": "M6-P3",
+  "head": "ea3edb36c351d7f97945eec0080319f7c027cc0f",
+  "tiphys-version": "0.2.2",
+  "verdict": "FIX-ROUND-NEEDED",
+  "produced-by": "claude-opus-5-5",
+  "framing": "hazard-runner-first",
+  "review-contract": "hazard",
+  "findings": [
+    {
+      "id": "CR-M6P3B-02",
+      "severity": "low",
+      "evidence": [
+        "The p3-ci test (test/gate-registry.test.ts:1396, helper registryStepDefects at :1342) checks that each gates step passes `--registry gate-registry.yaml`, `--mode full`, `--event <event>`, `--evidence`, `--base`, `--head` (and `--phase` / github.event.before), and never `--manifest`; it does not refuse `--only`, the runner's own narrowing flag.",
+        "Mutation M3b: `--only suite` added after `--event pull_request` and after `--event push` in .github/workflows/gates.yml. Every test file that reads the workflow (test/gate-registry.test.ts, dual-review-head-anchor, license-gate, merge-preconditions, project-write-block, witness): 193 tests, 193 pass, 0 fail, 0 skipped. Both CI arms would then run one gate out of eight and five. Restored with git checkout, status clean.",
+        "Mutation M4: in gate-registry.yaml `suite` and `license` narrowed to `events: [pull_request]` (the push arm then runs authored-bytes, credential-scrub, typecheck only). Ten test files that read the shipped registry (gate-registry, authored-bytes, credentials-gate, license-gate, schemas, kernel-charter, implementer-brief, brief-compose, assurance-modes, init): 192 tests, 192 pass, 0 fail. Restored. Only authored-bytes pins its own events (test/authored-bytes.test.ts:164); credential-scrub's registration test (test/credentials-gate.test.ts:819) checks applicability, unitLabel, precondition and command but not events.",
+        "At a726478 the push arm's set was pinned by scripts/m2-exit-test.sh (MAIN_ONLY_GATES plus the assertion tables), which this change deletes; nothing replaced that pin. The runner's own guards hold: an event selecting no gate is refused (src/gates/run.ts:513), and the selection printed at run time is `loadRegistry` output (measured: push selects authored-bytes, credential-scrub, suite, typecheck, license; pull_request adds scope, red-witness, merge-preconditions).",
+        "Carried unchanged to b63cb44 as a recorded low (the orchestrator left it by design). `git diff --stat 89260f4..b63cb44 -- schemas gate-registry.yaml assurance-modes.yaml .github test/gate-registry.test.ts scripts` prints nothing: the fix round touches neither the workflow, the registry, nor the p3-ci test, so both mutations above would pass the same tests at this head.",
+        "Still carried at ea3edb3: `git diff --stat b63cb44 ea3edb3 -- schemas gate-registry.yaml assurance-modes.yaml .github test/gate-registry.test.ts scripts` prints nothing."
+      ],
+      "concrete-fix": "Extend registryStepDefects to refuse `--only` and a repeated `--mode`/`--event` in a gates step, and add one test asserting that on each event the shipped registry selects `suite`, `typecheck`, `credential-scrub`, `license` and `authored-bytes` as required script gates (derived from loadRegistry(registry, 'full', event), so a deliberate removal edits one expected list in the same commit, DR-0061 (a)).",
+      "analysis": "Plan hazard 3 (the push arm runs less than intended) has no mechanical guard after the harness went. Both constructions are visible edits to a reviewed file, so this is low."
+    },
+    {
+      "id": "CR-M6P3B-04",
+      "severity": "low",
+      "evidence": [
+        "merge-preconditions is conditional on `node scripts/check-dual-review.mjs --precondition --review-budget .` (gate-registry.yaml, kind command-exit-zero). Node exits 1 on an uncaught exception, which the evaluator reads as `unmet` whenever every path-shaped argv element was openable (src/gates/run.ts:1376-1405).",
+        "Scratch repository with copies of src/, scripts/, schemas/: control run, the conditional gate carrying that precondition reports green. After inserting `throw new Error(\"simulated load-time crash\")` at the top of the copy's scripts/check-dual-review.mjs (standalone exit 1), the same runner command prints `mp: not-applicable: precondition merge-preconditions-review-budget-decidable evaluated and unmet: ... exited 1` and `every applicable gate is green`, summary exitCode 0.",
+        "Mitigated in this repository: seven test files spawn scripts/check-dual-review.mjs (e.g. test/dual-review.test.ts), so a load-time crash reddens `suite`. Not introduced here: the same precondition and conditional applicability exist at a726478 (gate-registry.yaml:495 there) and the base harness accepted merge-preconditions `green|not-applicable`.",
+        "Carried unchanged to b63cb44 as a recorded low (left by design: the precondition script is deleted in M6-P5). The fix round touches neither scripts/check-dual-review.mjs, gate-registry.yaml, nor the command-exit-zero evaluator.",
+        "Still carried at ea3edb3: fix round 3 touches neither scripts/check-dual-review.mjs, gate-registry.yaml, nor src/gates/run.ts."
+      ],
+      "concrete-fix": "Give the precondition arm a dedicated unmet exit code (for example 20, the not-applicable code) and have the command-exit-zero evaluator, or this gate's precondition declaration, treat any other nonzero exit as error; or make the review-budget precondition a git-only check the runner evaluates itself (a commit resolves), since that is all it asks.",
+      "analysis": "Answers brief hazard 4's second question: merge-preconditions reads not-applicable on a real pull-request head (a) by design when the reviews are complete and the `gates` check run for the head is still in flight (src/gates/merge-preconditions.ts:2116-2145), and (b) when its precondition script crashes. (b) is the fail-open one."
+    },
+    {
+      "id": "CR-M6P3B-06",
+      "severity": "medium",
+      "evidence": [
+        "src/pool.ts:1129, new in this round (25dcb79): `runGit(contextDir, [\"worktree\", \"list\", \"--porcelain\", \"-z\"])`, read only inside `if (listed.status === 0)` (src/pool.ts:1130). On any nonzero exit the loop is skipped and branchCheckedOutAt stays undefined. That value is the ONLY guard against deleting a branch another worktree has checked out: stage 3 deletes with update-ref, which does not check worktrees (src/pool.ts:1203-1215).",
+        "`git worktree list` has no -z before git 2.36. Measured with git 2.34.1, the packaged git of Ubuntu 22.04 LTS (git_2.34.1-1ubuntu1.17_amd64.deb from archive.ubuntu.com, extracted into scratch and run through a wrapper, never installed): `git worktree list --porcelain -z` prints `error: unknown switch `z'` and exits 129; without -z it exits 0. The kernel declares no git floor: doctor's git check passes on presence alone (src/commands/doctor.ts:216-222).",
+        "The shipped test test/pool.test.ts:684 (`pool destroy refuses with one reason line when the task branch cannot be deleted`, the CR-201 refusal), run in a scratch clone at ea3edb3, node v26.6.0: git 2.43.0 pass (tests 1, pass 1); git 2.34.1 first on PATH FAIL (tests 1, pass 0, fail 1); git 2.34.1 with ONLY the listing reverted to the pre-round form (no -z, newline split) pass. The only variable between the last two runs is this round's change.",
+        "Effect, a probe test added only in that scratch clone (a foreign worktree at `<own>-foreign` holding task/t-pf, then `tiphys pool destroy --task t-pf`): git 2.43.0, destroy exit 1 with `cannot delete branch task/t-pf: it is checked out at .../worktrees/t-pf-foreign; remove that worktree first`; git 2.34.1, destroy exit 0, `rev-parse --verify --quiet refs/heads/task/t-pf` exit 1 (branch deleted) and `rev-parse --verify HEAD` in the foreign worktree exit 128 (left on a dangling HEAD); git 2.34.1 with the pre-round listing, refused, exit 1, branch kept.",
+        "Why no gate or test in CI sees it: CI runners carry a git newer than 2.36, and the round's own named test (test/pool.test.ts:431) fails on git 2.34.1 at its capture replay (`git worktree list --porcelain -z: error: unknown switch 'z'`, actual 129, expected 0) before it reaches destroy. The round's other five named tests pass on git 2.34.1 (tests 6, pass 5, fail 1, the one being test/pool.test.ts:431): `diff -z`, `diff --cached -z` and `ls-tree -z` are old flags.",
+        "Mechanism: a flag added to a git call whose failure is silently tolerated, without asking whether every git the kernel runs under accepts it. The `if (listed.status === 0)` arm predates the round (it is at b63cb44); the round made it reachable on a stock LTS git. The round's D2 derivation asked whether each listing needs -z and did not ask whether -z exists for that subcommand; `src/pool.ts:1129` is the only site among the seven where the answer is no."
+      ],
+      "concrete-fix": "Make a failed worktree listing refuse the destroy: record it as indeterminate (as branchTip already is) and refuse in evaluateDestroy when the branch is present and the listing could not be read. Then keep the newline fix without depending on git 2.36: either declare git >= 2.36 as a floor that doctor FAILs below, or fall back to the newline listing when git refuses -z and refuse when a listed path cannot be trusted. Add a named test in which the listing fails (a PATH git wrapper replaying git 2.34.1's real refusal of -z, recorded as a capture) asserting that destroy refuses and the branch survives; witness it red against the current `if (listed.status === 0)` arm.",
+      "analysis": "Introduced by this fix round (25dcb79). Graded by the rubric: a guard on a destructive operation passes while its subject is broken. The path is a stock Ubuntu 22.04 LTS git (2.34.1) plus a task branch checked out in another worktree, which is exactly the situation the guard exists for. The second condition narrows the path, so medium, not high. The consequence is a ref deletion that strands another worktree on a dangling HEAD; its recoverability was not measured."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "p3-prevents",
+      "quote": "the registry schema rejects a gate without `prevents`. check: named test in `test/gate-registry.test.ts`.",
+      "evidence": [
+        "test/gate-registry.test.ts:1664 'the registry schema rejects a gate without prevents and one whose prevents spans two lines, and accepts a one-line prevents': pass (node v26.6.0). It asserts through validateToLines on the shipped schema: missing prevents yields a `#/gates/0/prevents` missing line; two-line, CRLF, blank and empty values yield INVALID; a one-line value validates.",
+        "Accept-set diff of schemas/gate-registry.schema.json a726478 vs head with $comment/description/title stripped: only `prevents` added to gateShape.required and properties.",
+        "Carried from round 1 (89260f4; line numbers as at that head): the fix round changes none of the files this rests on (schemas/, gate-registry.yaml, assurance-modes.yaml, .github/workflows/gates.yml, test/gate-registry.test.ts; `git diff --stat 89260f4..ea3edb3` over them is empty), and its src/gates/run.ts edits are confined to gitLines and the diff-touches evaluator. Fix round 3 (b63cb44..ea3edb3) touches none of those files either."
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-all-prevent",
+      "quote": "every gate in `gate-registry.yaml` validates. check: `node bin/tiphys.ts validate --type gate-registry gate-registry.yaml` exits 0.",
+      "evidence": [
+        "`node bin/tiphys.ts validate --type gate-registry gate-registry.yaml`: exit 0 at b63cb44 (node v26.6.0); gate-registry.yaml and templates/gate-registry.example.yaml are unchanged in b63cb44..ea3edb3."
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-absent",
+      "quote": "retirement-inventory.json, its .md, test/retirement-inventory.test.ts, scripts/check-retirement-inventory.mjs and gates.manifest.json are absent. check: `test ! -e` on each, exit 0.",
+      "evidence": [
+        "`test ! -e` exit 0 for each of the five paths at b63cb44; fix round 3 adds none of them (its 17 changed files are listed by `git diff --stat b63cb44 ea3edb3`).",
+        "`git grep` for the deleted scripts, modules and files outside delivery/, witness/captures, witness/patches: only comments, historical templates/fixtures and scripts/rehearse-cutover-rollback.mjs writing its own scratch retirement-inventory.json (the kept rollback reader). (round 1, 89260f4)"
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-ci",
+      "quote": "the `gates` workflow calls the runner with `--registry` on both events and never `--manifest`. check: named test in `test/gate-registry.test.ts`.",
+      "evidence": [
+        "test/gate-registry.test.ts:1396 passes; it executes each step's own text under bash -e over a stub runner exiting 0 and 1.",
+        "Mutation M1 (event selection ignored in src/gates/run.ts:381) reddens the p3-event test (actual ['on-pull-request','on-push'], expected ['on-push']).",
+        "Gap: `--only` in a step is not refused (CR-M6P3B-02).",
+        "Carried from round 1 (89260f4; line numbers as at that head): the fix round changes none of the files this rests on (schemas/, gate-registry.yaml, assurance-modes.yaml, .github/workflows/gates.yml, test/gate-registry.test.ts; `git diff --stat 89260f4..ea3edb3` over them is empty), and its src/gates/run.ts edits are confined to gitLines and the diff-touches evaluator. Fix round 3 (b63cb44..ea3edb3) touches none of those files either."
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-red-fails-ci",
+      "quote": "the runner exits nonzero when a required gate is red, vacuous or errors. check: named test.",
+      "evidence": [
+        "test/gate-registry.test.ts:1526 passes: exact exits 0, 1, 21, 21, 20 on both events beside a green control.",
+        "Mutation M2: `&& false` appended to the requiredNotApplicable condition at src/gates/run.ts:2289 reddens it: `pull_request not-applicable ... 0 !== 20`. Restored, cmp identical.",
+        "Carried from round 1 (89260f4; line numbers as at that head): the fix round changes none of the files this rests on (schemas/, gate-registry.yaml, assurance-modes.yaml, .github/workflows/gates.yml, test/gate-registry.test.ts; `git diff --stat 89260f4..ea3edb3` over them is empty), and its src/gates/run.ts edits are confined to gitLines and the diff-touches evaluator. Fix round 3 (b63cb44..ea3edb3) touches none of those files either."
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-sizes",
+      "quote": "`gate-registry.yaml` at most 10,000 bytes and `assurance-modes.yaml` at most 6,000 bytes. check: `wc -c`.",
+      "evidence": [
+        "wc -c at b63cb44: 4953 gate-registry.yaml, 4403 assurance-modes.yaml; neither changes in b63cb44..ea3edb3."
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-build",
+      "quote": "`npm run build` exits 0, `npm test` exits 0 with 0 fail.",
+      "evidence": [
+        "`npm run build` exit 0 at ea3edb3 on node v26.6.0 (git 2.43.0); git status afterwards shows only this untracked verdict file.",
+        "npm test at ea3edb3, node v26.6.0, git 2.43.0, dist/ built by the npm run build above, invocation npm test (node --test \"test/**/*.test.ts\"): exit 0; the node test reporter's summary lines read tests 1239, pass 1239, fail 0, cancelled 0, skipped 0, todo 0 (the U+2139 prefix glyph omitted from those 7 quoted lines; nothing else altered). Zero lines carry the U+2716 failure glyph. No mutation in the tree during the run; git status before and after shows only this untracked verdict file. This is the container's git; on git 2.34.1 test/pool.test.ts:431 and :684 fail (CR-M6P3B-06)."
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-ci-green",
+      "quote": "not-testable locally: the `gates` run on the pull request head and the post-merge `push` run are green.",
+      "evidence": [
+        "Not observed by this review at ea3edb3; at b63cb44 the check-runs API returned total_count 0 and no pull request was open. Recorded unmet so nobody reads this walk as having seen CI."
+      ],
+      "met": false
+    }
+  ],
+  "deviations-judged": [
+    {
+      "deviation": "Gate runs use `--base cd2dafe`, per the dispatch notes, not the base commit e898e4e.",
+      "serves-plan-intent": true,
+      "reasoning": "cd2dafe is an ancestor of e898e4e, so the gates judged a superset of this phase's diff; the fix round re-ran on a726478. Wider, not narrower."
+    },
+    {
+      "deviation": "p3-both-arms: the pull-request arm exits nonzero locally, because `merge-preconditions` is RED: this pair-tier change has no reviews yet (and green CI on the head cannot exist before a pull request). Every other gate is green or, for `scope`, not applicable on a non-phase branch. The push arm exits 0.",
+      "serves-plan-intent": true,
+      "reasoning": "A red merge gate with no reviews is the gate working (src/gates/merge-preconditions.ts selection row). p3-both-arms is not in the plan section at this head; p3-ci-green covers the CI half."
+    },
+    {
+      "deviation": "`schemas/assurance-modes.schema.json` keeps `gate-sets` as an accepted, ignored property, so pre-M6-P3 documents validate.",
+      "serves-plan-intent": true,
+      "reasoning": "Measured: `git grep 'gate-sets|gateSets'` over src, plugin/src, bin, scripts, .claude finds no reader, so accepting it cannot change behaviour; DR-0054 history validity is served."
+    },
+    {
+      "deviation": "`authored-bytes` was promoted to a registry gate (the brief allowed either).",
+      "serves-plan-intent": true,
+      "reasoning": "It runs on git state (DR-0061 (b)) and on both events, which is what T-009 asks; the gate arm maps a thrown check to error (scripts/check-authored-bytes.mjs runAsGate catch), not green."
+    },
+    {
+      "deviation": "The \"M1 exit test (local mode)\" workflow step is kept: the suite does not run the M1 harness end to end (test/exit-test-local.test.ts says why).",
+      "serves-plan-intent": true,
+      "reasoning": "Plan step 4 keeps it only if it passes DR-0061 (b) and is not run by the suite; it exercises the kernel CLI on a scratch fleet and no test runs it end to end."
+    },
+    {
+      "deviation": "`typecheck` now runs on `push` too.",
+      "serves-plan-intent": true,
+      "reasoning": "Widens the push arm; typecheck is on code and needs no diff parameters."
+    },
+    {
+      "deviation": "The two schemas' `$comment` data PROPERTY (not the keyword) is kept.",
+      "serves-plan-intent": true,
+      "reasoning": "Removing the property would reject registries that carry clause ids there; the accept-set diff confirms only prevents and gate-sets changed."
+    },
+    {
+      "deviation": "Fix round 2 reports its gate pass at b5d04d9, not at the head under review.",
+      "serves-plan-intent": true,
+      "reasoning": "`git diff --stat b5d04d9 b63cb44` lists only delivery/work-history/m6-p3.md, so no gate input differs; this review's own runs are at b63cb44."
+    },
+    {
+      "deviation": "The round's N1 derivation names src/witness/run.ts:267 as a site of the CR-M6P3B-03 mechanism and leaves it unfixed and unexecuted (open question 3).",
+      "serves-plan-intent": true,
+      "reasoning": "Declared rather than hidden, and outside the two items the orchestrator asked for; fix-round contract item 3 is met by naming it. Executed here it fails open, so the defect is carried as CR-M6P3B-05 and not excused by this entry."
+    },
+    {
+      "deviation": "The range carries DR-0065 and a landing-order paragraph in the M6 plan, both about M6-P5 and M6-P6, not M6-P3.",
+      "serves-plan-intent": true,
+      "reasoning": "Paperwork batched onto an open branch, which the delivery protocol allows; DR-0065 is status RAISED, awaiting the owner, and asserts no evidence about code that has not landed, so it is not the T-019 mirror."
+    },
+    {
+      "deviation": "Fix round 3 reports its gate pass at 85b0d7a, not at the head under review.",
+      "serves-plan-intent": true,
+      "reasoning": "`git diff --stat 85b0d7a ea3edb3` lists only delivery/work-history/m6-p3.md; this review's own runs are at ea3edb3."
+    },
+    {
+      "deviation": "The round's first commit (25dcb79) carried literal U+00E9 and U+00EF in three test files and two type errors; aa8829c spelled them as escapes.",
+      "serves-plan-intent": true,
+      "reasoning": "Declared in the work history, and the head is clean: `node scripts/check-authored-bytes.mjs` exit 0 at ea3edb3."
+    },
+    {
+      "deviation": "Six emptiness-only listings keep line output (src/cutover.ts:808, :884, :985; src/pool.ts:1095; src/teardown.ts:325; src/gates/suite.ts:815).",
+      "serves-plan-intent": true,
+      "reasoning": "Measured on git 2.43.0: status --porcelain, diff --name-only and diff --cached --name-only print a name holding a newline or U+00E9 as one quoted line, so emptiness and a count cannot change; only the display text is quoted."
+    }
+  ],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "brief-1-deleted-guard",
+      "probed": "Listed the derived checks deleted between a726478 and head (20, with mode-ids-are-unique reinstated) and the gates deleted; for each asked whether any kernel code on code or git state consumed it. merge-preconditions runs only dual-review-decorrelation and verdict-pair-approves by id (src/gates/merge-preconditions.ts:115-116, :1857, :1866), unchanged, so no deleted verdict check was on the merge path at base either. Ran the seven fix-round-1 tests (7 pass) and mutated src/ids.ts (`indexes.length > 1` to `> 2`): six of seven red (validate, mode show, merge checks, plan project, brief compose, checklist framing), restored. mode show's un-downgraded sentence is printed only for the shipped document (src/modes.ts:211), which a test pins, so deleting mode-no-undeclared-downgrade cannot make it lie about a consumer document. The M1/M2 self-test guards and the id-collision step were deleted by plan step 4 and caff246.",
+      "cleared-because": "The implementer-flagged duplicate-mode-id path is closed at every id-keyed reader through one detector and is red-witnessed by my own mutation; no deleted gate or check was the only guard of a product failure that I could construct. What the deleted harness guarded (the per-arm gate set) is CR-M6P3B-02, a low."
+    },
+    {
+      "class-id": "brief-2-runner-exits-0-over-red",
+      "probed": "Read cmdRun (--event validated against GATE_EVENTS, exit 64), loadRegistry (event filter, fail closed when an event selects nothing), runClaimedBundle and decideAggregate (unchanged arms: error 21, red 1, zero verdict 21, required N/A 20, vacuous a subset of error). Read the workflow: one runner step per event under mutually exclusive `if:`, no continue-on-error, bash -e. Mutations M1 and M2 each reddened their named test; M3b (`--only suite` in both steps) passed all 193 workflow-reading tests.",
+      "finding": "CR-M6P3B-02"
+    },
+    {
+      "class-id": "brief-3-push-arm",
+      "probed": "loadRegistry('gate-registry.yaml','full','push') selects authored-bytes, credential-scrub, suite, typecheck, license, all required, none with a precondition; push step passes --base github.event.before (a zero or unreachable before fails suite closed as error). Mutation M4 (suite and license narrowed to pull_request) passed 192 tests in ten registry-reading files.",
+      "finding": "CR-M6P3B-02"
+    },
+    {
+      "class-id": "brief-4-conditional-gates",
+      "probed": "Scope: branch-matches reads `git rev-parse --abbrev-ref HEAD`; the checkout-by-head_ref pin test passes, so a phase branch is not detached in CI. Red-witness: built a scratch repo and ran the real runner with red-witness's exact precondition: a rename out of src/ and an edit to a non-ASCII-named file under src/ both read not-applicable, exit 0. Merge-preconditions: precondition exits 0 at head; with --base, no verdict is red; not-applicable arises by design while the head's own gates run is in flight, and fail-open when the precondition script crashes (scratch demonstration, exit 0). DELTA at b63cb44: reran the red-witness cases through the fixed runner and mutated the fix three ways (see cleared-because).",
+      "cleared-because": "CR-M6P3B-03 FIXED at b63cb44: src/gates/run.ts:1319-1323 reads `git diff -z --no-renames --name-only` split on NUL. My round-1 cases rerun in a scratch repository through `tiphys gates run --event pull_request` with red-witness's exact precondition: rename src/a.ts to lib/a.ts green, exit 0; edit of src/caf<U+00E9>.ts green, exit 0; rename docs/d.md to src/d.ts green; a file named `src/new<LF>line.ts` green; control, a docs-only change including a name with a space, still not-applicable `no changed path under src/, bin/, plugin/`, so the precondition can still be unmet. Named tests test/gates.test.ts:755 and :769 pass. Mutation C (the pre-fix argv, newline split) reddened both (tests 2, pass 0, fail 2; actual not-applicable, expected green). Mutation D (only --no-renames dropped) reddened the rename test alone; mutation E (only -z dropped, newline split) reddened the non-ASCII test alone, so each half has its own witness. Each restored with `git checkout -- src/gates/run.ts`. Scope and merge-preconditions probes from round 1 stand (that code is unchanged by the fix round). The coverage rule this precondition now lets run carries the same mechanism one level down: CR-M6P3B-05, under its own class below."
+    },
+    {
+      "class-id": "brief-4b-merge-preconditions-not-applicable",
+      "probed": "Scratch registry carrying merge-preconditions' exact command-exit-zero precondition; precondition script made to throw at load; runner reported the gate not-applicable and exited 0.",
+      "finding": "CR-M6P3B-04"
+    },
+    {
+      "class-id": "brief-5-brief-gate-list",
+      "probed": "Read renderProjectGateList and the compose call site; composed from the repo root (8 gate rows, placeholder consumed). Composed from a scratch kernel whose registry carries `$'` and `$$` in one preflight command: exit 0 with a mangled 774-line brief. Empty list and missing registry are refused (tests pass). DELTA at b63cb44: reran the dangerous registry through brief compose and mutated the fix twice (see cleared-because).",
+      "cleared-because": "CR-M6P3B-01 FIXED at b63cb44: src/commands/brief.ts:406 is `body.replace(BRIEF_GATE_LIST_PLACEHOLDER, () => gateList.text)`. Rerun in a scratch kernel copy at b63cb44 with a preflight command `bash -c \"grep -rn $'\\\\t' src/ ; echo pid $$ amp $& tick $` end\"`, a note carrying $', $&, $` and $$, and the suite gate's unitLabel set to `tests reported $& $$ $` $'`: validate exit 0; compose exit 0, 613 lines (control 612, one added row); row 2 and the suite row intact; renderBriefGateBlock's block contained byte for byte. Named test test/implementer-brief.test.ts:286 passes. Mutation A (the pre-fix string replacement) and mutation B (`() => gateList.text.split(\"$$\").join(\"$\")`, a partial fix) each reddened it (tests 1, pass 0, fail 1, strictEqual); restored with `git checkout -- src/commands/brief.ts`."
+    },
+    {
+      "class-id": "brief-6-schema-diet",
+      "probed": "Parsed both schemas at a726478 and at head, stripped $comment/description/title keywords outside properties maps, and diffed: gate-registry adds only `prevents` (required, one-line pattern); assurance-modes drops `gate-sets` from required and its minItems, uniqueItems and item pattern. No reader of gate-sets exists (git grep). Shipped registry and template validate.",
+      "cleared-because": "The only accept-set changes are the intended `prevents` narrowing and the loosening of a property nothing reads; the p3-prevents test asserts the narrowing through the validator."
+    },
+    {
+      "class-id": "delta-2-replacement-derivation",
+      "probed": "Reran the round's R1 derivation independently at b63cb44: `git grep -nE '\\.replace(All)?\\(' HEAD -- 'src/*.ts' 'plugin/src/*.ts'` (47 lines, the implementer's count at e764d68), filtered for a replacement that is neither a `$`-free literal nor a function; a grep for a call split across lines (a line ending in `.replace(`) over src, plugin/src, scripts and bin; a grep for Symbol.replace, bracket access and `.call` forms; then the trees the round declared not covered (bin/, scripts/, .claude/, lab/).",
+      "cleared-because": "The claim holds within its declared scope. Survivors of the filter: src/commands/lock.ts:215 (`signal=$1${suffix}`, suffix is \"\" or the constant \"(injected-clock)\", src/commands/lock.ts:188-193, no document data), src/gates/run.ts:583 and src/witness/run.ts:232 (`\"\\\\$&\"` regex-escape literals) and src/plan.ts:93 (literal \"\", shown only because its regex holds a comma). No split call and no indirect form. Outside the scope: bin/, scripts/ and .claude/*.mjs hold only literal replacements; lab/apply-member.mjs:56 `body.replace(member.find, member.replace)` would interpret $ patterns in a witness member's replace text, unlike the kernel's split/join (src/witness/run.ts:807, :1444). It predates this phase (0330964, M4-P10), is not shipped (package.json files), is a hand tool, and is latent: 0 of 835 mutation members under witness/ carry a replacement pattern. Not graded against this phase."
+    },
+    {
+      "class-id": "delta-3-red-witness-coverage-quoted-path",
+      "probed": "Settled the implementer's open question 3 by running it: scratch clone at b63cb44, an unwitnessed src/<name>.ts beside one evaluated own witness, through `tiphys gates run --only red-witness --event pull_request`, name `cafe` versus caf<U+00E9>; plus the isolated form through the gate script directly. DELTA at ea3edb3: reran the same cases through the fixed code and mutated the fix away once (see cleared-because).",
+      "cleared-because": "CR-M6P3B-05 FIXED at ea3edb3: computePhaseDiff lists with `git diff -z --name-status --no-renames` and walks status/path pairs (src/witness/run.ts:341-360), and newSidePathOfHeader decodes git's quoted and TAB-decorated `+++` headers (src/witness/run.ts:246). My b63cb44 case rerun in the scratch clone at ea3edb3 through `tiphys gates run --only red-witness --event pull_request`: `cafe` red, exit 1, naming src/cafe.ts; caf<U+00E9> now red, exit 1, `source changed with no witness spec covering it: src/caf<U+00E9>.ts`. Alone (gate script direct): both red, exit 1, naming the file (no longer the units-0 error). Named tests test/witness.test.ts:2642 and :2705 pass. Mutation F (the listing restored to the pre-round form: no -z, newline split, tab parse) reddened both (tests 2, pass 0, fail 2): the coverage test with actual green, expected red, and the honest-witness test with the rule (d) false red I had predicted by reading at b63cb44. Restored with `git checkout -- src/witness/run.ts`."
+    },
+    {
+      "class-id": "delta-4-rest-of-fix-round",
+      "probed": "Read all of 89260f4..b63cb44 (6 commits, 13 files) for anything the fix broke, and ran the affected test files and repository checks at b63cb44.",
+      "cleared-because": "gitLines' new separator parameter defaults to \"\\n\" with the old trim, and its only other caller (src/gates/run.ts:1270, `rev-parse --abbrev-ref HEAD`) takes the default, so branch-name reads are unchanged; on the NUL arm names are not trimmed, which is right for names with edge spaces. test/behaviors.json only appends three keys. witness/implementer-brief-gate-list-drift.json's member is re-anchored to the new line with an equivalent defang (`() => \"\"`). The two diff-touches specs declare class destructive and two members with distinct find text, and their capture witness/captures/m6-p3-git-diff-touches.json matches the output I got from git independently (`lib/a.ts` and `\"src/caf\\303\\251.ts\"` from the default listing). At b63cb44, node v26.6.0, dist built, invocation `node --test test/gates.test.ts test/implementer-brief.test.ts`: tests 67, pass 67, fail 0, skipped 0. `node scripts/check-authored-bytes.mjs` exit 0; `node scripts/check-id-collisions.mjs` exit 0 (highest DR-0065, no collision); `validate --type gate-registry gate-registry.yaml` exit 0. DR-0065 is status RAISED, not presented as decided; the plan edit adds a landing order only. Nothing found that the fix broke."
+    },
+    {
+      "class-id": "delta3-5-derivation-git-path-listings",
+      "probed": "Independent of the round's wrapper-based D1: `git grep` over src/ and plugin/src/ at ea3edb3 for every path-bearing git subcommand token (ls-files, ls-tree, diff, status, show, log, worktree, grep, check-ignore, merge-tree, clean), then read each hit. Measured git 2.43.0's line output for names holding a newline and U+00E9 in status --porcelain, diff --name-only and diff --cached --name-only.",
+      "cleared-because": "The claim holds: every git listing whose paths are used is -z (src/checks.ts:666, :1815, :2621; src/commands/sync.ts:186, :252; src/gates/merge-preconditions.ts:944, :1371, :1451; src/gates/run.ts:1321; src/gates/scope.ts:381; src/cutover.ts:825, :943; src/witness/run.ts:341, :1819; src/pool.ts:1129), prints one raw path (rev-parse), prints no path (src/checks.ts:2557 is `--format=%H %P`), or is read only for emptiness. The three unchanged cutover calls (src/cutover.ts:808 pre-staged check, :884 refuseIfTreeDirty, :985 restore residue) each refuse on any non-empty output and use the text only for a count and a display list; git prints each such name as ONE quoted line (measured), so neither the refusal nor the count can change, and leaving them is right. Not graded, a different and older mechanism: `status --porcelain` honours a user's status.showUntrackedFiles=no (measured: empty output over two untracked files), so refuseIfTreeDirty would not see untracked files under that config. What the derivation did not ask is whether each ADDED flag exists on every git the kernel runs under; for one site it does not (CR-M6P3B-06)."
+    },
+    {
+      "class-id": "delta3-6-scope-and-cutover",
+      "probed": "Read the scope record walk and the two cutover changes; ran the round's named tests for them on git 2.43.0 and on git 2.34.1; measured git rm's pathspec handling of names holding a backslash and a star, since raw names now reach it where quoted ones used to fail.",
+      "cleared-because": "scope.ts:381-426 walks `-z --name-status` records of two fields, or three for R and C, drops only the trailing empty field, and refuses a truncated record rather than guessing; empty output gives no paths. The declaration read (src/gates/scope.ts:484) is unchanged. cutover sync (src/cutover.ts:825-841) now compares unquoted staged names with the caller's paths; restore (src/cutover.ts:943-983) hands unquoted names to `git rm`, and git removed only the exact file for `a\\b` and `a*` beside `ab` and `ax` (measured), with the residue check at :985 still verifying the result. The three named tests for scope and cutover (test/scope-gate.test.ts one, test/cutover.test.ts two) pass on git 2.34.1 and run in the full suite on git 2.43.0. Full-suite result at ea3edb3 is under p3-build."
+    },
+    {
+      "class-id": "delta3-7-pool-destroy-listing",
+      "probed": "Read the pool destroy listing change and its failure arm; ran the shipped CR-201 refusal test and a scratch probe on git 2.43.0 and git 2.34.1, with the fixed and the pre-round listing.",
+      "finding": "CR-M6P3B-06"
+    }
+  ]
+}

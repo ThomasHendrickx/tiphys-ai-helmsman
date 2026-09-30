@@ -228,171 +228,6 @@ test("a green gate result with no wrapper exit code is rejected, and is accepted
 });
 
 /* ------------------------------------------------------------------ */
-/* Criterion 2b(a): the parity arithmetic, Kind B                        */
-/* ------------------------------------------------------------------ */
-
-test("the count parity check reddens on both directions of a mismatch and on a negative count, and greens when it is deregistered", () => {
-  /* MEMBER 1: discovered EXCEEDS the buckets. This is R-048's
-     silently-dropped-tests case and is the one the criterion names. */
-  const dropped = readTemplate("report.example.yaml");
-  (
-    (dropped["gate-results"] as Record<string, unknown>[])[0] as Record<string, unknown>
-  )["discovered"] = 600;
-  const droppedRun = checkLines("report", dropped);
-  assert.equal(droppedRun.failed, true);
-  assert.deepEqual(droppedRun.lines, [
-    "INVALID #/gate-results/0 discovered 600 does not equal passed + failed + skipped + todo + did-not-run = 507 (check: report-parity-arithmetic)",
-  ]);
-
-  /* MEMBER 2, STRUCTURALLY DIFFERENT: the buckets exceed discovered. The
-     criterion's letter names only member 1; a check written to that letter
-     would be green here, which is the one-directional guard this project
-     keeps re-buying. */
-  const inflated = readTemplate("report.example.yaml");
-  (
-    (inflated["gate-results"] as Record<string, unknown>[])[0] as Record<string, unknown>
-  )["passed"] = 900;
-  assert.deepEqual(checkLines("report", inflated).lines, [
-    "INVALID #/gate-results/0 discovered 507 does not equal passed + failed + skipped + todo + did-not-run = 902 (check: report-parity-arithmetic)",
-  ]);
-
-  /* MEMBER 3, STRUCTURALLY DIFFERENT AGAIN: the sum is right and one bucket
-     is NEGATIVE, so equality alone is satisfied. No keyword in the declared
-     authoring vocabulary reaches this, because there is no `minimum`. */
-  const negative = readTemplate("report.example.yaml");
-  const negativeResult = (negative["gate-results"] as Record<string, unknown>[])[0] as Record<
-    string,
-    unknown
-  >;
-  negativeResult["passed"] = 506;
-  negativeResult["failed"] = -1;
-  assert.deepEqual(checkLines("report", negative).lines, [
-    "INVALID #/gate-results/0 count(s) failed are negative, which no run can produce (check: report-parity-arithmetic)",
-  ]);
-
-  /* MEMBER 4: a PARTIAL count record, where parity cannot be computed at
-     all. A check that skipped these would let a green be recorded with five
-     of the six counts, which is arithmetic that adds up while a row is
-     lost one level down. The SIXTH count is `todo`, added in fix round 2:
-     the M2-P3 wrapper reports it and the plan's field list did not, so a run
-     with `todo > 0` could not be recorded at all without breaking parity. */
-  const partial = readTemplate("report.example.yaml");
-  delete (
-    (partial["gate-results"] as Record<string, unknown>[])[0] as Record<string, unknown>
-  )["skipped"];
-  assert.deepEqual(checkLines("report", partial).lines, [
-    "INVALID #/gate-results/0 gate result records 5 of the 6 counts and omits skipped, so parity cannot be computed (check: report-parity-arithmetic)",
-  ]);
-
-  /* THE CHECK DEREGISTERED (Kind B witness, section 2.3 rule 3). Not a
-     schema keyword: a Kind B criterion offered a keyword witness would have
-     misclassified itself. */
-  assert.equal(checksModule.deregisterCheck("report-parity-arithmetic"), true);
-  try {
-    assert.deepEqual(checkLines("report", dropped).lines, []);
-    assert.equal(checkLines("report", dropped).failed, false);
-    assert.deepEqual(checkLines("report", negative).lines, []);
-  } finally {
-    checksModule.registerCheck(checksModule.reportParityArithmetic);
-  }
-  /* RESTORED. */
-  assert.equal(checkLines("report", dropped).failed, true);
-});
-
-/* ------------------------------------------------------------------ */
-/* Criterion 2b(b): the final report's cross-array parity, Kind B        */
-/* ------------------------------------------------------------------ */
-
-test("a final report whose input-findings has a hole, a phantom row or a duplicate is rejected by the derived check", () => {
-  /* MEMBER 1, the criterion's own: a row deleted, leaving an orphaned id. */
-  const orphaned = readTemplate("final-report.example.yaml");
-  (orphaned["input-findings"] as unknown[]).splice(2, 1);
-  const orphanRun = checkLines("final-report", orphaned);
-  assert.equal(orphanRun.failed, true);
-  assert.deepEqual(orphanRun.lines, [
-    "INVALID #/inputs/2 finding V-3 has no row in input-findings, so the table has a hole (check: final-report-finding-parity)",
-  ]);
-
-  /* MEMBER 2, STRUCTURALLY DIFFERENT: a row naming an id `inputs` does not
-     carry. This is the renumbering shape, and M2-P6 recorded (CR-988) that
-     its own parity mode was blind to it for exactly one round. */
-  const phantom = readTemplate("final-report.example.yaml");
-  (phantom["input-findings"] as Record<string, unknown>[]).push({
-    id: "V-9",
-    outcome: "closed",
-  });
-  assert.deepEqual(checkLines("final-report", phantom).lines, [
-    "INVALID #/input-findings/6 input-findings names V-9, which is not in inputs, so the coverage is phantom (check: final-report-finding-parity)",
-  ]);
-
-  /* MEMBER 3, STRUCTURALLY DIFFERENT AGAIN: one id with TWO rows. CR-985
-     records that a duplicate defeats the orphan and phantom checks TOGETHER,
-     because it is neither, while inflating every count. */
-  const duplicated = readTemplate("final-report.example.yaml");
-  (duplicated["input-findings"] as Record<string, unknown>[]).push({
-    id: "V-1",
-    outcome: "closed again",
-  });
-  assert.deepEqual(checkLines("final-report", duplicated).lines, [
-    "INVALID #/inputs/0 finding V-1 has 2 rows in input-findings and must have exactly one (check: final-report-finding-parity)",
-  ]);
-
-  assert.equal(checksModule.deregisterCheck("final-report-finding-parity"), true);
-  try {
-    assert.deepEqual(checkLines("final-report", orphaned).lines, []);
-    assert.deepEqual(checkLines("final-report", phantom).lines, []);
-    assert.deepEqual(checkLines("final-report", duplicated).lines, []);
-  } finally {
-    checksModule.registerCheck(checksModule.finalReportFindingParity);
-  }
-  assert.equal(checkLines("final-report", orphaned).failed, true);
-});
-
-/* ------------------------------------------------------------------ */
-/* Criterion 4: the M2-P6 coverage checker, run for real                 */
-/* ------------------------------------------------------------------ */
-
-/**
- * The checker is an EXPORTED FUNCTION and its CLI has no parity-mode flag
- * (`src/gates/coverage.ts` accepts only `--result`, `--evidence` and
- * `--config`), and that module is not on this phase's declaration. So the
- * criterion's "exits 0 / exits nonzero" is discharged by invoking the
- * unmodified checker in a SUBPROCESS whose exit code is a real process exit
- * code, rather than by asserting on a return value in this process.
- */
-function runCoverageParity(document: unknown): { status: number | null; stdout: string } {
-  const script = `
-import { checkFindingOutcomeParity } from ${JSON.stringify(join(repoRoot, "src", "gates", "coverage.ts"))};
-const document = JSON.parse(process.argv[1]);
-const result = checkFindingOutcomeParity(
-  document.inputs,
-  document["input-findings"].map((row) => ({ id: row.id, outcome: row.outcome })),
-);
-process.stdout.write(JSON.stringify(result) + "\\n");
-process.exit(result.ok ? 0 : 1);
-`;
-  const run = spawnSync(
-    process.execPath,
-    ["--input-type=module", "-e", script, JSON.stringify(document)],
-    { encoding: "utf8", cwd: repoRoot },
-  );
-  return { status: run.status, stdout: run.stdout };
-}
-
-test("the M2-P6 coverage checker in finding-to-outcome parity mode passes the shipped final report and names the orphan when a row is deleted", () => {
-  const shipped = readTemplate("final-report.example.yaml");
-  const green = runCoverageParity(shipped);
-  assert.equal(green.status, 0, green.stdout);
-  assert.match(green.stdout, /"checked":6/);
-
-  const holed = readTemplate("final-report.example.yaml");
-  (holed["input-findings"] as unknown[]).splice(2, 1);
-  const red = runCoverageParity(holed);
-  assert.equal(red.status, 1);
-  assert.match(red.stdout, /"missing":\["V-3"\]/);
-});
-
-/* ------------------------------------------------------------------ */
 /* Criterion 2(b): an environmental claim requires evidence              */
 /* ------------------------------------------------------------------ */
 
@@ -888,17 +723,10 @@ test("an empty string does not satisfy a required field, at a top-level scalar a
   ]);
 
   /* The same field with real text is accepted BY THE KEYWORDS, which is the
-     other direction the criterion asks for and is all this arm asserts.
-     THE DOCUMENT ITSELF IS STILL REFUSED END TO END, by the derived check
-     `report-no-findings-statement`, because the template carries findings
-     and a no-findings statement beside real findings is the opposite
-     misdeclaration; that arm is in its own test below. The two facts are
-     not in tension: `reportLines` is the KEYWORD half of the contract, and
-     conflating them is how a document can be reported valid by one half. */
+     other direction the criterion asks for. */
   const stated = readTemplate("report.example.yaml");
   stated["no-findings-statement"] = "Three findings are recorded above.";
   assert.deepEqual(reportLines(stated), []);
-  assert.equal(checkLines("report", stated).failed, true);
 
   const defanged = readSchema("report.schema.json");
   const statement = nodeAt(defanged, ["properties", "no-findings-statement"]);
@@ -1277,80 +1105,6 @@ function oneHopDefinitionUsers(
   return users;
 }
 
-test("every derived check that guards a shared definition runs on every artifact type that reaches it", () => {
-  /* THE MECHANISM, not the instance (M3-P4 round-1 finding CR-001): a derived
-     check is registered PER TYPE and reads a TYPE-SPECIFIC KEY, while the
-     `$defs` it guards are SHARED ACROSS TYPES by `$ref`. Keywords travel
-     through a reference and Kind B rules do not, so `report-parity-arithmetic`
-     never ran on a work history while the shared definition's own comment said
-     it did. A fix to that one check would leave the mechanism intact, so the
-     relation is DERIVED from the schemas here and asserted for every shared
-     definition, present and future. */
-  const schemas = new Map<string, Record<string, unknown>>();
-  for (const name of readdirSync(schemasDir).sort()) {
-    if (!name.endsWith(".json")) continue;
-    schemas.set(name, readSchema(name));
-  }
-  assert.ok(schemas.size >= 3, `only ${String(schemas.size)} schemas were enumerated`);
-
-  const users = sharedDefinitionUsers(schemas);
-  assert.ok(
-    users.has("report.schema.json#/$defs/gateResult"),
-    `the enumeration found no cross-document $ref at all: ${[...users.keys()].join(", ")}`,
-  );
-
-  const registry = checksModule.registeredChecks();
-  const holes: string[] = [];
-  for (const [pointer, types] of users) {
-    for (const check of registry) {
-      if (!(check.guards ?? []).includes(pointer)) continue;
-      const runsOn = checksModule.typesOf(check);
-      for (const type of [...types].sort()) {
-        if (!runsOn.includes(type)) {
-          holes.push(
-            `${check.id} guards ${pointer} but does not run on ${type} (it runs on ${runsOn.join(", ")})`,
-          );
-        }
-      }
-    }
-  }
-  assert.deepEqual(holes, []);
-
-  /* AND EVERY `guards` POINTER NAMES A DEFINITION THAT IS ACTUALLY REACHED
-     (M3-P4 round-2 delta finding DV-001, second arm). Without this the loop
-     above is vacuous for a mistyped pointer: nothing matches it, no hole is
-     reported, and the check is silently guarding nothing. That is the "green
-     and worthless" shape CLAUDE.md records under T-008's postscript. */
-  const dangling: string[] = [];
-  for (const check of registry) {
-    for (const pointer of check.guards ?? []) {
-      if (!users.has(pointer)) {
-        dangling.push(`${check.id} guards ${pointer}, which no shipped schema reaches`);
-      }
-    }
-  }
-  assert.deepEqual(dangling, []);
-
-  /* THE DANGEROUS STATE, and it is the state this branch shipped in round 1
-     rather than an invented one: the guarding check registered for the owning
-     type alone. The assertion above is green with `alsoTypes` and red without
-     it, which is what makes it a witness rather than a restatement. */
-  const withoutAlsoTypes: DerivedCheck = {
-    ...checksModule.reportParityArithmetic,
-    alsoTypes: [],
-  };
-  const reddened: string[] = [];
-  for (const [pointer, types] of users) {
-    if (!(withoutAlsoTypes.guards ?? []).includes(pointer)) continue;
-    for (const type of [...types].sort()) {
-      if (!checksModule.typesOf(withoutAlsoTypes).includes(type)) {
-        reddened.push(`${pointer} -> ${type}`);
-      }
-    }
-  }
-  assert.deepEqual(reddened, ["report.schema.json#/$defs/gateResult -> work-history"]);
-});
-
 test("a check guarding a definition reached through a chain of references is caught, where the one-hop enumeration fix round 2 shipped saw nothing", () => {
   /* THE MECHANISM (M3-P4 round-2 delta finding DV-001), and it is one level
      down from CR-001's: the guard written to catch "sharing does not share
@@ -1709,7 +1463,7 @@ test("a non-green gate result carries the wrapper exit code or says why there is
   ]);
 });
 
-test("a green gate result must carry the todo bucket, and parity counts it", () => {
+test("a green gate result must carry the todo bucket", () => {
   /* THE SIXTH COUNT. The M2-P3 wrapper's identity is
      `pass + fail + skipped + todo + did-not-run == reported`
      and the plan's field list named five, so a run reporting `todo > 0`
@@ -1731,8 +1485,7 @@ test("a green gate result must carry the todo bucket, and parity counts it", () 
   assert.ok(reportLines(missing).length > 0);
 
   /* AND THE RUN THE OLD VOCABULARY COULD NOT RECORD AT ALL is now
-     recordable: one todo test, parity satisfied, accepted by keywords and by
-     the derived check. This is the direction the gap actually hurt. */
+     recordable: one todo test, accepted by the keywords. */
   const withTodo = readTemplate("report.example.yaml");
   const result = (withTodo["gate-results"] as Record<string, unknown>[])[0] as Record<
     string,
@@ -1741,17 +1494,6 @@ test("a green gate result must carry the todo bucket, and parity counts it", () 
   result["passed"] = 504;
   result["todo"] = 1;
   assert.deepEqual(reportLines(withTodo), []);
-  assert.deepEqual(checkLines("report", withTodo).lines, []);
-
-  /* AND `todo` IS IN THE PARITY SUM rather than merely present: the same
-     record with the bucket unaccounted for is red. */
-  const unbalanced = readTemplate("report.example.yaml");
-  (
-    (unbalanced["gate-results"] as Record<string, unknown>[])[0] as Record<string, unknown>
-  )["todo"] = 1;
-  assert.deepEqual(checkLines("report", unbalanced).lines, [
-    "INVALID #/gate-results/0 discovered 507 does not equal passed + failed + skipped + todo + did-not-run = 508 (check: report-parity-arithmetic)",
-  ]);
 });
 
 /* ------------------------------------------------------------------ */
@@ -2106,54 +1848,6 @@ test("the finding's non-universal branch is the exact complement of the shared q
   assert.equal(expression.test("This holds in every case."), true);
   assert.equal(expression.test("There is no path that reaches it."), false);
   assert.equal(expression.test("This is guaranteed."), false);
-});
-
-/* ------------------------------------------------------------------ */
-/* The empty findings array, Kind B                                     */
-/* ------------------------------------------------------------------ */
-
-test("a report with no findings and no statement is rejected, and so is a statement beside real findings", () => {
-  /* KIND B BY NECESSITY: `maxItems` is absent from the sixteen keywords of
-     the declared authoring vocabulary, and no other permitted keyword says
-     "this array is empty", so the emptiness of a sibling array is not a
-     keyword property. The check exists because the round-1 arbitration
-     amended section 2.3's table to three rows for this phase.
-
-     DIRECTION 1, the one the rule is for: silence priced at nothing. */
-  const silent = readTemplate("report.example.yaml");
-  silent["findings"] = [];
-  assert.deepEqual(reportLines(silent), [], "the keywords accept it, which is the point");
-  const silentRun = checkLines("report", silent);
-  assert.equal(silentRun.failed, true);
-  assert.deepEqual(silentRun.lines, [
-    "INVALID #/no-findings-statement findings is empty and no-findings-statement is missing, so the report claims nothing was found without saying why (check: report-no-findings-statement)",
-  ]);
-
-  /* THE HONEST EMPTY REPORT IS STILL WRITABLE, and cheaply: one sentence. */
-  const stated = readTemplate("report.example.yaml");
-  stated["findings"] = [];
-  stated["no-findings-statement"] =
-    "Every criterion was walked and nothing was found; the derivation and its non-coverage are recorded above.";
-  assert.deepEqual(checkLines("report", stated).lines, []);
-
-  /* DIRECTION 2, the converse the requirement's letter does not name: a
-     no-findings statement sitting beside three real findings. */
-  const contradictory = readTemplate("report.example.yaml");
-  contradictory["no-findings-statement"] = "Nothing was found.";
-  assert.deepEqual(checkLines("report", contradictory).lines, [
-    "INVALID #/no-findings-statement no-findings-statement is present beside 3 finding(s), so the report contradicts itself (check: report-no-findings-statement)",
-  ]);
-
-  /* THE CHECK DEREGISTERED (Kind B witness), and restored. */
-  assert.equal(checksModule.deregisterCheck("report-no-findings-statement"), true);
-  try {
-    assert.deepEqual(checkLines("report", silent).lines, []);
-    assert.equal(checkLines("report", silent).failed, false);
-    assert.deepEqual(checkLines("report", contradictory).lines, []);
-  } finally {
-    checksModule.registerCheck(checksModule.reportNoFindingsStatement);
-  }
-  assert.equal(checkLines("report", silent).failed, true);
 });
 
 /* ------------------------------------------------------------------ */

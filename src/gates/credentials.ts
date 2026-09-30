@@ -21,11 +21,14 @@ import {
 import type { GateResult, GateStatus } from "./result.ts";
 
 /**
- * THE CREDENTIAL GATES (kernel plan M2, M2-P8 step 6).
+ * THE CREDENTIAL GATE (kernel plan M2, M2-P8 step 6).
  *
- * Two registered entries, both invoked through the M2-P1 gate subprocess
- * contract (`node src/gates/credentials.ts <gate-id> --result <path>
- * --evidence <dir>`), each writing exactly one GateResult.
+ * Invoked through the M2-P1 gate subprocess contract
+ * (`node src/gates/credentials.ts credential-scrub --result <path>
+ * --evidence <dir>`), writing exactly one GateResult. M6-P3 deleted the
+ * second entry, `credential-token`, which could only report not-applicable or
+ * error by design (DR-0061 (b)); the failure it was for, a pull-request-capable
+ * credential reaching an implementer, is what `credential-scrub` probes.
  *
  * `credential-scrub` (required, offline). Makes "implementers never create
  * PRs" PROBED rather than believed: it constructs a child environment with
@@ -87,18 +90,6 @@ import type { GateResult, GateStatus } from "./result.ts";
  * global, then system, then any repo-local config of the child's working
  * directory). A resolvable helper from ANY source, including env
  * injection, reddens the gate.
- *
- * `credential-token` (conditional). When TIPHYS_IMPLEMENTER_TOKEN is
- * absent it reports `not-applicable` NAMING OWNER ACTION A-3, never green.
- * When the token is present it currently reports `error`, deliberately:
- * plan step 7 requires the probe's assertion to be DERIVED from captured
- * API responses for a real scoped implementer token and a real
- * orchestrator token, both of which owner action A-3 (DR-0004 item 4) has
- * not yet provisioned. Deriving the assertion from invented responses is
- * exactly the mechanism T-003 lesson 4 forbids, so until the captures
- * exist the gate FAILS CLOSED (M2-C-3: a check that cannot reach a
- * verdict is `error`). The live witness is deferred to the M2 exit test
- * (plan criterion 7, owner-blocked).
  */
 
 const EX_USAGE = 64; // BSD sysexits, same value src/cli.ts exports.
@@ -595,7 +586,9 @@ export function probeCredentialSources(
   // git itself (`git config --get-all credential.helper`), because git is
   // the program that would resolve a helper and its exit code is the
   // documented contract: 0 with output means the key is set, 1 means it
-  // is not. Nothing here parses message text (T-003).
+  // is not, and any other exit is no answer, reported as error (M6-P3 fix
+  // round 4, `configProbeUnanswered`). Nothing here parses message text
+  // (T-003); git's first stderr line is carried into the detail only.
   for (const scope of ["global", "system"] as const) {
     const result = spawnSync("git", ["config", `--${scope}`, "--get-all", "credential.helper"], {
       env: env as NodeJS.ProcessEnv,
@@ -615,13 +608,17 @@ export function probeCredentialSources(
           `git config --${scope} --get-all credential.helper resolves: ${singleLine((result.stdout ?? "").trim())}`,
         ),
       );
-    } else {
+    } else if (result.status === 0 || result.status === 1) {
       probes.push(
         probe(
           source,
           "clean",
           `git config --${scope} --get-all credential.helper exited ${String(result.status)} with no output`,
         ),
+      );
+    } else {
+      probes.push(
+        probe(source, "error", configProbeUnanswered(`git config --${scope}`, result.status, result.stderr)),
       );
     }
   }
@@ -660,6 +657,14 @@ export function probeCredentialSources(
         "git-resolved-config",
         "resolvable",
         `git config --get-all credential.helper resolves from inside the child (any source, including env injection): ${singleLine((resolved.stdout ?? "").trim())}`,
+      ),
+    );
+  } else if (resolved.status !== 0 && resolved.status !== 1) {
+    probes.push(
+      probe(
+        "git-resolved-config",
+        "error",
+        configProbeUnanswered("git config", resolved.status, resolved.stderr),
       ),
     );
   } else {
@@ -710,6 +715,30 @@ export function probeCredentialSources(
   return probes;
 }
 
+/**
+ * A `git config --get-all` probe that exited neither 0 nor 1.
+ *
+ * git's documented contract for this read is two answers: 0 with the values,
+ * 1 for "not set". Anything else (128 for a config file git cannot parse,
+ * including the repository config of the directory the probe ran in, or no
+ * status at all for a probe that was killed) means git did not answer, and
+ * reading that as "not set" is the fail-open direction: measured on git
+ * 2.43.0 and 2.34.1, a global `credential.helper` probed from a repository
+ * whose own config is malformed exits 128 while a child in a healthy
+ * worktree resolves the helper
+ * (witness/captures/m6-p3-git-config-credential-helper.json).
+ */
+function configProbeUnanswered(command: string, status: number | null, stderr: string | null): string {
+  const first = (stderr ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line !== "");
+  return (
+    `${command} --get-all credential.helper exited ${String(status)}, which is neither a value (0) nor ` +
+    `"not set" (1), so whether a helper resolves is not established: ${first ?? "no stderr"}`
+  );
+}
+
 /** Fold probes into a gate verdict. Any error wins over any red. */
 export function verdictFromProbes(probes: SourceProbe[]): {
   status: GateStatus;
@@ -749,8 +778,8 @@ interface GateArgs {
 
 function parseGateArgs(argv: string[]): GateArgs | string {
   const [gateId, ...rest] = argv;
-  if (gateId !== "credential-scrub" && gateId !== "credential-token") {
-    return "expected a gate id: credential-scrub or credential-token";
+  if (gateId !== "credential-scrub") {
+    return "expected a gate id: credential-scrub";
   }
   let resultPath: string | undefined;
   let evidenceDir: string | undefined;
@@ -820,65 +849,18 @@ function runCredentialScrub(evidenceDir: string, startedAt: string): {
   };
 }
 
-function runCredentialToken(startedAt: string): {
-  result: GateResult;
-  evidenceBody?: string;
-} {
-  if (process.env["TIPHYS_IMPLEMENTER_TOKEN"] === undefined) {
-    return {
-      result: makeGateResult({
-        gate: "credential-token",
-        status: "not-applicable",
-        units: 0,
-        unitLabel: "tokens probed",
-        startedAt,
-        endedAt: new Date().toISOString(),
-        detail:
-          "TIPHYS_IMPLEMENTER_TOKEN is not present: owner action A-3 " +
-          "(DR-0004 item 4, the scoped implementer token) has not been " +
-          "performed, so there is no token to probe. This gate never " +
-          "reports green in this state.",
-      }),
-    };
-  }
-  // Fail closed (M2-C-3). See the module comment: the safe negative
-  // probe's assertion must be derived from captured API responses (plan
-  // M2-P8 step 7), and those captures require the very tokens A-3
-  // provisions. Guessing a response shape here is T-003 lesson 4.
-  return {
-    result: makeGateResult({
-      gate: "credential-token",
-      status: "error",
-      units: 0,
-      unitLabel: "tokens probed",
-      startedAt,
-      endedAt: new Date().toISOString(),
-      detail:
-        "TIPHYS_IMPLEMENTER_TOKEN is present, but the probe's assertion " +
-        "contract has not yet been derived from captured API responses " +
-        "(kernel plan M2, M2-P8 step 7; owner action A-3). Refusing to " +
-        "assert against an invented response shape (T-003 lesson 4); " +
-        "this gate fails closed until the captures exist and is " +
-        "witnessed live at the M2 exit test.",
-    }),
-  };
-}
-
 function gateMain(argv: string[]): number {
   const parsed = parseGateArgs(argv);
   if (typeof parsed === "string") {
     process.stderr.write(
       `credentials gate: ${parsed}\n` +
-        "usage: node src/gates/credentials.ts credential-scrub|credential-token " +
+        "usage: node src/gates/credentials.ts credential-scrub " +
         "--result <path> --evidence <dir>\n",
     );
     return EX_USAGE;
   }
   const startedAt = new Date().toISOString();
-  const outcome =
-    parsed.gateId === "credential-scrub"
-      ? runCredentialScrub(parsed.evidenceDir, startedAt)
-      : runCredentialToken(startedAt);
+  const outcome = runCredentialScrub(parsed.evidenceDir, startedAt);
 
   if (outcome.evidenceBody !== undefined) {
     const evidencePath = join(parsed.evidenceDir, "probes.json");
@@ -932,8 +914,8 @@ if (entry !== undefined) {
     // a file redirection either way, which is why the defect survives casual
     // testing. Assigning `process.exitCode` lets the process end normally,
     // which drains the queue first. The same rule holds for stdout and is
-    // why src/gates/citations.ts, src/gates/scope.ts and
-    // src/gates/gate-classes.ts already read this way; the full capture is
+    // why src/gates/scope.ts and src/gates/gate-classes.ts already read this
+    // way; the full capture is
     // witness/captures/m4-p29-gate-cli-stdio.txt.
     process.exitCode = gateMain(process.argv.slice(2));
   }
