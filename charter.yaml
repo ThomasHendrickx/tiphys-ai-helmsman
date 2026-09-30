@@ -1,12 +1,12 @@
 # THE TIPHYS KERNEL'S OWN CHARTER (M4-P15).
 #
 # WHY IT IS AT THE REPOSITORY ROOT AND NOT SOMEWHERE TIDIER. This is the
-# document `scripts/check-dual-review.mjs` resolves (the `merge-preconditions`
-# gate's precondition runs it with the repository root as its context
-# directory; the `check-dual-review` gate itself was deleted by M6-P3). The
-# script refuses, with exit 21, any context whose `charter.yaml` or
-# `assurance-modes.yaml` is absent, because a merge check that cannot
-# determine the merge-authority regime must never report green. Until this
+# document the `merge-preconditions` gate resolves, with the repository root as
+# its context directory (`scripts/check-dual-review.mjs` resolved it until
+# M6-P5 deleted the script). The gate reads error for any context whose
+# `charter.yaml` or `assurance-modes.yaml` is absent at the commit, because a
+# merge check that cannot determine the merge-authority regime must never
+# report green. Until this
 # file existed, that refusal was invisible: the gate was conditional on at
 # least one verdict document existing under `delivery/review/` and this
 # repository had never had one. The first phase to commit its two
@@ -21,7 +21,8 @@
 #
 # WHAT VALIDATES IT: `node bin/tiphys.ts validate --type charter charter.yaml`
 # against schemas/charter.schema.json, which requires all eleven top-level
-# fields, forbids any twelfth, and requires all seven irreversible decisions.
+# fields, allows only the optional `runtime-set` and `review-families` beside
+# them, and requires all seven irreversible decisions.
 kind: charter
 
 identity:
@@ -170,6 +171,18 @@ runtime-set:
   paths: [src/, bin/, plugin/, schemas/]
   manifests: [package.json, package-lock.json, plugin/package.json]
   version-pins: ["@tiphys/kernel"]
+
+# DR-0038 as DR-0062 restates it (M6-P5): a review's family is the VENDOR of
+# the model the kernel observed when it launched the reviewer. The merge gate
+# reads this block from the commit, accepts a same-family pair only on the one
+# family declared here, and treats any committed review record observed on
+# another family as contradicting it.
+review-families:
+  available: [anthropic]
+  reason: >-
+    Reviewers are dispatched through one harness, which serves models of one
+    vendor only, so two kernel-recorded reviews of one head carry the same
+    family.
 
 retention:
   work-history: delivery/work-history/
