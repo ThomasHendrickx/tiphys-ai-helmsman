@@ -837,3 +837,23 @@ test("a check command that hands an inline script to a shell behind env and assi
   assert.equal(run.criteria?.["proven"], 1);
   assert.equal(run.criteria?.["unproven"], 3);
 });
+
+test("tiphys plan project refuses a plan that does not validate against the plan schema, naming the plan and the invalid criterion", () => {
+  const plan = planWith([{ id: "c-bare", criterion: "neither check nor not-testable" }]);
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-criteria-project-"));
+  const planFile = join(dir, "plan.json");
+  writeFileSync(planFile, `${JSON.stringify(plan, null, 2)}\n`);
+  const run = spawnSync(
+    process.execPath,
+    [cliEntry, "plan", "project", "--plan", planFile, "--phase-id", "M9-P1", "--stdout"],
+    { cwd: repoRoot, encoding: "utf8" },
+  );
+  assert.equal(run.status, 1, run.stdout);
+  assert.equal(run.stdout, "");
+  assert.ok(
+    (run.stderr ?? "").includes(
+      `tiphys plan project: plan ${planFile} does not validate against the plan schema: INVALID #/phases/0/acceptance/0 `,
+    ),
+    run.stderr,
+  );
+});

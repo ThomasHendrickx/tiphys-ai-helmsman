@@ -26,7 +26,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { EX_USAGE } from "../cli.ts";
-import { countCriteria, findPlanPhase, readPlan } from "../criteria.ts";
+import { countCriteria, findPlanPhase, planSchemaRefusal, readPlan } from "../criteria.ts";
 import { projectPhase, renderDeclaration } from "../plan.ts";
 import { refuseOpenForWrite } from "../task.ts";
 import {
@@ -150,6 +150,19 @@ export function cmdPlan(argv: string[]): number {
   const decoded = decodeDocument(read.body, plan);
   if (!decoded.ok) {
     process.stderr.write(`tiphys plan project: ${decoded.reason}\n`);
+    return 1;
+  }
+  /* M6-P4 step 4: validated before anything is projected, through the same
+     refusal as `brief compose`, `plan count` and the suite gate. */
+  let invalidPlan: string | undefined;
+  try {
+    invalidPlan = planSchemaRefusal(decoded.value, plan, loadTypeSchema("plan"));
+  } catch (caught) {
+    process.stderr.write(`tiphys plan project: ${(caught as Error).message}\n`);
+    return 1;
+  }
+  if (invalidPlan !== undefined) {
+    process.stderr.write(`tiphys plan project: ${invalidPlan}\n`);
     return 1;
   }
 

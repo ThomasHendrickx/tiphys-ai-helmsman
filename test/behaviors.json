@@ -1159,5 +1159,6 @@
   "pool-destroy-unread-worktree-list-refuses": "pool destroy refuses, naming why, when the worktree listing cannot be read, and the branch a foreign worktree holds survives",
   "red-witness-hunks-quoted-tab-header": "the phase diff credits every hunk to its own file: a quoted +++ header that also carries git's trailing TAB, and an added line that reads like a header",
   "credential-scrub-unanswered-config-probe-errors": "credential-scrub reports error, never clean, when git config cannot answer: a global credential.helper probed from inside a repository whose own config is malformed",
-  "doctor-retention-unanswered-ignore-probe-fails": "doctor FAILs a declared retention path when git cannot say whether it is ignored, naming git's reason, for a fleet that is no repository and for one whose config git cannot parse"
+  "doctor-retention-unanswered-ignore-probe-fails": "doctor FAILs a declared retention path when git cannot say whether it is ignored, naming git's reason, for a fleet that is no repository and for one whose config git cannot parse",
+  "m6-p4-plan-project-invalid-plan": "tiphys plan project refuses a plan that does not validate against the plan schema, naming the plan and the invalid criterion"
 }
