@@ -206,9 +206,9 @@ function git(args) {
  * which is the half this script exists to make un-report-around-able, lied.
  *
  * That is this project's most-recorded failure shape: a guard whose condition
- * does not test the property it claims, reported green. CLAUDE.md's own
- * fix-round contract names "a usage error read as a clean result" as one of
- * three recorded instances.
+ * does not test the property it claims, reported green. "A usage error read
+ * as a clean result" is one of the three instances behind the fix-round
+ * contract's third item (state what the derivation did not cover).
  *
  * So: counts go through `gitTry`, and a failed count is a HARD ERROR that exits
  * nonzero rather than a zero. A guard that cannot measure must not report
@@ -569,8 +569,8 @@ function planNextAction(entries, planLabel) {
       return {
         next:
           `DRIVE ${p.id.toUpperCase()} TO MERGE. ${where}, and ${remote} is ${ahead} commit(s) ahead of main. ` +
-          `Next step is whichever of these is not yet done: scope green, dual cross-model clean-room ` +
-          `review, arbitration, fix round, delta verification, merge, post-merge push run verified.`,
+          `Next step is whichever of these is not yet done: scope green, the reviews its tier owes ` +
+          `(DR-0063), arbitration if pair, fix round, merge, post-merge push run verified.`,
         exitCode: 2,
       };
     }
@@ -680,8 +680,8 @@ if (unreplicated.length > 0) {
   next =
     `DRIVE ${p.id.toUpperCase()} TO MERGE. Its branch ${p.remoteBranch} is ${p.ahead} commit(s) ` +
     `ahead of main and unmerged. Next step is whichever of these is not yet done: ` +
-    `scope green, dual cross-model clean-room review, arbitration, fix round, ` +
-    `delta verification, merge, post-merge push run verified.`;
+    `scope green, the reviews its tier owes (DR-0063), arbitration if pair, fix round, ` +
+    `merge, post-merge push run verified.`;
   exitCode = 2;
 } else {
   const p = notStarted[0];

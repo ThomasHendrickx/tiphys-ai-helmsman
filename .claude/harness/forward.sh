@@ -18,12 +18,13 @@ R=/tmp/claude-0/fwd
 
 # The container default is node v22.22.2 and the declared floor is >=26. Since
 # 2026-08-20 the default does not merely SKIP the floor-gated tests, it FAILS
-# test/doctor.test.ts:934 at heads whose CI is green, which trains a reader to
-# wave a real failure through. Use the floor-satisfying toolchain so a red here
-# means a red branch. It lives under /tmp, and so does R, which matters: the
-# suite's grantTraversalWhenUnderTmp opens /tmp/claude-0 only when the REPO is
-# under /tmp, and runCliUnprivileged spawns process.execPath, so a scratch
-# toolchain is reachable only in that combination (standing warning 1).
+# a floor-dependent test in test/doctor.test.ts at heads whose CI is green, which
+# trains a reader to wave a real failure through. Use the floor-satisfying
+# toolchain so a red here means a red branch. It lives under /tmp, and so does R,
+# which matters: the suite's grantTraversalWhenUnderTmp opens /tmp/claude-0 only
+# when the REPO is under /tmp, and runCliUnprivileged spawns process.execPath, so
+# a scratch toolchain is reachable only in that combination
+# (delivery/tuition/T-029-the-precondition-test-flakes-only-here.md:87).
 export PATH=/tmp/claude-0/n26/bin:$PATH
 P="$1"
 [ -n "$P" ] || { echo "usage: forward.sh <phase-id>   e.g. m4-p13"; exit 64; }
@@ -35,7 +36,7 @@ echo "== $P on $BR"
 git -C "$R" fetch -q origin main "$BR" || { echo "FAIL(fetch)"; exit 66; }
 
 DIRTY=$(git -C "$R" status --porcelain)
-[ -z "$DIRTY" ] || { echo "FAIL(dirty): the clone holds uncommitted work; standing warning 8 says do not proceed"; echo "$DIRTY"; exit 67; }
+[ -z "$DIRTY" ] || { echo "FAIL(dirty): the clone holds uncommitted work; CLAUDE.md standing warning 3 says do not proceed"; echo "$DIRTY"; exit 67; }
 
 git -C "$R" checkout -q "$BR" 2>/dev/null || git -C "$R" checkout -q -b "$BR" "origin/$BR" || { echo "FAIL(checkout)"; exit 68; }
 git -C "$R" reset -q --hard "origin/$BR" || { echo "FAIL(reset)"; exit 69; }
@@ -229,6 +230,6 @@ POSTBUILD=$(git -C "$R" status --porcelain)
 # non-ASCII and match the summary keywords at the start of the remaining text.
 echo "  suite exit=$SUITE  $(sed 's/[^[:print:][:space:]]//g' /tmp/claude-0/fwd-$P-suite.txt | grep -oE '^ *(tests|pass|fail|cancelled|skipped|todo) [0-9]+' | tr -s ' ' | tr '\n' ' ')"
 echo "  loadavg after the suite:  $(cut -d' ' -f1-3 /proc/loadavg)"
-[ "$SUITE" -eq 0 ] || echo "  NOTE: a red on the container default toolchain is NOT proof of a red branch (standing warning 12, since 2026-08-20). Establish the base before attributing it."
+[ "$SUITE" -eq 0 ] || echo "  NOTE: a red on the container default toolchain is NOT proof of a red branch (CLAUDE.md standing warning 2). Establish the base before attributing it."
 
 echo "  PUSH:  git -C $R push -u origin $BR"
