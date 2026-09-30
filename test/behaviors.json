@@ -1083,5 +1083,11 @@
   "m6-p5-prefix-naming-nothing-refused": "a runtime-set paths prefix naming a directory that does not exist at the merge base (source/) is an invalid declaration, so the change is pair",
   "m6-p5-backslash-entry-refused": "a runtime-set paths entry carrying a backslash is refused by the reader and by the schema, so the change is pair",
   "m6-p5-edge-space-entry-refused": "a runtime-set paths entry with a leading or a trailing space (' src/', 'src/ ') is refused by the reader and by the schema, so the change is pair",
-  "m6-p5-read-failure-arms-pair": "a charter or a declared manifest that git cannot show as one regular file, a charter deleted or unparseable at the head, each classify the change pair"
+  "m6-p5-read-failure-arms-pair": "a charter or a declared manifest that git cannot show as one regular file, a charter deleted or unparseable at the head, each classify the change pair",
+  "m6-p5-reviewer-env-scrubbed": "the reviewer runs in the kernel's scrubbed environment, so no pull-request credential, proxy or unrelated secret the kernel holds reaches it, and its HOME is the task's empty scrub directory",
+  "m6-p5-verdict-copied-worktree-removed": "after hashing, the dispatch copies the verdict next to its record and removes the review worktree it created, registration included",
+  "m6-p5-review-families-at-merge-base": "a head that adds the single-vendor exception while touching the runtime set is still red at condition-1, because the declaration is read at the merge base",
+  "m6-p5-unclaimed-refusal-red": "a single change with one counted approving review and one committed FIX-ROUND-NEEDED verdict no record names is red at condition-2 naming it, and so is a pair change",
+  "m6-p5-vocabulary-mismatch-red": "two counted reviews on different families minted under different vocabulary ids are red at condition-1, naming both ids",
+  "m6-p5-failed-run-not-counted": "a record whose executor exited nonzero is not counted, so a pair change with one such record is red naming 1 of 2"
 }

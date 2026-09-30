@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/review.ts",
-      "find": "      input.mergeBase,\n",
-      "replace": "      undefined,\n"
+      "find": "      record.head,\n      input.mergeBase,\n",
+      "replace": "      record.head,\n      undefined,\n"
     }
   ],
   "deterministic": true,
