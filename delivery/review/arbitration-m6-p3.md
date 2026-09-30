@@ -31,3 +31,24 @@ After round 2, both reviewers verify the final head with a short delta.
 ## Round 1, review A delta
 
 Review A verified fix round 1 at 89260f4: APPROVE. A-01 to A-03 cleared; new low A-06 (validate no longer refuses duplicate checklist probe ids, plan phase ids and same-arm gate ids; every first-match reader refuses at use time): no change, recorded.
+
+## Round 2, review B delta (head b63cb44)
+
+Review B verified fix round 2 at b63cb44: CR-M6P3B-01 and 03 cleared, each
+with its fix mutated away and its named test red. 02 and 04 stay as recorded
+lows. New medium CR-M6P3B-05: src/witness/run.ts lists changed files without
+`-z`, so an unwitnessed non-ASCII `src/` file leaves `red-witness` green
+(exit 0), where the same file with an ASCII name is red.
+
+Ruling: fixed in round 3, in this phase. The code predates M6-P3 (byte
+identical at a726478), but it is the mechanism round 2 named, and round 2's
+own derivation listed the site. The fix-round contract fixes the mechanism,
+so every site of it belongs to the round that named it. This is the second
+fix round after the first dual review (completed at 89260f4), inside
+DR-0012's limit of two.
+
+Not graded, recorded: `lab/apply-member.mjs:56` interprets `$` patterns in a
+replacement string. Older than this phase, not shipped, and no witness
+member uses a `$` pattern.
+
+Review A's second delta waits for round 3, so it judges the final head once.
