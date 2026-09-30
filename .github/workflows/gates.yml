@@ -62,7 +62,9 @@ jobs:
           node-version: 26
       - run: npm ci
       - run: npm run build
-      - run: npm test
+      # NO SEPARATE `npm test` STEP (M6-P8, DR-0066). The registry's `suite`
+      # gate runs the same `npm test` inside both gates steps below, so a
+      # step here ran the whole suite a second time on every event.
       # THE GATE REGISTRY, RUN DIRECTLY (M6-P3, DR-0061). gate-registry.yaml is
       # the only gate list: `--event` selects the entries whose `events` name
       # this event, and the runner exits nonzero when a required gate is red,
@@ -124,9 +126,14 @@ jobs:
           retention-days: 7
           if-no-files-found: warn
       # The M1 exit-test harness in local mode (kernel plan v1, M1-P6 step 4):
-      # the skeleton plumbing exercised end to end on every kernel PR. The suite
-      # does not run it (test/exit-test-local.test.ts explains why: its step A1
-      # runs npm ci and npm test at the repository root), so this step is the
-      # only place it runs. A failure here fails the job.
+      # the skeleton plumbing exercised end to end. The suite does not run it
+      # (test/exit-test-local.test.ts explains why: its step A1 runs npm ci and
+      # npm test at the repository root), so this step is the only place it
+      # runs. A failure here fails the job.
+      #
+      # PUSH ONLY (M6-P8, DR-0066): its step A1 is a third `npm ci` and
+      # `npm test`, about eight minutes, so a pull request no longer pays for
+      # it and the push run on `main` just after the merge does.
       - name: M1 exit test (local mode)
+        if: github.event_name != 'pull_request'
         run: scripts/m1-exit-test.sh --mode local "${{ runner.temp }}/m1-exit-evidence"

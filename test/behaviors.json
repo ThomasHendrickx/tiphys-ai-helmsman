@@ -1140,5 +1140,12 @@
   "pool-destroy-unread-worktree-list-refuses": "pool destroy refuses, naming why, when the worktree listing cannot be read, and the branch a foreign worktree holds survives",
   "red-witness-hunks-quoted-tab-header": "the phase diff credits every hunk to its own file: a quoted +++ header that also carries git's trailing TAB, and an added line that reads like a header",
   "credential-scrub-unanswered-config-probe-errors": "credential-scrub reports error, never clean, when git config cannot answer: a global credential.helper probed from inside a repository whose own config is malformed",
-  "doctor-retention-unanswered-ignore-probe-fails": "doctor FAILs a declared retention path when git cannot say whether it is ignored, naming git's reason, for a fleet that is no repository and for one whose config git cannot parse"
+  "doctor-retention-unanswered-ignore-probe-fails": "doctor FAILs a declared retention path when git cannot say whether it is ignored, naming git's reason, for a fleet that is no repository and for one whose config git cannot parse",
+  "red-witness-pr-skips-untouched-stored": "on pull_request a stored witness whose mutated files and test files the diff leaves untouched is skipped and counted in the detail line",
+  "red-witness-pr-evaluates-mutated-file-changed": "on pull_request a stored witness is evaluated because the diff changes a file its member mutates",
+  "red-witness-pr-evaluates-test-file-changed": "on pull_request a stored witness is evaluated because the diff changes, moves or renames inside a test file it runs",
+  "red-witness-push-evaluates-every-stored": "on push every stored witness is evaluated, and so on a run naming no event",
+  "red-witness-failed-diff-never-skips": "a phase diff that cannot be computed is error on pull_request and never skips a stored witness",
+  "gates-workflow-pr-runs-each-check-once": "the gates workflow runs no separate npm test step, and the M1 exit test step runs on push and not on pull_request",
+  "gate-runner-hands-event-parameter": "the runner hands a gate that declares event the run's --event, hands it nothing when the run names no event, and still errors a missing --base"
 }
