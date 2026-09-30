@@ -21,8 +21,9 @@
 kind: checklist
 id: hazard-review
 applies-to: >-
-  the same head a criteria review is walking, given to a second reviewer whose
-  starting question is what this can block, lose, never exit or destroy.
+  one phase's head, given to a reviewer whose starting question is what this
+  can block, lose, never exit or destroy. Since M6-P2 (DR-0064) this is the
+  only review contract; a pair change gets two such reviews (DR-0063).
 
 probes:
   - id: hazard-classes-addressed
