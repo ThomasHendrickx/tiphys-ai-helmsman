@@ -42,7 +42,21 @@ export interface Criterion {
 }
 
 /** How one reported test point ended, in the suite gate's own buckets. */
-export type TestOutcome = "pass" | "fail" | "skipped" | "todo" | "did-not-run";
+/**
+ * What one reported test point shows. `pass` is the ONLY outcome that proves
+ * a criterion. `expected-failure` and `replayed` are points node reports as
+ * passed whose pass is not this run's evidence that the assertion holds
+ * (fix round 1, CR-M6P4B-01): under `expectFailure` a pass means the body
+ * FAILED, and a point replayed by `--test-rerun-failures` did not run at all.
+ */
+export type TestOutcome =
+  | "pass"
+  | "fail"
+  | "skipped"
+  | "todo"
+  | "did-not-run"
+  | "expected-failure"
+  | "replayed";
 
 /** One reported test point, as the criteria judge needs it. */
 export interface ReportedTest {
@@ -154,16 +168,30 @@ export function readPlan(path: string, schema: SchemaDocument): PlanRead {
   if (!decoded.ok) {
     return { ok: false, reason: decoded.reason };
   }
-  const invalid = validateToLines(schema, decoded.value).filter((line) =>
-    line.startsWith("INVALID"),
-  );
-  if (invalid.length > 0) {
-    return {
-      ok: false,
-      reason: `plan ${path} does not validate against the plan schema: ${invalid.join("; ")}`,
-    };
+  const refusal = planSchemaRefusal(decoded.value, path, schema);
+  if (refusal !== undefined) {
+    return { ok: false, reason: refusal };
   }
   return { ok: true, plan: decoded.value };
+}
+
+/**
+ * The refusal for a decoded plan that does not validate against the plan
+ * schema, naming every INVALID line, or undefined when it validates. Shared by
+ * the suite gate (through `readPlan`) and `tiphys brief compose`, so a plan
+ * whose criteria carry neither shape is refused in both places rather than
+ * read as a phase with nothing to prove (fix round 1, CR-M6P4B-02).
+ */
+export function planSchemaRefusal(
+  value: unknown,
+  path: string,
+  schema: SchemaDocument,
+): string | undefined {
+  const invalid = validateToLines(schema, value).filter((line) => line.startsWith("INVALID"));
+  if (invalid.length > 0) {
+    return `plan ${path} does not validate against the plan schema: ${invalid.join("; ")}`;
+  }
+  return undefined;
 }
 
 export interface PhaseCount {
@@ -197,6 +225,10 @@ function describeOutcome(outcome: TestOutcome): string {
       return "is a todo";
     case "did-not-run":
       return "did not run";
+    case "expected-failure":
+      return "passed only because it is marked expectFailure, so its assertions failed";
+    case "replayed":
+      return "passed only as a replay of an earlier run (--test-rerun-failures), so this run did not execute it";
     default:
       return "passed";
   }
@@ -233,13 +265,39 @@ export function judgeTestChecks(criteria: Criterion[], reported: ReportedTest[])
 /** Shells whose `-c` runs an inline script. */
 const SHELL_PROGRAMS = new Set(["sh", "bash", "dash", "zsh", "ksh", "mksh", "ash", "fish", "csh", "tcsh"]);
 
-/** True when the argv hands an inline script to a shell (`sh -c`, `bash -lc`). */
+/**
+ * The words `env` takes before the program it runs that this check reads
+ * past: a NAME=value assignment, `-i`, `-` and `--ignore-environment`. Any
+ * other `env` option (`-u NAME`, `-C DIR`, `-S`) stops the skip, so the argv
+ * is then judged from that word and a shell behind it is not found.
+ */
+const ENV_PREFIX_WORD = /^(?:[A-Za-z_][A-Za-z0-9_]*=[\s\S]*|-i|-|--ignore-environment)$/;
+
+/**
+ * True when the argv hands an inline script to a shell (`sh -c`, `bash -lc`),
+ * directly or behind a leading `env` and its assignments (fix round 1,
+ * CR-M6P4A-03): `env A=1 sh -c ...` runs the same shell as `sh -c ...`.
+ */
 export function runsInlineShell(argv: string[]): boolean {
-  const program = argv[0];
-  if (program === undefined || !SHELL_PROGRAMS.has(basename(program))) {
-    return false;
+  return inlineShellOf(argv) !== undefined;
+}
+
+/** The shell an argv hands an inline script to, or undefined when it hands none. */
+export function inlineShellOf(argv: string[]): string | undefined {
+  let start = 0;
+  while (argv[start] !== undefined && basename(argv[start] as string) === "env") {
+    start += 1;
+    while (argv[start] !== undefined && ENV_PREFIX_WORD.test(argv[start] as string)) {
+      start += 1;
+    }
   }
-  return argv.slice(1).some((argument) => /^-[A-Za-z]*c[A-Za-z]*$/.test(argument));
+  const program = argv[start];
+  if (program === undefined || !SHELL_PROGRAMS.has(basename(program))) {
+    return undefined;
+  }
+  return argv.slice(start + 1).some((argument) => /^-[A-Za-z]*c[A-Za-z]*$/.test(argument))
+    ? basename(program)
+    : undefined;
 }
 
 /** The default bound on one check command, seconds. */
@@ -278,7 +336,7 @@ export function runCheckCommand(
       exit: null,
       signal: null,
       timedOut: false,
-      error: `it hands an inline script to ${basename(argv[0] as string)}, whose exit is its last command's; name the program instead`,
+      error: `it hands an inline script to ${inlineShellOf(argv) as string}, whose exit is its last command's; name the program instead`,
       tail: "",
     };
   }

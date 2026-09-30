@@ -56,11 +56,13 @@ import {
   splitFrontmatter,
 } from "../roles.ts";
 import { locateCharters } from "../charter.ts";
-import { renderNotTestableQuestions } from "../criteria.ts";
+import { planSchemaRefusal, renderNotTestableQuestions } from "../criteria.ts";
 import { duplicatePhaseIdRefusal } from "../plan.ts";
 import { readRegistryDocument } from "../gates/run.ts";
 import { refuseOpenForWrite, readRegularFileIfPresent } from "../task.ts";
 import { decodeDocument, formatDiagnostics, readOperatorPath } from "../validate.ts";
+import type { SchemaDocument } from "../validate.ts";
+import { loadTypeSchema } from "./validate.ts";
 
 /** Exit code for usage errors, per BSD sysexits EX_USAGE. */
 export const EX_USAGE = 64;
@@ -419,6 +421,20 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
   const planDecoded = decodeDocument(planRead.body, options.planFile);
   if (!planDecoded.ok) {
     return { ok: false, reason: planDecoded.reason };
+  }
+  /* M6-P4 fix round 1 (CR-M6P4B-02): the plan is VALIDATED before anything is
+     read out of it, as `tiphys validate --type plan` and the suite gate do. A
+     criterion with neither `check` nor `not-testable` would otherwise reach
+     the hazard reviewer's brief as "none" in the not-testable section. */
+  let planSchema: SchemaDocument;
+  try {
+    planSchema = loadTypeSchema("plan");
+  } catch (caught) {
+    return { ok: false, reason: (caught as Error).message };
+  }
+  const invalidPlan = planSchemaRefusal(planDecoded.value, options.planFile, planSchema);
+  if (invalidPlan !== undefined) {
+    return { ok: false, reason: invalidPlan };
   }
   const plan = asRecord(planDecoded.value);
   /* CR-M6P3A-01: the `.find` below takes the first match, so a duplicated

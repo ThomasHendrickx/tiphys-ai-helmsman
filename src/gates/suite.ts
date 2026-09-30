@@ -145,6 +145,8 @@ const REPORTER_SOURCE =
   "        nesting: data.nesting,\n" +
   "        skip: data.skip,\n" +
   "        todo: data.todo,\n" +
+  "        expectFailure: data.expectFailure,\n" +
+  "        passedOnAttempt: details.passed_on_attempt,\n" +
   "        entityType: details.type,\n" +
   "        failureType: error === undefined || error === null ? undefined : error.failureType,\n" +
   '      }) + "\\n";\n' +
@@ -168,6 +170,16 @@ export interface SuitePoint {
   nesting: number;
   skip?: boolean | string;
   todo?: boolean | string;
+  /**
+   * Fix round 1 (CR-M6P4B-01). Node v26.6.0's `getReportDetails` gives a point
+   * at most ONE directive, in this order: skip, todo, expectFailure; and puts
+   * `passed_on_attempt` in its details when `--test-rerun-failures` replays a
+   * test that passed in an earlier run instead of running it. Those four are
+   * the attributes of a reported point that change what a pass means, and the
+   * stream carries all four. A replay is marked -1 when node wrote no number.
+   */
+  expectFailure?: boolean | string;
+  passedOnAttempt?: number;
   entityType: "test" | "suite";
   failureType?: string;
 }
@@ -260,6 +272,8 @@ export function parseSuiteStream(body: string): StreamParse {
       nesting?: unknown;
       skip?: unknown;
       todo?: unknown;
+      expectFailure?: unknown;
+      passedOnAttempt?: unknown;
       entityType?: unknown;
       failureType?: unknown;
       message?: unknown;
@@ -311,6 +325,14 @@ export function parseSuiteStream(body: string): StreamParse {
     }
     if (typeof event.todo === "boolean" || typeof event.todo === "string") {
       point.todo = event.todo;
+    }
+    /* Fail closed on both: an expectFailure or a replay marker of a shape this
+       stream did not expect still marks the point, rather than dropping it. */
+    if (event.expectFailure !== undefined && event.expectFailure !== null && event.expectFailure !== false) {
+      point.expectFailure = typeof event.expectFailure === "string" ? event.expectFailure : true;
+    }
+    if (event.passedOnAttempt !== undefined) {
+      point.passedOnAttempt = typeof event.passedOnAttempt === "number" ? event.passedOnAttempt : -1;
     }
     if (typeof event.failureType === "string") {
       point.failureType = event.failureType;
@@ -458,6 +480,14 @@ export function pointOutcome(point: SuitePoint): TestOutcome {
   }
   if (point.event === "test:fail") {
     return point.failureType === "cancelledByParent" ? "did-not-run" : "fail";
+  }
+  /* Node reports both of these as test:pass and counts them under pass, so
+     the suite's counts treat them as passes; only a criterion refuses them. */
+  if (point.expectFailure !== undefined && point.expectFailure !== false) {
+    return "expected-failure";
+  }
+  if (point.passedOnAttempt !== undefined) {
+    return "replayed";
   }
   return "pass";
 }

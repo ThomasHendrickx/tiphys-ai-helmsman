@@ -50,6 +50,8 @@ Every criterion names what proves it (DR-0064). Give it EXACTLY ONE of:
   `--plan` and `--phase`, is red when a named test is not reported, skipped, a
   todo or failing, or when the command does not exit 0. Name the program
   directly: `sh -c` is refused, because a shell's exit is its last command's.
+  A `command` check proves only that the command exits 0, and a test runner
+  exits 0 when its tests are skipped, todo or absent, so name tests in `tests`.
 - `not-testable`: a one-line reason no test or command can prove it. It goes
   to the hazard reviewer as a question, and `tiphys plan count` prints each
   phase's not-testable count for the final report.
