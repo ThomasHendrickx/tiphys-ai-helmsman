@@ -133,9 +133,8 @@ artifact behind it is treated as unknown.
    work order is concurrent, and the pre-pass must be written down before
    dispatch, not asserted. M2's is `delivery/plan/m2-conflict-pre-pass.md`:
    M2-P1 serialises, M2-P2 to M2-P8 are mutually disjoint, M2-P9 runs last.
-   The shared registries (`test/behaviors.json`,
-   `delivery/requirements/clause-map.json`) are append-only and resolved as a
-   union against the merge base; they never re-serialise phases.
+   The shared registry `test/behaviors.json` is append-only and resolved as a
+   union against the merge base; it never re-serialises phases.
 
    **A test over an append-only registry asserts BY NAME and never BY COUNT,
    and never on a specific row's presence.** The rule was written for

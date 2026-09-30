@@ -78,9 +78,8 @@ text looks like an identifier", would classify ordinary headings like
 `## Scope` as anchors and redden every brief that has one.
 
 What the round trip buys is that a clause id cannot be a LABEL WITH NOTHING
-BEHIND IT. `scripts/check-clause-map.mjs` asks only whether the id occurs
-somewhere in the file, so without this check a brief could satisfy the clause
-map by listing ids in its frontmatter and writing no text at all.
+BEHIND IT: without this check a brief could list clause ids in its
+frontmatter and write no text at all.
 
 What it does NOT buy, stated so nobody reads it as more: it proves PRESENCE
 and never content. Whether the text under `## clause R-004` says what R-004

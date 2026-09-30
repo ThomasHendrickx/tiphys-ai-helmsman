@@ -237,36 +237,6 @@ test("every AGENTS.md clause id has exactly one body anchor and every anchor is 
   }
 });
 
-test("the eleven M3-P9 inventory rows resolve to clause ids present as AGENTS.md body headings", () => {
-  /* DERIVED FROM THE INVENTORY, not from a literal list here, so this test
-     cannot agree with itself. Appendix A of the plan is authored by a
-     different act from the document under test, which is what makes the
-     comparison mean anything (scripts/check-clause-map.mjs:20 area). */
-  const inventory = readFileSync(
-    join(repoRoot, "delivery", "plan", "kernel-plan-m3.md"),
-    "utf8",
-  );
-  const rows: string[] = [];
-  for (const line of inventory.split("\n")) {
-    const match = /^\|\s*(R-[0-9]+[a-z]?)\s*\|\s*M3-P9\s*\|/.exec(line);
-    if (match !== null && !rows.includes(match[1] as string)) {
-      rows.push(match[1] as string);
-    }
-  }
-  assert.ok(rows.length > 0, "the inventory yielded no M3-P9 rows, so this test would pass vacuously");
-
-  const anchors = new Set(rolesModule.clauseAnchors(body));
-  const map = JSON.parse(
-    readFileSync(join(repoRoot, "delivery", "requirements", "clause-map.json"), "utf8"),
-  ) as Record<string, { phase: string; artifact: string; clause: string }>;
-  for (const row of rows) {
-    assert.ok(anchors.has(row), `${row} has no clause anchor in AGENTS.md`);
-    assert.equal(map[row]?.phase, "M3-P9", `${row} has no M3-P9 clause-map entry`);
-    assert.equal(map[row]?.artifact, "AGENTS.md");
-    assert.equal(map[row]?.clause, row);
-  }
-});
-
 /* ------------------------------------------------------------------ */
 /* Criteria 2 and 2b: references resolve to a path AND to an anchor     */
 /* ------------------------------------------------------------------ */

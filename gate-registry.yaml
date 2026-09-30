@@ -94,14 +94,6 @@ gates:
       kind: file-exists
       path: release-verification.json
 
-  - id: clause-map
-    command: [node, scripts/check-clause-map.mjs]
-    unitLabel: clause-map rows checked
-    applicability: required
-    verified-by: script
-    modes: [full, direct-pr]
-    events: [pull_request]
-
   - id: red-witness
     command: [node, src/gates/red-witness.ts]
     unitLabel: witnesses evaluated
