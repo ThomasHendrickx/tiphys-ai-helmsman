@@ -76,3 +76,33 @@ failed command as a negative answer, and every git flag this phase added,
 run against git 2.34.1.
 
 The owner is told asynchronously, not asked.
+
+## Round 4 and the merge (heads 0027bbb and ee56470)
+
+Fix round 4, fresh implementer (0027bbb): CR-M6P3A-07 = CR-M6P3B-06 fixed (a
+failed `git worktree list` refuses `pool destroy`; git's unknown-switch
+refusal of `-z` falls back to the newline listing) and CR-M6P3A-08 fixed
+(quoted `+++` header with a trailing TAB). Its derivations found three more
+fail-open probes (doctor `check-ignore`, two `credential.helper` reads),
+fixed. Each fix is proven red-then-green by its named test, under git 2.43.0
+and 2.34.1.
+
+Review C, the third review contract (fix-regression-first, sonnet):
+m6-p3-hazard-c.json at 0027bbb, APPROVE, three lows, no change:
+CR-M6P3C-01 (a crafted path with an embedded newline and `worktree ` line
+fools the git < 2.36 fallback; default destroy still requires the recorded
+tip), CR-M6P3C-02 (a round-3 test's live anchor needs git 2.36), CR-M6P3C-03
+(a git that exits 0 and prints nothing reads as no other worktree).
+
+Reviews A (m6-p3-hazard-a.json) and B (m6-p3-hazard-b.json) are committed as
+they stood at ea3edb3. Their only blocking finding, the regression above, is
+closed by the proven fix, without a reviewer re-check (the owner,
+2026-09-30: "skip reviewer re-checks of fixes proven by their tests").
+
+ee56470: CI's macOS job was red on a round-4 test that assumed no
+system-level git config. The test now sets `GIT_CONFIG_NOSYSTEM=1`, as every
+real child environment does (src/exec/env.ts:444); proven red with a
+stand-in system `osxkeychain` helper and green after. Same rule: no
+reviewer re-check.
+
+Pair: A, B and C are one vendor, merged under the single-vendor exception.
