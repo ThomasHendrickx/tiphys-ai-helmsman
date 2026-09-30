@@ -57,20 +57,19 @@ mechanisms:
       at run time rather than pinning a count, because these registries are
       append-only.
     siblings:
-      - scripts/check-brief-drift.mjs
       - src/roles.ts
       - test/implementer-brief.test.ts
     evidence:
       - CV-1 and contract A finding 3 in delivery/review/clean-room-m3-p6-criteria.md, two clean-room contracts reaching the mode seat from different directions on one head
       - DV-1 in delivery/review/verification-m3-p6-fix-round.md, the selection seat, silent to the whole suite and to every gate in the PR bundle
-      - "M3-P6 fix round 2 measured `scripts/render-agent-rules-gates.mjs` carrying the same defect UNFIXED: its rowCount is registry-derived, so the check reports 15 gates over a CLAUDE.md block holding 13, with the suite green"
+      - "M3-P6 fix round 2 measured the CLAUDE.md gate-block renderer (deleted in M6-P3) carrying the same defect UNFIXED: its rowCount is registry-derived, so the check reports 15 gates over a CLAUDE.md block holding 13, with the suite green"
 structural-consequence:
-  - target: scripts/check-brief-drift.mjs
+  - target: src/commands/brief.ts
     status: applied
     change: >-
-      The drift check pins its subject outside the artifact it audits and counts
-      the rows actually compared, so a narrowing inside the loop cannot be
-      silent.
+      The brief carries no copy of the gate list: brief compose renders it from
+      the project's registry at compose time, with the mode pinned in code, so
+      there is no copy to drift and no subject a brief edit can narrow (M6-P3).
   - target: test/implementer-brief.test.ts
     status: applied
     change: >-

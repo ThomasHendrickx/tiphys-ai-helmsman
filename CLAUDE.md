@@ -212,7 +212,7 @@ artifact behind it is treated as unknown.
    work order is concurrent, and the pre-pass must be written down before
    dispatch, not asserted. M2's is `delivery/plan/m2-conflict-pre-pass.md`:
    M2-P1 serialises, M2-P2 to M2-P8 are mutually disjoint, M2-P9 runs last.
-   The shared registries (`test/behaviors.json`, `gates.manifest.json`,
+   The shared registries (`test/behaviors.json`,
    `delivery/requirements/clause-map.json`) are append-only and resolved as a
    union against the merge base; they never re-serialise phases.
 
@@ -514,52 +514,15 @@ for. PR #30 is what that exemption cost.
 
 ### A green BUNDLE is not evidence that a PARTICULAR gate asserted anything
 
-**UPDATED BY M5-P4: `summary.json` IS NOW UPLOADED, so read it first.** The
-`gates` job uploads exactly ONE file per event, the bundle's own summary and
-nothing else from the evidence directory, with 7-day retention:
-
-| event | artifact | file |
-|---|---|---|
-| `pull_request` | `gates-summary-pull-request-attempt-<n>` | `<evidence>/pr-bundle/summary.json` |
-| `push` | `gates-summary-push-attempt-<n>` | `<evidence>/main-bundle/summary.json` |
-
-To read it, list the run's artifacts (`GET /repos/<owner>/<repo>/actions/runs/<run-id>/artifacts`,
-or the run page), download the one for that event and attempt, unzip it, and
-read the row for the gate in `gates[]`: its `status`, `units`, `applicable`
-and `vacuous`. That row IS the per-gate evidence, so no deduction is needed.
-The procedure below still applies when there is no artifact to read: a run
-older than seven days, a run cancelled before its upload step, or a head from
-before M5-P4. The upload steps and their exactly-one-file property are
-guarded by test/gate-registry.test.ts:2090.
-
-Without an artifact to read, a reviewer asking whether gate X asserted
-anything on a head has the JOB LOG, and the log prints bundle-level counts, not
-per-gate rows.
-
-So quoting `declared N applicable N verdict N green N` as evidence about one
-gate is a bundle-level green being passed off as a gate-level one. That is the
-same substitution T-009 names, one scope smaller.
-
-Four printed facts settle it, and all four are needed:
-
-1. the gate id is in the `gates.manifest.json` **on that branch** (the harness
-   runs `--manifest`, not `--registry`, so registry membership is not enough);
-2. the bundle's `declared` count equals that manifest's gate count;
-3. the `required gate(s) not applicable:` line does NOT name the gate (a
-   required gate that was skipped is named there, which is what makes its
-   absence informative);
-4. the assertion line reports `zero error; zero vacuous`.
-
-Worked example, `brief-drift` at head `077f339`, run 31610473840: manifest 12
-ids against `main`'s 11, `declared 12`, not-applicable named only `citations`,
-`12 gate record(s) match section 1.4 ... zero error; zero vacuous`.
-
-**Say which half is observed and which is deduced.** In that example the units
-and the green came DIRECTLY from a separate workflow step; that the gate sat
-among the green inside the ASSERTED BUNDLE is a deduction from the four facts,
-because no per-gate line names it. Both are sound. Reporting the second as
-though it were the first is how a bundle-level green becomes a gate-level claim
-in the next document that cites it.
+Quote the gate's own row, never the bundle's counts. The runner prints one
+`gates: <id>: <status>: <detail>` line per gate in the job log, and the `gates`
+job uploads that run's `summary.json` (artifact
+`gates-summary-<pull-request|push>-attempt-<n>`, file
+`<evidence>/summary.json`, 7-day retention), whose `gates[]` row carries the
+gate's `status`, `units`, `applicable` and `vacuous`. Quoting
+`declared N applicable N verdict N green N` as evidence about one gate is a
+bundle-level green passed off as a gate-level one, the substitution T-009
+names, one scope smaller.
 
 ## Branch names are load-bearing, not labels (binding)
 
@@ -655,7 +618,7 @@ The schemes:
   rather than picking one. This entry exists because the namespace was
   unregistered and collided: `A-4` meant the npm publish credential in the M3
   plan and branch deletion in STATE.md, while `A-3` meant three different
-  things, one of them a literal string inside `gates.manifest.json` on `main`
+  things, one of them a literal string inside the gate manifest on `main`
   (`implementer-token-present-owner-action-a-3`). A shipped configuration
   string is why an id here is not free to renumber, so allocate a fresh id and
   never reuse a retired one.

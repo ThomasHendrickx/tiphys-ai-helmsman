@@ -162,7 +162,6 @@ modes:
       - migrations
       - clause-map
       - red-witness
-      - brief-drift
       - check-agents-references
       - check-dual-review
       - license

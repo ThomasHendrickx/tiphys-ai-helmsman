@@ -103,13 +103,12 @@ mechanisms:
       independently, and derive per item at run time rather than pinning a
       count, because these registries are append-only.
     siblings:
-      - scripts/check-brief-drift.mjs
       - src/roles.ts
       - test/implementer-brief.test.ts
     evidence:
       - CV-1 and contract A finding 3 in delivery/review/clean-room-m3-p6-criteria.md, two clean-room contracts reaching the mode seat from different directions on one head
       - DV-1 in delivery/review/verification-m3-p6-fix-round.md, the selection seat, silent to the whole suite and to every gate in the PR bundle
-      - "M3-P6 fix round 2 measured `scripts/render-agent-rules-gates.mjs` carrying the same defect UNFIXED: its rowCount is registry-derived, so the check reports 15 gates over a CLAUDE.md block holding 13, with the suite green"
+      - "M3-P6 fix round 2 measured the CLAUDE.md gate-block renderer (deleted in M6-P3) carrying the same defect UNFIXED: its rowCount is registry-derived, so the check reports 15 gates over a CLAUDE.md block holding 13, with the suite green"
 
   - key: claim-file-mutual-exclusion-by-o-excl
     name: Claim file (mutual exclusion by O_EXCL)
