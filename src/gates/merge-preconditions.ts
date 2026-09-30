@@ -1675,7 +1675,10 @@ function readReviewCorpus(contextDirectory: string, head: string, phase: string,
   if (regime !== undefined) {
     return { ok: false, reason: regime.reason };
   }
-  const families = readReviewFamilies(contextDirectory);
+  /* At the merge base when there is one, like the runtime set (M6-P5 fix round
+     1, CR-M6P5A-03): a change must not declare the exception that admits its
+     own correlated pair. Without `--base` there is no base, and HEAD is read. */
+  const families = mergeBase === undefined ? readReviewFamilies(contextDirectory) : readReviewFamilies(contextDirectory, mergeBase);
   if (families.kind === "error") {
     return { ok: false, reason: families.reason };
   }
@@ -1744,6 +1747,19 @@ function describeCount(review: Extract<ReviewCorpus, { ok: true }>, head: string
   return lines;
 }
 
+/**
+ * The committed refusals no counted record names (M6-P5 fix round 1,
+ * CR-M6P5A-04). Each blocks the merge in either tier: a refusal is read from
+ * the committed verdict whether or not the kernel launched the review.
+ */
+function unclaimedRefusalFaults(review: Extract<ReviewCorpus, { ok: true }>, head: string): string[] {
+  return review.count.refusing.map(
+    (refusal) =>
+      `${refusal.path} reads ${refusal.word} for ${refusal.relation.kind === "same" ? `this head ${head}` : `head ${refusal.head}, a paperwork-only ancestor of ${head}`}, ` +
+      "and no counted kernel record names it; a committed refusal blocks the merge whether or not the kernel launched it",
+  );
+}
+
 /** The verdict-selection row, which says what every other row is ABOUT. */
 function selectionRow(
   review: Extract<ReviewCorpus, { ok: true }>,
@@ -1783,14 +1799,15 @@ function reviewRows(
   phase: string,
 ): ConditionRow[] {
   const rows: ConditionRow[] = [];
+  const refusals = unclaimedRefusalFaults(review, head);
   if (tier === "single") {
     const single = judgeSingleApproves(review.forHead);
     rows.push({
       id: "condition-2",
       clause: "DR-0063 single: the one hazard review of this head approves",
-      status: single.ok ? "green" : "red",
+      status: single.ok && refusals.length === 0 ? "green" : "red",
       head,
-      sentence: single.sentence,
+      sentence: [...(single.ok ? [] : [single.sentence]), ...refusals].join("; ") || single.sentence,
     });
     return rows;
   }
@@ -1802,11 +1819,14 @@ function reviewRows(
     head,
     sentence: families.sentence,
   });
-  const faults = review.count.counted.flatMap((entry) =>
-    verdictApprovalFaults({ path: entry.verdictPath, record: entry.verdict }, phase, entry.record.head).map(
-      (fault) => `${fault.pointer} ${fault.message}`,
+  const faults = [
+    ...review.count.counted.flatMap((entry) =>
+      verdictApprovalFaults({ path: entry.verdictPath, record: entry.verdict }, phase, entry.record.head).map(
+        (fault) => `${fault.pointer} ${fault.message}`,
+      ),
     ),
-  );
+    ...refusals,
+  ];
   rows.push({
     id: "condition-2",
     clause: "DR-0012:23 no unresolved finding at medium or above",

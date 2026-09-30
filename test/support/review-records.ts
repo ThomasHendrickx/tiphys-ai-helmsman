@@ -18,6 +18,10 @@ export interface RecordFields {
   model: string | null;
   verdictPath: string;
   sha256: string | null;
+  /** The vocabulary the record was minted under; test-vendors when absent. */
+  vocabularyId?: string;
+  /** The executor's exit code; 0 when absent. */
+  executorExitCode?: number | null;
 }
 
 export function kernelRecord(fields: RecordFields): Record<string, unknown> {
@@ -31,7 +35,7 @@ export function kernelRecord(fields: RecordFields): Record<string, unknown> {
     tier: "strongest",
     requestedModel: "a-requested-model",
     executor: "test-executor",
-    vocabulary: { id: "test-vendors", version: 1 },
+    vocabulary: { id: fields.vocabularyId ?? "test-vendors", version: 1 },
     observation: {
       model: fields.model,
       topLevelModels: fields.model === null ? [] : [fields.model],
@@ -49,7 +53,7 @@ export function kernelRecord(fields: RecordFields): Record<string, unknown> {
     modelUsage: null,
     startedAt: "2026-09-30T00:00:00.000Z",
     endedAt: "2026-09-30T00:01:00.000Z",
-    executorExitCode: 0,
+    executorExitCode: fields.executorExitCode === undefined ? 0 : fields.executorExitCode,
   };
 }
 

@@ -548,12 +548,30 @@ export interface CountedReview {
   relation: HeadRelation;
 }
 
+/** A committed verdict no counted record names, which does not APPROVE the audited head. */
+export interface UnclaimedRefusal {
+  path: string;
+  /** The verdict's own `verdict` word, printed as written. */
+  word: string;
+  /** The verdict's own `head`, which admits it here as the base's reading did. */
+  head: string;
+  relation: HeadRelation;
+}
+
 export interface ReviewCount {
   counted: CountedReview[];
   /** Records that do not count, each with the reason. */
   excluded: { path: string; reason: string }[];
-  /** Committed verdicts no counted record names. They neither count nor refuse. */
+  /** Committed verdicts no counted record names. They never count. */
   unclaimed: string[];
+  /**
+   * The unclaimed verdicts that refuse this head: not APPROVE, and their own
+   * `head` is the audited commit or admitted by the ancestry rule. A refusal
+   * blocks the merge whether or not the kernel launched it (M6-P5 fix round 1,
+   * CR-M6P5A-04): DR-0062 takes an unlaunched review out of the COUNT, and a
+   * recorded refusal is not something a merge may ignore.
+   */
+  refusing: UnclaimedRefusal[];
 }
 
 /**
@@ -598,6 +616,15 @@ export function countKernelReviews(input: {
     }
     if (record.verdict.sha256 === null) {
       excluded.push({ path, reason: `hashed no verdict (${record.verdict.reason})` });
+      continue;
+    }
+    if (record.executorExitCode !== 0) {
+      excluded.push({
+        path,
+        reason:
+          `records that the executor exited ${record.executorExitCode === null ? "without an exit code" : String(record.executorExitCode)}, ` +
+          "so the kernel recorded a failed run and it does not count",
+      });
       continue;
     }
     const relation = boundAtMergeBase(
@@ -651,7 +678,25 @@ export function countKernelReviews(input: {
     counted.push({ recordPath: path, record, verdictPath: record.verdict.path, verdict: verdict.record, relation });
   }
   const unclaimed = [...verdictByPath.keys()].filter((path) => !verdictPaths.has(path)).sort();
-  return { ok: true, count: { counted, excluded, unclaimed } };
+  const refusing: UnclaimedRefusal[] = [];
+  for (const path of unclaimed) {
+    const document = (verdictByPath.get(path) as LoadedVerdict).record;
+    const word = document["verdict"];
+    const declared = document["head"];
+    if (word === "APPROVE" || typeof declared !== "string") {
+      continue;
+    }
+    const relation = boundAtMergeBase(
+      contextDirectory,
+      declared,
+      input.mergeBase,
+      relateDeclaredHead(contextDirectory, declared, auditedHead),
+    );
+    if (relation.kind === "same" || relation.kind === "evidence-only-ancestor") {
+      refusing.push({ path, word: typeof word === "string" ? word : JSON.stringify(word), head: declared, relation });
+    }
+  }
+  return { ok: true, count: { counted, excluded, unclaimed, refusing } };
 }
 
 /**
@@ -662,6 +707,13 @@ export function countKernelReviews(input: {
  * available and every counted review was observed on it. `unknown` is never
  * distinct from anything. The declaration is falsified by any committed record
  * observed on a known family it does not list.
+ *
+ * A family token means what the vocabulary that minted it says, so counted
+ * reviews minted under different vocabulary ids are not comparable and the
+ * rule is red, naming the ids (M6-P5 fix round 1, CR-M6P5A-05; the same refusal
+ * src/model-resolution.ts makes). A committed record minted under another
+ * vocabulary than the counted reviews neither supports nor contradicts the
+ * declaration, and is named as not comparable.
  */
 export function judgeFamilies(
   counted: readonly CountedReview[],
@@ -670,6 +722,18 @@ export function judgeFamilies(
 ): { ok: boolean; exceptionUsed: boolean; sentence: string } {
   const families = counted.map((review) => review.record.family);
   const named = counted.map((review) => `${review.record.taskId} ${review.record.family}`).join(", ");
+  const vocabularies = [...new Set(counted.map((review) => review.record.vocabulary.id))].sort();
+  if (vocabularies.length > 1) {
+    return {
+      ok: false,
+      exceptionUsed: false,
+      sentence:
+        `the counted reviews were minted under different family vocabularies, ${vocabularies.join(" and ")} ` +
+        `(${counted.map((review) => `${review.record.taskId} ${review.record.vocabulary.id}`).join(", ")}), ` +
+        "so their family tokens are not comparable and no family rule can be judged from them",
+    };
+  }
+  const vocabulary = vocabularies[0];
   const known = [...new Set(families.filter((family) => family !== UNKNOWN_FAMILY))].sort();
   if (known.length >= 2) {
     return {
@@ -707,7 +771,9 @@ export function judgeFamilies(
         `covers only the declared family ${declared}`,
     };
   }
-  const contradicting = allRecords.filter(
+  const comparable = allRecords.filter((entry) => entry.record.vocabulary.id === vocabulary);
+  const incomparable = allRecords.filter((entry) => entry.record.vocabulary.id !== vocabulary);
+  const contradicting = comparable.filter(
     (entry) => entry.record.family !== UNKNOWN_FAMILY && !declaration.families.includes(entry.record.family),
   );
   if (contradicting.length > 0) {
@@ -726,6 +792,10 @@ export function judgeFamilies(
     sentence:
       `SINGLE-FAMILY EXCEPTION USED (DR-0038): the counted reviews were observed on one family (${named}), ` +
       `the one family charter.yaml declares available (reason: ${declaration.reason}); ` +
-      reviewFamiliesProvenanceLine(declaration.provenance),
+      reviewFamiliesProvenanceLine(declaration.provenance) +
+      (incomparable.length === 0
+        ? ""
+        : `; not comparable with the declaration, minted under another vocabulary than ${String(vocabulary)}: ` +
+          incomparable.map((entry) => `${entry.path} (${entry.record.vocabulary.id})`).join(", ")),
   };
 }
