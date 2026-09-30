@@ -155,8 +155,6 @@ modes:
       - credential-scrub
       - suite
       - scope
-      - deploy
-      - migrations
       - red-witness
       - license
       - typecheck

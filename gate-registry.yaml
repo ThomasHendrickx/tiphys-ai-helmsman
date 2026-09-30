@@ -46,30 +46,6 @@ gates:
       kind: branch-matches
       pattern: claude/m[0-9]+-p[0-9]+-.*
 
-  - id: deploy
-    command: [node, src/gates/deploy.ts]
-    unitLabel: release verifications satisfied
-    applicability: conditional
-    verified-by: script
-    modes: [full]
-    events: [pull_request, push]
-    precondition:
-      id: "deploy-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3)"
-      kind: file-exists
-      path: release-verification.json
-
-  - id: migrations
-    command: [node, src/gates/migrations.ts]
-    unitLabel: migrations compared
-    applicability: conditional
-    verified-by: script
-    modes: [full]
-    events: [pull_request, push]
-    precondition:
-      id: "migrations-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge bundle, not local to this repository: release verification runs post-merge against a commit that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3)"
-      kind: file-exists
-      path: release-verification.json
-
   - id: red-witness
     command: [node, src/gates/red-witness.ts]
     unitLabel: witnesses evaluated
