@@ -1,24 +1,25 @@
 /**
- * THE DUAL-REVIEW DECORRELATION TESTS (kernel plan M3, M3-P9 criteria 7
- * and 7b; M3R-004, DR-0012, T-001, T-007).
+ * THE REVIEW-EVIDENCE TESTS THAT OUTLIVED THE DECORRELATION CHECK (kernel plan
+ * M3-P9, M5-P3; M6-P5 deleted `scripts/check-dual-review.mjs` and the
+ * `dual-review-decorrelation` check, DR-0062).
  *
- * FIVE DIRECTIONS from criterion 7 and two more from 7b, each driven by real
- * verdict FIXTURES under `witness/fixtures/dual-review/` rather than by
- * documents this file builds, so what is exercised is a document a reviewer
- * could actually have written.
+ * What stays: the verdict FIXTURES under `witness/fixtures/dual-review/` are
+ * real verdicts that validate; the merge-authority regime a context declares is
+ * read fail-closed by `verdict-pair-approves`; and the merge gate, run through
+ * the REAL runner and the shipped `gate-registry.yaml`, is red for a missing
+ * review and counts reviews through the kernel's review records.
  *
  * THE CONTEXT IS ASSEMBLED FROM SHIPPED ARTIFACTS. Each staged directory
  * carries the repository's own `assurance-modes.yaml` and a charter derived
  * from `templates/charter.example.yaml`, because the check reads the declared
- * mode's `merge-authority` rather than assuming one. Copying the real documents
- * instead of writing a two-line stand-in is section 2.3 rule 4: a fixture that
- * simplifies the thing under test stops testing it.
+ * mode's `merge-authority` rather than assuming one.
  *
- * `src` and `scripts` are imported through the computed-URL dynamic import
- * pattern (CLAUDE.md standing warning 4).
+ * `src` is imported through the computed-URL dynamic import pattern (CLAUDE.md
+ * standing warning 4).
  */
 
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   copyFileSync,
   mkdirSync,
@@ -32,13 +33,14 @@ import {
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, sep } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { realpathSync as ceilingRealpath } from "node:fs";
 import { tmpdir as ceilingTmpdir } from "node:os";
 import { delimiter as ceilingDelimiter } from "node:path";
-import { withDualReviewGate } from "./support/dual-review-registry.ts";
+import { recordVerdicts } from "./support/review-records.ts";
+import { removeGitDirectory } from "./support/remove-git-directory.ts";
 
 /*
  * NO REPOSITORY ABOVE THE SCRATCH ROOT (kernel 0.2.1 fix round 3). Tests in
@@ -76,32 +78,22 @@ const INHERITED_REPOSITORY_ENV = [
 for (const name of INHERITED_REPOSITORY_ENV) {
   delete process.env[name];
 }
-
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const cliEntry = join(repoRoot, "bin", "tiphys.ts");
-const scriptPath = join(repoRoot, "scripts", "check-dual-review.mjs");
 const fixturesDir = join(repoRoot, "witness", "fixtures", "dual-review");
 
 const checksModule = (await import(new URL("../src/checks.ts", import.meta.url).href)) as {
-  registeredChecks: () => readonly { id: string; type: string; requiresContext: boolean }[];
-  deregisterCheck: (id: string) => boolean;
-  registerCheck: (check: unknown) => void;
-  dualReviewDecorrelation: { id: string };
-  DECORRELATION_DIMENSIONS: readonly string[];
-  DELEGATED_MERGE_AUTHORITY: string;
-};
-
-const scriptModule = (await import(
-  new URL("../scripts/check-dual-review.mjs", import.meta.url).href
-)) as {
-  evaluate: (directory: string) => {
-    status: string;
-    units: number;
-    lines: string[];
-    checksRun: number;
-    distinctViolations?: number;
-  };
-  CHECK_ID: string;
+  missingRegimeDocument: (contextDirectory: string) => { document: string; reason: string } | undefined;
+  readReviewFamilies: (
+    contextDirectory: string,
+  ) =>
+    | { kind: "absent" }
+    | { kind: "error"; reason: string }
+    | { kind: "declared"; families: string[]; provenance: { sha256: string } };
+  loadCommittedVerdicts: (
+    contextDirectory: string,
+    source?: { kind: "commit"; ref: string; refSha: string; scope: string },
+  ) => { ok: true; verdicts: unknown[] } | { ok: false; reason: string };
 };
 
 const yamlModule = (await import("yaml")) as unknown as {
@@ -133,31 +125,7 @@ function stageContext(mode: string, fixtures: string[]): string {
   return dir;
 }
 
-/** Run the shipped script against a staged context. */
-function runScript(dir: string): { status: number; output: string } {
-  const run = spawnSync(process.execPath, [scriptPath, dir], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
-  return { status: run.status ?? -1, output: `${run.stdout}${run.stderr}` };
-}
 
-/** Stage, run, tear down. */
-function withContext<T>(mode: string, fixtures: string[], body: (dir: string) => T): T {
-  const dir = stageContext(mode, fixtures);
-  try {
-    return body(dir);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-const DECORRELATED = ["decorrelated-criteria.yaml", "decorrelated-hazard.yaml"];
-const SHARED_FAMILY = ["decorrelated-criteria.yaml", "shared-family-hazard.yaml"];
-const SHARED_FRAMING = ["decorrelated-criteria.yaml", "shared-framing-hazard.yaml"];
-const SHARED_CONTRACT = ["decorrelated-criteria.yaml", "shared-contract-criteria.yaml"];
-
-/* ------------------------------------------------------------------ */
 /* The fixtures are real verdicts, not stand-ins                        */
 /* ------------------------------------------------------------------ */
 
@@ -229,382 +197,37 @@ test("the fixture framings name framings the shipped checklist actually declares
 });
 
 /* ------------------------------------------------------------------ */
-/* Criterion 7, the five directions                                     */
+/* The merge-authority regime is read fail-closed                       */
 /* ------------------------------------------------------------------ */
 
-test("two verdicts for one head with distinct produced-by and framing exit 0", () => {
-  withContext("full", DECORRELATED, (dir) => {
-    const run = runScript(dir);
-    assert.equal(run.status, 0, run.output);
-    assert.match(run.output, /check-dual-review: green \(2 review verdicts examined/);
-    /* AND THE GUARD ACTUALLY RAN. A green beside "0 registered check(s)" is a
-       different fact from a green beside "1", and conflating them is how a
-       deregistered check reads as a passing one. */
-    assert.match(run.output, /1 registered check\(s\) named dual-review-decorrelation ran over 2 verdict\(s\)/);
-  });
-});
-
-test("two verdicts sharing a produced-by model family exit nonzero naming the duplicated value", () => {
-  withContext("full", SHARED_FAMILY, (dir) => {
-    const run = runScript(dir);
-    assert.equal(run.status, 1, run.output);
-    assert.match(
-      run.output,
-      /produced-by value family-a occurs in 2 of the 2 verdicts for phase M3-P9/,
-    );
-    assert.match(run.output, /not decorrelated on produced-by/);
-  });
-});
-
-test("one verdict for a head exits nonzero saying a delegated grant needs two", () => {
-  withContext("full", [DECORRELATED[0] as string], (dir) => {
-    const run = runScript(dir);
-    assert.equal(run.status, 1, run.output);
-    /* THE CHECK IS NAMED, AND THAT IS NOT DECORATION. M4-P10 added a SECOND
-       pair-size rule, in `verdict-pair-approves`, whose message opens with the
-       same twelve words. A regex stopping at the shared prefix therefore passed
-       on EITHER guard, so the sibling MASKED this one: its stored witness,
-       which defangs the decorrelation size rule alone, left this test green.
-       Measured by running that witness, which is what found it. Asserting the
-       tail and the attribution is what makes this test about the rule it
-       claims to guard.
-
-       THE PROVENANCE TAIL SITS BETWEEN THEM SINCE M4-P11 (stack integration,
-       2026-09-16), so the two halves are matched across it rather than
-       adjacently. M4-P11 makes every sentence about a corpus end with the
-       source it was actually read from, which is SC-011 applied to the corpus,
-       and that parenthetical carries nested parentheses of its own, so it is
-       crossed with `.*` rather than enumerated. The property this assertion
-       exists for is unchanged: the DISTINGUISHING TAIL and the ATTRIBUTION are
-       both required, and `.` does not cross a newline, so both must still be on
-       ONE line of output. */
-    assert.match(
-      run.output,
-      /only 1 verdict document\(s\) exist under delivery\/review for phase M3-P9 at head [0-9a-f]{40}, and a delegated grant requires two independent clean-room reviews of the exact head .*\(check: dual-review-decorrelation\)/,
-      run.output,
-    );
-  });
-});
-
-test("a mode whose merge-authority is owner exits 0 on the very pair that reddens under a delegated grant", () => {
-  /* THE APPLICABILITY DIRECTION, and the fixtures are IDENTICAL to the
-     shared-family case above. Only the charter's declared mode differs, so the
-     result isolates the applicability rule rather than confounding it with a
-     different pair of documents. */
-  withContext("direct-pr", SHARED_FAMILY, (dir) => {
-    const run = runScript(dir);
-    assert.equal(run.status, 0, run.output);
-    /* IT SAYS SO, rather than passing silently. "Nothing to check here" and
-       "everything checked and fine" must never print the same line (SC-011). */
-    assert.match(
-      run.output,
-      /mode direct-pr declares merge-authority owner, which is not a delegated grant/,
-    );
-  });
-
-  /* AND THE MODE DOCUMENT REALLY SAYS THAT, read rather than assumed, so this
-     test is not asserting against a memory of the shipped data. */
-  const modes = yamlModule.parse(
-    readFileSync(join(repoRoot, "assurance-modes.yaml"), "utf8"),
-  ) as { modes: { id: string; "merge-authority": string }[] };
-  assert.equal(
-    modes.modes.find((mode) => mode.id === "direct-pr")?.["merge-authority"],
-    "owner",
+/** `tiphys validate --type verdict` over the one staged verdict, with the directory as context. */
+function validateInContext(dir: string, fixture: string): { status: number; output: string } {
+  const run = spawnSync(
+    process.execPath,
+    [cliEntry, "validate", "--type", "verdict", "--context", dir, join(dir, "delivery", "review", fixture)],
+    { cwd: repoRoot, encoding: "utf8" },
   );
-  assert.equal(
-    modes.modes.find((mode) => mode.id === "full")?.["merge-authority"],
-    checksModule.DELEGATED_MERGE_AUTHORITY,
-  );
-});
+  return { status: run.status ?? -1, output: `${run.stdout}${run.stderr}` };
+}
 
-test("deregistering dual-review-decorrelation makes the shared-family fixture pass, and restoring it makes it fail again", () => {
-  /* THE KIND B WITNESS (section 2.3 rule 3). Not a schema keyword: a Kind B
-     criterion offered a keyword witness would have misclassified itself. The
-     script's own `evaluate` is called, not a copy of its loop, so what is shown
-     to depend on the registration is the shipped code path. */
-  withContext("full", SHARED_FAMILY, (dir) => {
-    const before = scriptModule.evaluate(dir);
-    assert.equal(before.status, "red");
-    assert.equal(before.checksRun, 1);
-
-    assert.equal(checksModule.deregisterCheck("dual-review-decorrelation"), true);
-    try {
-      const during = scriptModule.evaluate(dir);
-      assert.equal(during.status, "green");
-      assert.equal(during.checksRun, 0);
-      /* M4-P10: a SECOND check now runs in this gate, so "no lines at all" is
-         no longer the right assertion and replacing it with one is not a
-         weakening. What this witness is about is that nothing OBJECTS once
-         `dual-review-decorrelation` is gone, and an objection is an INVALID
-         line. `verdict-pair-approves` is still registered here and still
-         REPORTS, which is the correct behaviour: the shared-family pair both
-         approve and carry no blocking finding, so condition 2 is met while
-         condition 1 is no longer being checked at all. */
-      assert.deepEqual(
-        during.lines.filter((line) => line.startsWith("INVALID")),
-        [],
-      );
-      assert.deepEqual(
-        during.lines.filter((line) => line.includes("dual-review-decorrelation")),
-        [],
-      );
-    } finally {
-      checksModule.registerCheck(checksModule.dualReviewDecorrelation);
-    }
-
-    const after = scriptModule.evaluate(dir);
-    assert.equal(after.status, "red");
-    assert.equal(after.checksRun, 1);
-  });
-});
-
-test("dual-review-decorrelation is registered in the shipped registry for the verdict type and requires a context", () => {
-  /* THE OTHER HALF of the witness above, and it has to be a separate assertion.
-     The script exits 0 when no check is registered, which is what makes the
-     deregistration witness real; that same property means a green from the
-     script is only evidence if the check is there. This is what says it is. */
-  const found = checksModule
-    .registeredChecks()
-    .filter((check) => check.id === "dual-review-decorrelation");
-  assert.equal(found.length, 1, "the check is not registered exactly once");
-  assert.equal(found[0]?.type, "verdict");
-  /* requiresContext TRUE, so running the validator with no `--context` prints
-     `SKIPPED dual-review-decorrelation no context` rather than a pass (and,
-     since kernel 0.2.1, exits 0 when that is the only non-pass result). */
-  assert.equal(found[0]?.requiresContext, true);
-});
-
-/* ------------------------------------------------------------------ */
-/* Criterion 7b: contract distinctness, witnessed separately            */
-/* ------------------------------------------------------------------ */
-
-test("the same pair with one criteria contract and one hazard contract exits 0", () => {
-  withContext("full", DECORRELATED, (dir) => {
-    assert.equal(runScript(dir).status, 0);
-  });
-  /* AND THE TWO FIXTURES REALLY DIFFER ONLY WHERE CLAIMED, read out of the
-     documents rather than asserted about them. */
-  const read = (name: string) =>
-    yamlModule.parse(readFileSync(join(fixturesDir, name), "utf8")) as Record<
-      string,
-      unknown
-    >;
-  const a = read("decorrelated-criteria.yaml");
-  const b = read("shared-contract-criteria.yaml");
-  assert.notEqual(a["produced-by"], b["produced-by"]);
-  assert.notEqual(a["framing"], b["framing"]);
-  assert.equal(a["review-contract"], b["review-contract"]);
-});
-
-/* ------------------------------------------------------------------ */
-/* CR-001: ABSENT IS NOT DISTINCT, and it is not a not-applicable either */
-/* ------------------------------------------------------------------ */
-
-/**
- * Stage a context and then REMOVE ONE LINE from one staged document.
- *
- * THE MUTATION IS A DELETION FROM A REAL FIXTURE, not a hand-written document.
- * That matters twice over. The fixtures are the ones criterion 7's own
- * directions use and every one of them validates against the shipped schema
- * (the first test in this file), so the ONLY delta between the pair that
- * correctly reddens and the pair below is the missing line, and nothing else
- * can be the cause of a different verdict. And a malformed verdict cannot be
- * COMMITTED as a fixture instead, because the schema test above walks every
- * `.yaml` under `witness/fixtures/dual-review/` and would refuse it, which is
- * the schema doing its job rather than an obstacle.
+/*
+ * ONE VERDICT UNDER A DELEGATED GRANT, so the pair rule of
+ * `verdict-pair-approves` reddens exactly when the regime is read as delegated.
+ * The not-a-delegated-grant arm is a REPORT, so a regime read wrongly as some
+ * other authority exits 0: that is the fail-open direction both tests below
+ * guard. M6-P5 moved them here from the deleted decorrelation check, whose
+ * regime reader `verdict-pair-approves` shares.
  */
-function withLineRemoved<T>(
-  fixtures: string[],
-  target: { file: "modes" | string; line: RegExp },
-  body: (dir: string) => T,
-): T {
-  const dir = stageContext("full", fixtures);
-  try {
-    const path =
-      target.file === "modes"
-        ? join(dir, "assurance-modes.yaml")
-        : join(dir, "delivery", "review", target.file);
-    const before = readFileSync(path, "utf8");
-    /* THE GUARD IS THAT THE LINE EXISTS, never that the text changed. A
-       replacement equal to the original is a silent no-op, and a probe whose
-       mutation did not apply reports the control's result as the mutant's. */
-    assert.match(before, target.line, `no line matching ${String(target.line)} in ${path}`);
-    writeFileSync(path, before.replace(target.line, ""));
-    return body(dir);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-test("a verdict that states no produced-by is refused rather than read as distinct from the other", () => {
-  /* THE FAIL-OPEN DIRECTION, and it is the whole reason this round exists.
-     The pair is the SHARED-FAMILY pair, which the direction above proves
-     reddens. Deleting one side's `produced-by` used to make the two "differ",
-     and differing is what this check reads as decorrelated, so the pair that
-     must be refused exited 0 printing "distinct on produced-by, framing,
-     review-contract". Measured at d9d5a1d before the repair.
-
-     THE ASSERTIONS ARE IN BOTH DIRECTIONS ON PURPOSE. A test that only asserts
-     the exit code would still pass if the refusal came back with the WRONG
-     sentence, and the sentence is half the finding: "could not be shown" and
-     "was shown correlated" must not print the same line (SC-011). */
-  withLineRemoved(SHARED_FAMILY, { file: "shared-family-hazard.yaml", line: /^produced-by: .*\n/m }, (dir) => {
-    const run = runScript(dir);
-    assert.equal(run.status, 1, run.output);
-    assert.match(run.output, /shared-family-hazard\.yaml declares no produced-by/);
-    assert.match(run.output, /cannot be shown decorrelated on produced-by/);
-    /* THE FALSE SENTENCE IS GONE. This is the exact line the check printed
-       while exiting 0 on this input before the repair. */
-    assert.doesNotMatch(run.output, /are distinct on produced-by/);
-    /* AND IT IS NOT A NOT-APPLICABLE. Under an established delegated grant an
-       unshown precondition is refused, not excused. */
-    assert.doesNotMatch(run.output, /no decorrelation is required/);
-    assert.match(run.output, /1 registered check\(s\) named dual-review-decorrelation ran over 2 verdict\(s\)/);
-  });
-});
-
-test("two verdicts whose produced-by differs only by surrounding whitespace are not distinct", () => {
-  /* THE NEAR MISS OF THE SAME CHECK, and it was found by attacking the repair
-     rather than by the review. Establishing presence is not enough on its own:
-     once `produced-by` is present on both sides, `"family-a "` and `family-a`
-     are two different strings, "different" is what this check reads as
-     decorrelated, and ONE QUOTED SPACE turns a correlated pair green. Measured
-     before the trim existed: a trailing space and a leading space each exited 0
-     on the shared-family pair.
-
-     The value is trimmed for the comparison AND for the message, so the
-     diagnostic names the family rather than the padding. */
-  const dir = stageContext("full", SHARED_FAMILY);
-  try {
-    const path = join(dir, "delivery", "review", "shared-family-hazard.yaml");
-    const before = readFileSync(path, "utf8");
-    assert.match(before, /^produced-by: family-a$/m);
-    writeFileSync(path, before.replace(/^produced-by: family-a$/m, 'produced-by: "  family-a  "'));
-    const run = runScript(dir);
-    assert.equal(run.status, 1, run.output);
-    assert.match(
-      run.output,
-      /produced-by value family-a occurs in 2 of the 2 verdicts for phase M3-P9/,
-    );
-    assert.match(run.output, /not decorrelated on produced-by/);
-    /* AND THE MESSAGE CARRIES THE FAMILY, NOT THE PADDING. A diagnostic quoting
-       `  family-a  ` would send a reader looking for a value that is not the
-       one the check compared. */
-    assert.doesNotMatch(run.output, /produced-by value {2}family-a/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-/* ------------------------------------------------------------------ */
-/* Fix round 2: a comparison without a declared canonical form           */
-/* ------------------------------------------------------------------ */
-
-/* EVERY NON-ASCII CHARACTER BELOW IS BUILT FROM AN ESCAPE, NEVER PASTED.
-   CLAUDE.md's binding convention 3 requires authored files to be pure ASCII,
-   and the point is sharper than the rule: a literal U+200B in this file would
-   be INVISIBLE to the next reader, which is the very property under test. A
-   test whose data cannot be seen in its own source is a test nobody can
-   review. `String.fromCodePoint` keeps the byte out of the file and the
-   intent in it. */
-const CYRILLIC_SMALL_A = String.fromCodePoint(0x0430);
-const FULLWIDTH_SMALL_A = String.fromCodePoint(0xff41);
-const EN_DASH = String.fromCodePoint(0x2013);
-const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
-const SOFT_HYPHEN = String.fromCodePoint(0x00ad);
-
-/** Stage the shared-family pair, rewrite one side's produced-by, run. */
-function withProducedBy<T>(value: string, body: (run: ReturnType<typeof runScript>) => T): T {
-  const dir = stageContext("full", SHARED_FAMILY);
-  try {
-    const path = join(dir, "delivery", "review", "shared-family-hazard.yaml");
-    const before = readFileSync(path, "utf8");
-    assert.match(before, /^produced-by: family-a$/m);
-    const after = before.replace(/^produced-by: family-a$/m, `produced-by: "${value}"`);
-    assert.notEqual(after, before, "produced-by line not rewritten");
-    writeFileSync(path, after);
-    return body(runScript(dir));
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-}
-
-test("a lookalike or invisible character in produced-by does not make a shared model family distinct", () => {
-  /* THE FIX-ROUND-2 FINDING, AND THE FOUR MEMBERS ARE STRUCTURALLY DIFFERENT
-     ROUTES TO ONE OUTCOME rather than four spellings of one route:
-
-       - CYRILLIC SMALL LETTER A is a CROSS-SCRIPT HOMOGLYPH: a different
-         character that renders identically in most fonts.
-       - EN DASH is LOOKALIKE PUNCTUATION, and it is Common script, so no
-         script-mixing rule would catch it.
-       - ZERO WIDTH SPACE renders as NOTHING AT ALL, so the two values are
-         indistinguishable to a human even side by side, not merely similar.
-       - SOFT HYPHEN is invisible too but for a different reason: it is a
-         conditional hyphen a renderer shows only at a line break.
-
-     Measured against the shipped script before the canonical form existed: all
-     four exited 0 GREEN on the shared-family pair, printing "are distinct on
-     produced-by, framing, review-contract". That is a merge authorised under
-     DR-0012's delegated grant by two reviews from ONE model family.
-
-     They are REFUSED rather than repaired. The check names the codepoint and
-     its position, because a reader cannot be asked to find a character that
-     has no width. */
-  for (const [label, value] of [
-    ["cyrillic homoglyph", `f${CYRILLIC_SMALL_A}mily-a`],
-    ["en dash", `family${EN_DASH}a`],
-    ["zero width space", `family${ZERO_WIDTH_SPACE}-a`],
-    ["soft hyphen", `fami${SOFT_HYPHEN}ly-a`],
-  ] as const) {
-    withProducedBy(value, (run) => {
-      assert.equal(run.status, 1, `${label} exited 0: ${run.output}`);
-      assert.match(run.output, /declares produced-by using the character U\+[0-9A-F]{4} at position \d+/);
-      assert.match(run.output, /cannot be shown decorrelated on produced-by/);
-      /* THE FALSE GREEN SENTENCE MUST BE ABSENT, not merely outweighed. */
-      assert.doesNotMatch(run.output, /are distinct on produced-by/);
-    });
-  }
-});
-
-test("a compatibility variant of a model family is folded onto it rather than refused", () => {
-  /* THE OTHER HALF OF THE CANONICAL FORM, and it is a separate behaviour from
-     the refusal above. NFKC exists so that a value which is genuinely the SAME
-     value written in compatibility characters is RECOGNISED as the same, and
-     reported as the correlation it is, rather than refused as unreadable.
-
-     FULLWIDTH LATIN SMALL LETTER A is the measured case: NFKC folds it to `a`,
-     so the pair is caught by the DUPLICATE-VALUE arm and the message names
-     `family-a`, the value the document means. Of the five substitutions that
-     defeated the previous code, NFKC folds exactly this one; that measurement
-     is why the ASCII refusal above exists as well, and this test is what would
-     redden if someone deleted the normalisation as redundant. */
-  withProducedBy(`f${FULLWIDTH_SMALL_A}mily-a`, (run) => {
-    assert.equal(run.status, 1, run.output);
-    assert.match(run.output, /produced-by value family-a occurs in 2 of the 2 verdicts/);
-    assert.match(run.output, /not decorrelated on produced-by/);
-    /* NOT the refusal arm: this value is readable, and saying otherwise would
-       send its author looking for a character that is not the problem. */
-    assert.doesNotMatch(run.output, /using the character U\+/);
-  });
-});
+const ONE_VERDICT = "decorrelated-criteria.yaml";
 
 test("a lookalike character in merge-authority does not turn a delegated grant into no grant", () => {
-  /* THE SAME MECHANISM AT THE SITE THAT DISABLES THE WHOLE CHECK, which is why
-     this is a separate behaviour rather than another row above. `merge-authority`
-     is compared against a POLICY CONSTANT rather than against a sibling
-     document, and the not-a-delegated-grant arm is a REPORT, so a single
-     lookalike character in `assurance-modes.yaml` made the shared-family pair
-     exit 0 GREEN printing "mode full declares merge-authority
-     delegated-under-conditions, which is not a delegated grant". The sentence
-     is false and the exit code authorises the merge.
-
-     Measured before the canonical form existed, on the real shipped script,
+  /* Measured before the canonical form existed, on the real shipped script,
      with a Cyrillic o and with an ASCII case change: both exited 0. */
   for (const [label, authority] of [
     ["cyrillic o", `delegated-under-c${String.fromCodePoint(0x043e)}nditions`],
     ["ascii case", "Delegated-Under-Conditions"],
   ] as const) {
-    const dir = stageContext("full", SHARED_FAMILY);
+    const dir = stageContext("full", [ONE_VERDICT]);
     try {
       const path = join(dir, "assurance-modes.yaml");
       const before = readFileSync(path, "utf8");
@@ -614,260 +237,38 @@ test("a lookalike character in merge-authority does not turn a delegated grant i
       );
       assert.notEqual(after, before, "merge-authority line not rewritten");
       writeFileSync(path, after);
-      const run = runScript(dir);
-      assert.equal(run.status, 1, `${label} exited 0: ${run.output}`);
+      const run = validateInContext(dir, ONE_VERDICT);
+      assert.equal(run.status, 1, `${label} exited ${String(run.status)}: ${run.output}`);
       /* THE CHECK MUST NOT HAVE REPORTED ITSELF INAPPLICABLE. That is the
          precise failure: not a wrong answer, but no answer presented as one. */
-      assert.doesNotMatch(run.output, /which is not a delegated grant/);
+      assert.doesNotMatch(run.output, /which is not a delegated grant/, run.output);
+      assert.match(run.output, /\(check: verdict-pair-approves\)/, run.output);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
   }
 });
 
-test("a verdict whose kind is written in another case still counts toward the group it correlates with", () => {
-  /* THE THIRD SITE OF THE SAME MECHANISM, AND IT IS THE SUBTLEST, because it
-     does not produce a wrong comparison: it silently removes a document from
-     the set being compared. `kind` decides whether a file is loaded as a
-     verdict at all, so a lookalike or case variant there makes the check look
-     at LESS rather than compare wrongly, and the printed sentence is a
-     perfectly ordinary green.
-
-     THE PAIR CANNOT SHOW THIS, WHICH IS WHY THIS TEST STAGES THREE. With two
-     verdicts, dropping one leaves one, and "a delegated grant requires two"
-     reddens anyway, so the defect is masked by a different guard. With three,
-     two of them sharing a family, dropping one of the correlated pair leaves a
-     genuinely distinct pair behind and the run exits 0. That is the whole
-     reason this is a separate fixture set rather than another row in the
-     lookalike test above. */
-  const THREE = [
-    "decorrelated-criteria.yaml" /* family-a */,
-    "decorrelated-hazard.yaml" /* family-b */,
-    "shared-family-hazard.yaml" /* family-a, the correlated sibling */,
-  ];
-  const dir = stageContext("full", THREE);
+test("a mode that states no merge-authority is refused rather than reported as not a delegated grant", () => {
+  /* `String(mode.mode["merge-authority"] ?? "")` once made a mode with no
+     merge-authority compare unequal to the delegated grant, and that arm is a
+     REPORT, so the whole rule turned off under a regime nobody had
+     established. Measured at d9d5a1d before the repair. */
+  const dir = stageContext("full", [ONE_VERDICT]);
   try {
-    const path = join(dir, "delivery", "review", "shared-family-hazard.yaml");
+    const path = join(dir, "assurance-modes.yaml");
     const before = readFileSync(path, "utf8");
-    assert.match(before, /^kind: verdict$/m);
-    const after = before.replace(/^kind: verdict$/m, "kind: Verdict");
-    assert.notEqual(after, before, "kind line not rewritten");
-    writeFileSync(path, after);
-    const run = runScript(dir);
-    /* THE CORRELATION MUST STILL BE FOUND. A green here is the fail-open
-       outcome: two reviews from one model family authorising a merge because
-       one of them spelled `kind` with a capital letter. */
+    const line = /^ +merge-authority: .*\n/m;
+    assert.match(before, line, `no merge-authority line in ${path}`);
+    writeFileSync(path, before.replace(line, ""));
+    const run = validateInContext(dir, ONE_VERDICT);
     assert.equal(run.status, 1, run.output);
-    assert.match(run.output, /produced-by value family-a occurs in 2 of the 3 verdicts/);
-    assert.doesNotMatch(run.output, /are distinct on produced-by/);
+    assert.match(run.output, /declares no merge-authority for mode full/, run.output);
+    assert.match(run.output, /could not be established/, run.output);
+    assert.doesNotMatch(run.output, /which is not a delegated grant/, run.output);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-});
-
-test("a mode that states no merge-authority is refused rather than reported as not a delegated grant", () => {
-  /* THE SAME MECHANISM AT A STRUCTURALLY DIFFERENT SITE, and the consequence
-     is larger: this one does not weaken one dimension, it turns the whole
-     check off. `String(mode.mode["merge-authority"] ?? "")` made a mode with no
-     merge-authority compare unequal to the delegated grant, and that arm is a
-     REPORT, so the shared-family pair exited 0 GREEN under a regime the check
-     had not established. Measured at d9d5a1d before the repair, printing
-     "mode full declares merge-authority , which is not a delegated grant".
-
-     THE PAIR IS AGAIN THE SHARED-FAMILY ONE, so a green here would be a wrong
-     merge authorisation rather than merely a wrong message. */
-  withLineRemoved(SHARED_FAMILY, { file: "modes", line: /^ +merge-authority: .*\n/m }, (dir) => {
-    const run = runScript(dir);
-    assert.equal(run.status, 1, run.output);
-    assert.match(run.output, /declares no merge-authority for mode full/);
-    assert.match(run.output, /could not be established/);
-    assert.doesNotMatch(run.output, /which is not a delegated grant/);
-  });
-});
-
-/* ------------------------------------------------------------------ */
-/* The vacuity arms: a check that cannot reach its subject              */
-/* ------------------------------------------------------------------ */
-
-test("a directory with no verdict document reports not-applicable with a reason rather than green", () => {
-  withContext("full", [], (dir) => {
-    const run = spawnSync(process.execPath, [scriptPath, dir], {
-      cwd: repoRoot,
-      encoding: "utf8",
-    });
-    /* EXIT 20 IS not-applicable in the gate exit-code table, and the runner
-       cross-checks the record's status against the process exit code, so this
-       is the only pair that can be reported here. Green would be the vacuous
-       pass M2-C-3 and SC-011 exist against. */
-    assert.equal(run.status, 20, `${run.stdout}${run.stderr}`);
-    assert.match(run.stdout, /check-dual-review: not-applicable/);
-    assert.match(run.stdout, /there is no pair of reviews to compare/);
-  });
-});
-
-test("the precondition arm answers only whether a verdict document exists, and against this repository it acts on the count it prints", () => {
-  withContext("full", DECORRELATED, (dir) => {
-    const met = spawnSync(process.execPath, [scriptPath, "--precondition", dir], {
-      cwd: repoRoot,
-      encoding: "utf8",
-    });
-    assert.equal(met.status, 0, `${met.stdout}${met.stderr}`);
-    assert.match(met.stdout, /2 verdict document\(s\)/);
-  });
-  withContext("full", [], (dir) => {
-    const unmet = spawnSync(process.execPath, [scriptPath, "--precondition", dir], {
-      cwd: repoRoot,
-      encoding: "utf8",
-    });
-    assert.equal(unmet.status, 1, `${unmet.stdout}${unmet.stderr}`);
-  });
-
-  /* AND AGAINST THIS REPOSITORY. Until M5-P3 this arm pinned "0 verdict
-     document(s)" and exit 1, a present-tense fact about the corpus that M5-P3
-     makes false on purpose: its phase branch carries two committed verdicts,
-     and every later phase branch will too. A pinned count is a claim about
-     every FUTURE head (CLAUDE.md binding convention 5), so what is asserted is
-     the property that does not move: the arm prints a count and its exit code
-     is the one that count implies. */
-  const here = spawnSync(process.execPath, [scriptPath, "--precondition", "."], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
-  const printed = /(\d+) verdict document\(s\)/.exec(here.stdout);
-  assert.ok(printed !== null, `${here.stdout}${here.stderr}`);
-  const unexaminable = /(\d+) candidate\(s\) that could not be examined/.exec(here.stdout);
-  const applicable = Number(printed[1]) + Number(unexaminable?.[1] ?? "0") > 0;
-  assert.equal(here.status, applicable ? 0 : 1, `${here.stdout}${here.stderr}`);
-});
-
-test("the merge-path caller refuses a directory that declares no regime, rather than treating the grant as absent", () => {
-  /* AN UNKNOWN APPLICABILITY MUST NEVER RESOLVE TO "does not apply", and this
-     is the arm that would turn the whole rule off silently: a directory with no
-     charter reads, to a careless implementation, exactly like one whose mode
-     does not delegate.
-
-     THE REFUSAL IS AT THIS CALLER AND NOT INSIDE THE CHECK, which is a design
-     decision with a measured price behind it. The check runs on ANY verdict
-     with ANY context, and M3-P7's verdict contexts carry a plan and a work
-     history and no charter; a check that reddened on an absent charter reddened
-     eight of that phase's tests, one of them its own acceptance criterion. So
-     the check REPORTS an absent charter and this command, which is the one
-     DR-0012's grant runs through, refuses outright. Exit 21 is `error` in the
-     gate exit-code table: not green, and not a red that could be read as "the
-     reviews are correlated". */
-  for (const document of ["charter.yaml", "assurance-modes.yaml"]) {
-    withContext("full", SHARED_FAMILY, (dir) => {
-      rmSync(join(dir, document));
-      const run = runScript(dir);
-      assert.equal(run.status, 21, `${document}: ${run.output}`);
-      assert.match(run.output, /check-dual-review: error/);
-      assert.match(run.output, new RegExp(`${document} does not exist`));
-      assert.match(run.output, /reports error, never green/);
-    });
-  }
-});
-
-test("a charter that is PRESENT and wrong is a violation, which an absent one deliberately is not", () => {
-  /* THE OTHER HALF of the distinction above, and it is what stops the report
-     arm from being a hole: a document that EXISTS and is wrong is a different
-     fact from one that does not exist, and only the first is something this
-     project can be said to have got wrong. */
-  withContext("full", SHARED_FAMILY, (dir) => {
-    const charter = readFileSync(join(dir, "charter.yaml"), "utf8");
-    writeFileSync(
-      join(dir, "charter.yaml"),
-      charter.replace(/^delivery-mode: .*$/m, "delivery-mode: invented"),
-    );
-    const run = runScript(dir);
-    assert.equal(run.status, 1, run.output);
-    assert.match(run.output, /declares delivery mode invented, which .* does not define/);
-  });
-  withContext("full", SHARED_FAMILY, (dir) => {
-    writeFileSync(join(dir, "charter.yaml"), "delivery-mode: [unclosed\n");
-    const run = runScript(dir);
-    assert.equal(run.status, 1, run.output);
-    assert.match(run.output, /the charter is present and could not be read/);
-  });
-});
-
-test("the check REPORTS rather than fails when a context declares no delivery mode, and says so in a line a green run cannot be confused with", () => {
-  /* THE ARM THAT KEEPS M3-P7's CONTEXTS WORKING. A verdict validated against a
-     context that is not a project workspace is not evaluated against a
-     merge-authority regime, and the run says which of those two happened.
-     SC-011: "nothing to check here" and "everything checked and fine" must
-     never print the same line. */
-  withContext("full", SHARED_FAMILY, (dir) => {
-    rmSync(join(dir, "charter.yaml"));
-    const run = spawnSync(
-      process.execPath,
-      [
-        cliEntry,
-        "validate",
-        "--type",
-        "verdict",
-        "--context",
-        dir,
-        join(dir, "delivery", "review", "decorrelated-criteria.yaml"),
-      ],
-      { cwd: repoRoot, encoding: "utf8" },
-    );
-    const output = `${run.stdout}${run.stderr}`;
-    assert.doesNotMatch(output, /INVALID .*dual-review-decorrelation/, output);
-    assert.match(output, /REPORT dual-review-decorrelation .* declares no delivery mode/);
-    assert.match(output, /were NOT evaluated against a\s+merge-authority regime|were NOT evaluated against a merge-authority regime/);
-  });
-});
-
-test("a verdict that is not among the committed reviews cannot be cleared by the pair that is", () => {
-  /* DR-0012 condition 1 says the two reviews are WRITTEN TO delivery/review AND
-     COMMITTED. Without this arm the check would pass on any document handed to
-     it beside a well-decorrelated directory, which is a green about a file the
-     grant has nothing to do with. */
-  withContext("full", DECORRELATED, (dir) => {
-    const stray = {
-      kind: "verdict",
-      phase: "M3-P9",
-      /* M4-P10 made `head` required and made it half the join key, so the stray
-         must name the SAME head as the committed pair or it would be refused
-         for the wrong reason: a stray for a different head is out of the group
-         by construction, which would not exercise the membership rule this
-         test is about. */
-      head: "dcbe6704813e861736c8d394dca35f7dc31b4f93",
-      verdict: "APPROVE",
-      "produced-by": "family-c",
-      framing: "fix-round",
-      "review-contract": "criteria",
-      findings: [],
-      criteria: [
-        { id: "1", quote: "q", evidence: ["e"], met: true },
-      ],
-      "deviations-judged": [],
-    };
-    const strayPath = join(dir, "stray-verdict.json");
-    writeFileSync(strayPath, JSON.stringify(stray, null, 2));
-    const run = spawnSync(
-      process.execPath,
-      [cliEntry, "validate", "--type", "verdict", "--context", dir, strayPath],
-      { cwd: repoRoot, encoding: "utf8" },
-    );
-    assert.notEqual(run.status, 0, `${run.stdout}${run.stderr}`);
-    assert.match(
-      `${run.stdout}${run.stderr}`,
-      /this verdict is not among the 2 verdict document\(s\) committed under delivery\/review for phase M3-P9/,
-    );
-  });
-});
-
-/* ------------------------------------------------------------------ */
-/* The gate wiring                                                      */
-/* ------------------------------------------------------------------ */
-
-test("the check's declared dimension is produced-by alone, read from the shipped module", () => {
-  /* M6-P2: DR-0064 dropped the criteria contract, so framing and
-     review-contract distinctness are no longer compared; DR-0063's pair is two
-     hazard reviews distinct on produced-by. */
-  assert.deepEqual([...checksModule.DECORRELATION_DIMENSIONS], ["produced-by"]);
-  assert.equal(scriptModule.CHECK_ID, "dual-review-decorrelation");
 });
 
 /* ------------------------------------------------------------------ */
@@ -876,21 +277,22 @@ test("the check's declared dimension is produced-by alone, read from the shipped
 
 /**
  * THE ARMS OF M5-P3's CRITERIA, EACH RUN THROUGH `tiphys gates run` WITH THE
- * SHIPPED `gate-registry.yaml`, never through the script directly. The hazard
- * this phase exists against is REVIEW-GATE-NEVER-RUNS: a gate that is correct
- * when invoked and is never invoked, because the runner's precondition said no
- * (T-040, T-041). A test that called the script by hand would be green on
+ * SHIPPED `gate-registry.yaml`, never through the gate module directly. The
+ * hazard this phase exists against is REVIEW-GATE-NEVER-RUNS: a gate that is
+ * correct when invoked and is never invoked, because the runner's precondition
+ * said no (T-040, T-041). A test that called the gate by hand would be green on
  * exactly that defect, so the variable under test here is what the RUNNER does
  * with the registry's own entry, precondition and declared parameters included.
  *
  * THE FIXTURE IS A GIT REPOSITORY, because the review budget is a property of a
- * DIFF (`base...head`) and the admission rule is a property of ANCESTRY. Its
- * commits are, in order: a base; a change under `src/` (the shipped change a
- * review is owed for, and the commit the verdicts name); and a commit that adds
- * the verdicts, whose whole gap is under `delivery/` so the ancestry rule
- * admits them. The gate scripts are SYMLINKS into this checkout, excluded from
- * the fixture's history, so the runner resolves the registry's relative
- * commands in the fixture while the code that runs is the code under test.
+ * DIFF (`base...head`) and a review's head is related to the audited one by
+ * ANCESTRY. Its commits are, in order: a base; a change under `src/` (the
+ * shipped change a review is owed for, and the commit the verdicts name); and a
+ * commit that adds the verdicts and the kernel review record for each (M6-P5),
+ * whose whole gap is under `delivery/`. The gate module is a SYMLINK into this
+ * checkout, excluded from the fixture's history, so the runner resolves the
+ * registry's relative commands in the fixture while the code that runs is the
+ * code under test.
  */
 
 const RUNNER_GIT_IDENTITY = {
@@ -930,13 +332,11 @@ interface BudgetRepo {
  * Stage the fixture repository.
  *
  * `shipped` false makes the branch's only change a `delivery/` document, which
- * is criterion p3-paperwork-budget's arm. `shippedAfterReview` adds a second
- * `src/` change AFTER the verdicts, which is the review-of-old-code arm: the
- * verdicts name an ancestor whose gap is no longer paperwork.
+ * is criterion p3-paperwork-budget's arm.
  */
 function stageBudgetRepo(
   verdicts: BudgetVerdict[],
-  options: { shipped?: boolean; shippedAfterReview?: boolean; declared?: boolean } = {},
+  options: { shipped?: boolean; declared?: boolean } = {},
 ): BudgetRepo {
   const dir = mkdtempSync(join(tmpdir(), "tiphys-review-budget-"));
   copyFileSync(join(repoRoot, "assurance-modes.yaml"), join(dir, "assurance-modes.yaml"));
@@ -978,42 +378,36 @@ function stageBudgetRepo(
     }
     writeFileSync(join(dir, "delivery", "review", entry.as), body);
   }
+  /* M6-P5: the kernel review record for each verdict, as `tiphys review
+     dispatch` writes it, naming the reviewed commit. */
+  if (verdicts.length > 0) {
+    recordVerdicts(dir, "m3-p9", { defaultHead: reviewed });
+  }
   fixtureGit(dir, ["add", "-A"]);
   fixtureGit(dir, ["commit", "-q", "--allow-empty", "-m", "the reviews"]);
-
-  if (options.shippedAfterReview === true) {
-    writeFileSync(join(dir, "src", "feature.ts"), "export const feature = 3;\n");
-    fixtureGit(dir, ["add", "-A"]);
-    fixtureGit(dir, ["commit", "-q", "-m", "shipped bytes the reviews never read"]);
-  }
   const head = fixtureGit(dir, ["rev-parse", "HEAD"]);
 
   /* THE GATE CODE, linked rather than copied and excluded from the fixture's
      history, so no fixture commit's diff contains it and the budget is decided
      by the one `src/` file the arm changed. */
-  writeFileSync(join(dir, ".git", "info", "exclude"), "/scripts/\n/src/gates/\n/gate-registry.yaml\n/evidence/\n");
-  mkdirSync(join(dir, "scripts"), { recursive: true });
-  symlinkSync(scriptPath, join(dir, "scripts", "check-dual-review.mjs"));
+  writeFileSync(join(dir, ".git", "info", "exclude"), "/src/gates/\n/gate-registry.yaml\n/evidence/\n");
   mkdirSync(join(dir, "src", "gates"), { recursive: true });
   symlinkSync(
     join(repoRoot, "src", "gates", "merge-preconditions.ts"),
     join(dir, "src", "gates", "merge-preconditions.ts"),
   );
-  writeFileSync(
-    join(dir, "gate-registry.yaml"),
-    withDualReviewGate(readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8")),
-  );
+  writeFileSync(join(dir, "gate-registry.yaml"), readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8"));
   return { dir, base, reviewed, head };
 }
 
 interface RunnerOutcome {
   exit: number;
   output: string;
-  record: { status: string; units: number; detail?: string; precondition?: { id: string; met: boolean; reason: string; evidence?: string[] } };
+  record: { status: string; units: number; detail?: string };
 }
 
 /** Run ONE registry gate through the real runner, full mode, as CI would. */
-function runRegistryGate(repo: BudgetRepo, gate: string, head?: string): RunnerOutcome {
+function runRegistryGate(repo: BudgetRepo, gate: string): RunnerOutcome {
   const evidence = join(repo.dir, "evidence", gate);
   const run = spawnSync(
     process.execPath,
@@ -1030,7 +424,7 @@ function runRegistryGate(repo: BudgetRepo, gate: string, head?: string): RunnerO
       "--base",
       repo.base,
       "--head",
-      head ?? repo.head,
+      repo.head,
       "--phase",
       "m3-p9",
       "--evidence",
@@ -1045,7 +439,7 @@ function runRegistryGate(repo: BudgetRepo, gate: string, head?: string): RunnerO
 
 function withBudgetRepo<T>(
   verdicts: BudgetVerdict[],
-  options: { shipped?: boolean; shippedAfterReview?: boolean; declared?: boolean },
+  options: { shipped?: boolean; declared?: boolean },
   body: (repo: BudgetRepo) => T,
 ): T {
   const repo = stageBudgetRepo(verdicts, options);
@@ -1061,170 +455,11 @@ const APPROVING_PAIR: BudgetVerdict[] = [
   { fixture: "decorrelated-hazard.yaml", as: "m3-p9-hazard.yaml" },
 ];
 
-test("a shipped change with no committed review is red through the real runner, naming two missing", () => {
-  withBudgetRepo([], {}, (repo) => {
-    const run = runRegistryGate(repo, "check-dual-review");
-    assert.equal(run.record.status, "red", run.output);
-    assert.notEqual(run.exit, 0, run.output);
-    assert.match(run.record.detail ?? "", /0 of 2 are admitted and 2 missing/);
-    assert.match(run.record.detail ?? "", /A missing review is RED, never not-applicable/);
-    assert.match(run.record.detail ?? "", /src\/feature\.ts/);
-  });
-});
-
-test("check-dual-review through the real runner resolves --head HEAD to the staged commit", () => {
-  /* FIX ROUND 1, the derivation's second entry point. The runner is invoked
-     with `--head HEAD` exactly as scripts/m2-exit-test.sh invokes it, and the
-     gate must reach the same verdict it reaches for the explicit sha: green,
-     with the admitted pair named against the resolved commit. A gate that
-     lowercased the value before resolving it would be judging `head`, which
-     names no commit, and reports error. */
-  withBudgetRepo(APPROVING_PAIR, {}, (repo) => {
-    const run = runRegistryGate(repo, "check-dual-review", "HEAD");
-    assert.equal(run.record.status, "green", run.output);
-    assert.equal(run.exit, 0, run.output);
-    assert.ok(run.record.units >= 2, run.output);
-    assert.ok((run.record.detail ?? "").includes(repo.head), `${repo.head} is not named: ${run.record.detail ?? ""}`);
-  });
-});
-
-test("check-dual-review with --base excludes by name verdicts whose declared head the merge base already contains, so an unreviewed delivery-only change on top of a reviewed pair is red", () => {
-  /* M6-P2 FIX ROUND 1, CR-M6P2A-01 and CR-M6P2B-01, the second gate. The
-     same bound merge-preconditions applies, through the same helper, so the
-     two gates cannot disagree about a verdict already on the base. The
-     charter declares no runtime set, so the delivery-only change is pair. */
-  withBudgetRepo(APPROVING_PAIR, {}, (repo) => {
-    /* CONTROL, THE NORMAL FLOW STILL ADMITS: verdicts for the reviewed commit,
-       committed one commit later, the reviewed commit not on the base. */
-    const control = runRegistryGate(repo, "check-dual-review");
-    assert.equal(control.record.status, "green", control.output);
-    rmSync(join(repo.dir, "evidence"), { recursive: true, force: true });
-    mkdirSync(join(repo.dir, "delivery", "decisions"), { recursive: true });
-    writeFileSync(join(repo.dir, "delivery", "decisions", "DR-9999-probe.md"), "a decision no review read\n");
-    fixtureGit(repo.dir, ["add", "delivery/decisions"]);
-    fixtureGit(repo.dir, ["commit", "-q", "-m", "unreviewed paperwork on top of a reviewed pair"]);
-    const unreviewed = fixtureGit(repo.dir, ["rev-parse", "HEAD"]);
-    const run = runRegistryGate({ ...repo, base: repo.head }, "check-dual-review", unreviewed);
-    assert.equal(run.record.status, "red", run.output);
-    assert.notEqual(run.exit, 0, run.output);
-    assert.match(run.record.detail ?? "", /0 of 2 are admitted and 2 missing/, run.record.detail ?? "");
-    const said = `${run.record.detail ?? ""}\n${run.output}`;
-    for (const entry of APPROVING_PAIR) {
-      assert.ok(
-        said.includes(
-          `${entry.as} declares head ${repo.reviewed}, which the merge base ${repo.head} of the review budget already contains`,
-        ),
-        `${entry.as} is not excluded by name as on the base: ${said}`,
-      );
-    }
-  });
-});
-
-test("a shipped change with one committed review is red through the real runner, naming one missing", () => {
-  withBudgetRepo([APPROVING_PAIR[0] as BudgetVerdict], {}, (repo) => {
-    const run = runRegistryGate(repo, "check-dual-review");
-    assert.equal(run.record.status, "red", run.output);
-    assert.notEqual(run.exit, 0, run.output);
-    assert.match(run.record.detail ?? "", /1 of 2 are admitted and 1 missing/);
-  });
-});
-
-test("an approving decorrelated pair over the reviewed shipped tree is green through the real runner", () => {
-  withBudgetRepo(APPROVING_PAIR, {}, (repo) => {
-    const run = runRegistryGate(repo, "check-dual-review");
-    assert.equal(run.record.status, "green", run.output);
-    assert.equal(run.exit, 0, run.output);
-    assert.ok(run.record.units >= 2, run.output);
-  });
-});
-
-test("a refusing pair and a shared family are each red through the real runner, and a shared framing or contract is not", () => {
-  const arms: [string, RegExp, BudgetVerdict[]][] = [
-    [
-      "FIX-ROUND-NEEDED",
-      /does not approve this head .*check: verdict-pair-approves/,
-      [
-        { fixture: "decorrelated-criteria.yaml", as: "m3-p9-criteria.yaml", verdict: "FIX-ROUND-NEEDED" },
-        { fixture: "decorrelated-hazard.yaml", as: "m3-p9-hazard.yaml" },
-      ],
-    ],
-    [
-      "shared family",
-      /not decorrelated on produced-by/,
-      [
-        { fixture: "decorrelated-criteria.yaml", as: "m3-p9-criteria.yaml" },
-        { fixture: "shared-family-hazard.yaml", as: "m3-p9-hazard.yaml" },
-      ],
-    ],
-  ];
-  for (const [name, reason, verdicts] of arms) {
-    withBudgetRepo(verdicts, {}, (repo) => {
-      const run = runRegistryGate(repo, "check-dual-review");
-      assert.equal(run.record.status, "red", `${name}: ${run.output}`);
-      assert.notEqual(run.exit, 0, `${name}: ${run.output}`);
-      /* RED FOR THE NAMED REASON, not merely red: a pair refused for some
-         unrelated staging defect would pass a status-only assertion. */
-      assert.match(run.record.detail ?? "", reason, `${name}: ${run.record.detail ?? ""}`);
-    });
-  }
-  /* M6-P2 (DR-0064): framing and review-contract are no longer compared, so a
-     pair distinct on produced-by and sharing either one is green. */
-  for (const [name, verdicts] of [
-    [
-      "shared framing",
-      [
-        { fixture: "decorrelated-criteria.yaml", as: "m3-p9-criteria.yaml" },
-        { fixture: "shared-framing-hazard.yaml", as: "m3-p9-hazard.yaml" },
-      ],
-    ],
-    [
-      "shared contract",
-      [
-        { fixture: "decorrelated-criteria.yaml", as: "m3-p9-criteria.yaml" },
-        { fixture: "shared-contract-criteria.yaml", as: "m3-p9-criteria-2.yaml" },
-      ],
-    ],
-  ] as [string, BudgetVerdict[]][]) {
-    withBudgetRepo(verdicts, {}, (repo) => {
-      const run = runRegistryGate(repo, "check-dual-review");
-      assert.equal(run.record.status, "green", `${name}: ${run.output}`);
-    });
-  }
-});
-
-test("an approving pair that names an ancestor whose gap adds shipped bytes is red, and names the exclusion", () => {
-  withBudgetRepo(APPROVING_PAIR, { shippedAfterReview: true }, (repo) => {
-    const run = runRegistryGate(repo, "check-dual-review");
-    assert.equal(run.record.status, "red", run.output);
-    assert.notEqual(run.exit, 0, run.output);
-    assert.match(run.record.detail ?? "", /0 of 2 are admitted and 2 missing/);
-    assert.match(run.record.detail ?? "", /NOT evidence about this commit/);
-    assert.match(run.record.detail ?? "", new RegExp(repo.reviewed));
-  });
-});
-
-test("a delivery-only change is not forced through the two-verdict rule and names its tier", () => {
-  withBudgetRepo([], { shipped: false, declared: true }, (repo) => {
-    const run = runRegistryGate(repo, "check-dual-review");
-    assert.equal(run.record.status, "not-applicable", run.output);
-    assert.equal(run.record.precondition?.id, "review-budget-requires-pair-review", run.output);
-    assert.equal(run.record.precondition?.met, false);
-    assert.match(run.record.precondition?.reason ?? "", /every one is in the DR-0063 single tier/);
-    assert.ok((run.record.precondition?.evidence ?? []).includes("tier: single"), JSON.stringify(run.record.precondition));
-    assert.ok(
-      (run.record.precondition?.evidence ?? []).some((line) => line.includes("delivery/notes/state.md")),
-      JSON.stringify(run.record.precondition),
-    );
-  });
-});
-
 test("merge-preconditions, the review gate the pull-request bundle runs, is red through the real runner for zero and one committed review", () => {
-  /* THE SAME TWO ARMS THROUGH THE GATE THAT IS IN gates.manifest.json, because
-     `check-dual-review` is registry-only and CI never runs it through the
-     runner. The fixture repository has NO REMOTE, so a gate that consulted the
-     GitHub API before deciding the review evidence would stop at "no
-     repository could be established" and report error; red with the missing
-     count is the proof the evidence was decided first. */
+  /* The fixture repository has NO REMOTE, so a gate that consulted the GitHub
+     API before deciding the review evidence would stop at "no repository could
+     be established" and report error; red with the missing count is the proof
+     the evidence was decided first. */
   for (const [verdicts, missing] of [
     [[], 2],
     [[APPROVING_PAIR[0] as BudgetVerdict], 1],
@@ -1235,7 +470,7 @@ test("merge-preconditions, the review gate the pull-request bundle runs, is red 
       assert.notEqual(run.exit, 0, run.output);
       assert.match(
         run.record.detail ?? "",
-        new RegExp(`${String(2 - missing)} of 2 are admitted and ${String(missing)} missing`),
+        new RegExp(`${String(2 - missing)} of 2 are counted and ${String(missing)} missing`),
       );
       assert.doesNotMatch(run.record.detail ?? "", /no repository could be established/);
     });
@@ -1249,7 +484,7 @@ test("merge-preconditions through the real runner is red for a delivery-only cha
     const run = runRegistryGate(repo, "merge-preconditions");
     assert.equal(run.record.status, "red", run.output);
     assert.match(run.record.detail ?? "", /^DR-0063 single at head/);
-    assert.match(run.record.detail ?? "", /0 of 1 are admitted and 1 missing/);
+    assert.match(run.record.detail ?? "", /0 of 1 are counted and 1 missing/);
     assert.doesNotMatch(run.record.detail ?? "", /no repository could be established/);
   });
   /* THE CONTROL: the same command over an approving pair is NOT red on the
@@ -1344,4 +579,283 @@ test("the review budget classifies git's real NUL-separated, rename-split name l
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* The pair rule reads the COMMITTED corpus and regime                  */
+/*                                                                     */
+/* Moved here by M6-P5 from test/single-family-exception.test.ts, whose */
+/* subject, the declared single-family exception inside the deleted     */
+/* decorrelation check, went with it. These arms guard the corpus and   */
+/* regime readers `verdict-pair-approves` still shares, so they now run */
+/* through `tiphys validate --type verdict --context` over ONE          */
+/* committed verdict under a delegated grant: the pair rule reddens     */
+/* exactly when the committed regime is read as delegated and the       */
+/* committed corpus holds fewer than two.                               */
+/* ------------------------------------------------------------------ */
+
+const committedScratch: string[] = [];
+
+test.after(() => {
+  for (const dir of committedScratch) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+interface CommittedStage {
+  /** Fixtures committed under `delivery/review/`, each naming the reviewed commit. */
+  verdicts: string[];
+  /** Fixtures written under `delivery/review/` AFTER the commit, in no commit. */
+  uncommittedVerdicts?: string[];
+  /** The repository is the parent and the context is `proj/` inside it. */
+  nest?: boolean;
+  /** Regime documents on disk and held out of every commit. */
+  holdOut?: string[];
+  /** Rewrite the working-tree charter's delivery-mode after the commit. */
+  modeAfterCommit?: string;
+  /** Rewrite the working-tree delegated merge-authority after the commit. */
+  authorityAfterCommit?: string;
+  /** Append a DR-0038 review-families declaration of these families to the charter. */
+  declare?: string[];
+}
+
+/**
+ * A committed context: the shipped modes document, a charter from the shipped
+ * template (mode `full`, a delegated grant), an empty commit the verdicts name
+ * as their head, and the verdicts committed on top of it, which is the shape of
+ * a real review.
+ */
+function stageCommitted(options: CommittedStage): string {
+  const repo = mkdtempSync(join(tmpdir(), "tiphys-committed-corpus-"));
+  committedScratch.push(repo);
+  const dir = options.nest === true ? join(repo, "proj") : repo;
+  mkdirSync(join(dir, "delivery", "review"), { recursive: true });
+  copyFileSync(join(repoRoot, "assurance-modes.yaml"), join(dir, "assurance-modes.yaml"));
+  const charter = readFileSync(join(repoRoot, "templates", "charter.example.yaml"), "utf8");
+  assert.match(charter, /^delivery-mode: full$/m, "the shipped template no longer declares mode full");
+  writeFileSync(
+    join(dir, "charter.yaml"),
+    options.declare === undefined ? charter : `${charter}${declarationBlock(options.declare, "one vendor is served here")}`,
+  );
+  fixtureGit(repo, ["init", "-q", "."]);
+  fixtureGit(repo, ["commit", "-q", "--allow-empty", "-m", "reviewed"]);
+  const reviewed = fixtureGit(repo, ["rev-parse", "HEAD"]);
+  const place = (fixture: string): void => {
+    const body = readFileSync(join(fixturesDir, fixture), "utf8");
+    const anchored = body.replace(/^head: .*$/m, `head: ${reviewed}`);
+    assert.notEqual(anchored, body, `${fixture} has no single-line head to rewrite`);
+    writeFileSync(join(dir, "delivery", "review", fixture), anchored);
+  };
+  options.verdicts.forEach(place);
+  const hold = mkdtempSync(join(tmpdir(), "tiphys-committed-hold-"));
+  committedScratch.push(hold);
+  for (const document of options.holdOut ?? []) {
+    renameSync(join(dir, document), join(hold, document));
+  }
+  fixtureGit(repo, ["add", "-A"]);
+  fixtureGit(repo, ["commit", "-q", "-m", "stage"]);
+  for (const document of options.holdOut ?? []) {
+    renameSync(join(hold, document), join(dir, document));
+  }
+  (options.uncommittedVerdicts ?? []).forEach(place);
+  if (options.modeAfterCommit !== undefined) {
+    const onDisk = readFileSync(join(dir, "charter.yaml"), "utf8");
+    const rewritten = onDisk.replace(/^delivery-mode: .*$/m, `delivery-mode: ${options.modeAfterCommit}`);
+    assert.notEqual(rewritten, onDisk, "the charter has no single-line delivery-mode to rewrite");
+    writeFileSync(join(dir, "charter.yaml"), rewritten);
+  }
+  if (options.authorityAfterCommit !== undefined) {
+    const onDisk = readFileSync(join(dir, "assurance-modes.yaml"), "utf8");
+    const rewritten = onDisk.replace(
+      /^(\s*)merge-authority: delegated-under-conditions$/m,
+      `$1merge-authority: ${options.authorityAfterCommit}`,
+    );
+    assert.notEqual(rewritten, onDisk, "no delegated merge-authority line to rewrite");
+    writeFileSync(join(dir, "assurance-modes.yaml"), rewritten);
+  }
+  return dir;
+}
+
+const PAIR_REFUSAL = "DR-0012 condition 2 is a property of the PAIR";
+
+/** A DR-0038 declaration block, each family a YAML double-quoted scalar. */
+function declarationBlock(families: string[], reason: string): string {
+  const quoted = (value: string): string => `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+  return ["review-families:", "  available:", ...families.map((family) => `    - ${quoted(family)}`), `  reason: ${quoted(reason)}`, ""].join("\n");
+}
+
+test("an UNCOMMITTED second review does not satisfy the pair a delegated grant requires", () => {
+  const dir = stageCommitted({ verdicts: [ONE_VERDICT], uncommittedVerdicts: ["decorrelated-hazard.yaml"] });
+  /* The two documents approve the same head, which is what makes this the
+     dangerous state: read off disk, this pair satisfies the rule on one
+     committed review. */
+  const tracked = spawnSync("git", ["ls-tree", "-r", "--name-only", "HEAD"], { cwd: dir, encoding: "utf8" });
+  assert.doesNotMatch(tracked.stdout, /decorrelated-hazard\.yaml/);
+  const run = validateInContext(dir, ONE_VERDICT);
+  assert.equal(run.status, 1, run.output);
+  assert.ok(run.output.includes(PAIR_REFUSAL), `the pair check did not refuse a corpus of one:\n${run.output}`);
+});
+
+test("a corpus-scoped refusal names the source that corpus was read from, on both arms", () => {
+  /* SC-011 APPLIED TO THE CORPUS: a sentence about a set read off disk must
+     not name a commit, and one read from a commit must name it. */
+  const committed = stageCommitted({ verdicts: [ONE_VERDICT] });
+  const fromCommit = validateInContext(committed, ONE_VERDICT);
+  assert.match(fromCommit.output, /\(corpus: [^)]*read from commit [0-9a-f]{40}, resolved from HEAD\)/, fromCommit.output);
+  assert.doesNotMatch(fromCommit.output, /read from the WORKING TREE/);
+
+  /* The worktree arm, staged by removing the git directory entirely rather
+     than by mocking anything: the only state in which the loader falls back.
+     RENAMED OUT, NOT rmSync-ED IN PLACE: see test/support/remove-git-directory.ts.
+     A partial .git left by a recursive remove is a repository again. */
+  const noGit = stageCommitted({ verdicts: [ONE_VERDICT] });
+  const aside = mkdtempSync(join(tmpdir(), "tiphys-committed-git-aside-"));
+  committedScratch.push(aside);
+  removeGitDirectory(noGit, aside);
+  const fromTree = validateInContext(noGit, ONE_VERDICT);
+  assert.match(fromTree.output, /\(corpus: delivery\/review read from the WORKING TREE because/, fromTree.output);
+  assert.doesNotMatch(fromTree.output, /read from commit/);
+});
+
+test("an UNCOMMITTED delivery-mode does not switch off the pair requirement", () => {
+  /* THE CONTROL ARM: with nothing edited the single committed verdict is
+     refused, so a refusal below is not a fixture that was refused whatever the
+     regime said. */
+  const control = validateInContext(stageCommitted({ verdicts: [ONE_VERDICT] }), ONE_VERDICT);
+  assert.equal(control.status, 1, control.output);
+  /* `direct-pr` is a real mode of the shipped assurance-modes.yaml whose
+     merge-authority is `owner`, not a delegated grant. */
+  const edited = stageCommitted({ verdicts: [ONE_VERDICT], modeAfterCommit: "direct-pr" });
+  assert.match(readFileSync(join(edited, "charter.yaml"), "utf8"), /^delivery-mode: direct-pr$/m);
+  const run = validateInContext(edited, ONE_VERDICT);
+  assert.equal(run.status, 1, run.output);
+  assert.ok(run.output.includes(PAIR_REFUSAL), run.output);
+  assert.doesNotMatch(run.output, /which is not a delegated grant/);
+});
+
+test("an UNCOMMITTED merge-authority does not switch off the pair requirement", () => {
+  /* THE SECOND MEMBER, through the OTHER document the regime reads: the
+     charter is left alone and what its mode's authority IS is rewritten. */
+  const edited = stageCommitted({ verdicts: [ONE_VERDICT], authorityAfterCommit: "owner" });
+  assert.match(readFileSync(join(edited, "assurance-modes.yaml"), "utf8"), /^\s*merge-authority: owner$/m);
+  const run = validateInContext(edited, ONE_VERDICT);
+  assert.equal(run.status, 1, run.output);
+  assert.ok(run.output.includes(PAIR_REFUSAL), run.output);
+  assert.doesNotMatch(run.output, /which is not a delegated grant/);
+});
+
+test("a charter.yaml that exists only in the working tree is still missing to the merge gate's regime reader", () => {
+  /* THE ADDITION DIRECTION OF REGIME PRESENCE (DV-001): an actor who can write
+     a file and has committed nothing must not supply the regime the merge gate
+     refuses to run without. `missingRegimeDocument` is that reader. */
+  const dir = stageCommitted({ verdicts: [ONE_VERDICT], holdOut: ["charter.yaml"] });
+  assert.match(readFileSync(join(dir, "charter.yaml"), "utf8"), /^delivery-mode: full$/m);
+  const tracked = spawnSync("git", ["ls-files"], { cwd: dir, encoding: "utf8" });
+  assert.equal(tracked.status, 0, tracked.stderr);
+  assert.doesNotMatch(tracked.stdout, /(^|\/)charter\.yaml$/m, tracked.stdout);
+  const missing = checksModule.missingRegimeDocument(dir);
+  assert.ok(missing !== undefined, "an uncommitted charter was read as present");
+  assert.equal(missing.document, "charter.yaml");
+  /* THE ABSENCE CLAIM NAMES THE TREE IT IS AN ABSENCE FROM. */
+  assert.match(missing.reason, /charter\.yaml does not exist in commit [0-9a-f]{40}/, missing.reason);
+});
+
+test("a committed approving pair is counted when the context directory is NOT the repository root", () => {
+  /* THE ROOT AXIS (DV-002). `git ls-tree` applies the current directory as an
+     implicit pathspec, so from a nested context the corpus listing came back
+     EMPTY with exit 0, and an empty listing is indistinguishable from an absent
+     directory. The pair rule then saw fewer than two committed reviews of a
+     head two committed reviews approve. */
+  const nested = stageCommitted({ nest: true, verdicts: [ONE_VERDICT, "decorrelated-hazard.yaml"] });
+  assert.ok(nested.endsWith(`${sep}proj`), nested);
+  const top = spawnSync("git", ["rev-parse", "--show-toplevel"], { cwd: nested, encoding: "utf8" });
+  assert.equal(top.status, 0, top.stderr);
+  assert.notEqual(top.stdout.trim(), nested, "the context is its own repository root after all");
+  const run = validateInContext(nested, ONE_VERDICT);
+  assert.equal(run.status, 0, run.output);
+  assert.match(run.output, /REPORT verdict-pair-approves 2 verdict\(s\) for phase M3-P9 at head [0-9a-f]{40} read APPROVE/, run.output);
+  /* THE CONTROL ARM: the same pair in a context that IS its repository root. */
+  const root = validateInContext(stageCommitted({ verdicts: [ONE_VERDICT, "decorrelated-hazard.yaml"] }), ONE_VERDICT);
+  assert.equal(root.status, 0, root.output);
+});
+
+test("a committed corpus that could not be READ is refused, never reported as an empty corpus", () => {
+  /* `git cat-file -t <sha>:./<dir>` fails identically for a path that is not
+     in the tree and for a commit the object database cannot produce, and the
+     listing helper once returned an EMPTY corpus for both. Staged by naming a
+     commit that is not in this repository. */
+  const dir = stageCommitted({ verdicts: [ONE_VERDICT, "decorrelated-hazard.yaml"] });
+  const real = checksModule.loadCommittedVerdicts(dir);
+  assert.equal(real.ok, true, JSON.stringify(real));
+  assert.equal(real.ok === true ? real.verdicts.length : -1, 2, JSON.stringify(real));
+  const absent = "0123456789abcdef0123456789abcdef01234567";
+  const unreadable = checksModule.loadCommittedVerdicts(dir, {
+    kind: "commit",
+    ref: "HEAD",
+    refSha: absent,
+    scope: join("delivery", "review"),
+  });
+  assert.equal(unreadable.ok, false, JSON.stringify(unreadable));
+  const reason = unreadable.ok === false ? unreadable.reason : "";
+  assert.match(reason, new RegExp(`${absent} could not be read`), reason);
+});
+
+/* ------------------------------------------------------------------ */
+/* DR-0038's declaration is read from the COMMIT                        */
+/*                                                                     */
+/* Moved here by M6-P5 from test/single-family-exception.test.ts. The   */
+/* merge gate reads the declaration through `readReviewFamilies`, so    */
+/* these call it directly rather than through the deleted script.       */
+/* ------------------------------------------------------------------ */
+
+test("editing the declaration in the working tree after the commit changes nothing, and the recorded blob sha256 is the committed blob's", () => {
+  const dir = stageCommitted({ verdicts: [ONE_VERDICT], declare: ["family-a"] });
+  const committedSha = spawnSync("git", ["rev-parse", "HEAD:charter.yaml"], { cwd: dir, encoding: "utf8" });
+  assert.equal(committedSha.status, 0, committedSha.stderr);
+  const committedBlob = spawnSync("git", ["cat-file", "blob", committedSha.stdout.trim()], { cwd: dir });
+  assert.equal(committedBlob.status, 0, String(committedBlob.stderr));
+  const reading = checksModule.readReviewFamilies(dir);
+  assert.equal(reading.kind, "declared", JSON.stringify(reading));
+  const declared = reading as Extract<typeof reading, { kind: "declared" }>;
+  assert.equal(
+    declared.provenance.sha256,
+    createHash("sha256").update(committedBlob.stdout).digest("hex"),
+    "the recorded sha256 is not the committed blob's",
+  );
+  /* NOW CHANGE THE DECLARATION IN THE WORKING TREE ONLY. Read from the tree,
+     the family set would change; it must not. */
+  const onDisk = readFileSync(join(dir, "charter.yaml"), "utf8");
+  const widened = onDisk.replace(
+    /^review-families:[\s\S]*$/m,
+    declarationBlock(["a-family-nothing-carries"], "edited in the working tree after the commit"),
+  );
+  assert.notEqual(widened, onDisk, "the working-tree declaration was not rewritten");
+  writeFileSync(join(dir, "charter.yaml"), widened);
+  const reread = checksModule.readReviewFamilies(dir);
+  assert.equal(reread.kind, "declared", JSON.stringify(reread));
+  const after = reread as Extract<typeof reread, { kind: "declared" }>;
+  assert.deepEqual(after.families, declared.families, "the working-tree edit changed what was read");
+  assert.equal(after.provenance.sha256, declared.provenance.sha256);
+});
+
+test("a declaration that exists only in the working tree is error, never permission and never a quiet absence", () => {
+  const dir = stageCommitted({ verdicts: [ONE_VERDICT], declare: ["family-a"], holdOut: ["charter.yaml"] });
+  const tracked = spawnSync("git", ["ls-files"], { cwd: dir, encoding: "utf8" });
+  assert.doesNotMatch(tracked.stdout, /(^|\/)charter\.yaml$/m, tracked.stdout);
+  const reading = checksModule.readReviewFamilies(dir);
+  assert.equal(reading.kind, "error", JSON.stringify(reading));
+  assert.ok(
+    (reading as { reason: string }).reason.includes("never permission"),
+    `the refusal does not say why: ${JSON.stringify(reading)}`,
+  );
+});
+
+test("a declaration listing one family twice once canonicalised is error rather than a single-family declaration", () => {
+  const dir = stageCommitted({ verdicts: [ONE_VERDICT], declare: ["Family-A", "family-a"] });
+  const reading = checksModule.readReviewFamilies(dir);
+  assert.equal(reading.kind, "error", JSON.stringify(reading));
+  assert.ok(
+    (reading as { reason: string }).reason.includes("more than once once canonicalised"),
+    (reading as { reason: string }).reason,
+  );
 });

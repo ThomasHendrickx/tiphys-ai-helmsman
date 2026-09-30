@@ -80,9 +80,11 @@ const runModule = (await import(
   decideAggregate: (
     counts: Record<string, number>,
     requiredNotApplicable: string[],
-    rows: { id: string; status: string }[],
+    rows: { id: string; status: string; declaredNotApplicable?: boolean }[],
   ) => { exitCode: number; reason: string };
   releaseEvidenceDirectory: (evidenceDir: string, runId: string) => boolean;
+  DECLARED_PRECONDITION_EVIDENCE: string;
+  isDeclaredNotApplicable: (result: { status: string; precondition?: { evidence?: string[] } }) => boolean;
 };
 
 const manifestModule = (await import(
@@ -4171,4 +4173,87 @@ test("a gate detail carrying a bare carriage return is escaped rather than allow
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+/* ------------------------------------------------------------------ */
+/* A declared not-applicable is named in the aggregate (M4-P11, DR-0038) */
+/* ------------------------------------------------------------------ */
+
+/*
+ * Moved here from test/single-family-exception.test.ts by M6-P5, which deleted
+ * that file with the check it tested. The runner's clause is not the check's:
+ * src/gates/release.ts still writes the marker for a release verification
+ * declared `none`, so the aggregate must keep naming a declared gate.
+ */
+
+test("the aggregate reason names a declared not-applicable gate, and is the bare green sentence without the declaration", () => {
+  const counts = {
+    declared: 2,
+    applicable: 1,
+    verdict: 1,
+    green: 1,
+    red: 0,
+    "not-applicable": 1,
+    error: 0,
+    vacuous: 0,
+  };
+  const rows = [
+    { id: "g-green", status: "green" },
+    { id: "deploy", status: "not-applicable" },
+  ];
+  const withoutDeclaration = runModule.decideAggregate(counts, [], rows);
+  assert.equal(withoutDeclaration.exitCode, 0);
+  assert.equal(withoutDeclaration.reason, "every applicable gate is green");
+  assert.ok(!withoutDeclaration.reason.includes("deploy"), "the undeclared bundle already names the gate");
+  const withDeclaration = runModule.decideAggregate(counts, [], [
+    rows[0] as { id: string; status: string },
+    { id: "deploy", status: "not-applicable", declaredNotApplicable: true },
+  ]);
+  assert.equal(withDeclaration.exitCode, 0, "a declared exception is not a failure");
+  assert.ok(withDeclaration.reason.includes("deploy"), withDeclaration.reason);
+  assert.ok(withDeclaration.reason.includes("not applicable by declaration"), withDeclaration.reason);
+});
+
+test("a declared not-applicable is named on a red bundle too, so the exception does not go quiet when something else is wrong", () => {
+  const counts = {
+    declared: 2,
+    applicable: 2,
+    verdict: 1,
+    green: 0,
+    red: 1,
+    "not-applicable": 1,
+    error: 0,
+    vacuous: 0,
+  };
+  const decided = runModule.decideAggregate(counts, [], [
+    { id: "g-red", status: "red" },
+    { id: "deploy", status: "not-applicable", declaredNotApplicable: true },
+  ]);
+  assert.equal(decided.exitCode, 1);
+  assert.ok(decided.reason.includes("gate(s) reported red"), decided.reason);
+  assert.ok(decided.reason.includes("not applicable by declaration"), decided.reason);
+});
+
+test("the declaration marker the release gate writes is the exact evidence element the runner reads, and nothing looser reads as declared", () => {
+  const release = readFileSync(join(repoRoot, "src", "gates", "release.ts"), "utf8");
+  assert.ok(
+    release.includes(`\`${runModule.DECLARED_PRECONDITION_EVIDENCE}\`,`),
+    "src/gates/release.ts no longer writes the runner's declaration marker as an evidence element",
+  );
+  assert.equal(
+    runModule.isDeclaredNotApplicable({
+      status: "not-applicable",
+      precondition: { evidence: [runModule.DECLARED_PRECONDITION_EVIDENCE] },
+    }),
+    true,
+  );
+  assert.equal(runModule.isDeclaredNotApplicable({ status: "not-applicable", precondition: { evidence: [] } }), false);
+  assert.equal(runModule.isDeclaredNotApplicable({ status: "not-applicable" }), false);
+  assert.equal(
+    runModule.isDeclaredNotApplicable({
+      status: "green",
+      precondition: { evidence: [runModule.DECLARED_PRECONDITION_EVIDENCE] },
+    }),
+    false,
+  );
 });

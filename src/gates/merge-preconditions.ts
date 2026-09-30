@@ -1487,30 +1487,6 @@ export function classifyReviewBudget(
 }
 
 /**
- * The id of the precondition a `single` change reports unmet at
- * `check-dual-review`, whose question (two decorrelated reviews) is the pair
- * tier's. merge-preconditions checks the single tier's one review itself.
- */
-export const BUDGET_PRECONDITION_ID = "review-budget-requires-pair-review";
-
-/** The evaluated, unmet precondition a `single` change carries at the pair check. */
-export function budgetPrecondition(budget: ReviewBudget): PreconditionRecord {
-  return {
-    id: BUDGET_PRECONDITION_ID,
-    met: false,
-    reason:
-      `${describeBudget(budget)}, so DR-0063 owes it ${String(REQUIRED_VERDICTS.single)} hazard review and ` +
-      "not the pair this gate compares; merge-preconditions requires the single review",
-    evidence: [
-      `tier: ${budget.tier}`,
-      "verdict documents: not read here, because the pair rule does not apply to this tier",
-      ...budget.paths.slice(0, 50).map((entry) => `${entry.tier}: ${entry.path} (${entry.reason})`),
-      ...(budget.paths.length > 50 ? [`and ${String(budget.paths.length - 50)} more path(s)`] : []),
-    ],
-  };
-}
-
-/**
  * The sentence a change with too few admitted verdicts for its tier is red with.
  *
  * THE MISSING COUNT IS IN THE SENTENCE, because criterion p3-missing-is-red asks

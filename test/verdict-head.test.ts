@@ -33,8 +33,16 @@
  *     dangerous document. That is what stops the reconstruction becoming a
  *     convenient copy of whatever makes the test pass.
  *
- * `src` and `scripts` are imported through the computed-URL dynamic import
- * pattern (CLAUDE.md standing warning 4).
+ * M6-P5 DELETED `scripts/check-dual-review.mjs` AND `dual-review-decorrelation`
+ * (DR-0062): the merge gate counts reviews through kernel review records. The
+ * pair predicate `verdict-pair-approves` stays, and the tests below that ran
+ * it through the script now run it through `tiphys validate --type verdict
+ * --context <dir>`, the shipped command that runs it. The tests whose subject
+ * was the script alone (its precondition arm, its count lines, the pre-change
+ * script run out of git) went with it.
+ *
+ * `src` is imported through the computed-URL dynamic import pattern (CLAUDE.md
+ * standing warning 4).
  */
 
 import { spawnSync } from "node:child_process";
@@ -97,11 +105,11 @@ for (const name of INHERITED_REPOSITORY_ENV) {
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const cliEntry = join(repoRoot, "bin", "tiphys.ts");
-const scriptPath = join(repoRoot, "scripts", "check-dual-review.mjs");
 const fixturesDir = join(repoRoot, "witness", "fixtures", "dual-review");
 const schemaPath = join(repoRoot, "schemas", "verdict.schema.json");
 
 const checksModule = (await import(new URL("../src/checks.ts", import.meta.url).href)) as {
+  runChecks: (type: string, instance: unknown, context: string | undefined) => { lines: string[]; violated: boolean };
   registeredChecks: () => readonly { id: string; type: string; requiresContext: boolean }[];
   deregisterCheck: (id: string) => boolean;
   registerCheck: (check: unknown) => void;
@@ -111,20 +119,6 @@ const checksModule = (await import(new URL("../src/checks.ts", import.meta.url).
 
 const validateModule = (await import(new URL("../src/validate.ts", import.meta.url).href)) as {
   validateToLines: (schema: Record<string, unknown>, instance: unknown) => string[];
-};
-
-const scriptModule = (await import(
-  new URL("../scripts/check-dual-review.mjs", import.meta.url).href
-)) as {
-  evaluate: (directory: string) => {
-    status: string;
-    units: number;
-    lines: string[];
-    checksRun: number;
-    pairChecksRun: number;
-    read?: { path: string; verdict: string; head: string; producedBy: string }[];
-  };
-  PAIR_CHECK_ID: string;
 };
 
 /* ------------------------------------------------------------------ */
@@ -282,60 +276,6 @@ function preHeadCommit(): string | undefined {
   return undefined;
 }
 
-let stagedPreHeadTree: string | undefined;
-
-/**
- * A working copy of the pre-change tree, with the repository's `node_modules`
- * symlinked in so its `scripts/` and `src/` run unmodified.
- *
- * WHAT IT ASSERTS BEFORE RETURNING is the part that makes it a witness rather
- * than a directory: that the tree really does lack this phase's code. A
- * staging step that silently produced the CURRENT tree would give a red
- * witness that cannot go red, which is the failure shape this repository has
- * recorded three times.
- */
-function preHeadTree(): string | undefined {
-  if (stagedPreHeadTree !== undefined) {
-    return stagedPreHeadTree === "" ? undefined : stagedPreHeadTree;
-  }
-  const sha = preHeadCommit();
-  if (sha === undefined) {
-    stagedPreHeadTree = "";
-    return undefined;
-  }
-  const dir = mkdtempSync(join(tmpdir(), "tiphys-pre-head-"));
-  const archive = spawnSync("sh", ["-c", `git archive ${sha} | tar -x -C ${dir}`], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
-  if ((archive.status ?? -1) !== 0) {
-    rmSync(dir, { recursive: true, force: true });
-    stagedPreHeadTree = "";
-    return undefined;
-  }
-  symlinkSync(join(repoRoot, "node_modules"), join(dir, "node_modules"), "dir");
-
-  const oldChecks = readFileSync(join(dir, "src", "checks.ts"), "utf8");
-  assert.ok(
-    !oldChecks.includes("headGroupFor"),
-    "the staged pre-change tree already carries the head grouping, so it is not the old state",
-  );
-  assert.ok(
-    !oldChecks.includes("verdictPairApproves"),
-    "the staged pre-change tree already carries verdict-pair-approves, so it is not the old state",
-  );
-  const oldSchema = JSON.parse(
-    readFileSync(join(dir, "schemas", "verdict.schema.json"), "utf8"),
-  ) as Record<string, unknown>;
-  assert.ok(
-    !Object.hasOwn((oldSchema["properties"] ?? {}) as Record<string, unknown>, "head"),
-    "the staged pre-change schema already declares head",
-  );
-
-  stagedPreHeadTree = dir;
-  return dir;
-}
-
 /** The shipped verdict schema, parsed fresh so callers can mutate their copy. */
 function shippedSchema(): Record<string, unknown> {
   return JSON.parse(readFileSync(schemaPath, "utf8")) as Record<string, unknown>;
@@ -368,14 +308,32 @@ function parsed(body: string): Record<string, unknown> {
   return yamlModule.parse(body) as Record<string, unknown>;
 }
 
-/** Run the shipped gate script against a staged context. */
-function runGate(dir: string, tree = repoRoot): { status: number; output: string } {
-  const run = spawnSync(
-    process.execPath,
-    [join(tree, "scripts", "check-dual-review.mjs"), dir],
-    { cwd: tree, encoding: "utf8" },
-  );
-  return { status: run.status ?? -1, output: `${run.stdout ?? ""}${run.stderr ?? ""}` };
+/** The two documents of the staged pair, which every staging in this file names. */
+const PAIR_NAMES = ["decorrelated-criteria.yaml", "decorrelated-hazard.yaml"];
+
+/**
+ * `tiphys validate --type verdict <document> --context <dir>` over each named
+ * document of the pair, which runs `verdict-pair-approves` from each document's
+ * vantage point. The status is the highest exit code of the runs.
+ */
+function runGate(dir: string, names: readonly string[] = PAIR_NAMES): { status: number; output: string } {
+  let status = 0;
+  let output = "";
+  for (const name of names) {
+    const run = spawnSync(
+      process.execPath,
+      [cliEntry, "validate", "--type", "verdict", join(dir, "delivery", "review", name), "--context", dir],
+      { cwd: repoRoot, encoding: "utf8" },
+    );
+    status = Math.max(status, run.status ?? 99);
+    output += `${run.stdout ?? ""}${run.stderr ?? ""}`;
+  }
+  return { status, output };
+}
+
+/** The line `verdict-pair-approves` prints when the group approves. */
+function approvesLine(count: number): RegExp {
+  return new RegExp(`REPORT verdict-pair-approves ${String(count)} verdict\\(s\\) for phase M3-P9 at head ${FIXTURE_HEAD} read APPROVE`);
 }
 
 /* ------------------------------------------------------------------ */
@@ -685,12 +643,7 @@ test("two verdicts carrying the SAME head are one group of two and the gate repo
   withContext("full", SAME_HEAD_PAIR, (dir) => {
     const run = runGate(dir);
     assert.equal(run.status, 0, run.output);
-    assert.match(run.output, /check-dual-review: green \(2 review verdicts examined/, run.output);
-    assert.match(
-      run.output,
-      new RegExp(`REPORT dual-review-decorrelation 2 verdict\\(s\\) for phase M3-P9 at head ${FIXTURE_HEAD} are distinct`),
-      run.output,
-    );
+    assert.match(run.output, approvesLine(2), run.output);
   });
 });
 
@@ -713,13 +666,6 @@ test("two verdicts carrying DIFFERENT heads are two groups of one and the condit
       assert.match(
         run.output,
         new RegExp(
-          `only 1 verdict document\\(s\\) exist under delivery/review for phase M3-P9 at head ${head}, and a delegated grant requires two independent clean-room reviews of the exact head .*\\(check: dual-review-decorrelation\\)`,
-        ),
-        run.output,
-      );
-      assert.match(
-        run.output,
-        new RegExp(
           `only 1 verdict document\\(s\\) exist under delivery/review for phase M3-P9 at head ${head}, and DR-0012 condition 2 is a property of the PAIR, so it cannot be satisfied by fewer than two .*\\(check: verdict-pair-approves\\)`,
         ),
         run.output,
@@ -728,28 +674,7 @@ test("two verdicts carrying DIFFERENT heads are two groups of one and the condit
     /* AND THE SATISFIED SENTENCE IS ABSENT. A red exit code beside a line
        saying the reviews are decorrelated would be two facts a reader has to
        reconcile, and the criterion asks for the second not to be printed. */
-    assert.doesNotMatch(run.output, /REPORT dual-review-decorrelation 2 verdict\(s\)/, run.output);
-  });
-});
-
-test("RED WITNESS, criterion 3, member one: the PRE-CHANGE gate compares that same pair and reports green", () => {
-  /* THE DANGEROUS STATE IS THE OLD JOIN KEY, and it is run rather than
-     described: `git archive` of the newest commit whose schema has no head,
-     and the `scripts/check-dual-review.mjs` that shipped at it. */
-  const tree = preHeadTree();
-  if (tree === undefined) {
-    assert.ok(!gitAvailable, "git is available but the pre-change tree could not be staged");
-    return;
-  }
-  withContext("full", TWO_HEAD_PAIR, (dir) => {
-    const run = runGate(dir, tree);
-    assert.equal(run.status, 0, `the pre-change gate was expected to green this pair: ${run.output}`);
-    assert.match(run.output, /check-dual-review: green \(2 review verdicts examined/, run.output);
-    assert.match(
-      run.output,
-      /REPORT dual-review-decorrelation 2 verdict\(s\) for phase M3-P9 are distinct on produced-by, framing, review-contract/,
-      run.output,
-    );
+    assert.doesNotMatch(run.output, /REPORT verdict-pair-approves 2 verdict\(s\)/, run.output);
   });
 });
 
@@ -818,9 +743,11 @@ test("an upper-case head is ONE key with its lower-case spelling, which is the o
     ]),
   };
   withContext("full", documents, (dir) => {
-    const run = runGate(dir);
+    /* The lower-case document only: the schema refuses the upper-case one at
+       its own boundary, which is the outer layer this test sets aside. */
+    const run = runGate(dir, ["decorrelated-criteria.yaml"]);
     assert.equal(run.status, 0, run.output);
-    assert.match(run.output, /check-dual-review: green \(2 review verdicts examined/, run.output);
+    assert.match(run.output, approvesLine(2), run.output);
   });
 });
 
@@ -854,36 +781,6 @@ test("a pair in which ONE verdict reads FIX-ROUND-NEEDED reddens verdict-pair-ap
       run.output,
     );
     assert.match(run.output, /\(check: verdict-pair-approves\)/, run.output);
-    /* AND THE SIBLING CHECK IS NOT WHAT REDDENED IT. This pair is properly
-       decorrelated, so a red coming from `dual-review-decorrelation` would
-       mean the new predicate had not been reached at all. */
-    assert.doesNotMatch(run.output, /INVALID .*\(check: dual-review-decorrelation\)/, run.output);
-  });
-});
-
-test("RED WITNESS, criterion 5: the PRE-CHANGE gate greens a pair in which BOTH verdicts refuse the merge", () => {
-  /* THE CAPTURED GREEN THE CRITERION ASKS FOR. Two properly decorrelated
-     reviews that both say FIX-ROUND-NEEDED passed this gate at exit 0, because
-     nothing in it could see a verdict's value. The output is captured from the
-     pre-change tree and asserted, rather than described. */
-  const tree = preHeadTree();
-  if (tree === undefined) {
-    assert.ok(!gitAvailable, "git is available but the pre-change tree could not be staged");
-    return;
-  }
-  const documents = Object.fromEntries(
-    Object.entries(BOTH_REFUSING_PAIR).map(([name, body]) => [
-      name,
-      /* The pre-change schema has no head, and its check has no head grouping,
-         so the field is simply unknown there; leaving it in would be testing a
-         document that tree could not have been given. */
-      body.replace(/^head: [0-9a-fA-F]+\n/m, ""),
-    ]),
-  );
-  withContext("full", documents, (dir) => {
-    const run = runGate(dir, tree);
-    assert.equal(run.status, 0, `the pre-change gate was expected to green a refusing pair: ${run.output}`);
-    assert.match(run.output, /check-dual-review: green \(2 review verdicts examined/, run.output);
   });
 });
 
@@ -991,36 +888,34 @@ test("a low finding does NOT redden the pair predicate, which is the control the
   withContext("full", documents, (dir) => {
     const run = runGate(dir);
     assert.equal(run.status, 0, run.output);
-    assert.match(run.output, /check-dual-review: green \(2 review verdicts examined/, run.output);
+    assert.match(run.output, approvesLine(2), run.output);
   });
 });
 
 test("deregistering verdict-pair-approves makes the one-refusing pair pass, and restoring it makes it fail again", () => {
-  /* THE KIND B FALSIFICATION (section 2.3 rule 3), and the same shape the
-     sibling check's witness has. The script's own `evaluate` is called rather
-     than a copy of its loop, so what is shown to depend on the registration is
-     the shipped code path. */
+  /* THE KIND B FALSIFICATION (section 2.3 rule 3). `runChecks` is the
+     function `tiphys validate` calls, run in this process so the
+     deregistration reaches it. */
   withContext("full", ONE_REFUSING_PAIR, (dir) => {
-    const before = scriptModule.evaluate(dir);
-    assert.equal(before.status, "red");
-    assert.equal(before.pairChecksRun, 1);
+    const instance = parsed(readFileSync(join(dir, "delivery", "review", "decorrelated-hazard.yaml"), "utf8"));
+    const refusals = (lines: string[]): string[] =>
+      lines.filter((line) => line.startsWith("INVALID") && line.includes("(check: verdict-pair-approves)"));
+    const before = checksModule.runChecks("verdict", instance, dir);
+    assert.equal(before.violated, true, before.lines.join("\n"));
+    assert.notDeepEqual(refusals(before.lines), []);
 
     assert.equal(checksModule.deregisterCheck("verdict-pair-approves"), true);
     try {
-      const during = scriptModule.evaluate(dir);
-      assert.equal(during.status, "green");
-      assert.equal(during.pairChecksRun, 0);
-      assert.deepEqual(
-        during.lines.filter((line) => line.startsWith("INVALID")),
-        [],
-      );
+      const during = checksModule.runChecks("verdict", instance, dir);
+      assert.equal(during.violated, false, during.lines.join("\n"));
+      assert.deepEqual(refusals(during.lines), []);
     } finally {
       checksModule.registerCheck(checksModule.verdictPairApproves);
     }
 
-    const after = scriptModule.evaluate(dir);
-    assert.equal(after.status, "red");
-    assert.equal(after.pairChecksRun, 1);
+    const after = checksModule.runChecks("verdict", instance, dir);
+    assert.equal(after.violated, true);
+    assert.notDeepEqual(refusals(after.lines), []);
   });
 });
 
@@ -1037,53 +932,11 @@ test("verdict-pair-approves is registered in the shipped registry for the verdic
   assert.equal(found.length, 1, "verdict-pair-approves is not registered exactly once");
   assert.equal(found[0]?.type, "verdict");
   assert.equal(found[0]?.requiresContext, true);
-  assert.equal(scriptModule.PAIR_CHECK_ID, "verdict-pair-approves");
 });
 
 /* ------------------------------------------------------------------ */
 /* Step 6: the gate prints the count AND the values                     */
 /* ------------------------------------------------------------------ */
-
-test("the gate prints each verdict's value, head and produced-by, not only how many it examined", () => {
-  /* M4-P10 step 6, and it is the mitigation for the one thing this phase does
-     NOT refuse. `produced-by` is compared as a canonicalised STRING, never as
-     a model FAMILY, so two values naming one vendor pass as decorrelated; that
-     was measured against this repository's own reviews and closing it is
-     M4-P11's declared scope. Printing the values is what lets a reader of the
-     gate's own output see what was compared instead of opening two files. */
-  withContext("full", SAME_HEAD_PAIR, (dir) => {
-    const run = runGate(dir);
-    assert.equal(run.status, 0, run.output);
-    for (const family of ["family-a", "family-b"]) {
-      assert.match(
-        run.output,
-        new RegExp(`verdict APPROVE at head ${FIXTURE_HEAD} produced-by ${family} `),
-        run.output,
-      );
-    }
-    assert.match(
-      run.output,
-      /1 registered check\(s\) named verdict-pair-approves ran over 2 verdict\(s\)/,
-      run.output,
-    );
-  });
-});
-
-test("the two registered-check counts are printed separately, so one absent guard is not hidden by the other", () => {
-  withContext("full", SAME_HEAD_PAIR, (dir) => {
-    const run = scriptModule.evaluate(dir);
-    assert.equal(run.checksRun, 1);
-    assert.equal(run.pairChecksRun, 1);
-    assert.deepEqual(
-      (run.read ?? []).map((entry) => entry.verdict).sort(),
-      ["APPROVE", "APPROVE"],
-    );
-    assert.deepEqual(
-      (run.read ?? []).map((entry) => entry.producedBy).sort(),
-      ["family-a", "family-b"],
-    );
-  });
-});
 
 /* ------------------------------------------------------------------ */
 /* The regime still gates both checks                                   */
@@ -1101,11 +954,6 @@ test("under an owner-authority mode neither check violates, and both say why rat
     assert.match(
       run.output,
       /REPORT verdict-pair-approves mode direct-pr declares merge-authority owner, which is not a delegated grant/,
-      run.output,
-    );
-    assert.match(
-      run.output,
-      /REPORT dual-review-decorrelation mode direct-pr declares merge-authority owner, which is not a delegated grant/,
       run.output,
     );
   });
@@ -1203,16 +1051,16 @@ test("a sibling whose YAML does not decode makes the gate error instead of repor
      directory whose third review read FIX-ROUND-NEEDED and had one malformed
      line, and the dropped document appeared nowhere in the output. */
   withThirdDocument(`${REFUSING_THIRD}\n  this line: is: not: yaml: [\n`, (dir, run) => {
-    assert.equal(run.status, 21, run.output);
+    assert.equal(run.status, 1, run.output);
     assert.match(
       run.output,
       /third-refusing\.yaml sits under delivery\/review and did not decode/,
       run.output,
     );
-    assert.doesNotMatch(run.output, /the pair approves/, run.output);
+    assert.doesNotMatch(run.output, /read APPROVE/, run.output);
 
     const validated = runValidateOne(dir, "decorrelated-criteria.yaml");
-    for (const check of ["dual-review-decorrelation", "verdict-pair-approves"]) {
+    for (const check of ["verdict-pair-approves"]) {
       assert.match(
         validated,
         new RegExp(
@@ -1232,16 +1080,16 @@ test("a sibling that cannot be read at all makes the gate error instead of repor
      `decodeDocument`'s. The two reach the same drop through different
      readers. */
   withThirdDocument(undefined, (dir, run) => {
-    assert.equal(run.status, 21, run.output);
+    assert.equal(run.status, 1, run.output);
     assert.match(
       run.output,
       /third-refusing\.yaml sits under delivery\/review and could not be read/,
       run.output,
     );
-    assert.doesNotMatch(run.output, /the pair approves/, run.output);
+    assert.doesNotMatch(run.output, /read APPROVE/, run.output);
 
     const validated = runValidateOne(dir, "decorrelated-criteria.yaml");
-    for (const check of ["dual-review-decorrelation", "verdict-pair-approves"]) {
+    for (const check of ["verdict-pair-approves"]) {
       assert.match(
         validated,
         new RegExp(
@@ -1276,33 +1124,6 @@ test("a verdict sibling that states no phase is reported rather than silently le
         /third-refusing\.yaml declares no phase, so it cannot be placed in or out of the group/,
         run.output,
       );
-    },
-  );
-});
-
-test("the phase-less sibling is reported through `tiphys validate` too, where only one instance is checked", () => {
-  /* THE ISOLATING PATH. `tiphys validate --type verdict <one document>
-     --context <dir>` runs the derived checks over ONE instance, so a dropped
-     sibling gets no run of its own and the drop is invisible unless the
-     grouping reports it. Measured at the reviewed head on this exact staging:
-     both checks printed their affirmative REPORT lines over the remaining
-     two. */
-  withThirdDocument(
-    REFUSING_THIRD.split("\n")
-      .filter((line) => !line.startsWith("phase: "))
-      .join("\n"),
-    (dir) => {
-      const output = runValidateOne(dir, "decorrelated-criteria.yaml");
-      for (const check of ["dual-review-decorrelation", "verdict-pair-approves"]) {
-        assert.match(
-          output,
-          new RegExp(
-            `INVALID #/phase .*third-refusing\\.yaml declares no phase.*\\(check: ${check}\\)`,
-          ),
-          output,
-        );
-      }
-      assert.doesNotMatch(output, /REPORT verdict-pair-approves .* read APPROVE/, output);
     },
   );
 });
@@ -1363,7 +1184,7 @@ for (const [label, kindLines, found] of KIND_MEMBERS) {
        `check-dual-review: green (2 review verdicts examined for decorrelation)`,
        exit 0, and the third file named nowhere in the output. */
     withThirdDocument(refusingThirdWithKind(kindLines), (dir, run) => {
-      assert.equal(run.status, 21, run.output);
+      assert.equal(run.status, 1, run.output);
       assert.match(
         run.output,
         new RegExp(
@@ -1372,10 +1193,10 @@ for (const [label, kindLines, found] of KIND_MEMBERS) {
         ),
         run.output,
       );
-      assert.doesNotMatch(run.output, /the pair approves/, run.output);
+      assert.doesNotMatch(run.output, /read APPROVE/, run.output);
 
       const validated = runValidateOne(dir, "decorrelated-criteria.yaml");
-      for (const check of ["dual-review-decorrelation", "verdict-pair-approves"]) {
+      for (const check of ["verdict-pair-approves"]) {
         assert.match(
           validated,
           new RegExp(
@@ -1421,72 +1242,19 @@ test("a sibling that declares no kind at all is still skipped, and the pair stil
       .join("\n"),
     (_dir, run) => {
       assert.equal(run.status, 0, run.output);
-      assert.match(run.output, /the pair approves/, run.output);
+      assert.match(run.output, approvesLine(2), run.output);
       assert.doesNotMatch(run.output, /third-refusing/, run.output);
     },
   );
 });
 
-test("the gate runner and the derived check select the same documents, so a kind differing only in case is counted", () => {
-  /* THE OTHER HALF OF THE MECHANISM: TWO READERS OF ONE FACT. The runner's own
-     selection rule was a raw `value["kind"] !== "verdict"` while
-     `loadCommittedVerdicts` canonicalises, so `kind: Verdict` was a verdict to
-     the check and not to the runner. The gate reddened anyway, through the
-     check's view of the group, while printing `2 review verdicts examined` over
-     a group of three: a count that is not the set that was compared. This
-     asserts the COUNT, which is the only place the divergence was visible. */
+test("the derived check counts a sibling whose kind differs only in case", () => {
+  /* `loadCommittedVerdicts` canonicalises `kind`, so `kind: Verdict` is a
+     verdict and its refusal reaches the pair. The gate runner that once
+     selected by a raw comparison was deleted by M6-P5 with its script. */
   withThirdDocument(refusingThirdWithKind("kind: Verdict"), (_dir, run) => {
     assert.notEqual(run.status, 0, run.output);
-    assert.match(run.output, /\(3 review verdicts examined for decorrelation\)/, run.output);
     assert.match(run.output, /third-refusing\.yaml reads FIX-ROUND-NEEDED/, run.output);
-  });
-});
-
-test("the precondition reports a directory whose only review document is unexaminable as APPLICABLE", () => {
-  /* THE WORST ARM OF THE SAME CLASS, AND IT IS NOT REACHABLE THROUGH THE GATE
-     ARM ABOVE. `--precondition` decides whether the gate RUNS. With the only
-     candidate dropped it counted zero and exited 1, and the gate then reported
-     NOT-APPLICABLE: merge evidence that could not be read was announced as
-     "there is no pair of reviews to compare". A not-applicable reached by not
-     looking is the vacuous pass M2-C-3 exists against. */
-  withContext("full", {}, (dir) => {
-    writeFileSync(
-      join(dir, "delivery", "review", "only-review.yaml"),
-      `${REFUSING_THIRD}\n  this line: is: not: yaml: [\n`,
-    );
-    const precondition = spawnSync(process.execPath, [scriptPath, "--precondition", dir], {
-      cwd: repoRoot,
-      encoding: "utf8",
-    });
-    const preconditionOutput = `${precondition.stdout ?? ""}${precondition.stderr ?? ""}`;
-    assert.equal(precondition.status, 0, preconditionOutput);
-    assert.match(
-      preconditionOutput,
-      /1 candidate\(s\) that could not be examined/,
-      preconditionOutput,
-    );
-
-    const run = runGate(dir);
-    assert.equal(run.status, 21, run.output);
-    assert.match(run.output, /check-dual-review: error/, run.output);
-    assert.doesNotMatch(run.output, /not-applicable/, run.output);
-  });
-});
-
-test("an empty review directory is still NOT-APPLICABLE, which is the control the four arms above need", () => {
-  /* Without this every arm above would also pass a gate that errored on any
-     directory at all, and "could not look" would stop being distinguishable
-     from "nothing to look at", which is the distinction the whole section is
-     about. */
-  withContext("full", {}, (dir) => {
-    const precondition = spawnSync(process.execPath, [scriptPath, "--precondition", dir], {
-      cwd: repoRoot,
-      encoding: "utf8",
-    });
-    assert.equal(precondition.status, 1, `${precondition.stdout ?? ""}`);
-    const run = runGate(dir);
-    assert.equal(run.status, 20, run.output);
-    assert.match(run.output, /check-dual-review: not-applicable/, run.output);
   });
 });
 
@@ -1507,7 +1275,7 @@ test("a prose review and a non-verdict document in the same directory are still 
     );
     const run = runGate(dir);
     assert.equal(run.status, 0, run.output);
-    assert.match(run.output, /check-dual-review: green \(2 review verdicts examined/, run.output);
+    assert.match(run.output, approvesLine(2), run.output);
   });
 });
 
@@ -1544,11 +1312,9 @@ test("this phase's behaviors are registered in test/behaviors.json and resolve b
     "verdict-pair-verdict-vocabulary-exact",
     "verdict-pair-severity-vocabulary-closed",
     "verdict-pair-low-finding-mergeable",
-    "dual-review-prints-verdict-values",
     "dual-review-undecodable-sibling-refused",
     "dual-review-unreadable-sibling-refused",
     "dual-review-phaseless-sibling-refused",
-    "dual-review-unexaminable-candidate-is-applicable",
     "dual-review-non-verdict-document-still-skipped",
     "dual-review-unreadable-kind-list-refused",
     "dual-review-unreadable-kind-invisible-refused",
@@ -1560,11 +1326,5 @@ test("this phase's behaviors are registered in test/behaviors.json and resolve b
       Object.prototype.hasOwnProperty.call(behaviors, id),
       `behavior ${id} is not registered`,
     );
-  }
-});
-
-test.after(() => {
-  if (stagedPreHeadTree !== undefined && stagedPreHeadTree !== "" && existsSync(stagedPreHeadTree)) {
-    rmSync(stagedPreHeadTree, { recursive: true, force: true });
   }
 });
