@@ -1148,5 +1148,11 @@
   "m6-p4-hazard-brief-not-testable-questions": "the composed hazard review brief carries each not-testable criterion as a question, and says so when there is none",
   "m6-p4-criteria-no-phase-not-applicable": "a suite run given --plan and no --phase runs the suite and reports the criteria not applicable naming no phase, and --phase with no --plan proves nothing",
   "m6-p4-runner-optional-parameter": "a gate declaring phase? is passed --phase when the run has one and runs without it when the run has none, while a gate requiring phase still errors without it",
-  "m6-p4-registry-criteria-by-event": "a project registry whose suite passes --plan and declares phase? proves the phase's criteria on a pull request and reports them not applicable on a push"
+  "m6-p4-registry-criteria-by-event": "a project registry whose suite passes --plan and declares phase? proves the phase's criteria on a pull request and reports them not applicable on a push",
+  "m6-p4-criterion-pass-shaped-red": "a criterion whose named test passes only under expectFailure, or only as a replay of an earlier run, is red naming the criterion and the title",
+  "m6-p4-brief-compose-invalid-plan": "brief compose refuses a plan that does not validate against the plan schema, naming the plan and the invalid criterion",
+  "m6-p4-template-names-tests": "the shipped plan template names tests in check.tests and never proves a criterion with a test runner's exit code",
+  "m6-p4-criteria-ambiguous-phase-error": "a plan declaring one phase id twice makes the suite gate error naming the id, rather than proving the first",
+  "m6-p4-criterion-describe-title-red": "a criterion naming a describe title is not proven by the suite point, even when every test inside it was skipped",
+  "m6-p4-criterion-env-shell-red": "a check command that hands an inline script to a shell behind env and assignments is red, and env before any other program is run"
 }

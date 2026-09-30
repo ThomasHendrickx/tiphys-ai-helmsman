@@ -622,3 +622,218 @@ test("the composed hazard review brief carries each not-testable criterion as a 
     /# Not-testable criteria: questions this review answers\n\n\(none: every acceptance criterion of this phase names a check the kernel runs\)/,
   );
 });
+
+/* ------------------------------------------------------------------ */
+/* Fix round 1: pass-shaped points, compose, template, env, ambiguity  */
+/* ------------------------------------------------------------------ */
+
+/* `expectFailure` makes node report a test whose assertions FAILED as
+   test:pass (node v26.6.0, measured in the work history's fix round 1). */
+const XFAIL_FILE =
+  'import { strict as assert } from "node:assert";\n' +
+  'import { test } from "node:test";\n' +
+  'test("the retry happens twice", { expectFailure: "retries are not built yet" }, () => {\n' +
+  '  assert.equal(1, 2, "the retry happened once");\n' +
+  "});\n" +
+  'test("the retry is logged", { expectFailure: true }, () => {\n' +
+  '  throw new Error("nothing was logged");\n' +
+  "});\n";
+
+/* The body passes only in the EARLIER run, which records it in the rerun
+   state file; in the gate's run the body throws, and node replays the earlier
+   pass instead of running it. */
+const REPLAY_FILE =
+  'import { test } from "node:test";\n' +
+  'test("the cache is warm", () => {\n' +
+  '  if (process.env["TIPHYS_FIXTURE_EARLIER_RUN"] !== "1") {\n' +
+  '    throw new Error("the cache is cold in this run");\n' +
+  "  }\n" +
+  "});\n";
+
+const NEW_FILE = 'import { test } from "node:test";\ntest("a new test runs", () => {});\n';
+
+const RERUN_SCRIPT = 'node --test --test-rerun-failures=.rerun.json "test/**/*.test.ts"';
+
+test("a criterion whose named test passes only under expectFailure, or only as a replay of an earlier run, is red naming the criterion and the title", () => {
+  const plan = planWith([
+    { id: "c-xfail", criterion: "the retry", check: { tests: ["the retry happens twice"] } },
+    { id: "c-xfail-bare", criterion: "the log", check: { tests: ["the retry is logged"] } },
+    { id: "c-replay", criterion: "the cache", check: { tests: ["the cache is warm"] } },
+    { id: "c-new", criterion: "a test that runs", check: { tests: ["a new test runs"] } },
+  ]);
+  const { dir, base } = makeFixture(
+    { "test/x.test.ts": XFAIL_FILE, "test/r.test.ts": REPLAY_FILE, "test/n.test.ts": NEW_FILE },
+    plan,
+    RERUN_SCRIPT,
+  );
+  const node = (args: string[], extraEnv: Record<string, string> = {}): { status: number | null; out: string } => {
+    const run = spawnSync(process.execPath, args, {
+      cwd: dir,
+      encoding: "utf8",
+      env: { ...scrubbedEnv(), ...extraEnv },
+    });
+    return { status: run.status, out: `${run.stdout ?? ""}${run.stderr ?? ""}` };
+  };
+  /* THE DANGEROUS STATE, shown by node itself: the expectFailure file exits 0
+     although both bodies fail, and the cache test's body fails when run. */
+  assert.equal(node(["--test", "test/x.test.ts"]).status, 0);
+  assert.equal(node(["--test", "test/r.test.ts"]).status, 1);
+  /* The earlier run: only r.test.ts, its body passing, recorded in the state. */
+  const earlier = node(["--test", "--test-rerun-failures=.rerun.json", "test/r.test.ts"], {
+    TIPHYS_FIXTURE_EARLIER_RUN: "1",
+  });
+  assert.equal(earlier.status, 0, earlier.out);
+
+  const run = runGate(dir, base, ["--plan", "plan.json", "--phase", "M9-P1"]);
+  assert.equal(run.record.status, "red", run.record.detail);
+  assert.equal(run.stdout, captured("pass-shaped-red"));
+  for (const finding of [
+    'criterion c-xfail: test "the retry happens twice" passed only because it is marked expectFailure, so its assertions failed (test/x.test.ts)',
+    'criterion c-xfail-bare: test "the retry is logged" passed only because it is marked expectFailure, so its assertions failed (test/x.test.ts)',
+    'criterion c-replay: test "the cache is warm" passed only as a replay of an earlier run (--test-rerun-failures), so this run did not execute it (test/r.test.ts)',
+  ]) {
+    assert.ok(run.record.detail.includes(finding), `missing: ${finding}\n${run.record.detail}`);
+  }
+  /* The control inside the same run: a test the earlier run never saw runs
+     for real under the same flag and proves its criterion. */
+  assert.doesNotMatch(run.record.detail, /criterion c-new:/);
+  assert.equal(run.criteria?.["proven"], 1);
+  assert.equal(run.criteria?.["unproven"], 3);
+});
+
+test("brief compose refuses a plan that does not validate against the plan schema, naming the plan and the invalid criterion", () => {
+  const plan = planWith([{ id: "c-bare", criterion: "neither check nor not-testable" }]);
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-criteria-brief-"));
+  const planFile = join(dir, "plan.json");
+  writeFileSync(planFile, `${JSON.stringify(plan, null, 2)}\n`);
+  /* The same plan, as `validate --type plan` reads it. */
+  const validated = validatePlan(plan);
+  assert.notEqual(validated.status, 0, validated.output);
+  assert.match(validated.output, /INVALID #\/phases\/0\/acceptance\/0 /);
+
+  const run = spawnSync(
+    process.execPath,
+    [cliEntry, "brief", "compose", "--role", "clean-room-reviewer", "--phase", planFile, "--phase-id", "M9-P1"],
+    { cwd: repoRoot, encoding: "utf8" },
+  );
+  assert.notEqual(run.status, 0, run.stdout);
+  assert.equal(run.stdout, "");
+  assert.ok(
+    (run.stderr ?? "").includes(
+      `plan ${planFile} does not validate against the plan schema: INVALID #/phases/0/acceptance/0 `,
+    ),
+    run.stderr,
+  );
+});
+
+test("the shipped plan template names tests in check.tests and never proves a criterion with a test runner's exit code", () => {
+  const template = yamlModule.parse(
+    readFileSync(join(repoRoot, "templates", "plan.example.yaml"), "utf8"),
+  ) as { phases: { acceptance: { id: string; check?: { tests?: string[]; command?: string[] } }[] }[] };
+  const criteria = template.phases.flatMap((phase) => phase.acceptance);
+  const runsATestRunner = (argv: string[]): boolean =>
+    argv.some((word) => /^--test(?:$|[-=])/.test(word)) ||
+    (argv[0] === "npm" && (argv[1] === "test" || argv[1] === "t" || (argv[1] === "run" && argv[2] === "test")));
+  for (const criterion of criteria) {
+    assert.equal(
+      runsATestRunner(criterion.check?.command ?? []),
+      false,
+      `criterion ${criterion.id} proves itself with a test runner's exit code`,
+    );
+  }
+  /* Criterion 1 names its four tests, and a plan written from the template
+     still validates. */
+  assert.equal(criteria[0]?.check?.tests?.length, 4);
+  assert.equal(criteria[0]?.check?.command, undefined);
+  const validated = validatePlan(template as unknown as Record<string, unknown>);
+  assert.equal(validated.status, 0, validated.output);
+});
+
+test("a plan declaring one phase id twice makes the suite gate error naming the id, rather than proving the first", () => {
+  const plan = planWith([{ id: "c-test", criterion: "alpha", check: { tests: ["alpha passes"] } }]);
+  const phases = plan["phases"] as Record<string, unknown>[];
+  /* The second phase carries the same id and names a test nobody reports, so
+     proving "the first" would read green. */
+  const second = structuredClone(phases[0]) as Record<string, unknown>;
+  second["acceptance"] = [{ id: "c-other", criterion: "never run", check: { tests: ["no such test"] } }];
+  for (const hazard of second["hazard-classes"] as Record<string, unknown>[]) {
+    hazard["addressed-by"] = "criterion c-other";
+  }
+  phases.push(second);
+  const { dir, base } = makeFixture({ "test/a.test.ts": TESTS_FILE }, plan);
+  /* Lower case, as CI derives it from a branch name. */
+  const run = runGate(dir, base, ["--plan", "plan.json", "--phase", "m9-p1"]);
+  assert.equal(run.record.status, "error", run.record.detail);
+  assert.equal(run.status, 21);
+  assert.equal(
+    run.record.detail,
+    "plan plan.json declares 2 phases with id m9-p1, so its criteria cannot be told apart",
+  );
+  assert.equal(existsSync(join(run.evidenceDir, "suite-events.ndjson")), false);
+});
+
+test("a criterion naming a describe title is not proven by the suite point, even when every test inside it was skipped", () => {
+  const plan = planWith([
+    { id: "c-suite", criterion: "the group", check: { tests: ["group of skipped tests"] } },
+    { id: "c-ok", criterion: "alpha", check: { tests: ["alpha passes"] } },
+  ]);
+  const { dir, base } = makeFixture(
+    {
+      "test/a.test.ts": TESTS_FILE,
+      "test/d.test.ts":
+        'import { describe, test } from "node:test";\n' +
+        'describe("group of skipped tests", () => {\n' +
+        '  test("inner one", { skip: "fixture reason" }, () => {});\n' +
+        '  test("inner two", { skip: "fixture reason" }, () => {});\n' +
+        "});\n",
+    },
+    plan,
+  );
+  const run = runGate(dir, base, ["--plan", "plan.json", "--phase", "M9-P1"]);
+  assert.equal(run.record.status, "red", run.record.detail);
+  assert.ok(
+    run.record.detail.includes(
+      'criterion c-suite: test "group of skipped tests" was not reported by the suite, so nothing proves it',
+    ),
+    run.record.detail,
+  );
+  assert.doesNotMatch(run.record.detail, /criterion c-ok:/);
+  assert.equal(run.criteria?.["proven"], 1);
+  assert.equal(run.criteria?.["unproven"], 1);
+});
+
+test("a check command that hands an inline script to a shell behind env and assignments is red, and env before any other program is run", () => {
+  const plan = planWith([
+    { id: "c-env", criterion: "env then a shell", check: { command: ["env", "sh", "-c", "exit 0"] } },
+    {
+      id: "c-env-assign",
+      criterion: "env, assignments, then a shell",
+      check: { command: ["/usr/bin/env", "A=1", "B=two words", "bash", "-lc", "exit 0"] },
+    },
+    {
+      id: "c-env-i",
+      criterion: "env -i, an assignment, then a shell",
+      check: { command: ["env", "-i", "PATH=/usr/bin:/bin", "sh", "-c", "exit 0"] },
+    },
+    {
+      id: "c-env-ok",
+      criterion: "env then a program",
+      check: { command: ["env", "A=1", "node", "-e", "process.exit(process.env.A === '1' ? 0 : 7)"] },
+    },
+  ]);
+  const { dir, base } = makeFixture({ "test/a.test.ts": TESTS_FILE }, plan);
+  const run = runGate(dir, base, ["--plan", "plan.json", "--phase", "M9-P1"]);
+  assert.equal(run.record.status, "red", run.record.detail);
+  assert.equal(run.stdout, captured("env-shell-red"));
+  for (const finding of [
+    'criterion c-env: check.command ["env","sh","-c","exit 0"] was not proven: it hands an inline script to sh,',
+    'criterion c-env-assign: check.command ["/usr/bin/env","A=1","B=two words","bash","-lc","exit 0"] was not proven: it hands an inline script to bash,',
+    'criterion c-env-i: check.command ["env","-i","PATH=/usr/bin:/bin","sh","-c","exit 0"] was not proven: it hands an inline script to sh,',
+  ]) {
+    assert.ok(run.record.detail.includes(finding), `missing: ${finding}\n${run.record.detail}`);
+  }
+  /* env in front of a program that is not a shell is run, and proves. */
+  assert.doesNotMatch(run.record.detail, /criterion c-env-ok:/);
+  assert.equal(run.criteria?.["proven"], 1);
+  assert.equal(run.criteria?.["unproven"], 3);
+});
