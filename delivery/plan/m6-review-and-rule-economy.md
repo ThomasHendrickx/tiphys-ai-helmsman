@@ -42,6 +42,8 @@ thing is not written here, it is not being made.
   pair change after it would not, so P6 lands after P4. P5 also waits on
   delivery/decisions/DR-0065-what-a-kernel-launched-reviewer-may-do.md:1.
   P7 lands last: it extends P5's launcher to a second harness.
+  P8 (DR-0066, faster pull-request CI) lands right after P3, before P4, so
+  every later pull request runs the faster CI.
 
 - **Speed, from 2026-09-30 evening (owner: "get a move on").** Before a
   pull request, implementers run `npm run build`, `npm test` and their own
@@ -386,6 +388,41 @@ command with its expected exit. `not-testable` criteria carry a reason.
   one declared is compared as if it were a vendor.
 - not in scope: publishing the adapter as its own npm package (package names
   are DR-0008's; that needs a new record).
+
+## M6-P8: pull-request CI runs each check once (DR-0066)
+
+- intent: the owner decided a pull request's CI runs each check once. It
+  was about 45 minutes, most of it the suite run three times and 164 stored
+  witnesses re-evaluated on every pull request. Lands before M6-P4.
+- tier: `pair`.
+- files-to-touch: `.github/workflows/gates.yml`, `gate-registry.yaml`,
+  `src/`, `test/`, `witness/`, `delivery/`.
+- steps:
+  1. Remove the workflow's separate `npm test` step; the `suite` gate runs
+     the same suite. `npm ci` and `npm run build` stay.
+  2. The M1 exit test step runs on the push event only.
+  3. The `red-witness` gate, on the `pull_request` event, evaluates the
+     pull request's own witness specs, and a stored spec only when the diff
+     from the merge base changes a file one of its members mutates or a test
+     file it runs. On the `push` event it evaluates every stored spec, as
+     today. The gate's detail line names how many stored specs it skipped
+     and why, so a skip is visible, never silent.
+- acceptance:
+  - p8-selection: named tests, one per case: on `pull_request`, a stored spec
+    whose files the diff does not touch is skipped and counted; one whose
+    mutated file is in the diff is evaluated; one whose test file is in the
+    diff is evaluated; on `push`, every stored spec is evaluated.
+  - p8-workflow: a named test reads `.github/workflows/gates.yml`: no step
+    runs `npm test` on its own, and the M1 exit test step does not run on
+    `pull_request`.
+  - p8-time: not-testable locally: it is the duration of this pull request's
+    own `gates` job, quoted with its run id and head.
+  - p8-build: `npm run build` exits 0, `npm test` exits 0 with 0 fail.
+- hazards: a skip rule that skips a witness whose test the diff did change
+  (for example a renamed or moved test file); the push event taking the
+  pull-request arm, which would make the full sweep never run; a selection
+  that fails open when the diff cannot be computed (it must evaluate
+  everything, or error).
 
 ## Not in scope
 
