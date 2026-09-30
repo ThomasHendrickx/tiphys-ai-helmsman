@@ -3,12 +3,13 @@
  * writes the verdict the prompt names (copied from the settings' `verdict`),
  * prints the stream in `stream` to stdout, records what it saw in `echo`
  * (including the commit it stands on, the NAMES of its environment, its HOME,
- * since the kernel removes the worktree afterwards, and the arguments the
- * kernel passed the executor after the prompt), and exits with
+ * since the kernel removes the worktree afterwards, the arguments the kernel
+ * passed the executor after the prompt, and what `node_modules` in its working
+ * directory holds), and exits with
  * `exit`. The settings are the JSON in its third argument (stub-executor.mjs).
  */
 import { spawnSync } from "node:child_process";
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 
 const [model, prompt, settingsJson] = process.argv.slice(2);
@@ -26,6 +27,7 @@ if (settings.echo) {
       envNames: Object.keys(process.env).sort(),
       home: process.env["HOME"] ?? null,
       extra: settings.extra ?? null,
+      nodeModules: existsSync("node_modules") ? readdirSync("node_modules").sort() : null,
     }),
   );
 }

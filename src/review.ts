@@ -300,6 +300,60 @@ export function reviewChildEnv(
   return buildChildEnv({ parentEnv, scrubDir: join(taskDirectory, SCRUB_DIR_NAME) });
 }
 
+/**
+ * The reviewed head's dependencies, installed by the KERNEL before launch
+ * (M6-P5 fix round 3), so a reviewer can build and test without a grant to
+ * install anything. Only when the head carries a `package-lock.json` in the
+ * review directory: `npm ci` there, in the reviewer's own scrubbed
+ * environment, with its output in `npm-ci.txt` in the task directory. Audit
+ * and funding requests are left out: they reach the registry and prepare
+ * nothing. A lockfile that is not a regular file is refused rather than
+ * handed to npm, since its type decides what reading it does.
+ */
+function installReviewDependencies(
+  reviewDirectory: string,
+  taskDirectory: string,
+  env: Record<string, string>,
+): { ok: true } | { ok: false; reason: string } {
+  const lockfile = join(reviewDirectory, "package-lock.json");
+  let isFile: boolean;
+  try {
+    isFile = lstatSync(lockfile).isFile();
+  } catch {
+    return { ok: true };
+  }
+  if (!isFile) {
+    return { ok: false, reason: `${lockfile} is not a regular file, so npm ci was not run` };
+  }
+  const logPath = join(taskDirectory, "npm-ci.txt");
+  let logFd: number | undefined;
+  try {
+    logFd = openSync(logPath, "wx");
+    const run = spawnSync("npm", ["ci", "--no-audit", "--no-fund"], {
+      cwd: reviewDirectory,
+      env,
+      stdio: ["ignore", logFd, logFd],
+      shell: false,
+    });
+    if (run.error !== undefined) {
+      return { ok: false, reason: `npm ci could not be run in ${reviewDirectory}: ${describe(run.error)}` };
+    }
+    if (run.status !== 0) {
+      return {
+        ok: false,
+        reason: `npm ci exited ${run.status === null ? "without an exit code" : String(run.status)} in ${reviewDirectory} (output in ${logPath})`,
+      };
+    }
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, reason: `npm ci failed in ${reviewDirectory}: ${describe(error)}` };
+  } finally {
+    if (logFd !== undefined) {
+      closeSync(logFd);
+    }
+  }
+}
+
 export type DispatchOutcome =
   /** Refused before launch: no worktree was launched into and no record was written. */
   | { ok: false; reason: string }
@@ -361,6 +415,22 @@ export function dispatchReview(options: DispatchOptions): DispatchOutcome {
     return { ok: false, reason: `the executor ${executor.name} names no model for tier ${options.tier}` };
   }
 
+  /* The grant is mapped BEFORE anything is created (M6-P5 fix round 3): an
+     executor that cannot map it refuses with no task directory and no
+     worktree left behind. */
+  const prompt =
+    `Review according to the brief on standard input. Write your verdict to ${options.verdictPath}, ` +
+    "relative to the current directory.";
+  let argv: string[];
+  try {
+    argv = executor.command(requestedModel, prompt, REVIEWER_GRANT);
+  } catch (error) {
+    return { ok: false, reason: `the executor ${executor.name} could not build its command: ${describe(error)}` };
+  }
+  if (!Array.isArray(argv) || argv.length === 0 || argv.some((part) => typeof part !== "string" || part === "")) {
+    return { ok: false, reason: `the executor ${executor.name} returned no usable argv` };
+  }
+
   const started = now();
   const taskId = `review-${options.phase}-${compactUtc(started)}-${randomBytes(3).toString("hex")}`;
   const out = resolve(options.outDirectory);
@@ -380,17 +450,15 @@ export function dispatchReview(options: DispatchOptions): DispatchOutcome {
     return { ok: false, reason: added.reason };
   }
   const reviewDirectory = join(worktree, prefix);
-  const prompt =
-    `Review according to the brief on standard input. Write your verdict to ${options.verdictPath}, ` +
-    "relative to the current directory.";
-  let argv: string[];
-  try {
-    argv = executor.command(requestedModel, prompt, REVIEWER_GRANT);
-  } catch (error) {
-    return { ok: false, reason: `the executor ${executor.name} could not build its command: ${describe(error)}` };
-  }
-  if (!Array.isArray(argv) || argv.length === 0 || argv.some((part) => typeof part !== "string" || part === "")) {
-    return { ok: false, reason: `the executor ${executor.name} returned no usable argv` };
+  const installed = installReviewDependencies(reviewDirectory, taskDirectory, childEnv.env);
+  if (!installed.ok) {
+    const removed = git(project, ["worktree", "remove", "--force", worktree]);
+    return {
+      ok: false,
+      reason:
+        `the reviewer's dependencies could not be installed, so nothing was launched: ${installed.reason}; ` +
+        (removed.ok ? "the review worktree was removed" : `the review worktree ${worktree} could not be removed: ${removed.reason}`),
+    };
   }
 
   const streamPath = join(taskDirectory, "stream.jsonl");

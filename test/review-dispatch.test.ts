@@ -574,3 +574,104 @@ test("the real CLI, given the executor's argv for the kernel's grant, ran in acc
   assert.equal(result["subtype"], "success");
   assert.deepEqual(result["permission_denials"], []);
 });
+
+/* ------------------------------------------------------------------ */
+/* The kernel prepares the worktree, and maps the grant first          */
+/* (M6-P5 fix round 3)                                                */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A project whose head carries a package-lock.json with one dependency, a
+ * local directory, so `npm ci` needs no network. With `inSync` false the lock
+ * omits the dependency the package.json names, which `npm ci` refuses.
+ */
+function npmProject(inSync: boolean): { root: string; repo: string; head: string } {
+  const made = project();
+  mkdirSync(join(made.repo, "local-dep"));
+  writeFileSync(join(made.repo, "local-dep", "package.json"), '{ "name": "local-dep", "version": "1.0.0" }\n');
+  writeFileSync(
+    join(made.repo, "package.json"),
+    `${JSON.stringify(
+      { name: "reviewed-project", version: "1.0.0", private: true, dependencies: { "local-dep": "file:./local-dep" } },
+      null,
+      2,
+    )}\n`,
+  );
+  const packages: Record<string, unknown> = { "": { name: "reviewed-project", version: "1.0.0" } };
+  if (inSync) {
+    packages[""] = { name: "reviewed-project", version: "1.0.0", dependencies: { "local-dep": "file:./local-dep" } };
+    packages["local-dep"] = { version: "1.0.0" };
+    packages["node_modules/local-dep"] = { resolved: "local-dep", link: true };
+  }
+  writeFileSync(
+    join(made.repo, "package-lock.json"),
+    `${JSON.stringify({ name: "reviewed-project", version: "1.0.0", lockfileVersion: 3, requires: true, packages }, null, 2)}\n`,
+  );
+  git(made.repo, ["add", "."]);
+  git(made.repo, ["commit", "-q", "-m", "a head with a lockfile"]);
+  return { ...made, head: git(made.repo, ["rev-parse", "HEAD"]) };
+}
+
+function registeredWorktrees(repo: string): string[] {
+  return git(repo, ["worktree", "list", "--porcelain"])
+    .split("\n")
+    .filter((line) => line.startsWith("worktree "));
+}
+
+test("before launch the kernel runs npm ci in the review worktree of a head with a package-lock.json, so the reviewer finds node_modules in its working directory, and the project checkout gets none", () => {
+  const { root, repo } = npmProject(true);
+  try {
+    const echo = join(root, "echo.json");
+    const run = dispatch(repo, root, { stream: STREAM, verdictPath: "delivery/review/m3-p9-hazard.yaml", echo });
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`);
+    const seen = JSON.parse(readFileSync(echo, "utf8")) as { cwd: string; nodeModules: string[] | null };
+    const taskId = (run.record as Record<string, unknown>)["taskId"] as string;
+    const taskDirectory = join(dirname(run.recordPath as string), taskId);
+    assert.equal(realpathSync(dirname(seen.cwd)), realpathSync(taskDirectory), `the reviewer stood in ${seen.cwd}`);
+    assert.ok(seen.nodeModules?.includes("local-dep"), `node_modules in the reviewer's directory: ${JSON.stringify(seen.nodeModules)}`);
+    assert.equal(spawnSync("test", ["-e", join(repo, "node_modules")]).status, 1, "npm ci ran in the project checkout");
+    assert.equal(spawnSync("test", ["-s", join(taskDirectory, "npm-ci.txt")]).status, 0, "no npm ci output was kept");
+    assert.equal(registeredWorktrees(repo).length, 1, "the review worktree is still registered");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a failing dependency install refuses before launch with exit 1 and one line naming npm ci, writes no record, and leaves no review worktree registered", () => {
+  const { root, repo } = npmProject(false);
+  try {
+    const echo = join(root, "echo.json");
+    const run = dispatch(repo, root, { stream: STREAM, verdictPath: "delivery/review/m3-p9-hazard.yaml", echo });
+    assert.equal(run.status, 1, `${run.stdout}${run.stderr}`);
+    const lines = run.stderr.split("\n").filter((line) => line.startsWith("tiphys review: "));
+    assert.equal(lines.length, 1, run.stderr);
+    assert.match(
+      lines[0] as string,
+      /dependencies could not be installed, so nothing was launched: npm ci exited 1 in .* \(output in .*npm-ci\.txt\); the review worktree was removed$/,
+    );
+    assert.equal(run.recordPath, undefined, run.stdout);
+    assert.equal(spawnSync("test", ["-e", echo]).status, 1, "the executor ran");
+    assert.deepEqual(registeredWorktrees(repo).length, 1, git(repo, ["worktree", "list"]));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("an executor that cannot map the grant refuses before anything is created: no task directory and no review worktree registered", () => {
+  const { root, repo } = project();
+  try {
+    const run = dispatch(repo, root, {
+      stream: STREAM,
+      verdictPath: "delivery/review/m3-p9-hazard.yaml",
+      env: { TIPHYS_STUB_COMMAND_THROWS: "1" },
+    });
+    assert.equal(run.status, 1, `${run.stdout}${run.stderr}`);
+    assert.match(run.stderr, /could not build its command: the stub executor was told to refuse the grant/);
+    assert.equal(registeredWorktrees(repo).length, 1, git(repo, ["worktree", "list"]));
+    const out = join(root, "out");
+    const left = spawnSync("find", [out, "-mindepth", "1"], { encoding: "utf8" });
+    assert.equal(left.status === 0 ? left.stdout.trim() : "", "", `the refusal left ${left.stdout}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

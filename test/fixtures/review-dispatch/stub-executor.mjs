@@ -16,7 +16,18 @@ const { reviewExecutor: plugin } = await import(new URL("../../../plugin/src/rev
 
 export const reviewExecutor = {
   ...plugin,
-  command: (model, prompt, ...rest) => [
+  command: (model, prompt, ...rest) => {
+    /* A grant this stub is told not to map, so the dispatch's refusal path
+       can be observed (M6-P5 fix round 3). */
+    if (process.env["TIPHYS_STUB_COMMAND_THROWS"]) {
+      throw new Error("the stub executor was told to refuse the grant");
+    }
+    return commandFor(model, prompt, rest);
+  },
+};
+
+function commandFor(model, prompt, rest) {
+  return [
     process.execPath,
     fileURLToPath(new URL("./replay.mjs", import.meta.url)),
     model,
@@ -30,5 +41,5 @@ export const reviewExecutor = {
          kernel passed and that nothing else came with it. */
       extra: rest,
     }),
-  ],
-};
+  ];
+}
