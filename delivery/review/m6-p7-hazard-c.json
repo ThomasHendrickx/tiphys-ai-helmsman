@@ -1,0 +1,40 @@
+{
+  "kind": "verdict",
+  "phase": "M6-P7",
+  "head": "f99b8d723d460aeb29eeea33ad0fbb6046debc02",
+  "tiphys-version": "0.2.2",
+  "verdict": "APPROVE",
+  "framing": "hazard-final-head",
+  "review-contract": "hazard",
+  "findings": [
+    {
+      "id": "CR-M6P7C-01",
+      "severity": "low",
+      "evidence": [
+        "src/review.ts:541 binds harnessEnvironment to the executor's own array by REFERENCE (`const harnessEnvironment = executor.environment ?? []`, no copy). The two refusals read it at 542 and 546; executor.command() runs at 559; applyHarnessEnvironment iterates the same array object at 603. An entry appended inside command() is therefore copied into the child environment without having passed either refusal.",
+        "Executed end to end against dist/src/review.js with the real dispatchReview and a stub executor declaring only CODEX_API_KEY up front and pushing {name:GH_TOKEN} and {name:HOME} onto its own array inside command(): `dispatch ok: true`; `declaration after command(): [\"CODEX_API_KEY\",\"GH_TOKEN\",\"HOME\"]`; the launched child printed `{\"GH_TOKEN\":\"gh-token-for-the-probe\",\"HOME\":\"/tmp/p7c-rgjTYI/out/review-m6-p7-20260930t220157z-1c13c3/scrub-env/home\",\"CODEX_API_KEY\":\"codex-key\",\"creds\":null}` while the kernel's real HOME was /tmp/p7c-rgjTYI/kernel-home.",
+        "So the bypass is real for the pre-existing refused-vocabulary check (GH_TOKEN reached the reviewer) and NOT real for this fix round's own property: HOME came back as the harness-owned scrub-env/home target and HOME/.git-credentials read null, because applyHarnessEnvironment re-applies the five redirections after the join regardless of what was appended. This fix round's subject is intact under the bypass; what the bypass defeats is refuseExtraAllowlist, which predates it.",
+        "Why low, agreeing with the orchestrator's ruling: the executor module is imported into the kernel's OWN process (src/review.ts:269) with the kernel's environment, and dispatchReview accepts its command() return as argv after only a non-empty-strings check (563). My probe's command() read process.env and chose argv freely, which is the same capability. A module willing to mutate its declaration after the check can pass any credential it can read in argv or write it to a file, so the refusal is not a boundary against a dishonest executor; it bounds an honest one's declaration, as DR-0065's grant bounds an honest reviewer. Recorded rather than dismissed because an HONEST executor that computes part of its declaration inside command() would also bypass the check silently, which is a correctness trap rather than a leak."
+      ],
+      "concrete-fix": "Copy the array where it is read, src/review.ts:541: `const harnessEnvironment = [...(executor.environment ?? [])];`. One line, no behaviour change for an honest up-front declaration, and it makes the checked list and the applied list the same list."
+    }
+  ],
+  "deviations-judged": [],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "check-1-the-fix-holds-against-the-dangerous-state",
+      "probed": "Ran the named test at test/codex-review.test.ts:305 (`--test-name-pattern 'credential-store pointer'` before the path): green, 1 pass 0 fail. Then copied src/review.ts aside and applied each of the three dangerous states in witness/m6-p7-harness-environment-credential-store-pointer.json by hand, rebuilding and re-running the test each time, restoring after each. (1) `if (refusedPointer !== undefined) {` -> `if (false) {`: RED, `AssertionError: The input did not match the regular expression /declares an environment the kernel refuses: the allowlist extension entry HOME is a credential-store pointer/`. (2) delete `env[name] = target;`: RED, `AssertionError: the reviewer was handed HOME /tmp/tiphys-codex-review-vR1Bxw/kernel-home and GIT_CONFIG_GLOBAL /tmp/tiphys-codex-review-vR1Bxw/kernel-gitconfig`, actual `{ reviewerHomeIsKernelHome: true, reviewerHomeGitCredentials: 'https://x:SECRET-TOKEN@github.com\\n', reviewerGitConfigGlobal: '[credential]\\n\\thelper = store\\n' }`. (3) narrow the pointer test to `if (entry.name === \"HOME\") {`: RED, `AssertionError: The input did not match the regular expression /declares an environment the kernel refuses: the allowlist extension entry XDG_CONFIG_HOME is a credential-store pointer/`. Tree restored and rebuilt; `git status --porcelain` names only this verdict file.",
+      "cleared-because": "Three structurally different dangerous states each redden the test, and mutation 2 reddens on the dangerous state itself: the assertion prints the kernel's real credential file contents read out of the reviewer's HOME. The two layers are independently witnessed (mutation 1 reddens on the refusal, mutation 2 on the leak), so neither is a trusted guard that cannot go red."
+    },
+    {
+      "class-id": "check-2-nothing-else-changed",
+      "probed": "`git diff --stat e77ff1d f99b8d723d460aeb29eeea33ad0fbb6046debc02` lists exactly six files: delivery/work-history/m6-p7.md (+75), src/review.ts (+69/-9 net), test/behaviors.json (+1), test/codex-review.test.ts (+110), witness/m6-p7-harness-environment-credential-store-pointer.json (new, +37), witness/m6-p7-harness-environment-declared.json (1 line). Read every src/review.ts hunk. The refusal only rejects a declared name equal to one of the five CREDENTIAL_STORE_REDIRECTIONS entries; the Codex executor declares only CODEX_API_KEY (adapters/codex/review.ts:64-71), which is untouched. applyHarnessEnvironment captures the five pointer values from the built env BEFORE the join and restores them after, so a declared non-pointer name still reaches the child. Verified by running the pre-existing named test `a dispatch through the Codex executor gives the reviewer the harness variable it declares ...`: green. The one-line witness edit (mutation find string `childEnv.env[entry.name] = value;` -> `env[entry.name] = value;`) tracks the code moving into the new function; applied it by hand and its test went RED, `AssertionError: the declared variable did not reach the reviewer: [GH_CONFIG_DIR, GIT_CONFIG_GLOBAL, GIT_CONFIG_NOSYSTEM, GIT_CONFIG_SYSTEM, HOME, PATH, XDG_CONFIG_HOME]`, then restored. Full file: `node --test test/codex-review.test.ts` = 6 tests, 6 pass, 0 fail, 0 skipped.",
+      "cleared-because": "The diff is confined to the six expected files, no legitimate declared variable is broken (the Codex executor's own declaration still reaches the child and its named test is green), and the amended witness spec still reddens the test it guards rather than having been edited into a no-op."
+    },
+    {
+      "class-id": "check-3-the-open-item-and-the-orchestrator-ruling",
+      "probed": "Reproduced the open item end to end rather than reasoning about it: see CR-M6P7C-01 evidence. A stub executor appending GH_TOKEN and HOME to its own environment array inside command() passes both refusals and GH_TOKEN reaches the launched child; HOME does not, because the second layer restores the harness-owned target (child printed HOME under the task's scrub-env and .git-credentials null). Also read the surrounding capability: src/review.ts:269 imports the executor module into the kernel's own process, and 559-565 accepts its argv after only a non-empty-strings check, so such a module can read the kernel's process.env and place a credential in argv without touching its declaration at all.",
+      "finding": "CR-M6P7C-01: I AGREE with the ruling of low and no change for the merge. The refusal is not a boundary against a dishonest executor, which already holds a strictly stronger capability I exercised in the probe; it bounds an honest declaration. The item is recorded as low with a one-line hardening (copy the array at src/review.ts:541) because an honest executor computing part of its declaration inside command() would bypass the check silently too. Low does not block."
+    }
+  ]
+}
