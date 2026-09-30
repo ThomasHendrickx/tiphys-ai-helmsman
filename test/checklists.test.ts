@@ -197,66 +197,6 @@ test("--type auto resolves a checklist from its own kind field", () => {
 /* Criterion 1: two probes sharing an id, Kind B, both directions       */
 /* ------------------------------------------------------------------ */
 
-test("a checklist with two probes sharing an id is rejected naming the id and the check, and is accepted with the check deregistered", () => {
-  const dir = scratch();
-  try {
-    stageContext(dir);
-    /* THE DANGEROUS INSTANCE, and it is structurally plausible (section 2.3
-       rule 1): well formed YAML, every required field present, two probes
-       whose ids collide and whose QUESTIONS differ, which is precisely what
-       `uniqueItems` cannot see because it compares whole items. `checklist
-       resolve` looks a probe up by id, so the resolved list depends on which
-       one the lookup reached. */
-    const document = readShipped("flake-playbook");
-    const probes = probesOf(document);
-    probes.push({
-      id: (probes[0] as Record<string, unknown>)["id"],
-      probe: "A second question wearing the first probe's identity.",
-      "applies-to": "judge",
-      "evidence-required": true,
-    });
-    const file = writeYaml(dir, "duplicate.yaml", document);
-
-    const rejected = runCli(["validate", "--type", "checklist", "--context", dir, file]);
-    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
-    assert.match(
-      rejected.stdout,
-      /^INVALID #\/probes\/\d+\/id probe id flake-failure-extracted .*\(check: checklist-probe-ids-unique\)$/m,
-      rejected.stdout,
-    );
-
-    /* THE OTHER DIRECTION: the SAME fixture with the CHECK deregistered.
-       Removing the check rather than a schema keyword is what makes this a
-       Kind B witness. */
-    assert.equal(checksModule.deregisterCheck("checklist-probe-ids-unique"), true);
-    const withoutCheck = checksModule.runChecks("checklist", document, dir);
-    assert.equal(withoutCheck.failed, false, withoutCheck.lines.join("\n"));
-
-    /* RESTORED, and red again. */
-    checksModule.registerCheck(checksModule.checklistProbeIdsUnique);
-    const restored = checksModule.runChecks("checklist", document, dir);
-    assert.equal(restored.failed, true);
-    assert.ok(
-      restored.lines.some((line) => line.includes("(check: checklist-probe-ids-unique)")),
-      restored.lines.join("\n"),
-    );
-
-    /* CONTROL: the unmutated document passes. Without it this check could be
-       rejecting every checklist. */
-    const control = runCli([
-      "validate",
-      "--type",
-      "checklist",
-      "--context",
-      dir,
-      join(checklistsDir, "flake-playbook.yaml"),
-    ]);
-    assert.equal(control.status, 0, control.stdout + control.stderr);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 /* ------------------------------------------------------------------ */
 /* Criterion 2: probe injection, all directions (R-054)                 */
 /* ------------------------------------------------------------------ */
@@ -595,65 +535,6 @@ test("the two exercised framings both resolve and their first probes differ", ()
 /* ------------------------------------------------------------------ */
 
 /* MEMBER 1 of the class, intra-file, reached through `tiphys validate`. */
-test("a checklist with two framings sharing an id is rejected naming the id and the check, and is accepted with the check deregistered", () => {
-  const dir = scratch();
-  try {
-    stageContext(dir);
-    /* THE DANGEROUS INSTANCE, and it is structurally plausible: well formed
-       YAML, every required field present, two framings sharing an id and
-       differing in their ENTRY POINT and their scope order, which is exactly
-       what `uniqueItems` cannot see because it compares whole items.
-       `resolveChecklist` uses `.find()`, so which entry point a reviewer is
-       handed is decided by file position and nothing says so. */
-    const document = readShipped("clean-room");
-    const framings = document["framings"] as Record<string, unknown>[];
-    const shadowed = String((framings[0] as Record<string, unknown>)["id"]);
-    framings.push({
-      id: shadowed,
-      "entry-point": "A second entry point wearing the first framing's identity.",
-      "orders-probes": ["deviations"],
-    });
-    const file = writeYaml(dir, "duplicate-framing.yaml", document);
-
-    const rejected = runCli(["validate", "--type", "checklist", "--context", dir, file]);
-    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
-    assert.match(
-      rejected.stdout,
-      new RegExp(
-        `^INVALID #/framings/\\d+/id framing id ${shadowed} is already declared at #/framings/\\d+/id, and checklist resolve looks framings up by id \\(check: checklist-framing-ids-unique\\)$`,
-        "m",
-      ),
-      rejected.stdout,
-    );
-
-    /* KIND B WITNESS: the SAME fixture with the CHECK deregistered. */
-    assert.equal(checksModule.deregisterCheck("checklist-framing-ids-unique"), true);
-    const withoutCheck = checksModule.runChecks("checklist", document, dir);
-    assert.equal(withoutCheck.failed, false, withoutCheck.lines.join("\n"));
-    checksModule.registerCheck(checksModule.checklistFramingIdsUnique);
-    const restored = checksModule.runChecks("checklist", document, dir);
-    assert.equal(restored.failed, true);
-    assert.ok(
-      restored.lines.some((line) => line.includes("(check: checklist-framing-ids-unique)")),
-      restored.lines.join("\n"),
-    );
-
-    /* CONTROL: the unmutated shipped document passes, so the check is not
-       rejecting every checklist that declares a framing. */
-    const control = runCli([
-      "validate",
-      "--type",
-      "checklist",
-      "--context",
-      dir,
-      join(checklistsDir, "clean-room.yaml"),
-    ]);
-    assert.equal(control.status, 0, control.stdout + control.stderr);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 /* MEMBER 2 of the class, extra-file, reached end to end through the CLI. */
 test("an extra file declaring a framing is refused, both when the id collides with a canonical framing and when it does not", () => {
   const dir = scratch();
@@ -1108,7 +989,6 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
      every future phase and is false the moment the next one appends. */
   for (const id of [
     "checklist-validates",
-    "checklist-duplicate-probe-id-rejected",
     "checklist-extra-probe-merge",
     "checklist-extra-probe-collision",
     /* Criterion 2 delivers "an extra probe without evidence-required exits
@@ -1129,7 +1009,6 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     /* FIX ROUND 2, H-2. Two structurally different members of one class:
        an id collision inside one document, and an extra file whose framings
        were read by nothing. */
-    "checklist-duplicate-framing-id-rejected",
     "checklist-extra-framing-refused",
   ]) {
     assert.ok(

@@ -805,17 +805,36 @@ test("a verdict with a real INVALID line still exits 1 without a context, whethe
   const dir = scratch("tiphys-history-compat-invalid-");
   const source = readFileSync(join(pulseDir, "m1-p1-hazard.yaml"), "utf8");
 
-  /* A DERIVED CHECK that runs without a context
-     (verdict-finding-references-resolve): a hazard class names a finding id
-     no findings[] entry declares. The same run also carries SKIPPED lines,
-     so a violation among skips is what is asserted. */
-  const dangling = source.replace(/^    finding: CR-007$/m, "    finding: CR-999");
-  assert.notEqual(dangling, source, "the fixture no longer names CR-007");
-  const danglingPath = join(dir, "dangling.yaml");
-  writeFileSync(danglingPath, dangling);
-  const derived = validateRun("verdict", danglingPath);
+  /* A DERIVED CHECK that runs without a context and finds a violation, beside
+     the shipped context-requiring checks that are SKIPPED in the same run, so
+     a violation among skips is what is asserted. M6-P3 deleted every shipped
+     verdict check that runs without a context, so the violating check is
+     registered by a driver around the real `cmdValidate`, whose exit rule is
+     the thing under test. */
+  const verdictPath = join(dir, "verdict.yaml");
+  writeFileSync(verdictPath, source);
+  const driver = `
+import { registerCheck } from ${JSON.stringify(join(repoRoot, "src", "checks.ts"))};
+import { cmdValidate } from ${JSON.stringify(join(repoRoot, "src", "commands", "validate.ts"))};
+registerCheck({
+  id: "fixture-always-violated",
+  type: "verdict",
+  requiresContext: false,
+  run: () => ({ violations: [{ pointer: "#", message: "a fixture violation" }], reports: [] }),
+});
+process.exitCode = cmdValidate(["--type", "verdict", process.argv[1]]);
+`;
+  const run = spawnSync(process.execPath, ["--input-type=module", "-e", driver, verdictPath], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  });
+  const derived = {
+    status: run.status,
+    output: `${run.stdout ?? ""}${run.stderr ?? ""}`,
+    lines: `${run.stdout ?? ""}${run.stderr ?? ""}`.split("\n").filter((line) => line.trim() !== ""),
+  };
   assert.ok(
-    derived.lines.some((line) => line.startsWith("INVALID") && line.includes("(check: verdict-finding-references-resolve)")),
+    derived.lines.some((line) => line.startsWith("INVALID") && line.includes("(check: fixture-always-violated)")),
     derived.output,
   );
   assert.ok(derived.lines.some((line) => line.startsWith("SKIPPED ")), derived.output);
