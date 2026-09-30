@@ -26,6 +26,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -98,6 +99,7 @@ const checksModule = (await import(new URL("../src/checks.ts", import.meta.url).
 
 const yamlModule = (await import("yaml")) as unknown as {
   parse: (text: string) => unknown;
+  stringify: (value: unknown) => string;
 };
 
 /**
@@ -266,6 +268,63 @@ test("a mode that states no merge-authority is refused rather than reported as n
     assert.match(run.output, /declares no merge-authority for mode full/, run.output);
     assert.match(run.output, /could not be established/, run.output);
     assert.doesNotMatch(run.output, /which is not a delegated grant/, run.output);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("the merge checks refuse a modes document declaring the charter's mode twice with the weaker row first, rather than reporting that row's regime", () => {
+  /* M6-P3 FIX ROUND 1, CR-M6P3A-01. The regime reader took the FIRST mode row
+     whose id matched the charter, so a second `full` row declaring
+     merge-authority `owner`, placed ahead of the real one, turned the merge
+     check from red into a REPORT ("not a delegated grant") and exit 0.
+     Measured by hazard review A at d584639. M6-P3 drove the deleted
+     `scripts/check-dual-review.mjs`; merging it into M6-P5 moved this test to
+     `verdict-pair-approves`, the regime reader that remains, with ONE VERDICT
+     under a delegated grant, so a green here is a wrong merge authorisation. */
+  const dir = stageContext("full", [ONE_VERDICT]);
+  try {
+    const path = join(dir, "assurance-modes.yaml");
+    const document = yamlModule.parse(readFileSync(path, "utf8")) as {
+      modes: Record<string, unknown>[];
+    };
+    const real = document.modes.find((mode) => mode["id"] === "full");
+    assert.ok(real !== undefined, "the shipped document declares no full mode");
+    const weaker = structuredClone(real);
+    weaker["merge-authority"] = "owner";
+    delete weaker["granted-by"];
+    delete weaker["conditions"];
+    document.modes.unshift(weaker);
+    writeFileSync(path, yamlModule.stringify(document));
+    const run = validateInContext(dir, ONE_VERDICT);
+    assert.equal(run.status, 1, run.output);
+    assert.match(run.output, /declares mode full 2 times \(entries 0, 1\)/);
+    assert.match(run.output, /\(check: verdict-pair-approves\)/, run.output);
+    assert.doesNotMatch(run.output, /which is not a delegated grant/);
+
+    /* AGAINST THE REAL CAPTURE (rule (f): the witness members mutate
+       src/checks.ts, which spawns). Every INVALID line the command printed over
+       the same construction, with the scratch path written <dir> as the
+       capture declares, must be printed again now. */
+    const capture = readFileSync(
+      join(repoRoot, "witness", "captures", "m6-p5-merge-duplicate-mode-id.txt"),
+      "utf8",
+    );
+    const section = capture.split("\ncase: ").find((part) => part.startsWith("merge-checks-verdict\n"));
+    const captured = (section ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("INVALID #/verdict"));
+    assert.ok(captured.length > 0, "m6-p5-merge-duplicate-mode-id.txt carries no merge-checks-verdict INVALID line");
+    const live = run.output
+      .split(realpathSync(dir))
+      .join("<dir>")
+      .split(dir)
+      .join("<dir>")
+      .split("\n");
+    for (const line of captured) {
+      assert.ok(live.includes(line), `the live output no longer prints the captured line:\n${line}`);
+    }
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

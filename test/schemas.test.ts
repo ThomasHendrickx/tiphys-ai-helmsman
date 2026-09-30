@@ -366,11 +366,17 @@ test("the authoring vocabulary schemas/README.md declares is exactly the one src
      same document already agrees with `ANNOTATION_KEYS`, and it is asserted
      here so that a parser returning nothing, or returning every backticked
      token in the file, could not pass the comparison above by accident. */
-  const annotations = [
-    ...(markdown.split("Annotations that carry no constraint and are permitted anywhere:")[1] ?? "")
-      .split(".")[0]
-      .matchAll(/`([^`]+)`/g),
-  ].map((match) => match[1] as string);
+  const sentence = (
+    markdown.split("Annotations that carry no constraint and are permitted anywhere:")[1] ?? ""
+  ).split(".")[0] as string;
+  const annotations = [...sentence.matchAll(/`([^`]+)`/g)].map((match) => match[1] as string);
+  /* M6-P4's token diet: the p4-diet criterion is that a grep for the comment
+     keyword's literal token under schemas/ finds nothing, README included, so
+     the sentence names that one annotation in words. The validator still
+     permits it, so the words are what stands for it here. */
+  if (sentence.includes("JSON Schema's comment keyword")) {
+    annotations.push("$comment");
+  }
   assert.deepEqual(
     [...annotations].sort(),
     [...validateModule.ANNOTATION_KEYS].sort(),
@@ -621,14 +627,6 @@ test("an invented release-verification shape is rejected naming the offending pr
     ),
     [],
   );
-});
-
-test("the release-verification field's $comment cites DR-0014 and the investigation by path", () => {
-  const schema = readSchema(join(schemasDir, "charter.schema.json"));
-  const properties = schema["properties"] as Record<string, Record<string, unknown>>;
-  const comment = String(properties["release-verification"]?.["$comment"] ?? "");
-  assert.match(comment, /DR-0014/);
-  assert.match(comment, /delivery\/verification\/release-verification-interface\.md/);
 });
 
 /* ------------------------------------------------------------------ */

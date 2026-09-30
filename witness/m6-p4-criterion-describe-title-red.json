@@ -1,0 +1,31 @@
+{
+  "id": "m6-p4-criterion-describe-title-red",
+  "behavior": "m6-p4-criterion-describe-title-red",
+  "tests": [
+    "a criterion naming a describe title is not proven by the suite point, even when every test inside it was skipped"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "    const reported: ReportedTest[] = points\n      .filter((point) => point.entityType === \"test\")",
+      "replace": "    const reported: ReportedTest[] = points\n      .filter(() => true)"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "  \"        passedOnAttempt: details.passed_on_attempt,\\n\" +\n  \"        entityType: details.type,\\n\" +\n",
+      "replace": "  \"        passedOnAttempt: details.passed_on_attempt,\\n\" +\n  \"        entityType: \\\"test\\\",\\n\" +\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node src/gates/suite.ts, the suite gate CLI, which spawns the configured node:test run and parses its reporter stream, and runs each criterion's check.command through src/criteria.ts",
+    "captures": [
+      "witness/captures/m6-p4-criteria-gate-cli.txt"
+    ],
+    "provenance": "Captured 2026-09-30 in the kernel container on node v26.6.0 by running the gate CLI over the fixtures test/criteria.test.ts builds (the command and exit are recorded above each block; this witness's test asserts the finding the gate prints for a describe title). The named test drives a real node:test run or a real spawned command and, where it names a block, compares the live gate stdout with it byte for byte; nothing asserted is a hand-written string standing in for another program's output."
+  }
+}

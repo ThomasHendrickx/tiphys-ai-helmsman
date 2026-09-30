@@ -1,0 +1,43 @@
+{
+  "id": "pool-destroy-unread-worktree-list-refuses",
+  "behavior": "pool-destroy-unread-worktree-list-refuses",
+  "tests": [
+    "pool destroy refuses, naming why, when the worktree listing cannot be read, and the branch a foreign worktree holds survives"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "  let listed = runGit(contextDir, argv);\n  if (listed.status === 129 && WORKTREE_LIST_Z_UNKNOWN.test(listed.stderr)) {\n    argv = [\"worktree\", \"list\", \"--porcelain\"];\n    separator = \"\\n\";\n    listed = runGit(contextDir, argv);\n  }\n  if (listed.status !== 0) {\n    return { ok: false, detail: `git ${argv.join(\" \")} failed: ${gitFailureLine(listed)}` };\n  }\n",
+      "replace": "  const listed = runGit(contextDir, argv);\n  if (listed.status !== 0) {\n    return { ok: true, lines: [] };\n  }\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "  if (facts.branchTip.kind === \"present\" && facts.worktreeListError !== undefined) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "    const unreadable = lines.find((line) => !PORCELAIN_LINE_BEFORE_Z.test(line));",
+      "replace": "    const unreadable = undefined;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "  if (listed.status !== 0) {\n    return { ok: false, detail: `git ${argv.join(\" \")} failed:",
+      "replace": "  if (listed.status !== 0 && separator === \"\\0\") {\n    return { ok: false, detail: `git ${argv.join(\" \")} failed:"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p3-git-worktree-list-z.json"
+    ],
+    "provenance": "Real git output of `git worktree list --porcelain` that no CI runner can produce: git 2.34.1 refusing -z (exit 129) and a listing that fails on a malformed .git/config (exit 128, git 2.34.1 and 2.43.0 alike), plus git 2.34.1's newline listing of a worktree path holding a newline. Recorded 2026-09-30 by the M6-P3 fix round 4 recording script (the capture's own provenance says how). Required by rule (f) because every member mutates src/pool.ts, which spawns git and parses what it prints. The named test replays the recorded stderr and exit through a git stub on PATH that answers only the listing and delegates every other call to the real git."
+  },
+  "deterministic": true,
+  "repeats": 2
+}

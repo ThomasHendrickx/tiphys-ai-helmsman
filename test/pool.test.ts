@@ -6,6 +6,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   rmSync,
   utimesSync,
   writeFileSync,
@@ -388,6 +389,244 @@ test("pool destroy removes a clean worktree without flags", (t) => {
   assert.ok(!existsSync(recordOf(scratch, "t-clean")));
   const list = gitOk(scratch.clone, ["worktree", "list", "--porcelain"]);
   assert.ok(!list.includes(worktree));
+});
+
+/**
+ * REAL `git worktree list` output for the fixture below, recorded once and
+ * compared with git's live output before destroy runs (rule (f): src/pool.ts
+ * spawns git and parses what it prints). The recorded text spells the scratch
+ * directory `<tmp>` and every commit sha `<sha>`; the live text is rewritten
+ * the same way before the comparison, and nothing else is.
+ */
+const pathListingsCapturePath = fileURLToPath(
+  new URL("../witness/captures/m6-p3-git-path-listings.json", import.meta.url),
+);
+
+function replayWorktreeListing(scratch: Scratch, name: string): void {
+  const capture = JSON.parse(readFileSync(pathListingsCapturePath, "utf8")) as {
+    cases: Array<{ case: string; commands: Array<{ argv: string[]; exit: number; stdout: string }> }>;
+  };
+  const recorded = capture.cases.find((entry) => entry.case === name);
+  assert.ok(recorded !== undefined, `m6-p3-git-path-listings.json records no ${name} case`);
+  const tmp = join(scratch.fleet, "..");
+  const spellings = [...new Set([realpathSync(tmp), tmp])];
+  const normalise = (text: string): string => {
+    let out = text;
+    for (const spelling of spellings) {
+      out = out.split(spelling).join("<tmp>");
+    }
+    return out.replace(/\b[0-9a-f]{40}\b/g, () => "<sha>");
+  };
+  for (const command of recorded.commands) {
+    const live = git(scratch.clone, command.argv.slice(1));
+    assert.equal(live.status, command.exit, `git ${command.argv.join(" ")}: ${live.stderr}`);
+    assert.equal(
+      normalise(live.stdout),
+      command.stdout,
+      `git ${command.argv.join(" ")} no longer prints what the capture recorded`,
+    );
+  }
+}
+
+test("pool destroy refuses while a foreign worktree at the task's own path plus a newline holds the task branch", (t) => {
+  /* Without -z git ends this worktree's record line at the newline, so its
+     path read as `<own>`, the task's OWN worktree. Destroy then deleted a
+     branch another worktree had checked out, stranding it on a dangling HEAD. */
+  const scratch = makeScratch(t);
+  assert.equal(poolCreate(scratch, "t-nl").status, 0);
+  const own = worktreeOf(scratch, "t-nl");
+  const foreign = `${own}\nx`;
+  gitOk(scratch.clone, ["worktree", "add", "--quiet", "--force", foreign, "task/t-nl"]);
+  replayWorktreeListing(scratch, "pool-worktree-newline");
+
+  const result = runCli(["pool", "destroy", "--task", "t-nl"], { cwd: scratch.fleet });
+  assert.notEqual(result.status, 0, `destroy must refuse: ${result.stdout}${result.stderr}`);
+  const reason = refusalText(result.stderr);
+  assert.ok(
+    reason.includes(`it is checked out at ${realpathSync(foreign)}`) ||
+      reason.includes(`it is checked out at ${foreign}`),
+    reason,
+  );
+  assert.equal(
+    git(scratch.clone, ["rev-parse", "--verify", "--quiet", "refs/heads/task/t-nl"]).status,
+    0,
+    "the task branch must survive the refusal",
+  );
+  assert.ok(existsSync(own), "the task worktree must survive the refusal");
+});
+
+/**
+ * REAL output of `git worktree list` that no CI runner can produce: git 2.34.1
+ * refusing `-z`, and a listing failing on a malformed config (M6-P3 fix round
+ * 4, CR-M6P3A-07). Recorded by the round's script, and replayed here through a
+ * git stub on PATH that answers the listing and delegates every other call.
+ */
+const worktreeListZCapturePath = fileURLToPath(
+  new URL("../witness/captures/m6-p3-git-worktree-list-z.json", import.meta.url),
+);
+
+interface RecordedGitRun {
+  case: string;
+  git: string;
+  argv: string[];
+  exit: number;
+  stdout: string;
+  stderr: string;
+}
+
+function recordedListing(name: string, withZ: boolean): RecordedGitRun {
+  const capture = JSON.parse(readFileSync(worktreeListZCapturePath, "utf8")) as {
+    cases: RecordedGitRun[];
+  };
+  const found = capture.cases.find(
+    (entry) =>
+      entry.case === name &&
+      entry.argv.includes("-z") === withZ &&
+      (name !== "listing-fails-bad-config" || entry.git === "git version 2.34.1"),
+  );
+  assert.ok(found !== undefined, `m6-p3-git-worktree-list-z.json records no ${name} run`);
+  return found;
+}
+
+/**
+ * A stub `git` first on PATH that answers `worktree list` with a recorded run
+ * (one for the `-z` form, one for the newline form, either left to the real
+ * git when undefined) and delegates every other call to the real git.
+ */
+function stubGitWorktreeList(
+  t: { after(fn: () => void): void },
+  answers: { z?: RecordedGitRun; plain?: RecordedGitRun },
+): NodeJS.ProcessEnv {
+  const binDir = mkdtempSync(join(tmpdir(), "tiphys-p3-stublist-"));
+  t.after(() => {
+    rmSync(binDir, { recursive: true, force: true });
+  });
+  const realGit = spawnSync("sh", ["-c", "command -v git"], { encoding: "utf8" })
+    .stdout.trim();
+  assert.ok(realGit !== "", "could not locate the real git");
+  const answer = (run: RecordedGitRun | undefined): unknown =>
+    run === undefined ? null : { exit: run.exit, stdout: run.stdout, stderr: run.stderr };
+  const script = `#!/usr/bin/env node
+const { spawnSync } = require("node:child_process");
+const args = process.argv.slice(2);
+const answers = ${JSON.stringify({ z: answer(answers.z), plain: answer(answers.plain) })};
+if (args.includes("worktree") && args.includes("list")) {
+  const run = args.includes("-z") ? answers.z : answers.plain;
+  if (run !== null) {
+    process.stdout.write(run.stdout);
+    process.stderr.write(run.stderr);
+    process.exit(run.exit);
+  }
+}
+const r = spawnSync(${JSON.stringify(realGit)}, args, { stdio: "inherit" });
+process.exit(r.status === null ? 1 : r.status);
+`;
+  writeFileSync(join(binDir, "git"), script, { mode: 0o755 });
+  return { ...process.env, PATH: `${binDir}:${process.env.PATH ?? ""}` };
+}
+
+/** The foreign worktree still has the task branch checked out, and the branch is where it was. */
+function assertForeignHoldsBranch(scratch: Scratch, foreign: string, branch: string, tip: string): void {
+  assert.equal(
+    git(scratch.clone, ["rev-parse", "--verify", "--quiet", `refs/heads/${branch}`]).stdout.trim(),
+    tip,
+    `branch ${branch} must survive at ${tip}`,
+  );
+  assert.equal(gitOk(foreign, ["symbolic-ref", "HEAD"]), `refs/heads/${branch}`);
+  assert.equal(gitOk(foreign, ["rev-parse", "HEAD"]), tip, "the foreign worktree must not be left on a dangling HEAD");
+}
+
+test("pool destroy on a git that rejects worktree list -z reads the newline listing: it refuses while a foreign worktree holds the task branch and destroys when none does", (t) => {
+  /* git 2.34.1 rejects -z (exit 129). Before fix round 4 destroy read that as
+     "no other worktree" and deleted a branch a foreign worktree had checked
+     out, exit 0 and nothing printed. The fallback keeps old git working, so a
+     destroy with nothing in the way still succeeds under the same stub. */
+  const env = stubGitWorktreeList(t, { z: recordedListing("z-unknown-switch", true) });
+  const scratch = makeScratch(t);
+  assert.equal(poolCreate(scratch, "t-old").status, 0);
+  const tip = gitOk(scratch.clone, ["rev-parse", "refs/heads/task/t-old"]);
+  const foreign = join(scratch.fleet, "foreign-old");
+  gitOk(scratch.clone, ["worktree", "add", "--quiet", "--force", foreign, "task/t-old"]);
+
+  const refused = runCli(["pool", "destroy", "--task", "t-old"], { cwd: scratch.fleet, env });
+  assert.notEqual(refused.status, 0, `destroy must refuse: ${refused.stdout}${refused.stderr}`);
+  assert.equal(
+    refusalText(refused.stderr),
+    `cannot delete branch task/t-old: it is checked out at ${realpathSync(foreign)}; remove that worktree first`,
+  );
+  assertForeignHoldsBranch(scratch, foreign, "task/t-old", tip);
+  assert.ok(existsSync(worktreeOf(scratch, "t-old")), "a stage-2 refusal removed the task worktree");
+
+  gitOk(scratch.clone, ["worktree", "remove", "--force", foreign]);
+  const destroyed = runCli(["pool", "destroy", "--task", "t-old"], { cwd: scratch.fleet, env });
+  assert.equal(destroyed.status, 0, `destroy must still work on this git: ${destroyed.stderr}`);
+  assert.ok(!existsSync(worktreeOf(scratch, "t-old")));
+  assert.notEqual(
+    git(scratch.clone, ["rev-parse", "--verify", "--quiet", "refs/heads/task/t-old"]).status,
+    0,
+    "the task branch was not deleted",
+  );
+});
+
+test("pool destroy refuses, naming why, when the worktree listing cannot be read, and the branch a foreign worktree holds survives", (t) => {
+  /* Three ways the listing goes unread, each with the dangerous state staged
+     (a foreign worktree holding the task branch): the listing fails outright;
+     git rejects -z and the newline listing then fails; git rejects -z and the
+     newline listing holds a worktree path with a newline in it, which git
+     before 2.36 prints across two lines. */
+  const zRejected = recordedListing("z-unknown-switch", true);
+  const fatalZ = recordedListing("listing-fails-bad-config", true);
+  const fatalPlain = recordedListing("listing-fails-bad-config", false);
+  const fatalLine = fatalZ.stderr.trim();
+  const arms: Array<{
+    name: string;
+    answers: { z?: RecordedGitRun; plain?: RecordedGitRun };
+    foreignSuffix: string;
+    detail: string;
+  }> = [
+    {
+      name: "fails",
+      answers: { z: fatalZ, plain: fatalPlain },
+      foreignSuffix: "-foreign",
+      detail: `git worktree list --porcelain -z failed: ${fatalLine}`,
+    },
+    {
+      name: "fallback-fails",
+      answers: { z: zRejected, plain: fatalPlain },
+      foreignSuffix: "-foreign",
+      detail: `git worktree list --porcelain failed: ${fatalLine}`,
+    },
+    {
+      name: "fallback-newline",
+      answers: { z: zRejected },
+      foreignSuffix: "\nx",
+      detail:
+        `git worktree list --porcelain printed "x", which is no attribute: a ` +
+        `worktree path holds a newline, and this git has no -z to list it by`,
+    },
+  ];
+  for (const arm of arms) {
+    const scratch = makeScratch(t);
+    const taskId = `t-${arm.name}`;
+    assert.equal(poolCreate(scratch, taskId).status, 0);
+    const branch = `task/${taskId}`;
+    const tip = gitOk(scratch.clone, ["rev-parse", `refs/heads/${branch}`]);
+    const foreign = `${worktreeOf(scratch, taskId)}${arm.foreignSuffix}`;
+    gitOk(scratch.clone, ["worktree", "add", "--quiet", "--force", foreign, branch]);
+
+    const env = stubGitWorktreeList(t, arm.answers);
+    const result = runCli(["pool", "destroy", "--task", taskId], { cwd: scratch.fleet, env });
+    assert.notEqual(result.status, 0, `${arm.name}: destroy must refuse: ${result.stdout}${result.stderr}`);
+    assert.equal(
+      refusalText(result.stderr),
+      `cannot determine which worktrees have branch ${branch} checked out ` +
+        `(${arm.detail}); refusing to finish destroy for task id ${taskId}`,
+      arm.name,
+    );
+    assertForeignHoldsBranch(scratch, foreign, branch, tip);
+    assert.ok(existsSync(worktreeOf(scratch, taskId)), `${arm.name}: a stage-2 refusal removed the task worktree`);
+    assert.ok(existsSync(recordOf(scratch, taskId)), `${arm.name}: a stage-2 refusal removed the pool record`);
+  }
 });
 
 test("pool list prints one line per worktree with task id and HEAD sha", (t) => {

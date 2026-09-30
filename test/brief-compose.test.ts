@@ -23,6 +23,7 @@ import {
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -283,7 +284,7 @@ test("brief compose renders the named phase's acceptance array", () => {
 
   const flat = rendered.replace(/\s+/g, " ");
   for (const fragment of [
-    "criterion: node --test test/importer.test.ts exits 0 and reports 4 tests, 0 failing.",
+    "criterion: The four importer tests in test/importer.test.ts run and pass, each named by its title.",
     "A staged 429 response is retried exactly twice",
   ]) {
     assert.ok(flat.includes(fragment), `the rendered acceptance criteria drop: ${fragment}`);
@@ -330,11 +331,18 @@ const yamlParse = ((await import("yaml")) as unknown as { parse: (text: string) 
 const CHARTER_TEMPLATE = join(repoRoot, "templates", "charter.example.yaml");
 const INTENT_ROLES = ["implementer", "clean-room-reviewer"] as const;
 
+/**
+ * A scratch project directory. It carries a copy of the kernel's
+ * `gate-registry.yaml` because an implementer brief renders the WORKING
+ * DIRECTORY's registry and, since M6-P3 fix round 1 (CR-M6P3A-02), refuses to
+ * compose without one.
+ */
 function charterWorkspace(t: { after(fn: () => void): void }): string {
   const dir = mkdtempSync(join(tmpdir(), "tiphys-charter-"));
   t.after(() => {
     rmSync(dir, { recursive: true, force: true });
   });
+  cpSync(join(repoRoot, "gate-registry.yaml"), join(dir, "gate-registry.yaml"));
   return dir;
 }
 
@@ -597,6 +605,9 @@ function initFleet(t: { after(fn: () => void): void }): string {
   const fleet = join(dir, "fleet");
   const made = runCliAt(cliEntry, ["init", fleet], dir);
   assert.equal(made.status, 0, `tiphys init failed: ${made.stdout}${made.stderr}`);
+  /* Composition runs with the fleet root as its working directory, so that is
+     where the registry the implementer brief renders has to be. */
+  cpSync(join(repoRoot, "gate-registry.yaml"), join(fleet, "gate-registry.yaml"));
   return fleet;
 }
 
@@ -727,4 +738,62 @@ test("brief compose in a fleet refuses an undecodable document or a named pipe i
   assert.equal(piped.stdout, "");
   assert.ok(piped.stderr.includes(fifo), piped.stderr);
   assert.match(piped.stderr, /not a regular file/);
+});
+
+/* ------------------------------------------------------------------ */
+/* M6-P3 fix round 1                                                    */
+/* ------------------------------------------------------------------ */
+
+test("brief compose refuses a plan declaring phase M9-P1 twice with the weaker entry first, naming the id", (t) => {
+  /* CR-M6P3A-01. The composer read the phase by FIRST match, so a copy of
+     M9-P1 placed ahead of the real one, with a different intent and the whole
+     `src/` tree as its files-to-touch, was the phase the brief carried. */
+  const dir = charterWorkspace(t);
+  const plan = yamlParse(readFileSync(join(repoRoot, PLAN), "utf8")) as {
+    phases: Record<string, unknown>[];
+  };
+  const real = plan.phases.find((phase) => phase["id"] === PHASE_ID);
+  assert.ok(real !== undefined, `the template plan declares no ${PHASE_ID}`);
+  const weaker = structuredClone(real);
+  weaker["intent"] = "A different phase that reuses the id.";
+  weaker["files-to-touch"] = ["src/"];
+  plan.phases.unshift(weaker);
+  const path = join(dir, "plan.yaml");
+  writeFileSync(path, JSON.stringify(plan, null, 2));
+
+  const run = runCliAt(
+    cliEntry,
+    ["brief", "compose", "--role", "plan-writer", "--phase", path, "--phase-id", PHASE_ID],
+    repoRoot,
+  );
+  assert.equal(run.status, 1, run.stdout.slice(0, 200) + run.stderr);
+  assert.equal(run.stdout, "");
+  assert.match(run.stderr, /declares phase M9-P1 2 times \(entries 0, 1\)/);
+  assert.doesNotMatch(run.stdout, /A different phase that reuses the id/);
+});
+
+test("brief compose of an implementer brief from a directory with no gate-registry.yaml refuses naming the missing file", (t) => {
+  /* CR-M6P3A-02. The composer fell back to the KERNEL's registry when the
+     working directory had none, and labelled that list as the project's.
+     Measured by hazard review A from an empty directory: exit 0 with the
+     kernel's rows. */
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-no-registry-"));
+  t.after(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+  const missing = composeRoleIn(dir, "implementer");
+  assert.equal(missing.status, 1, missing.stdout.slice(0, 200) + missing.stderr);
+  assert.equal(missing.stdout, "");
+  assert.ok(
+    missing.stderr.includes(join(realpathSync(dir), "gate-registry.yaml")),
+    missing.stderr,
+  );
+  assert.match(missing.stderr, /gate-registry\.yaml does not exist/);
+
+  /* CONTROL: the same directory once it carries a registry composes, and the
+     block is rendered from THAT file. */
+  cpSync(join(repoRoot, "gate-registry.yaml"), join(dir, "gate-registry.yaml"));
+  const present = composeRoleIn(dir, "implementer");
+  assert.equal(present.status, 0, present.stderr);
+  assert.match(present.stdout, /BEGIN GENERATED GATE LIST/);
 });

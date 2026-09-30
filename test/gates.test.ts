@@ -672,6 +672,117 @@ test("a diff-touches gate without --base is error and with --base yields its rea
 });
 
 /* ------------------------------------------------------------------ */
+/* M6-P3 fix round 2, CR-M6P3B-03: diff-touches reads NUL-separated,     */
+/* rename-free names                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Real output of both git name listings over the two repositories staged
+ * below, recorded in witness/captures/m6-p3-git-diff-touches.json. Each test
+ * re-runs both commands and requires git's live stdout to equal the recorded
+ * one before it runs the gate, so the dangerous input is git's own output
+ * rather than a string written to match the precondition.
+ */
+const DIFF_TOUCHES_CAPTURE = join(repoRoot, "witness", "captures", "m6-p3-git-diff-touches.json");
+
+const DIFF_TOUCHES_NON_ASCII_NAME = "caf\u00e9.ts";
+
+function stageDiffTouchesRepo(dir: string, kind: "rename" | "non-ascii"): { base: string } {
+  const git = (args: string[]): string => {
+    const result = spawnSync("git", args, {
+      cwd: dir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "Tiphys test",
+        GIT_AUTHOR_EMAIL: "test@tiphys.invalid",
+        GIT_COMMITTER_NAME: "Tiphys test",
+        GIT_COMMITTER_EMAIL: "test@tiphys.invalid",
+      },
+    });
+    assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
+    return result.stdout;
+  };
+  git(["init", "--quiet", "-b", "main"]);
+  mkdirSync(join(dir, "src"), { recursive: true });
+  const name = kind === "rename" ? "a.ts" : DIFF_TOUCHES_NON_ASCII_NAME;
+  writeFileSync(join(dir, "src", name), "export const a = 1;\n");
+  git(["add", "-A"]);
+  git(["commit", "--quiet", "-m", "base"]);
+  const base = git(["rev-parse", "HEAD"]).trim();
+  if (kind === "rename") {
+    mkdirSync(join(dir, "lib"), { recursive: true });
+    git(["mv", "src/a.ts", "lib/a.ts"]);
+  } else {
+    writeFileSync(join(dir, "src", name), "export const a = 2;\n");
+    git(["add", "-A"]);
+  }
+  git(["commit", "--quiet", "-m", "head"]);
+
+  /* THE CAPTURE, compared before anything else: both listings, live. */
+  const capture = JSON.parse(readFileSync(DIFF_TOUCHES_CAPTURE, "utf8")) as {
+    cases: { case: string; commands: { argv: string[]; exit: number; stdout: string }[] }[];
+  };
+  const recorded = capture.cases.find((entry) => entry.case === kind);
+  assert.ok(recorded !== undefined, `m6-p3-git-diff-touches.json records no ${kind} case`);
+  for (const command of recorded.commands) {
+    const argv = command.argv.slice(1).map((arg) => arg.replace("<base>", base));
+    const live = spawnSync("git", argv, { cwd: dir, encoding: "utf8" });
+    assert.equal(live.status, command.exit, `git ${argv.join(" ")}: ${live.stderr}`);
+    assert.equal(live.stdout, command.stdout, `git ${argv.join(" ")} no longer prints what the capture recorded`);
+  }
+  return { base };
+}
+
+function runDiffTouchesGate(dir: string, base: string): { status: number | null; record: { status: string }; output: string } {
+  const manifest = writeManifest(dir, [
+    {
+      id: "g-diff",
+      command: writeGate(dir, "diffgate", { record: gateRecord("g-diff", "green", 4), exit: 0 }),
+      unitLabel: "fixture units",
+      applicability: "required",
+      precondition: { id: "touches-src", kind: "diff-touches", paths: ["src/", "bin/", "plugin/"] },
+    },
+  ]);
+  const run = runCli(
+    ["gates", "run", "--registry", manifest, "--evidence", join(dir, "ev"), "--base", base, "--head", "HEAD"],
+    dir,
+  );
+  const record = JSON.parse(readFileSync(join(dir, "ev", "g-diff", "result.json"), "utf8")) as {
+    status: string;
+  };
+  return { status: run.status, record, output: run.stdout + run.stderr };
+}
+
+test("a diff-touches precondition is met by a rename out of a declared path, so the gate runs", () => {
+  const dir = scratch();
+  try {
+    const { base } = stageDiffTouchesRepo(dir, "rename");
+    const run = runDiffTouchesGate(dir, base);
+    /* With rename detection on, git names only lib/a.ts and the precondition
+       read "no changed path under src/": the gate was not-applicable. */
+    assert.equal(run.record.status, "green", run.output);
+    assert.equal(run.status, 0, run.output);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a diff-touches precondition is met by an edit to a non-ASCII path under a declared path, so the gate runs", () => {
+  const dir = scratch();
+  try {
+    const { base } = stageDiffTouchesRepo(dir, "non-ascii");
+    const run = runDiffTouchesGate(dir, base);
+    /* Without -z git C-quotes the name ("src/caf\303\251.ts"), which does
+       not start with src/, and the gate was not-applicable. */
+    assert.equal(run.record.status, "green", run.output);
+    assert.equal(run.status, 0, run.output);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
 /* Criterion 9: zero applicable gates is an error                       */
 /* ------------------------------------------------------------------ */
 

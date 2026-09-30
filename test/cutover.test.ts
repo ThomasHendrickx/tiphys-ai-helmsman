@@ -1307,6 +1307,101 @@ test("restoring a retirement root removes what was added after the freeze and ve
   }
 });
 
+/* -------------------------------------------------------------------- */
+/* M6-P3 fix round 3 (CR-M6P3B-05): names git quotes                     */
+/* -------------------------------------------------------------------- */
+
+/**
+ * REAL git output for the two fixtures below, recorded once and compared with
+ * git's live output before the code under test runs (rule (f): src/cutover.ts
+ * spawns git and parses what it prints).
+ */
+const pathListingsCapturePath = fileURLToPath(
+  new URL("../witness/captures/m6-p3-git-path-listings.json", import.meta.url),
+);
+
+/**
+ * Re-run every command the capture records for one case, in `dir`, and require
+ * git's live stdout to equal the recorded stdout. `<base>` in a recorded argv
+ * is the fixture's base sha; nothing else is substituted.
+ */
+function replayPathListings(dir: string, name: string, base: string): void {
+  const capture = JSON.parse(readFileSync(pathListingsCapturePath, "utf8")) as {
+    cases: Array<{ case: string; commands: Array<{ argv: string[]; exit: number; stdout: string }> }>;
+  };
+  const recorded = capture.cases.find((entry) => entry.case === name);
+  assert.ok(recorded !== undefined, `m6-p3-git-path-listings.json records no ${name} case`);
+  for (const command of recorded.commands) {
+    const argv = command.argv.slice(1).map((arg) => arg.split("<base>").join(base));
+    const live = git(dir, argv);
+    assert.equal(live.status, command.exit, `git ${argv.join(" ")}: ${live.stderr}`);
+    assert.equal(live.stdout, command.stdout, `git ${argv.join(" ")} no longer prints what the capture recorded`);
+  }
+}
+
+test("a scoped rollback commit stages a path whose name git quotes and does not call it stray", () => {
+  /* git lists this staged path as `"caf\303\251.json"`. Read from line output
+     that quoted text was not the path the caller named, so the scope check
+     called it stray and refused a commit that staged exactly what it was
+     asked to. */
+  const scratch = scratchFleet();
+  try {
+    const name = "caf\u00e9.json";
+    writeFileSync(join(scratch.fleetRoot, name), "{}\n");
+    /* Replay the listing at the state it is taken in (the path staged), then
+       unstage, because a pre-staged index is refused before anything runs. */
+    assert.equal(git(scratch.fleetRoot, ["add", "--", name]).status, 0);
+    replayPathListings(scratch.fleetRoot, "cutover-sync", "");
+    assert.equal(git(scratch.fleetRoot, ["reset", "-q", "--", name]).status, 0);
+
+    const outcome = cutover.syncFleetState(scratch.fleetRoot, {
+      allowNoRemote: true,
+      message: "test",
+      paths: [name],
+    });
+    assert.equal(outcome.ok, true, JSON.stringify(outcome));
+    if (outcome.ok) {
+      assert.deepEqual(outcome.staged, [name]);
+    }
+    const committed = git(scratch.fleetRoot, ["show", "-z", "--name-only", "--format=", "HEAD"]).stdout;
+    assert.equal(committed, `${name}\0`, "the commit carries the named path and nothing else");
+  } finally {
+    rmSync(scratch.root, { recursive: true, force: true });
+  }
+});
+
+test("restoring a retirement root removes a post-freeze addition whose name git quotes", () => {
+  /* git lists this addition as `"retired/caf\303\251.md"`. Read from line
+     output that quoted text went to `git rm` as a pathspec, matched nothing,
+     and the restore failed AFTER its checkout had already written the tree. */
+  const root = mkdtempSync(join(tmpdir(), "tiphys-restore-quoted-"));
+  try {
+    mkdirSync(join(root, "retired"), { recursive: true });
+    writeFileSync(join(root, "retired", "rule.md"), "the original rule\n");
+    git(root, ["init", "-q", "-b", "main"]);
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-q", "-m", "pre-freeze"]);
+    const preFreeze = git(root, ["rev-parse", "HEAD"]).stdout.trim();
+    writeFileSync(join(root, "retired", "caf\u00e9.md"), "added after the freeze\n");
+    writeFileSync(join(root, "retired", "rule.md"), "the ported rule\n");
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-q", "-m", "retire"]);
+    replayPathListings(root, "cutover-restore", preFreeze);
+
+    const restored = cutover.restoreRetirementRoots(root, preFreeze, ["retired"]);
+    assert.equal(restored.ok, true, JSON.stringify(restored));
+    if (restored.ok) {
+      assert.deepEqual(restored.removed, ["retired/caf\u00e9.md"]);
+    }
+    assert.equal(existsSync(join(root, "retired", "caf\u00e9.md")), false, "the added file must be gone");
+    assert.equal(readFileSync(join(root, "retired", "rule.md"), "utf8"), "the original rule\n");
+    const residue = git(root, ["diff", "-z", "--name-only", preFreeze, "--", "retired"]).stdout;
+    assert.equal(residue, "", `the root must match ${preFreeze} exactly, and it differs in: ${residue}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 /**
  * CLASS: `ported` is reached from a positive test, never from a fallthrough.
  *

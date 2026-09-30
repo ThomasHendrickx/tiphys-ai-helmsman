@@ -9,14 +9,14 @@
     {
       "kind": "mutation",
       "file": "tuition/mechanism-index.yaml",
-      "find": "      A claim that cannot be taken must fail LOUDLY and name the stuck file.",
-      "replace": "      A claim that cannot be taken should be retried quietly."
+      "find": "      A claim that cannot be taken must fail LOUDLY and name the stuck file;",
+      "replace": "      A claim that cannot be taken should be retried quietly;"
     },
     {
       "kind": "mutation",
       "file": "tuition/T-005.yaml",
-      "find": "      A claim that cannot be taken must fail LOUDLY and name the stuck file. A",
-      "replace": "      A claim that cannot be taken should be retried quietly. A"
+      "find": "      A claim that cannot be taken must fail LOUDLY and name the stuck file; a",
+      "replace": "      A claim that cannot be taken should be retried quietly; a"
     }
   ],
   "deterministic": true,

@@ -774,6 +774,18 @@ function nonEmptyLines(text: string): string[] {
     .filter((line) => line.length > 0);
 }
 
+/**
+ * The paths of a `-z` listing (M6-P3 fix round 3). A line listing C-quotes a
+ * path holding a non-ASCII byte, a double quote, a backslash or a control
+ * character, and that quoted text is neither the path a caller named nor one
+ * `git rm` accepts. Only listings whose paths are USED read through here; one
+ * read only for emptiness keeps `nonEmptyLines`, because quoting cannot turn an
+ * empty listing into a non-empty one or the reverse.
+ */
+function nulSeparatedPaths(text: string): string[] {
+  return text.split("\0").filter((path) => path.length > 0);
+}
+
 export function syncFleetState(
   fleetRoot: string,
   options: { allowNoRemote?: boolean; message: string; paths: string[] },
@@ -810,11 +822,11 @@ export function syncFleetState(
   if (add.status !== 0) {
     return { ok: false, reason: `git add failed in ${fleetRoot}: ${add.stderr.trim()}` };
   }
-  const staged = runGit(fleetRoot, ["diff", "--cached", "--name-only"]);
+  const staged = runGit(fleetRoot, ["diff", "--cached", "-z", "--name-only"]);
   if (staged.status !== 0) {
     return { ok: false, reason: `git diff --cached failed: ${staged.stderr.trim()}` };
   }
-  const stagedPaths = nonEmptyLines(staged.stdout);
+  const stagedPaths = nulSeparatedPaths(staged.stdout);
   /* The scope is VERIFIED and not assumed. A named path that turns out to be a
      directory, or a pathspec the caller did not mean, shows up here. */
   const stray = stagedPaths.filter(
@@ -930,6 +942,7 @@ export function restoreRetirementRoots(
      because refuseIfTreeDirty has already returned, so HEAD is the tree. */
   const added = runGit(repoRoot, [
     "diff",
+    "-z",
     "--name-only",
     "--diff-filter=A",
     /* --no-renames IS LOAD-BEARING AND THE VERIFICATION ARM BELOW IS WHAT
@@ -952,7 +965,7 @@ export function restoreRetirementRoots(
       reason: `enumerating the post-freeze additions failed: ${added.stderr.trim()}`,
     };
   }
-  const postFreeze = nonEmptyLines(added.stdout);
+  const postFreeze = nulSeparatedPaths(added.stdout);
   const checkout = runGit(repoRoot, ["checkout", sha, "--", ...roots]);
   if (checkout.status !== 0) {
     return { ok: false, reason: `git checkout failed: ${checkout.stderr.trim()}` };

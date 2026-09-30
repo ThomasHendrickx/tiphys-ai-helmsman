@@ -1,0 +1,24 @@
+{
+  "id": "m6-p4-criterion-check-shape",
+  "behavior": "m6-p4-criterion-check-shape",
+  "tests": [
+    "a criterion check needs tests or a command, accepts either or both, and refuses an empty list or an empty reason"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "schemas/plan.schema.json",
+      "find": "        { \"required\": [\"tests\"], \"properties\": { \"tests\": { \"type\": \"array\" } } },",
+      "replace": "        { \"properties\": { \"tests\": { \"type\": \"array\" } } },"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/plan.schema.json",
+      "find": "\"properties\": { \"command\": { \"type\": \"array\" }, \"tests\": { \"type\": \"null\" } }",
+      "replace": "\"properties\": { \"command\": { \"type\": \"array\" } }"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -1,0 +1,32 @@
+{
+  "id": "mode-ids-unique-validate-and-mode-show",
+  "behavior": "mode-ids-unique-validate-refuses",
+  "tests": [
+    "validate refuses an assurance-modes document declaring mode full twice with the weaker row first, naming the id",
+    "mode show refuses a document declaring mode full twice with the weaker row first, naming the id, and serves neither row"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/ids.ts",
+      "find": "    .filter(([, indexes]) => indexes.length > 1)",
+      "replace": "    .filter(() => false)"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  modelResolutionSubjectEcho,\n  modeIdsAreUnique,\n];",
+      "replace": "  modelResolutionSubjectEcho,\n];"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the shipped tiphys CLI, node bin/tiphys.ts validate --type assurance-modes and node bin/tiphys.ts mode show --file",
+    "captures": [
+      "witness/captures/m6-p3-duplicate-mode-id.txt"
+    ],
+    "provenance": "Captured 2026-09-30 on node v26.6.0 and git 2.43.0 from the repository root at 0553910, over a scratch directory holding the kernel's gate-registry.yaml, schemas/, the charter template retargeted to full, the dual-review fixtures decorrelated-criteria.yaml and shared-family-hazard.yaml, and an assurance-modes.yaml declaring full twice with the weaker copy first; the one alteration, the scratch path written <dir>, is declared in the capture. The named tests spawn the same two commands live over the same construction and require the captured INVALID line verbatim, through capturedInvalidLine in test/assurance-modes.test.ts. Required by rule (f) because member 1 mutates src/checks.ts, which the spawn/parse derivation matches."
+  }
+}

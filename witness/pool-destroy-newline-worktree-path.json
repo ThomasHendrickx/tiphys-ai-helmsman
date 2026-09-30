@@ -1,0 +1,31 @@
+{
+  "id": "pool-destroy-newline-worktree-path",
+  "behavior": "pool-destroy-newline-worktree-path",
+  "tests": [
+    "pool destroy refuses while a foreign worktree at the task's own path plus a newline holds the task branch"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "  let argv = [\"worktree\", \"list\", \"--porcelain\", \"-z\"];\n  let separator = \"\\0\";\n  let listed = runGit(contextDir, argv);\n  if (listed.status === 129 && WORKTREE_LIST_Z_UNKNOWN.test(listed.stderr)) {\n    argv = [\"worktree\", \"list\", \"--porcelain\"];\n    separator = \"\\n\";\n    listed = runGit(contextDir, argv);\n  }\n  if (listed.status !== 0) {\n    return { ok: false, detail: `git ${argv.join(\" \")} failed: ${gitFailureLine(listed)}` };\n  }\n  const lines = listed.stdout.split(separator);\n  if (separator === \"\\n\") {\n    const unreadable = lines.find((line) => !PORCELAIN_LINE_BEFORE_Z.test(line));\n    if (unreadable !== undefined) {\n      return {\n        ok: false,\n        detail:\n          `git ${argv.join(\" \")} printed ${JSON.stringify(unreadable)}, which is ` +\n          `no attribute: a worktree path holds a newline, and this git has no -z ` +\n          `to list it by`,\n      };\n    }\n  }\n  return { ok: true, lines };\n",
+      "replace": "  const listed = runGit(contextDir, [\"worktree\", \"list\", \"--porcelain\"]);\n  if (listed.status !== 0) {\n    return { ok: true, lines: [] };\n  }\n  return { ok: true, lines: listed.stdout.split(\"\\n\").map((line) => line.trim()) };\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "[\"worktree\", \"list\", \"--porcelain\", \"-z\"]",
+      "replace": "[\"worktree\", \"list\", \"--porcelain\"]"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p3-git-path-listings.json"
+    ],
+    "provenance": "Real git 2.43.0 output of the path listings src/pool.ts reads, in the line form it read before M6-P3 fix round 3 and the -z form it reads now, recorded 2026-09-30 inside the named tests against the fixtures they stage (the capture's own provenance says how). Required by rule (f) because every member mutates a file the spawn/parse derivation matches. The named tests re-run each recorded command and require git's live stdout to equal the recorded stdout before the code under test runs."
+  },
+  "deterministic": true,
+  "repeats": 2
+}

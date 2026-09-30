@@ -41,9 +41,14 @@ phases:
       - id: "1"
         criterion: node --test test/importer.test.ts exits 0 and reports 4 tests, 0
           failing.
+        check:
+          command: [node, --test, test/importer.test.ts]
       - id: "2"
         criterion: A staged 429 response is retried exactly twice and the third
           failure propagates, asserted against captured server output.
+        check:
+          tests:
+            - a staged 429 is retried twice and the third failure propagates
     hazard-classes:
       - id: H1
         statement: A retry that masks a permanent failure, so a broken import reports

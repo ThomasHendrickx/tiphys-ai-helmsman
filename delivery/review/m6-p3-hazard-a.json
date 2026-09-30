@@ -1,0 +1,204 @@
+{
+  "kind": "verdict",
+  "phase": "M6-P3",
+  "head": "ea3edb36c351d7f97945eec0080319f7c027cc0f",
+  "tiphys-version": "0.2.2",
+  "verdict": "FIX-ROUND-NEEDED",
+  "produced-by": "claude-fable-5-1",
+  "framing": "hazard-deletion-first",
+  "review-contract": "hazard",
+  "findings": [
+    {
+      "id": "CR-M6P3A-04",
+      "severity": "low",
+      "evidence": [
+        "Unchanged at ea3edb3 and left as recorded by the orchestrator (the stale $comments go in M6-P4's schema diet): no file under schemas/ is in `git diff --stat d584639..ea3edb3`, so schemas/verdict.schema.json:5 (e) and :265 still name `verdict-finding-references-resolve` as a live Kind B check that c1eb752 deleted.",
+        "Round-0 evidence stands: `verdict-pair-approves` (run by id from src/gates/merge-preconditions.ts) reads `findings[]` alone for blocking severities, so a verdict whose `hazard-classes-addressed[].finding` names an id absent from `findings[]` validates and is admitted as an APPROVE with no blocking finding.",
+        "Reachable only by a reviewer writing a self-contradictory verdict, and DR-0062 / M6-P5 is about to re-base admission on kernel records, so low."
+      ],
+      "concrete-fix": "Cheapest: have `verdict-pair-approves` (which already iterates each admitted verdict) also refuse a verdict whose `hazard-classes-addressed[].finding` does not resolve to a `findings[].id`, one violation per dangling reference, red-witnessed with a verdict that names a finding it never lists; and correct schemas/verdict.schema.json:5 (e) and :265 to say what now holds. If the owner prefers the deletion to stand, correct the two comments only."
+    },
+    {
+      "id": "CR-M6P3A-05",
+      "severity": "low",
+      "evidence": [
+        "Unchanged at ea3edb3 and left as recorded by the orchestrator (comment-only edits): none of src/commands/plan.ts, src/commands/checklist.ts, src/gates/manifest.ts or schemas/verdict.schema.json is in `git diff --stat d584639..ea3edb3`, so src/commands/plan.ts:11 still says `gates.manifest.json` passes to the auditor as `--declarations` (deleted), src/commands/checklist.ts:22 still says `gate-probes-resolve` RUNS here (deleted), and src/gates/manifest.ts:123 and :130 still describe `manifest-self-check` (deleted).",
+        "Functional references were clean at d584639 (round-0 grep) and fix rounds 1 to 3 add no reference to a deleted thing: their source changes are src/ids.ts (new), src/checks.ts, src/plan.ts, src/checklists.ts, src/commands/brief.ts, src/gates/run.ts, src/gates/scope.ts, src/cutover.ts, src/pool.ts and src/witness/run.ts, and the diff names only live functions and git options."
+      ],
+      "concrete-fix": "Correct each comment in the next phase that already touches its file (M6-P4 owns schemas/, M6-P5 touches src/gates/), naming the deleted thing as deleted by M6-P3 the way src/cutover.ts:1229 and src/gates/credentials.ts:29 already do; no code change."
+    },
+    {
+      "id": "CR-M6P3A-06",
+      "severity": "low",
+      "evidence": [
+        "Raised in the first delta (89260f4) and unchanged at ea3edb3: src/checks.ts, src/checklists.ts and src/plan.ts are not in `git diff --stat 89260f4..ea3edb3`, so `grep -oE 'id: \"[a-z-]*unique[a-z-]*\"' src/checks.ts` still returns mode-ids-are-unique alone, where a726478 had checklist-probe-ids-unique, checklist-framing-ids-unique, mode-ids-are-unique and role-ids-are-unique.",
+        "So `tiphys validate` reports VALID for documents the readers refuse, and for checklists that is a regression against the base. Measured at 89260f4 (the CLI paths involved are unchanged since): a copy of checklists/clean-room.yaml with the fix-round framing duplicated: head `validate --type checklist` exit 0; base a726478 exit 1 `INVALID #/framings/2/id framing id fix-round is already declared at #/framings/0/id ... (check: checklist-framing-ids-unique)`; the head's reader `checklist resolve --checklist clean-room --extra <file> --framing fix-round` exit 1 naming the duplicate (re-run at ea3edb3, same line, exit 1).",
+        "Duplicate PROBE ids inside a canonical checklist are refused nowhere at the head: the same copy with probe `fix-round-not-covered` declared twice: head validate exit 0, base exit 1 `(check: checklist-probe-ids-unique)`; only the `--extra` merge refuses a collision (src/checklists.ts:236), the canonical list is rendered whole, and no registered test asserts the shipped checklists' probe ids are unique. The work history records this as open question 2.",
+        "The same validate-versus-reader split holds without a base regression for plan phase ids (`validate --type plan` exit 0 at head and base; `plan project` exit 1 naming the duplicate, re-run at ea3edb3) and for gate ids on one mode and event (`validate --type gate-registry` exit 0; `gates run --registry` exit 21 `INVALID #/gates/1/id gate id \"dup\" is declared more than once`)."
+      ],
+      "concrete-fix": "Reinstate `checklist-framing-ids-unique` and `checklist-probe-ids-unique` on top of src/ids.ts:25 duplicateIds, each with the failure it prevents (a framing resolved under an entry the author did not mean; a verdict citing a probe id two probes carry), and add the sibling checks for plan phase ids and for gate ids that share a mode and event, so `tiphys validate` and the readers agree on what a duplicate is; each red-witnessed with the duplicate-first document. Low because every first-match reader now refuses at use time and the one list nothing refuses, canonical probe ids, is read whole rather than by first match."
+    },
+    {
+      "id": "CR-M6P3A-07",
+      "severity": "medium",
+      "evidence": [
+        "New in this delta, from reading fix round 3 with the deletion-first eye. src/pool.ts:1129 now lists worktrees with `git worktree list --porcelain -z`. `-z` on `worktree list` is not in every git this kernel can meet (git added it in 2.36; Ubuntu 22.04's apt git is 2.34.1, Debian 11's is 2.30), and the kernel declares no git floor: src/commands/doctor.ts:216 checkGit reports PASS for any version that answers `--version`, and `grep -rniE 'git (version )?(>=|2\\.[0-9]+)|minimum git|GIT_MIN' src README.md package.json` finds no requirement. When the listing exits nonzero, src/pool.ts:1130 `if (listed.status === 0)` skips the whole foreign-worktree read, `branchCheckedOutAt` stays undefined, the stage-2 refusal at src/pool.ts:1203 does not fire, and stage 3 deletes the branch with `update-ref -d` (src/pool.ts:1294), which src/pool.ts:1208 itself says does not check worktrees. Nothing records that the listing failed.",
+        "MEASURED at ea3edb3, node v26.6.0, dist/ built, by the CLI on a hand-built fleet (tiphys init, an upstream with one commit cloned to projects/demo, `pool create --task t-old`, then `git worktree add --force <tmp>/foreign task/t-old`, so a FOREIGN worktree holds the task branch), same fixture twice, one variable changed, a `git` wrapper first on PATH that rejects exactly `worktree list ... -z` with `error: unknown switch 'z'` exit 129 and execs /usr/bin/git for every other invocation (git 2.43.0 answers every other call): CONTROL, real git: `pool destroy --task t-old` exit 1, stderr `tiphys pool: cannot delete branch task/t-old: it is checked out at <tmp>/foreign; remove that worktree first`, branch present afterwards, foreign worktree still on refs/heads/task/t-old. WRAPPER: exit 0, stdout `destroyed t-old (deleted branch task/t-old was 22ece023b041cff38484cb7d0d4c123f5d4fd644)`, stderr EMPTY, `git rev-parse --verify refs/heads/task/t-old` exit 1 afterwards, and the foreign worktree's status reads `## No commits yet on task/t-old`, the dangling HEAD the code comment names.",
+        "This is a regression of fix round 3, not a pre-existing gap of the same size: before 25dcb79 the listing was `worktree list --porcelain` without `-z`, which every git accepts, so the refusal fired on every git for every foreign worktree except the newline-path case round 3 set out to fix. After it, on a git without the option the refusal fires for NO foreign worktree, silently. What IS pre-existing is the shape that makes the regression silent: a nonzero listing exit is treated as `no foreign worktree` rather than as indeterminate, unlike the branch-tip read four lines above it (src/pool.ts:1119 `indeterminate`, refused at src/pool.ts:1187).",
+        "Not caught by the round's own witness: the named test test/pool.test.ts:431 and the spec witness/pool-destroy-newline-worktree-path.json exercise git 2.43 only, and the test's replay helper (test/pool.test.ts:405) runs the `-z` listing itself, so under the wrapper the test errors at the helper (`git worktree list --porcelain -z: error: unknown switch 'z'`) before destroy runs; the fixture above is what shows destroy's behaviour. The other six `-z` additions of rounds 2 and 3 (`diff -z`, `diff --cached -z`, `ls-tree -z`) are options every git accepts and are not in this finding."
+      ],
+      "concrete-fix": "Two parts, both small. (1) Fail closed at src/pool.ts:1130: when `worktree list` exits nonzero, refuse the destroy with the listing's stderr (`cannot determine which worktrees hold branch <name>: <stderr>; refusing to finish destroy`), the way the indeterminate branch tip is refused, so a listing failure of ANY cause is a refusal and never a proceed; red-witness it with a `git` stub on PATH that fails the listing (the pattern test/pool.test.ts:179 already uses for fetch) and assert exit nonzero, the branch present and the foreign worktree still on the branch. (2) Either declare and check a git floor in doctor (>= 2.36 if `-z` stays), or read the listing in the form every git prints (`--porcelain` without `-z`, splitting records on the blank line and paths on the first newline is not enough, since the path can hold one, so prefer the floor). Medium rather than high because it needs a git older than 2.36 on the machine running destroy; medium rather than low because on such a machine a destructive command loses a guard the kernel's own comment says only this code enforces, with nothing printed, and the fix round that introduced it was the one meant to harden that guard.",
+      "analysis": "Hazard class: what can destroy. The T-008 shape one level down: a guard whose precondition (a git option) is not tested is green and worthless on the toolchain where the precondition fails, and it fails without a word. The wrapper isolates the flag rather than the version, so the measurement is of the mechanism (a rejected option makes the listing exit nonzero, which the code reads as no foreign worktree) and would hold for any other cause of a nonzero exit."
+    },
+    {
+      "id": "CR-M6P3A-08",
+      "severity": "low",
+      "evidence": [
+        "New in this delta. src/witness/run.ts:246 newSidePathOfHeader decodes a C-quoted `+++` header only when the line ENDS with a double quote, and drops a trailing TAB only from an UNQUOTED header. git appends the TAB whenever the label contains a space, including a quoted label (diff.c tests the quoted string), so a name with a space AND a byte that forces quoting gets `+++ \"b/src/caf\\303\\251 x.ts\"<TAB>`, which neither branch recognises. Measured on git 2.43.0: `git diff -U0 --no-renames base...head | grep '^+++' | cat -A` prints `+++ \"b/src/caf\\303\\251 x.ts\"^I$`.",
+        "Consequence, measured through the exported function at ea3edb3 (`import('src/witness/run.ts')`, computePhaseDiff over a scratch repository with `src/plain.ts` (6 lines, line 1 changed) and `src/zcaf<U+00E9> x.ts` (8 lines, line 8 changed)): `{\"path\":\"src/plain.ts\",\"status\":\"M\",\"hunks\":[[1,1],[8,8]]}` and `{\"path\":\"src/zcaf<U+00E9> x.ts\",\"status\":\"M\",\"hunks\":[]}`. The quoted file's hunk is credited to the file whose header came before it, because an unrecognised `+++` line leaves `current` (src/witness/run.ts:365-369) pointing at the previous file. plain.ts has no line 8.",
+        "Two effects, both narrow. For the quoted file, rule (d) (src/witness/run.ts:1421-1437) can never find a mutation inside a changed hunk, so any witness over it is refused: red, fail closed. For the preceding file, rule (d) can be satisfied by line ranges that belong to another file: fail open, but only for a witness mutating the alphabetically preceding changed file at lines that coincide with the quoted file's hunks. The listing side (src/witness/run.ts:343, `-z`) is correct, so coverage still demands a witness for the quoted file. The round's decorated-names test (test/witness.test.ts:2705) drives a space and a non-ASCII byte in separate names, never both in one; the fall-through predates round 3 (the old regex did not match any quoted header either), and round 3 narrowed it."
+      ],
+      "concrete-fix": "In newSidePathOfHeader strip one trailing TAB before testing for the closing quote (git adds the TAB after the quoted label), and on any `+++ ` line that is recognised as neither a decodable header nor `/dev/null`, set `current = undefined` so orphan hunks are attributed to no file rather than the previous one; add `src/caf<U+00E9> x.ts` (space plus a quoting byte) to the decorated-names test and assert its hunk lands on it and on nothing else. Low: the misattribution needs a rare name shape and an adjacent file, and the direct effect on the quoted file is a red."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "p3-prevents",
+      "quote": "the registry schema rejects a gate without `prevents`. check: named test in `test/gate-registry.test.ts`.",
+      "evidence": [
+        "Measured at d584639 and re-run at ea3edb3: test/gate-registry.test.ts as a whole, `node --test --test-reporter=tap test/gate-registry.test.ts`, 19 tests, 19 pass, 0 fail, 0 skipped, exit 0; schemas/gate-registry.schema.json is not in `git diff --stat d584639..ea3edb3`.",
+        "Mutation at d584639: `\"prevents\"` removed from the gateShape `required` list at schemas/gate-registry.schema.json:144 -> the test fails (`AssertionError [ERR_ASSERTION]: []`); schema restored with `git checkout --`, diff empty."
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-all-prevent",
+      "quote": "every gate in `gate-registry.yaml` validates. check: `node bin/tiphys.ts validate --type gate-registry gate-registry.yaml` exits 0.",
+      "evidence": [
+        "Run at d584639 on node v26.6.0: exit 0, no INVALID line, also for templates/gate-registry.example.yaml. Neither file nor the schema changed in d584639..ea3edb3 (diffstat)."
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-absent",
+      "quote": "`delivery/plan/cutover/retirement-inventory.json`, its `.md`, `test/retirement-inventory.test.ts`, `scripts/check-retirement-inventory.mjs` and `gates.manifest.json` are absent. check: `test ! -e` on each, exit 0.",
+      "evidence": [
+        "Run at d584639: `test ! -e` exit 0 for each of the five paths; the three fix rounds add no file under those names (diffstats)."
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-ci",
+      "quote": "the `gates` workflow calls the runner with `--registry` on both events and never `--manifest`. check: named test in `test/gate-registry.test.ts`.",
+      "evidence": [
+        "test/gate-registry.test.ts:1396 passes at ea3edb3 (in the 19-pass file run above); .github/workflows/gates.yml is not in `git diff --stat d584639..ea3edb3`. Its helper registryStepDefects (:1342) parses the workflow, requires exactly one gates run step per event, no continue-on-error, `--registry gate-registry.yaml`, `--mode full`, `--event <event>`, `--evidence`, `--base`, `--head`, `--phase` on pull_request and `github.event.before` on push, refuses `--manifest`, m2-exit-test.sh and gates.manifest.json anywhere, and runs the step's own text under `bash -e` over a stub bin/tiphys.ts exiting 0 and then 1.",
+        "The event selection behind it, test/gate-registry.test.ts:1459, passes at ea3edb3; mutated at d584639 (selectsEvent at src/gates/run.ts:381 -> `return true`) it failed with `on-pull-request` present in the push run's ids; restored. src/gates/run.ts changed in round 2 (gitLines separator, the diff-touches argv) and selectsEvent is not in that diff."
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-red-fails-ci",
+      "quote": "the runner exits nonzero when a required gate is red, vacuous or errors. check: named test.",
+      "evidence": [
+        "test/gate-registry.test.ts:1526 passes at ea3edb3 (in the 19-pass file run): on each of pull_request and push, one gate under test beside an always-green required control, exact exit codes 0 (green), 1 (red), 21 (vacuous), 21 (error), 20 (required not-applicable via an unmet file-exists precondition). decideAggregate is not in the round-2 diff of src/gates/run.ts.",
+        "Mutation at d584639: src/gates/run.ts:1848 `counts.red > 0` -> `> 99` in decideAggregate -> the test fails at `pull_request red`; restored, diff empty."
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-sizes",
+      "quote": "`gate-registry.yaml` at most 10,000 bytes and `assurance-modes.yaml` at most 6,000 bytes. check: `wc -c`.",
+      "evidence": [
+        "Run at d584639: `wc -c` 4953 gate-registry.yaml, 4403 assurance-modes.yaml; neither file is in any fix round's diffstat."
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-build",
+      "quote": "`npm run build` exits 0, `npm test` exits 0 with 0 fail.",
+      "evidence": [
+        "At d584639 (round 0, node v26.6.0, dist/ built): build exit 0, clean `git status --short` besides this verdict file, `npm test` exit 0, 1223 tests, 1223 pass, 0 fail, 0 skipped. At 89260f4 (first delta): this review's own `node --test --test-reporter=tap \"test/**/*.test.ts\"` exit 0, 1230 tests, 1230 pass, 0 fail, 0 skipped.",
+        "At ea3edb3 (this delta), node v26.6.0, the worktree handed over built (dist/ present): the nine named tests of rounds 2 and 3 run by name, each file exit 0: test/gates.test.ts 2 pass (the two diff-touches cases), test/implementer-brief.test.ts 1 pass, test/witness.test.ts 2 pass, test/scope-gate.test.ts 1 pass, test/cutover.test.ts 2 pass, test/pool.test.ts 1 pass; 9 pass, 0 fail, 0 skipped. Then every test file of a changed module, whole, `node --test --test-reporter=tap <file>`: test/brief-compose.test.ts 20 pass, test/cutover.test.ts 66, test/gates.test.ts 52, test/implementer-brief.test.ts 15, test/pool.test.ts 43, test/scope-gate.test.ts 22, test/witness.test.ts 61, test/gate-registry.test.ts 19: 298 tests, 298 pass, 0 fail, 0 skipped, every exit 0 (logs in the reviewer's scratchpad, m6p3a-delta2/). The full suite was not re-run by this review at ea3edb3; the work history's claim for 85b0d7a (the same tree minus the final work-history commit) is 1239 tests, 1239 pass, 0 fail, 0 skipped, and is cited as a claim.",
+        "Note on the criterion's meaning: the suite is green at this head with the destroy guard of CR-M6P3A-07 absent on a git without `worktree list -z`, because no test runs under such a git; a green suite is evidence for the toolchain it ran on."
+      ],
+      "met": true
+    },
+    {
+      "id": "p3-ci-green",
+      "quote": "not-testable locally: the `gates` run on the pull request head and the post-merge `push` run are green.",
+      "evidence": [
+        "Not established by this review: no pull request for ea3edb3 was observed, and the criterion names two CI runs that only the orchestrator can observe to completion (T-009). Locally at d584639 the selection each arm makes on the real registry was confirmed. The implementer's gate passes (`--only red-witness --only suite`, both green: b5d04d9 exit 0, 85b0d7a exit 0 with 168 witnesses and 1239 tests) are claims this review did not re-run."
+      ],
+      "met": false
+    }
+  ],
+  "deviations-judged": [
+    {
+      "deviation": "Gate runs use `--base cd2dafe`, per the dispatch notes, not the base commit e898e4e.",
+      "serves-plan-intent": true,
+      "reasoning": "The dispatch directed it and the wider diff (carrying M6-P2's twenty commits) judges strictly more, never less; this review used the actual merge base a726478 (M6-P2 merged) for its own diffs and probes."
+    },
+    {
+      "deviation": "p3-both-arms: the pull-request arm exits nonzero locally, because `merge-preconditions` is RED: this pair-tier change has no reviews yet (and green CI on the head cannot exist before a pull request). Every other gate is green or, for `scope`, not applicable on a non-phase branch. The push arm exits 0.",
+      "serves-plan-intent": true,
+      "reasoning": "A pair-tier change with zero admitted reviews being red at merge-preconditions is the gate doing what its `prevents` says; the plan's p3-ci-green criterion is the one that asks for a green pull-request run and it is declared not-testable locally. The red is evidence the gate is live, not a deviation from intent."
+    },
+    {
+      "deviation": "`schemas/assurance-modes.schema.json` keeps `gate-sets` as an accepted, ignored property, so pre-M6-P3 documents validate.",
+      "serves-plan-intent": true,
+      "reasoning": "The plan deletes the per-mode lists and derives gates from the registry; accepting and ignoring the old field keeps committed history valid (DR-0054's shape) without any reader consulting it. Measured at d584639: an empty list and a duplicated list now validate, a non-string item is still rejected, and src/modes.ts no longer reads the field."
+    },
+    {
+      "deviation": "`authored-bytes` was promoted to a registry gate (the brief allowed either).",
+      "serves-plan-intent": true,
+      "reasoning": "It runs on git state (T-010), names a concrete failure, and the promotion is what lets the registry be the only gate list on the push arm. This review ran the gate arm at d584639 on a clean tree (green, 1665 tracked files) and on a dirtied tracked file: `error`, units 0, exit 21, never green; tree restored."
+    },
+    {
+      "deviation": "The \"M1 exit test (local mode)\" workflow step is kept: the suite does not run the M1 harness end to end (test/exit-test-local.test.ts says why).",
+      "serves-plan-intent": true,
+      "reasoning": "The plan keeps it only if it passes DR-0061 (b) and is not already run by the suite; it exercises the kernel CLI on a scratch fleet (a built artefact and git state) and scripts/m1-exit-test.sh is present and executable at the head."
+    },
+    {
+      "deviation": "`typecheck` now runs on `push` too.",
+      "serves-plan-intent": true,
+      "reasoning": "A type error on main is a property of main (T-009 rule 2), and the push arm would otherwise carry four gates; adding one that can go red strengthens the arm the base ran weaker."
+    },
+    {
+      "deviation": "Fix round 3 changed seven git listings across four files where review B's finding named one, and fix round 2's gate pass was run three times (one red on witness declarations, one killed by a container restart, one reported).",
+      "serves-plan-intent": true,
+      "reasoning": "Fixing the mechanism at every site is what the fix-round contract asks, and each site carries its own named test and witness spec (all nine named tests green here, all mutations this review tried red). The extra gate passes are accounted for in the work history rather than averaged. The one site the widening got wrong is priced as CR-M6P3A-07, which is about an option the new listing needs, not about the decision to widen."
+    }
+  ],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "hazard-1-deleted-guard",
+      "probed": "Fix round 1 (89260f4) cleared CR-M6P3A-01 and CR-M6P3A-03, as recorded in the first delta: the duplicate-first modes document is refused by `validate` (exit 1, `INVALID #/modes/1/id ... (check: mode-ids-are-unique)`), by `mode show` (exit 1, serves neither row) and by both merge checks (`INVALID #/produced-by ... the merge-authority of mode full is therefore ambiguous, and a merge check must not choose one`, exit 1, control unchanged); the env-grep allowlist is empty and an injected read reddens the test. ALL RE-RUN AT ea3edb3 with the same fixtures and the same output: compose from the empty directory exit 1 naming the missing registry; validate exit 1; mode show exit 1; `plan project` on the duplicated plan exit 1; `checklist resolve --extra` on the duplicated framing exit 1; the merge-check scratch repository with the duplicate committed: two INVALID lines, exit 1; with the original document: INVALID on the medium findings, exit 1. None of src/ids.ts, src/checks.ts, src/plan.ts, src/checklists.ts changed in 89260f4..ea3edb3 (diffstat: src/commands/brief.ts, src/cutover.ts, src/gates/run.ts, src/gates/scope.ts, src/pool.ts, src/witness/run.ts). ROUNDS 2 AND 3 READ DELETION-FIRST, one question per change, what stops the failure now: brief.ts replacement function (the string form restored by this review: the dollar-patterns test red, exit 1; restored); run.ts gitLines separator and `diff -z --no-renames --name-only` (the two named tests green, the stored specs carry two members each per the work history; the other gitLines caller keeps the newline default); scope.ts `-z --name-status` record walk (R and C take three fields, everything else two, an empty status is an unparseable record; `-z` dropped by this review: the named test red, restored); cutover.ts nulSeparatedPaths for the two listings whose paths are used, `nonEmptyLines` kept for emptiness-only reads; witness/run.ts `-z` listing, `ls-tree -z`, and the header decoder (the quoted branch disabled by this review: the decorated-names test red, restored). TWO GAPS FOUND, both measured rather than read: pool.ts `worktree list --porcelain -z` is an option a git before 2.36 rejects and a rejected listing is read as `no foreign worktree`, so destroy deletes a branch a foreign worktree has checked out, exit 0, stderr empty, where the pre-round-3 listing refused it on every git: CR-M6P3A-07, medium, the finding this class points at. And witness/run.ts newSidePathOfHeader misses a quoted header that carries git's trailing TAB (a name with a space and a quoting byte), crediting its hunks to the previous file: CR-M6P3A-08, low. CR-M6P3A-06 (the three uniqueness checks still deleted) stands unchanged from the first delta.",
+      "finding": "CR-M6P3A-07"
+    },
+    {
+      "class-id": "hazard-2-runner-exit-zero",
+      "probed": "Measured at d584639 and re-checked here because src/gates/run.ts changed in round 2: the diff is the gitLines separator parameter (:1203, newline default kept for the branch-name caller, no trim under NUL) and the diff-touches argv (:1319); decideAggregate, the CLI's exit passthrough and the workflow are not in it. test/gate-registry.test.ts at ea3edb3: 19 pass, 0 fail, including :1526 (exit codes 0/1/21/21/20 on both events beside a green control) and :1396 (the step text under bash -e over a stub runner exiting 0 and 1). At d584639 `counts.red > 0` -> `> 99` reddened :1526; restored.",
+      "cleared-because": "Every nonzero arm the plan names is asserted by an isolated test that passes at this head and was reddened by mutation at d584639, and the round-2 change to the runner touches a precondition's input reading, not the aggregate or the exit."
+    },
+    {
+      "class-id": "hazard-3-push-arm",
+      "probed": "Measured at d584639 and carried: gate-registry.yaml and the workflow are unchanged through ea3edb3. The push arm selects authored-bytes, credential-scrub, suite, typecheck, license, all `required`; `--event push --only license --only authored-bytes` exit 0 with both green; `--only scope` under push refused at exit 21; selectsEvent mutated to ignore the event reddened the p3-event test (:1459, green again at ea3edb3 in the file run).",
+      "cleared-because": "The push arm selects five required gates that can each go red, the runner refuses an arm that selects nothing at load and again at the aggregate, and no fix round touched the registry, the workflow or the event selection."
+    },
+    {
+      "class-id": "hazard-4-conditional-gates",
+      "probed": "Round 2 changed the one precondition this class is about. At d584639 this review measured diff-touches on a scratch repository (docs-only -> not-applicable exit 0; src change -> the gate runs; no `--base` -> `error: gate rw requires --base`, exit 21; declared `required` on docs-only -> exit 20) and review B then found the two inputs that left it unmet on a real code change: a rename out of the declared path (rename detection names only the destination) and a non-ASCII name (C-quoted, no longer starts with the prefix). At ea3edb3 the listing is `git diff -z --no-renames --name-only base...head` split on NUL; the two named tests (test/gates.test.ts:755 and :769, each first replaying git's own listing against witness/captures/m6-p3-git-diff-touches.json) pass, and the whole file passes (52). The missing-base error arm is unchanged (`if (!changed.ok) return { kind: \"error\" }`).",
+      "cleared-because": "A change under src/, bin/ or plugin/ now meets the precondition by prefix on the unquoted, rename-free name list, a missing base is still error rather than unmet, and both inputs that made the gate read not-applicable on a code change are registered tests with real captured git output."
+    },
+    {
+      "class-id": "hazard-5-brief-gate-list",
+      "probed": "CR-M6P3A-02 cleared at 89260f4 and re-run at ea3edb3: `brief compose --role implementer ...` from an empty directory exit 1, stdout 0 bytes, stderr `the gate list could not be rendered: <cwd>/gate-registry.yaml does not exist; the project writes its own, starting from <root>/templates/gate-registry.example.yaml`. Round 2's change to the same function is the replacement-string to replacement-function splice at src/commands/brief.ts:406; review B measured the old form cutting the block at `$'` and pasting the rest of the brief. At ea3edb3 the named test (a registry whose preflight command and note carry `$'`, `$$`, `$&`, `` $` ``; the block byte-identical to renderBriefGateBlock's output) passes, test/implementer-brief.test.ts passes whole (15) and test/brief-compose.test.ts whole (20); with the string form restored by this review the named test is red (exit 1, pass 0); restored, status clean. composeBrief still has one caller, src/commands/brief.ts:623.",
+      "cleared-because": "The wrong-source list is a refusal naming the file, the splice copies the project's text verbatim whatever it contains, both are red-witnessed by registered tests this review reddened by mutation, and no other code path composes a gate list."
+    },
+    {
+      "class-id": "hazard-6-schema-diet",
+      "probed": "Measured at d584639 and carried: no file under schemas/ is in `git diff --stat d584639..ea3edb3`. gate-registry.schema.json: `prevents` added to gateShape's required with minLength 1 and a single-line pattern; the required-list mutation reddened p3-prevents. assurance-modes.schema.json: `gate-sets` left the required list and lost minItems, uniqueItems and the item pattern; an empty and a duplicated list validate, a non-string item is rejected, src/modes.ts no longer reads the field; the reinstated `mode-ids-are-unique` refuses the duplicate-first document with or without `--context` (re-run at ea3edb3, exit 1).",
+      "cleared-because": "The only acceptance change that matters is a tightening (`prevents` required and single-line) and it is red-witnessed; the one widening is of a field no code reads any more; the closed vocabularies are unchanged and still executed by a registered test; and no fix round changed a schema."
+    }
+  ]
+}

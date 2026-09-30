@@ -13,7 +13,10 @@
  * a document is well formed, and duplicating its rules in a reader would
  * produce a second opinion to keep in sync. The COMMAND validates before it
  * serves (`src/commands/checklist.ts`), which is where the M3-P3 fix round put
- * that duty after shipping a reader that printed without checking.
+ * that duty after shipping a reader that printed without checking. One
+ * exception since M6-P3 fix round 1: a duplicated framing id is refused HERE,
+ * because the resolver below reads a framing by first match and a reader must
+ * not choose between two entries under one id.
  *
  * THE MERGE FAILURES ARE FAILURES HERE AND NOT WARNINGS. An extra file
  * reusing a canonical probe id is a COLLISION and names both sources; an
@@ -39,6 +42,7 @@ import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { decodeDocument, readOperatorPath } from "./validate.ts";
 import { packageRoot } from "./modes.ts";
+import { describeDuplicateIds, duplicateIds } from "./ids.ts";
 
 /** The shipped directory's basename, at the package root. */
 export const CHECKLISTS_DIRNAME = "checklists";
@@ -133,6 +137,17 @@ export function projectChecklist(
   }
   const framings: Framing[] = [];
   const rawFramings = Array.isArray(record["framings"]) ? record["framings"] : [];
+  /* M6-P3 FIX ROUND 1, CR-M6P3A-01. `resolveChecklist` reads a framing by
+     FIRST match, so a second framing under an id already taken would be
+     shadowed silently, and so would the entry point a reviewer is told to
+     start from. Refused at load, naming the id. */
+  const duplicatedFramings = duplicateIds(rawFramings, (entry) => {
+    const id = asRecord(entry)?.["id"];
+    return typeof id === "string" ? id : undefined;
+  });
+  if (duplicatedFramings.length > 0) {
+    return { ok: false, reason: describeDuplicateIds(path, "framing", duplicatedFramings) };
+  }
   for (const entry of rawFramings) {
     const framing = asRecord(entry);
     if (framing === undefined) {

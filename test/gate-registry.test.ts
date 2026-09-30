@@ -1431,6 +1431,43 @@ test("the gates workflow runs the registry runner directly on both CI events wit
   }
 });
 
+/** Why the workflow still runs a check twice on a pull request (M6-P8, DR-0066); empty when it does not. */
+function pullRequestRunsEachCheckOnceDefects(workflowText: string): string[] {
+  const defects: string[] = [];
+  const steps = gatesJobSteps(workflowText);
+  for (const step of steps) {
+    if (typeof step.run === "string" && /^\s*npm test\s*$/.test(step.run)) {
+      defects.push("a step runs npm test on its own");
+    }
+  }
+  const exitTest = steps.filter((step) => typeof step.run === "string" && step.run.includes("scripts/m1-exit-test.sh"));
+  if (exitTest.length !== 1) {
+    defects.push(`expected exactly one M1 exit test step, found ${String(exitTest.length)}`);
+  } else {
+    const step = exitTest[0] as UploadStep;
+    if (uploadStepRunsOn(step.if, "pull_request")) defects.push("the M1 exit test step runs on pull_request");
+    if (!uploadStepRunsOn(step.if, "push")) defects.push("the M1 exit test step does not run on push");
+  }
+  return defects;
+}
+
+test("the gates workflow runs no separate npm test step, and the M1 exit test step runs on push and not on pull_request", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  assert.deepEqual(pullRequestRunsEachCheckOnceDefects(workflow), []);
+
+  /* The shape this phase removed, restored one change at a time, is named. */
+  const build = "      - run: npm run build\n";
+  assert.ok(workflow.includes(build), "the workflow no longer carries the build step");
+  const suiteBack = workflow.replace(build, `${build}      - run: npm test\n`);
+  assert.deepEqual(pullRequestRunsEachCheckOnceDefects(suiteBack), ["a step runs npm test on its own"]);
+  const everyEvent = workflow.replace(
+    "        if: github.event_name != 'pull_request'\n        run: scripts/m1-exit-test.sh",
+    "        run: scripts/m1-exit-test.sh",
+  );
+  assert.notEqual(everyEvent, workflow, "the M1 exit test condition did not apply");
+  assert.deepEqual(pullRequestRunsEachCheckOnceDefects(everyEvent), ["the M1 exit test step runs on pull_request"]);
+});
+
 /** A two-gate registry: one gate declares only `pull_request`, one only `push`. */
 function writeTwoEventFixtureRegistry(dir: string): string {
   writeFileSync(join(dir, "fixture-gate.mjs"), FIXTURE_GATE_SOURCE);
@@ -1639,7 +1676,11 @@ test("no environment variable changes a production gate's reported status (grep 
   walk(gatesDir);
   assert.ok(files.length > 0, "no gate source was read");
   const namedRead = /process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([^"']+)["']\s*\])/g;
-  const ALLOWED_NAMES = new Set(["TIPHYS_IMPLEMENTER_TOKEN"]);
+  /* EMPTY since M6-P3 fix round 1 (CR-M6P3A-03): the one name it held,
+     TIPHYS_IMPLEMENTER_TOKEN, was read only by the credential-token arm this
+     phase deleted, and an allowlisted name no gate reads is a hole a new
+     verdict switch could use. */
+  const ALLOWED_NAMES = new Set<string>();
   for (const file of files) {
     for (const [index, line] of readFileSync(file, "utf8").split("\n").entries()) {
       for (const match of line.matchAll(namedRead)) {

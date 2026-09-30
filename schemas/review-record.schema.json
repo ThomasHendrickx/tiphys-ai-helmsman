@@ -2,7 +2,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tiphys.dev/schemas/review-record.schema.json",
   "title": "Tiphys review record",
-  "$comment": "M6-P5, DR-0062. Written by `tiphys review dispatch` (src/review.ts), never by the reviewer. The merge gate counts a verdict only when a committed record under delivery/review/records/ names its path and sha256, and takes the head and the family from the record. No vendor name appears here: the family vocabulary is the executor's.",
   "description": "What the kernel recorded about one review it launched: the head it checked out, the model the harness was asked for and the model it was observed to serve, the vendor family, the verdict's sha256, cost and token usage, and the executor's exit code.",
   "type": "object",
   "additionalProperties": false,
@@ -34,7 +33,7 @@
     "role": { "type": "string", "enum": ["clean-room-reviewer"] },
     "phase": { "type": "string", "pattern": "^[a-z0-9][a-z0-9-]*$" },
     "head": {
-      "$comment": "The commit the kernel checked out for the reviewer, resolved before launch.",
+      "description": "The commit the kernel checked out for the reviewer, resolved before launch.",
       "type": "string",
       "pattern": "^[0-9a-f]{40}$"
     },
@@ -56,7 +55,7 @@
       "required": ["model", "topLevelModels", "subagentModels", "reason"],
       "properties": {
         "model": {
-          "$comment": "The one model on the stream's top-level rows, or null when there was not exactly one. Never the requested model.",
+          "description": "The one model on the stream's top-level rows, or null when there was not exactly one. Never the requested model.",
           "oneOf": [{ "type": "null" }, { "type": "string", "minLength": 1, "pattern": "\\S" }]
         },
         "topLevelModels": { "type": "array", "items": { "type": "string" } },
@@ -65,7 +64,7 @@
       }
     },
     "family": {
-      "$comment": "The executor vocabulary's family for the observed model; `unknown` when it names none, which is never distinct from anything.",
+      "description": "The executor vocabulary's family for the observed model; `unknown` when it names none, which is never distinct from anything.",
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9-]*$"
     },
@@ -75,7 +74,7 @@
       "required": ["path", "sha256", "reason"],
       "properties": {
         "path": {
-          "$comment": "Relative to the project, under delivery/review/.",
+          "description": "Relative to the project, under delivery/review/.",
           "type": "string",
           "pattern": "^delivery/review/[^\\\\]+[.](ya?ml|json)$"
         },

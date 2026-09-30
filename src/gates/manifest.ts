@@ -50,7 +50,43 @@ export const PRECONDITION_KINDS: readonly PreconditionKind[] = [
   "command-exit-zero",
 ];
 
-export type RunParameter = "base" | "head" | "phase";
+/**
+ * The run parameters a gate may declare. `event` (M6-P8, DR-0066) is the CI
+ * event the run names with `--event`; unlike the other three its absence is a
+ * configuration rather than a gap (`OPTIONAL_PARAMETERS` below).
+ */
+export type RunParameter = "base" | "head" | "phase" | "event";
+
+/**
+ * DECLARED PARAMETERS WHOSE ABSENCE IS A CONFIGURATION, NOT A GAP (M6-P8,
+ * DR-0066). A run that names no `--event` selects every entry in the mode
+ * (`selectsEvent` in ./run.ts), which is how a local run sees the whole mode,
+ * and is not a missing input. So a gate declaring `event` is handed `--event <e>`
+ * when the run names one and nothing when it does not, and the gate's
+ * no-event arm must then be its strictest one (red-witness evaluates every
+ * stored witness). Every other declared parameter still errors when absent
+ * (M2-C-3).
+ */
+export const OPTIONAL_PARAMETERS: ReadonlySet<RunParameter> = new Set<RunParameter>(["event"]);
+
+/**
+ * A gate's declaration of one run parameter. The bare name is REQUIRED: the
+ * gate errors without it (M2-C-3). A trailing `?` makes it OPTIONAL (M6-P4):
+ * passed when the run has it, omitted otherwise, and the gate still runs. A
+ * push run has no phase, so a gate that proves a phase's criteria on a pull
+ * request and still has to run on the push declares `phase?`.
+ */
+export type ParameterDeclaration = RunParameter | `${RunParameter}?`;
+
+/** A parameter declaration split into the parameter and whether it is optional. */
+export function readParameterDeclaration(declared: ParameterDeclaration): {
+  name: RunParameter;
+  optional: boolean;
+} {
+  return declared.endsWith("?")
+    ? { name: declared.slice(0, -1) as RunParameter, optional: true }
+    : { name: declared as RunParameter, optional: false };
+}
 
 export interface PreconditionSpec {
   id: string;
@@ -66,7 +102,7 @@ export interface GateEntry {
   command: string[];
   unitLabel: string;
   applicability: "required" | "conditional";
-  parameters?: RunParameter[];
+  parameters?: ParameterDeclaration[];
   precondition?: PreconditionSpec;
   modes?: string[];
 }

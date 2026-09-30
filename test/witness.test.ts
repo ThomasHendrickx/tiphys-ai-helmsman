@@ -2479,10 +2479,219 @@ test("a stored witness gone green under the diff is red naming it with its rate"
 
 test("reverting the change that broke a stored witness returns exit zero", () => {
   const fixture = storedFixture(false);
-  const outcome = runGate(fixture);
+  /* On pull_request (M6-P8): the stored witness the diff does not touch is
+     skipped, so exactly the one whose mutated file changed is evaluated. With
+     no event every stored witness is evaluated and the count would be two. */
+  const outcome = runGate(fixture, { event: "pull_request" });
   assert.equal(outcome.result.status, "green", reasonsOf(outcome));
   assert.equal(outcome.exitCode, 0);
   assert.equal(outcome.result.units, 1);
+});
+
+// ---------------------------------------------------------------------------
+// M6-P8 (DR-0066): on a pull request, re-evaluate a stored witness only when
+// the diff changes a file it mutates or a test file it runs
+// ---------------------------------------------------------------------------
+
+/**
+ * REAL captured git output for a test file moved between the merge base and
+ * the head (witness/captures/m6-p8-git-diff-test-file-move.txt). The gate's
+ * phase diff is `--no-renames`, and the selection counts a moved test file as
+ * changed because git reports the move as a D of the old path and an A of
+ * the new one. Bound once and read through the binding, like
+ * `gateStdioCapturePath` above, so this file stays not text-asserting.
+ */
+const testFileMoveCapturePath = fileURLToPath(
+  new URL("../witness/captures/m6-p8-git-diff-test-file-move.txt", import.meta.url),
+);
+
+function capturedTestFileMove(block: string): string {
+  const body = readFileSync(testFileMoveCapturePath, "utf8");
+  const begin = `--- BEGIN ${block} ---\n`;
+  const end = `--- END ${block} ---`;
+  const from = body.indexOf(begin);
+  assert.notEqual(from, -1, `capture block ${block} is absent`);
+  const to = body.indexOf(end, from);
+  assert.notEqual(to, -1, `capture block ${block} is unterminated`);
+  return body.slice(from + begin.length, to);
+}
+
+const SELECTION_THING_SPEC = {
+  id: "thing-guard",
+  behavior: "thing-big",
+  tests: ["thing classifies big inputs"],
+  class: "additive",
+  dangerousStates: [
+    {
+      kind: "mutation",
+      file: "src/thing.ts",
+      find: THING_MEMBER_FIND,
+      replace: THING_MEMBER_FIND.replace('"big"', '"small"'),
+    },
+  ],
+  deterministic: true,
+  repeats: 1,
+};
+
+const SELECTION_UTIL_SPEC = {
+  id: "util-guard",
+  behavior: "util-doubles",
+  tests: ["util doubles its input"],
+  class: "additive",
+  dangerousStates: [
+    {
+      kind: "mutation",
+      file: "src/util.ts",
+      find: "return x * 2;",
+      replace: "return x * 3;",
+    },
+  ],
+  deterministic: true,
+  repeats: 1,
+};
+
+type SelectionChange =
+  | "util-source"
+  | "thing-test-edit"
+  | "thing-test-move"
+  | "thing-test-rename";
+
+/**
+ * Two STORED witnesses (both specs exist at the base and are unchanged), and
+ * one head commit that changes exactly one kind of thing:
+ *   util-source        src/util.ts, the file util-guard's member mutates
+ *   thing-test-edit    test/thing.test.ts, the file thing-guard's test is in
+ *   thing-test-move    git mv test/thing.test.ts test/thing-moved.test.ts
+ *   thing-test-rename  the test inside test/thing.test.ts renamed, so the
+ *                      witness's name is found only in the merge-base source
+ */
+function selectionFixture(change: SelectionChange): Fixture {
+  const dir = mkdtempSync(join(tmpdir(), "wfx-"));
+  fixtureDirs.push(dir);
+  git(dir, "init", "-q", "-b", "main");
+  writeTree(dir, {
+    "gate-registry.yaml": fixtureManifest([]),
+    "test/behaviors.json": fixtureBehaviors({
+      "thing-big": "thing classifies big inputs",
+      "util-doubles": "util doubles its input",
+    }),
+    "src/thing.ts": THING_SRC_BASE,
+    "src/util.ts": UTIL_SRC_BASE,
+    "test/thing.test.ts": THING_TEST,
+    "test/util.test.ts": UTIL_TEST,
+    "witness/thing.json": fixtureSpec(SELECTION_THING_SPEC),
+    "witness/util.json": fixtureSpec(SELECTION_UTIL_SPEC),
+  });
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "base");
+  const base = git(dir, "rev-parse", "HEAD");
+  if (change === "util-source") {
+    writeTree(dir, { "src/util.ts": UTIL_SRC_BASE + "// audited\n" });
+  } else if (change === "thing-test-edit") {
+    writeTree(dir, { "test/thing.test.ts": THING_TEST + "// edited\n" });
+  } else if (change === "thing-test-move") {
+    git(dir, "mv", "test/thing.test.ts", "test/thing-moved.test.ts");
+  } else {
+    writeTree(dir, {
+      "test/thing.test.ts": THING_TEST.replace(
+        "thing classifies big inputs",
+        "thing classifies large inputs",
+      ),
+    });
+  }
+  git(dir, "add", "-A");
+  git(dir, "commit", "-q", "-m", "head");
+  const head = git(dir, "rev-parse", "HEAD");
+  return { dir, base, head };
+}
+
+function evaluatedIds(outcome: ReturnType<typeof runRedWitnessGate>): string[] {
+  return outcome.evaluations.map((evaluation) => evaluation.witness).sort();
+}
+
+test("on pull_request a stored witness whose mutated files and test files the diff leaves untouched is skipped and counted in the detail line", () => {
+  const outcome = runGate(selectionFixture("util-source"), { event: "pull_request" });
+  assert.deepEqual(outcome.skippedStored, ["thing-guard"], reasonsOf(outcome));
+  assert.equal(outcome.evaluations.some((evaluation) => evaluation.witness === "thing-guard"), false);
+  assert.match(
+    outcome.result.detail,
+    /^2 witness\(es\): 0 own, 1 stored evaluated in \d+ms, 1 stored skipped \(no file they mutate or run changed\); /,
+  );
+});
+
+test("on pull_request a stored witness is evaluated because the diff changes a file its member mutates", () => {
+  const outcome = runGate(selectionFixture("util-source"), { event: "pull_request" });
+  assert.deepEqual(evaluatedIds(outcome), ["util-guard"], reasonsOf(outcome));
+  assert.equal(outcome.result.status, "green", reasonsOf(outcome));
+  assert.equal(outcome.result.units, 1);
+});
+
+test("on pull_request a stored witness is evaluated because the diff changes, moves or renames inside a test file it runs", () => {
+  /* EDITED in place: the test file is M in the diff. */
+  const edited = runGate(selectionFixture("thing-test-edit"), { event: "pull_request" });
+  assert.deepEqual(evaluatedIds(edited), ["thing-guard"], reasonsOf(edited));
+  assert.deepEqual(edited.skippedStored, ["util-guard"]);
+  assert.equal(edited.result.status, "green", reasonsOf(edited));
+
+  /* MOVED: the phase diff is --no-renames, so git reports the move as D of
+     the old path and A of the new one. The fixture's own name-status is the
+     same as the REAL captured output for this exact move, so the selection is
+     exercised against what git actually prints, not a hand-written shape. */
+  const movedFixture = selectionFixture("thing-test-move");
+  const nameStatus = spawnSync(
+    "git",
+    ["diff", "--name-status", "--no-renames", `${movedFixture.base}...${movedFixture.head}`],
+    { cwd: movedFixture.dir, encoding: "utf8", env: GIT_ENV },
+  );
+  assert.equal(nameStatus.status, 0, nameStatus.stderr);
+  assert.equal(
+    nameStatus.stdout,
+    capturedTestFileMove("git diff --name-status --no-renames base...head"),
+  );
+  const moved = runGate(movedFixture, { event: "pull_request" });
+  assert.deepEqual(evaluatedIds(moved), ["thing-guard"], reasonsOf(moved));
+  assert.deepEqual(moved.skippedStored, ["util-guard"]);
+  assert.equal(moved.result.status, "green", reasonsOf(moved));
+
+  /* RENAMED INSIDE the file: the witness's test name is gone from the head
+     source and survives only in the merge-base source. Skipping it would hide
+     exactly the change that broke it; evaluated, it is not green. */
+  const renamed = runGate(selectionFixture("thing-test-rename"), { event: "pull_request" });
+  assert.deepEqual(evaluatedIds(renamed), ["thing-guard"], reasonsOf(renamed));
+  assert.deepEqual(renamed.skippedStored, ["util-guard"]);
+  assert.notEqual(renamed.result.status, "green", reasonsOf(renamed));
+});
+
+test("on push every stored witness is evaluated, and so on a run naming no event", () => {
+  const push = runGate(selectionFixture("util-source"), { event: "push" });
+  assert.deepEqual(evaluatedIds(push), ["thing-guard", "util-guard"], reasonsOf(push));
+  assert.deepEqual(push.skippedStored, []);
+  assert.equal(push.result.status, "green", reasonsOf(push));
+  assert.match(
+    push.result.detail,
+    /^2 witness\(es\): 0 own, 2 stored evaluated in \d+ms, 0 stored skipped \(event push evaluates every stored witness\); /,
+  );
+
+  const none = runGate(selectionFixture("util-source"));
+  assert.deepEqual(evaluatedIds(none), ["thing-guard", "util-guard"], reasonsOf(none));
+  assert.deepEqual(none.skippedStored, []);
+  assert.match(none.result.detail, /0 stored skipped \(event none evaluates every stored witness\)/);
+});
+
+test("a phase diff that cannot be computed is error on pull_request and never skips a stored witness", () => {
+  const fixture = selectionFixture("util-source");
+  /* A base the repository cannot resolve, the shape of a push whose previous
+     tip was force-pushed away. */
+  const outcome = runGate(fixture, { event: "pull_request", base: "0".repeat(39) + "1" });
+  assert.equal(outcome.result.status, "error", reasonsOf(outcome));
+  assert.equal(outcome.result.vacuous, undefined, reasonsOf(outcome));
+  assert.match(
+    outcome.result.detail,
+    /^the phase diff could not be computed, so no stored witness is skipped: the base revision 0{39}1 does not resolve/,
+  );
+  assert.doesNotMatch(outcome.result.detail, /stored skipped/);
+  assert.deepEqual(outcome.skippedStored, []);
+  assert.equal(outcome.evaluations.length, 0);
 });
 
 // ---------------------------------------------------------------------------
@@ -2586,6 +2795,178 @@ test("source changed with no witness spec covering it is red naming the file", (
     outcome.result.detail,
     /source changed with no witness spec covering it: src\/adder\.ts/,
   );
+});
+
+// ---------------------------------------------------------------------------
+// M6-P3 fix round 3 (CR-M6P3B-05): paths git quotes or decorates
+// ---------------------------------------------------------------------------
+
+/**
+ * REAL git output for the two fixtures below, recorded once and compared with
+ * git's live output before either gate runs (rule (f): src/witness/run.ts
+ * spawns git and parses what it prints). Bound through `fileURLToPath` for the
+ * reason `gateStdioCapturePath` above records.
+ */
+const pathListingsCapturePath = fileURLToPath(
+  new URL("../witness/captures/m6-p3-git-path-listings.json", import.meta.url),
+);
+
+/**
+ * Re-run every command the capture records for one case, in `dir`, and require
+ * git's live stdout to equal the recorded stdout. `<base>` in a recorded argv
+ * is the fixture's base sha; nothing else is substituted.
+ */
+function replayPathListings(dir: string, name: string, base: string): void {
+  const capture = JSON.parse(readFileSync(pathListingsCapturePath, "utf8")) as {
+    cases: Array<{ case: string; commands: Array<{ argv: string[]; exit: number; stdout: string }> }>;
+  };
+  const recorded = capture.cases.find((entry) => entry.case === name);
+  assert.ok(recorded !== undefined, `m6-p3-git-path-listings.json records no ${name} case`);
+  for (const command of recorded.commands) {
+    const argv = command.argv.slice(1).map((arg) => arg.split("<base>").join(base));
+    const live = spawnSync("git", argv, { cwd: dir, encoding: "utf8", env: GIT_ENV });
+    assert.equal(live.status, command.exit, `git ${argv.join(" ")}: ${live.stderr}`);
+    assert.equal(live.stdout, command.stdout, `git ${argv.join(" ")} no longer prints what the capture recorded`);
+  }
+}
+
+/** The adder fixture plus one UNWITNESSED source file named `src/<name>`. */
+function unwitnessedNameFixture(name: string): Fixture {
+  const baseFiles: Record<string, string> = {
+    "gate-registry.yaml": fixtureManifest([]),
+    "test/behaviors.json": fixtureBehaviors({
+      "adder-adds": "adder adds two numbers",
+    }),
+    "src/legacy.ts": 'export const legacy = "untouched";\n',
+  };
+  const headFiles: Record<string, string> = {
+    "src/adder.ts": ADDER_SRC_HEAD,
+    "test/adder.test.ts": ADDER_TEST,
+    "witness/adder-guard.json": fixtureSpec(adderSpec({})),
+    [`src/${name}`]: "export const unwitnessed = 1;\n",
+  };
+  return makeFixture(baseFiles, headFiles);
+}
+
+test("an unwitnessed source file whose name git quotes is red naming the file, beside one evaluated witness", () => {
+  /* The ASCII twin is the control: the same fixture with a name git prints
+     plainly, which was red before this round too. The accented name is the
+     reviewer's case: git lists it as "src/caf\303\251.ts", and read from line
+     output that key failed the src/ prefix test, so the gate went green. */
+  for (const name of ["cafe.ts", "caf\u00e9.ts"]) {
+    const fixture = unwitnessedNameFixture(name);
+    if (name !== "cafe.ts") {
+      replayPathListings(fixture.dir, "witness-coverage", fixture.base);
+    }
+    const outcome = runGate(fixture);
+    assert.equal(outcome.result.status, "red", `${name}: ${reasonsOf(outcome)}`);
+    assert.ok(
+      outcome.result.detail.includes(`source changed with no witness spec covering it: src/${name}`),
+      `${name}: the red must name src/${name} as git stores it: ${reasonsOf(outcome)}`,
+    );
+    assert.equal(outcome.evaluations.length, 1, `${name}: one witness is evaluated beside it`);
+  }
+});
+
+/** Source and test files whose names git decorates, with an honest witness. */
+function decoratedNamesFixture(): Fixture {
+  const spaced = "src/a b.ts";
+  const accented = "src/caf\u00e9.ts";
+  const testFile = "test/d\u00e9cor.test.ts";
+  const baseFiles: Record<string, string> = {
+    "gate-registry.yaml": fixtureManifest([]),
+    "test/behaviors.json": fixtureBehaviors({
+      "decorated-names": "decorated names add and multiply",
+    }),
+    "src/legacy.ts": 'export const legacy = "untouched";\n',
+  };
+  const headFiles: Record<string, string> = {
+    [spaced]: ["export function spaced(a, b) {", "  return a + b;", "}", ""].join("\n"),
+    [accented]: ["export function accented(a, b) {", "  return a * b;", "}", ""].join("\n"),
+    [testFile]: [
+      'import test from "node:test";',
+      'import assert from "node:assert/strict";',
+      'import { spaced } from "../src/a b.ts";',
+      'import { accented } from "../src/caf\u00e9.ts";',
+      "",
+      'test("decorated names add and multiply", () => {',
+      "  assert.equal(spaced(2, 3), 5);",
+      "  assert.equal(accented(2, 3), 6);",
+      "});",
+      "",
+    ].join("\n"),
+    "witness/decorated-names.json": fixtureSpec({
+      id: "decorated-names-guard",
+      behavior: "decorated-names",
+      tests: ["decorated names add and multiply"],
+      class: "additive",
+      dangerousStates: [
+        { kind: "mutation", file: spaced, find: "return a + b;", replace: "return a - b;" },
+        { kind: "mutation", file: accented, find: "return a * b;", replace: "return a + b;" },
+      ],
+      deterministic: true,
+      repeats: 1,
+    }),
+  };
+  return makeFixture(baseFiles, headFiles);
+}
+
+test("an honest witness over files whose names git decorates is green: a space in a hunk header, a non-ASCII byte in a listing and a hunk header, a non-ASCII test file name", () => {
+  /* Three decorations, measured on git 2.43.0 and recorded in the capture:
+     `+++ b/src/a b.ts<TAB>` (a space earns a trailing TAB, no quoting),
+     `+++ "b/src/caf\303\251.ts"` and `A "src/caf\303\251.ts"` (C-quoting), and
+     `"test/d\303\251cor.test.ts"` from ls-tree. Before this round the first
+     two left the members outside every changed hunk (rule (d) red) and the
+     third hid the named test's file. */
+  const fixture = decoratedNamesFixture();
+  replayPathListings(fixture.dir, "witness-hunks", fixture.base);
+  const outcome = runGate(fixture);
+  assert.equal(outcome.result.status, "green", reasonsOf(outcome));
+  assert.equal(outcome.evaluations.length, 1);
+  assert.equal(outcome.evaluations[0]?.status, "green", reasonsOf(outcome));
+});
+
+/** `count` numbered lines `<prefix>1` to `<prefix><count>`, with the given lines replaced or inserted. */
+function numberedLines(prefix: string, count: number, edit: (lines: string[]) => void = () => {}): string {
+  const lines = Array.from({ length: count }, (_, index) => `${prefix}${String(index + 1)}`);
+  edit(lines);
+  return `${lines.join("\n")}\n`;
+}
+
+test("the phase diff credits every hunk to its own file: a quoted +++ header that also carries git's trailing TAB, and an added line that reads like a header", () => {
+  /* M6-P3 fix round 4, CR-M6P3A-08. git quotes `src/zcaf\303\251 x.ts` for its
+     non-ASCII byte and appends a TAB for its space, so its header is
+     `+++ "b/src/zcaf\303\251 x.ts"<TAB>` (measured on git 2.43.0, in the
+     capture). Unread, that header left the file's hunks on the file before it,
+     src/plain.ts, which has no such lines. The same file adds a line whose
+     text is `++ b/src/plain.ts`, printed `+++ b/src/plain.ts` inside the hunk,
+     which is not a header. */
+  const quoted = "src/zcaf\u00e9 x.ts";
+  const fixture = makeFixture(
+    { "src/plain.ts": numberedLines("p", 10), [quoted]: numberedLines("q", 8) },
+    {
+      "src/plain.ts": numberedLines("p", 10, (lines) => {
+        lines[0] = "p1 changed";
+      }),
+      [quoted]: numberedLines("q", 8, (lines) => {
+        lines[7] = "q8 changed";
+        lines.splice(2, 0, "++ b/src/plain.ts");
+      }),
+    },
+  );
+  replayPathListings(fixture.dir, "witness-hunks-quoted-tab", fixture.base);
+  const computed = runModule.computePhaseDiff(fixture.dir, fixture.base, fixture.head);
+  assert.ok(computed.ok, computed.ok ? "" : computed.reason);
+  const hunks = Object.fromEntries(
+    [...computed.diff.files.values()].map((file) => [file.path, file.hunks]),
+  );
+  assert.deepEqual(hunks, {
+    "src/plain.ts": [[1, 1]],
+    [quoted]: [
+      [3, 3],
+      [9, 9],
+    ],
+  });
 });
 
 test("a shallow repository is an error naming the fetch depth requirement", () => {

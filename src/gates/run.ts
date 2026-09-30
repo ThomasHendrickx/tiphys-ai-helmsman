@@ -30,7 +30,12 @@ import {
 import { loadTypeSchema } from "../commands/validate.ts";
 import { decodeDocument, formatDiagnostics, validateInstance } from "../validate.ts";
 import type { SchemaDocument } from "../validate.ts";
-import { validateManifestDocument, validateResultDocument } from "./manifest.ts";
+import {
+  OPTIONAL_PARAMETERS,
+  readParameterDeclaration,
+  validateManifestDocument,
+  validateResultDocument,
+} from "./manifest.ts";
 import { comparePins, describePinDifference } from "./pin.ts";
 import {
   EXIT_GATE_ERROR,
@@ -43,7 +48,13 @@ import {
   renderGateResult,
   statusForExitCode,
 } from "./result.ts";
-import type { GateEntry, GateManifest, PreconditionSpec, RunParameter } from "./manifest.ts";
+import type {
+  GateEntry,
+  GateManifest,
+  ParameterDeclaration,
+  PreconditionSpec,
+  RunParameter,
+} from "./manifest.ts";
 import type { GateResult, GateStatus, PreconditionRecord } from "./result.ts";
 
 /** The stamp for a summary, or nothing when the version cannot be read. */
@@ -69,7 +80,8 @@ function stampField(): { "tiphys-version"?: string } {
  *
  *   invocation  <command...> --result <abs path> --evidence <abs dir>
  *               plus one --<name> <value> for each parameter the gate
- *               DECLARES in the manifest (base, head, phase)
+ *               DECLARES in the manifest (base, head, phase, event); a
+ *               declared `event` is passed only when the run names one
  *   cwd         the runner's working directory
  *   output      exactly one GateResult JSON document at --result
  *   exit codes  0 green, 1 red, 20 not-applicable, 21 error, 64 usage
@@ -353,7 +365,7 @@ interface RegistryGateEntry {
   probe?: string;
   modes: string[];
   events: string[];
-  parameters?: RunParameter[];
+  parameters?: ParameterDeclaration[];
   precondition?: PreconditionSpec;
 }
 
@@ -728,7 +740,13 @@ function guardedWrite(path: string, body: string): string | undefined {
  * reading is one flag on an invocation that already carries three.
  */
 export function requiredParameters(entry: GateEntry): RunParameter[] {
-  const required = new Set<RunParameter>(entry.parameters ?? []);
+  const required = new Set<RunParameter>();
+  for (const declared of entry.parameters ?? []) {
+    const read = readParameterDeclaration(declared);
+    if (!read.optional) {
+      required.add(read.name);
+    }
+  }
   const kind = entry.precondition?.kind;
   if (kind === "diff-touches") {
     required.add("base");
@@ -737,6 +755,26 @@ export function requiredParameters(entry: GateEntry): RunParameter[] {
     required.add("phase");
   }
   return [...required].sort();
+}
+
+/**
+ * Which run parameters a gate takes when the run has them (M6-P4): the ones
+ * declared with a trailing `?`, less any the gate also requires, because a
+ * required parameter stays required however else it is declared. The runner
+ * passes each one the run supplies and omits the rest, and the gate runs
+ * either way. The case this exists for: `suite` proves a phase's criteria
+ * when the pull-request run names a phase, and a push run names none.
+ */
+export function optionalParameters(entry: GateEntry): RunParameter[] {
+  const required = new Set(requiredParameters(entry));
+  const optional = new Set<RunParameter>();
+  for (const declared of entry.parameters ?? []) {
+    const read = readParameterDeclaration(declared);
+    if (read.optional && !required.has(read.name)) {
+      optional.add(read.name);
+    }
+  }
+  return [...optional].sort();
 }
 
 type PreconditionOutcome =
@@ -1201,6 +1239,7 @@ export function attributionGaps(command: string[], cwd: string): string[] {
 function gitLines(
   cwd: string,
   args: string[],
+  separator = "\n",
 ): { ok: true; lines: string[] } | { ok: false; reason: string } {
   const result = spawnSync("git", args, { cwd, encoding: "utf8" });
   if (result.error !== undefined) {
@@ -1218,8 +1257,8 @@ function gitLines(
   return {
     ok: true,
     lines: (result.stdout ?? "")
-      .split("\n")
-      .map((line) => line.trim())
+      .split(separator)
+      .map((line) => (separator === "\n" ? line.trim() : line))
       .filter((line) => line !== ""),
   };
 }
@@ -1311,11 +1350,16 @@ function evaluatePrecondition(
       };
     }
     const head = options.head ?? "HEAD";
-    const changed = gitLines(cwd, [
-      "diff",
-      "--name-only",
-      `${options.base}...${head}`,
-    ]);
+    /* NUL-separated and rename-free (M6-P3 fix round 2, CR-M6P3B-03), the form
+       merge-preconditions reads: with rename detection a move out of a declared
+       path names only its destination, and without -z git C-quotes a non-ASCII
+       name so it no longer starts with the declared prefix. Either made this
+       precondition unmet and the gate not-applicable. */
+    const changed = gitLines(
+      cwd,
+      ["diff", "-z", "--no-renames", "--name-only", `${options.base}...${head}`],
+      "\0",
+    );
     if (!changed.ok) {
       return { kind: "error", reason: changed.reason };
     }
@@ -1459,7 +1503,7 @@ function runOneGate(
   // Parameters first: a gate invoked without something it needs measured
   // nothing, and that is `error`, never `not-applicable` (M2-C-3, M2R-003).
   const missing = requiredParameters(entry).filter(
-    (name) => options[name] === undefined,
+    (name) => options[name] === undefined && !OPTIONAL_PARAMETERS.has(name),
   );
   if (missing.length > 0) {
     return {
@@ -1582,7 +1626,16 @@ function runOneGate(
 
   const argv = [...entry.command.slice(1), "--result", recordPath, "--evidence", gateDir];
   for (const name of requiredParameters(entry)) {
-    argv.push(`--${name}`, options[name] as string);
+    const value = options[name];
+    if (value !== undefined) {
+      argv.push(`--${name}`, value);
+    }
+  }
+  for (const name of optionalParameters(entry)) {
+    const supplied = options[name];
+    if (supplied !== undefined) {
+      argv.push(`--${name}`, supplied);
+    }
   }
   const child = spawnSync(entry.command[0] as string, argv, {
     cwd,

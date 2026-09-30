@@ -39,14 +39,18 @@ gates:
     events: [pull_request, push]
 
   - id: suite
-    prevents: a change that breaks a test, or a registered behavior whose test no longer runs
+    prevents: a change that breaks a test, a registered behavior whose test no longer runs, or (given --plan) a criterion reported met with nothing proving it
+    # No --plan here: this repository's plans are markdown, and the criteria
+    # proof reads a plan that validates as a plan (YAML or JSON). phase? is
+    # declared so a project that adds `--plan <file>` gets the criteria half on
+    # a pull request (the run names a phase) and not-applicable on a push.
     command: [node, src/gates/suite.ts, --pin-root, src, --pin-root, bin, --pin-root, test]
     unitLabel: tests reported
     applicability: required
     verified-by: script
     modes: [full, direct-pr, local-only]
     events: [pull_request, push]
-    parameters: [base]
+    parameters: [base, "phase?"]
 
   - id: typecheck
     prevents: a type error in src/, test/ or plugin/
@@ -84,13 +88,18 @@ gates:
 
   - id: red-witness
     prevents: a src/, bin/ or plugin/ change whose tests stay green when the change is mutated away
+    # `event` (M6-P8, DR-0066): on a pull request the gate evaluates the
+    # pull request's own witness specs and a stored spec only when the diff
+    # changes a file it mutates or a test file it runs, and counts the rest as
+    # skipped; on push, and on a run naming no event, it evaluates every
+    # stored spec. The push run on `main` is where the full sweep now happens.
     command: [node, src/gates/red-witness.ts]
     unitLabel: witnesses evaluated
     applicability: conditional
     verified-by: script
     modes: [full, direct-pr]
-    events: [pull_request]
-    parameters: [base, head]
+    events: [pull_request, push]
+    parameters: [base, head, event]
     precondition:
       id: red-witness-diff
       kind: diff-touches

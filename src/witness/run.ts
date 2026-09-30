@@ -233,6 +233,78 @@ function escapeRegExp(value: string): string {
 }
 
 /**
+ * The new-side path a `+++ b/<path>` hunk header names, or undefined for any
+ * other line (M6-P3 fix round 3). Two decorations git applies are undone here,
+ * both measured on git 2.43.0 and recorded in
+ * witness/captures/m6-p3-git-path-listings.json:
+ *   - a name holding a non-ASCII byte, a double quote, a backslash or a control
+ *     character is C-quoted, `+++ "b/src/caf\303\251.ts"`, and is unquoted;
+ *   - a label holding a space gets a trailing TAB, `+++ b/src/a b.ts<TAB>`,
+ *     which is dropped. git tests the label AFTER quoting, so a quoted name
+ *     that also holds a space ends `"<TAB>` (fix round 4, CR-M6P3A-08), and the
+ *     TAB is dropped before the quote test. An unquoted name cannot itself end
+ *     in a TAB, because a TAB is a control character and forces quoting.
+ */
+function newSidePathOfHeader(line: string): string | undefined {
+  const label = line.endsWith("\t") ? line.slice(0, -1) : line;
+  if (label.startsWith('+++ "') && label.endsWith('"') && label.length > 6) {
+    const unquoted = unquoteCStyle(label.slice(5, -1));
+    return unquoted !== undefined && unquoted.startsWith("b/") ? unquoted.slice(2) : undefined;
+  }
+  if (label.startsWith("+++ b/")) {
+    return label.slice("+++ b/".length);
+  }
+  return undefined;
+}
+
+/** The C-style escapes git's quote_c_style writes, other than octal. */
+const C_ESCAPES: Record<string, number> = {
+  a: 0x07,
+  b: 0x08,
+  t: 0x09,
+  n: 0x0a,
+  v: 0x0b,
+  f: 0x0c,
+  r: 0x0d,
+  '"': 0x22,
+  "\\": 0x5c,
+};
+
+/**
+ * Undo git's C-style quoting of a path (the text between the quotes): `\ooo`
+ * octal bytes and the escapes above, reassembled as UTF-8. Undefined for an
+ * escape git does not write, so a malformed header names no file rather than
+ * a wrong one.
+ */
+function unquoteCStyle(quoted: string): string | undefined {
+  const bytes: number[] = [];
+  for (let index = 0; index < quoted.length; index += 1) {
+    const char = quoted[index] as string;
+    if (char !== "\\") {
+      bytes.push(...Buffer.from(char, "utf8"));
+      continue;
+    }
+    const next = quoted[index + 1];
+    if (next === undefined) {
+      return undefined;
+    }
+    const octal = /^[0-3][0-7]{2}/.exec(quoted.slice(index + 1, index + 4));
+    if (octal !== null) {
+      bytes.push(Number.parseInt(octal[0], 8));
+      index += 3;
+      continue;
+    }
+    const escaped = C_ESCAPES[next];
+    if (escaped === undefined) {
+      return undefined;
+    }
+    bytes.push(escaped);
+    index += 1;
+  }
+  return Buffer.from(bytes).toString("utf8");
+}
+
+/**
  * Compute the phase diff base...head: changed files with status and the
  * new-side line ranges of every changed hunk.
  */
@@ -262,8 +334,15 @@ export function computePhaseDiff(
   const headSha = headResolved.stdout.trim();
   const mergeBase = gitIn(repoRoot, ["merge-base", baseSha, headSha]);
   const mergeBaseSha = mergeBase.ok ? mergeBase.stdout.trim() : baseSha;
+  /* NUL-SEPARATED, NOT LINES (M6-P3 fix round 3, CR-M6P3B-05). Without -z git
+     C-quotes a name holding a non-ASCII byte, a double quote, a backslash or a
+     control character, so `src/caf\u00e9.ts` was keyed `"src/caf\303\251.ts"`,
+     failed the coverage prefix test in src/gates/red-witness.ts, and an
+     unwitnessed source file left the gate green. With --no-renames every record
+     is exactly a status field and a path field. */
   const names = gitIn(repoRoot, [
     "diff",
+    "-z",
     "--name-status",
     "--no-renames",
     `${baseSha}...${headSha}`,
@@ -272,13 +351,11 @@ export function computePhaseDiff(
     return { ok: false, reason: names.reason };
   }
   const files = new Map<string, DiffFile>();
-  for (const line of names.stdout.split("\n")) {
-    if (line.trim() === "") {
-      continue;
-    }
-    const [status, ...rest] = line.split("\t");
-    const path = rest.join("\t");
-    if (status === undefined || path === "") {
+  const fields = names.stdout.split("\0");
+  for (let index = 0; index + 1 < fields.length; index += 2) {
+    const status = fields[index] as string;
+    const path = fields[index + 1] as string;
+    if (status === "" || path === "") {
       continue;
     }
     files.set(path, { path, status, hunks: [] });
@@ -287,18 +364,30 @@ export function computePhaseDiff(
   if (!hunkOutput.ok) {
     return { ok: false, reason: hunkOutput.reason };
   }
+  /* Each file's section opens with `diff --git` and its header lines run to
+     the first `@@`. The current file is cleared at the section's start and set
+     only by a `+++` header this parser can read, so a header it cannot read
+     (or `+++ /dev/null`) leaves the section's hunks on no file rather than on
+     the file before it, which is fail closed under rule (d) (fix round 4,
+     CR-M6P3A-08). A `+++` line after the first `@@` is an added line whose
+     text begins `++ `, never a header. */
   let current: DiffFile | undefined;
+  let inHeader = false;
   for (const line of hunkOutput.stdout.split("\n")) {
-    const plus = /^\+\+\+ b\/(.+)$/.exec(line);
-    if (plus !== null) {
-      current = files.get(plus[1] as string);
+    if (line.startsWith("diff --git ")) {
+      current = undefined;
+      inHeader = true;
       continue;
     }
-    if (line.startsWith("+++ /dev/null")) {
-      current = undefined;
+    if (inHeader && line.startsWith("+++ ")) {
+      const plus = newSidePathOfHeader(line);
+      current = plus === undefined ? undefined : files.get(plus);
       continue;
     }
     const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (hunk !== null) {
+      inHeader = false;
+    }
     if (hunk !== null && current !== undefined) {
       const start = Number(hunk[1]);
       const count = hunk[2] === undefined ? 1 : Number(hunk[2]);
@@ -1737,9 +1826,13 @@ export function readTestFilesAtHead(
   repoRoot: string,
   headSha: string,
 ): { ok: true; files: Map<string, string> } | { ok: false; reason: string } {
+  /* -z (M6-P3 fix round 3): without it git C-quotes a test file name holding a
+     non-ASCII byte, the quoted name does not end in `.test.ts`, and the file's
+     sources drop out of every derivation that reads them. */
   const listed = gitIn(repoRoot, [
     "ls-tree",
     "-r",
+    "-z",
     "--name-only",
     headSha,
     "--",
@@ -1749,7 +1842,7 @@ export function readTestFilesAtHead(
     return { ok: false, reason: listed.reason };
   }
   const files = new Map<string, string>();
-  for (const path of listed.stdout.split("\n")) {
+  for (const path of listed.stdout.split("\0")) {
     if (!path.endsWith(".test.ts")) {
       continue;
     }

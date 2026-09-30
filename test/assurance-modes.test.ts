@@ -915,32 +915,10 @@ test("the shipped schemas disclose the closed vocabulary at v0.1.0 and the enums
      was an instance of (`src/checks.ts` claimed a condition could never match a
      fence, and it could). A disclosure with no behaviour behind it is worse
      than none. */
-  /* M6-P3 dropped every `$comment` keyword from assurance-modes.schema.json
-     (token diet), so its disclosure is no longer comment text; the enums are
+  /* M6-P3 dropped every `$comment` keyword from assurance-modes.schema.json,
+     and M6-P4 dropped the rest (token diet), so the disclosure is no longer
+     comment text anywhere and this test no longer reads it; the enums are
      still exercised below. */
-  const disclosures: [string, string[]][] = [
-    ["role-model-config.schema.json", ["$defs.roleBinding.properties.role"]],
-    ["charter.schema.json", ["properties.delivery-mode", "properties.assurance-tier"]],
-  ];
-  for (const [schemaName, pointers] of disclosures) {
-    const schema = readSchema(schemaName);
-    for (const pointer of pointers) {
-      let node: unknown = schema;
-      for (const key of pointer.split(".")) {
-        node = (node as Record<string, unknown>)[key];
-        assert.ok(node !== undefined, `${schemaName} has no ${pointer}`);
-      }
-      const comment = (node as Record<string, unknown>)["$comment"];
-      assert.equal(typeof comment, "string", `${schemaName} ${pointer} carries no $comment`);
-      assert.match(comment as string, /CLOSED VOCABULARY AT v0\.1\.0/);
-      assert.match(comment as string, /DR-0020/);
-      /* The enum is really there, so the $comment is describing this node. */
-      assert.ok(
-        Array.isArray((node as Record<string, unknown>)["enum"]),
-        `${schemaName} ${pointer} carries the disclosure but no enum`,
-      );
-    }
-  }
 
   /* THE BEHAVIOUR THE DISCLOSURE CLAIMS, exercised with the consumer lens's own
      three ids: a mode `standard`, a stage `design`, a role `backend-developer`,
@@ -1428,6 +1406,98 @@ test("mode show lists exactly the gates the registry beside the document selects
     assert.equal(missing.status, 1, missing.stdout + missing.stderr);
     assert.equal(missing.stdout, "");
     assert.match(missing.stderr, /gate-registry\.yaml, which could not be read/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M6-P3 fix round 1, CR-M6P3A-01: a duplicate mode id is refused       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE DANGEROUS STATE, and it is two rows rather than one because the defect
+ * is shadowing: a second `full` row, WEAKER than the real one (merge-authority
+ * `owner`, so no granted-by and no conditions), placed FIRST so that a reader
+ * taking the first match would serve it. Hazard review A measured this exact
+ * document at d584639: `validate` exit 0 and `mode show` printing
+ * `merge-authority: owner` for `full`.
+ */
+/**
+ * The shipped commands' REAL output over `duplicateFullFirst()`, one section
+ * per case. Rule (f) of the red-witness gate requires it (the witness members
+ * mutate src/checks.ts, which spawns), and the assertions below compare live
+ * output with it rather than with a string chosen to match the implementation.
+ */
+const DUPLICATE_MODE_CAPTURE = join(repoRoot, "witness", "captures", "m6-p3-duplicate-mode-id.txt");
+
+function capturedInvalidLine(caseName: string, fragment: string): string {
+  const section = readFileSync(DUPLICATE_MODE_CAPTURE, "utf8").split("\ncase: ").find((part) =>
+    part.startsWith(`${caseName}\n`),
+  );
+  const line = section
+    ?.split("\n")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith("INVALID ") && entry.includes(fragment));
+  assert.ok(
+    line !== undefined,
+    `m6-p3-duplicate-mode-id.txt case ${caseName} carries no INVALID line containing ${JSON.stringify(fragment)}`,
+  );
+  return line;
+}
+
+function duplicateFullFirst(): Record<string, unknown> {
+  const document = loadModes();
+  const weaker = structuredClone(modeNamed(document, "full"));
+  weaker["merge-authority"] = "owner";
+  delete weaker["granted-by"];
+  delete weaker["conditions"];
+  modesOf(document).unshift(weaker);
+  return document;
+}
+
+test("validate refuses an assurance-modes document declaring mode full twice with the weaker row first, naming the id", () => {
+  const dir = stageContext();
+  try {
+    /* The schema alone accepts it, which is what makes the derived refusal
+       the only thing standing between this document and a merge gate. */
+    const document = duplicateFullFirst();
+    assert.deepEqual(
+      validateModule.validateToLines(readSchema("assurance-modes.schema.json"), document),
+      [],
+      "the duplicate must be schema-valid, or this test would pass on the schema's refusal",
+    );
+    const path = writeDocument(dir, document);
+    const run = runCli(["validate", "--type", "assurance-modes", "--context", dir, path]);
+    assert.equal(run.status, 1, run.stdout + run.stderr);
+    assert.match(run.stdout + run.stderr, /INVALID #\/modes\/1\/id .*declares mode full 2 times \(entries 0, 1\)/);
+    assert.ok(
+      run.stdout.split("\n").includes(capturedInvalidLine("validate", "#/modes/1/id")),
+      `the live line differs from the captured one:\n${run.stdout}`,
+    );
+
+    /* CONTROL: the shipped document, same command, same context, exit 0. */
+    const control = writeDocument(dir, loadModes(), "control.yaml");
+    const clean = runCli(["validate", "--type", "assurance-modes", "--context", dir, control]);
+    assert.equal(clean.status, 0, clean.stdout + clean.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("mode show refuses a document declaring mode full twice with the weaker row first, naming the id, and serves neither row", () => {
+  const dir = stageContext();
+  try {
+    const path = writeDocument(dir, duplicateFullFirst());
+    const run = runCli(["mode", "show", "--mode", "full", "--file", path]);
+    assert.equal(run.status, 1, run.stdout + run.stderr);
+    assert.equal(run.stdout, "", `a duplicated mode must not be served:\n${run.stdout}`);
+    assert.match(run.stderr, /is not a valid assurance-modes document, so it is not served/);
+    assert.match(run.stderr, /declares mode full 2 times \(entries 0, 1\)/);
+    assert.ok(
+      run.stderr.split("\n").includes(capturedInvalidLine("mode-show", "#/modes/1/id")),
+      `the live line differs from the captured one:\n${run.stderr}`,
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

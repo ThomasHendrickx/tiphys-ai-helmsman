@@ -1,0 +1,24 @@
+{
+  "id": "brief-compose-refuses-without-project-registry",
+  "behavior": "brief-compose-refuses-without-project-registry",
+  "tests": [
+    "brief compose of an implementer brief from a directory with no gate-registry.yaml refuses naming the missing file"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/brief.ts",
+      "find": "  if (project.kind !== \"read\") {\n    return {\n      ok: false,\n      reason:\n        `the gate list could not be rendered: ${path} does not exist; the project writes its own, ` +\n        `starting from ${join(root, \"templates\", \"gate-registry.example.yaml\")}`,\n    };\n  }\n  const registry = readRegistryDocument(path);",
+      "replace": "  const registry = readRegistryDocument(project.kind === \"read\" ? path : join(root, \"gate-registry.yaml\"));"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/commands/brief.ts",
+      "find": "  const path = join(workingDirectory, \"gate-registry.yaml\");",
+      "replace": "  const path = join(root, \"gate-registry.yaml\");"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -42,6 +42,26 @@ register is "node --test exits 0 and reports N tests, N greater than zero", or
 "this command exits 64 and prints this line to stderr". A criterion nobody can
 fail is a criterion nobody has to meet.
 
+Every criterion names what proves it (DR-0064). Give it EXACTLY ONE of:
+
+- `check`: `tests`, the exact titles of the tests that prove it as the suite
+  reports them, and/or `command`, an argv the kernel runs with no shell from
+  the project root, where exit 0 means proven. The suite gate, run with
+  `--plan` and `--phase`, is red when a named test is not reported, skipped, a
+  todo or failing, or when the command does not exit 0. Name the program
+  directly: `sh -c` is refused, because a shell's exit is its last command's.
+  A `command` check proves only that the command exits 0, and a test runner
+  exits 0 when its tests are skipped, todo or absent, so name tests in `tests`.
+- `not-testable`: a one-line reason no test or command can prove it. It goes
+  to the hazard reviewer as a question, and `tiphys plan count` prints each
+  phase's not-testable count for the final report.
+
+The schema refuses a criterion with neither or both. Prefer `check`: a
+`not-testable` that could have been a test is a plan-review finding. The owner
+set this rule as an experiment, in these words: "Something to be said that if
+it cant be a test, is it even an AC. But lets make the change and see what we
+learn. Better to test and adapt than assume and stay where we are."
+
 ## clause R-005: never decide a product question, flag it
 
 You do not decide product questions. When the input report leaves a choice that

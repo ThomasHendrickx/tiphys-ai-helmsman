@@ -1,6 +1,7 @@
 import { strict as assert } from "node:assert";
 import { spawnSync } from "node:child_process";
 import {
+  appendFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -810,6 +811,99 @@ test("a credential.helper injected via the GIT_CONFIG_COUNT family is caught by 
   assert.equal(resolvedProbe.outcome, "resolvable", resolvedProbe.detail);
   assert.match(resolvedProbe.detail, /PR_CAPABLE_TOKEN/);
   assert.equal(credentialsModule.verdictFromProbes(probes).status, "red");
+});
+
+// ---------------------------------------------------------------------------
+// M6-P3 fix round 4: a git config read that did not answer is not "not set"
+// ---------------------------------------------------------------------------
+
+const configHelperCapturePath = fileURLToPath(
+  new URL("../witness/captures/m6-p3-git-config-credential-helper.json", import.meta.url),
+);
+
+interface ConfigHelperRun {
+  case: string;
+  git: string;
+  exit: number | null;
+  stdout: string;
+  stderr: string;
+}
+
+/** The recorded runs of one case in m6-p3-git-config-credential-helper.json, one per git. */
+function recordedConfigRuns(name: string): ConfigHelperRun[] {
+  const recorded = JSON.parse(readFileSync(configHelperCapturePath, "utf8")) as {
+    cases: ConfigHelperRun[];
+  };
+  const runs = recorded.cases.filter((entry) => entry.case === name);
+  assert.ok(runs.length >= 2, `m6-p3-git-config-credential-helper.json records ${name} on two gits`);
+  return runs;
+}
+
+/** git's bad-config line with its line number blanked, so two gits' configs compare. */
+function badConfigLine(stderr: string): string {
+  return stderr.trim().replace(/line \d+/, "line <n>");
+}
+
+test("credential-scrub reports error, never clean, when git config cannot answer: a global credential.helper probed from inside a repository whose own config is malformed", (t) => {
+  const tmp = realpathSync(makeTempDir(t));
+  const bin = ghFreeBinDir(t);
+  /* The child HOME sits inside a checkout whose .git/config git cannot parse,
+     and that HOME's own global config names a helper. */
+  const checkout = join(tmp, "checkout");
+  assert.equal(spawnSync("git", ["init", "-q", checkout], { encoding: "utf8" }).status, 0);
+  appendFileSync(join(checkout, ".git", "config"), "[core\n");
+  const home = join(checkout, "home");
+  mkdirSync(home);
+  writeFileSync(join(home, ".gitconfig"), "[credential]\n\thelper = store\n");
+  const healthy = join(tmp, "healthy");
+  assert.equal(spawnSync("git", ["init", "-q", healthy], { encoding: "utf8" }).status, 0);
+  /* GIT_CONFIG_NOSYSTEM is the fixed value src/exec/env.ts gives every real
+     child. Without it git also reads the machine's system config, and on the
+     macOS runner that adds an osxkeychain helper to the child's answer. */
+  const env = { PATH: bin, HOME: home, LC_ALL: "C", LANG: "C", GIT_CONFIG_NOSYSTEM: "1" };
+
+  /* THE DANGEROUS STATE IS REAL: a child working in a healthy worktree
+     resolves the helper, as both captured gits did. */
+  const child = spawnSync("git", ["config", "--get-all", "credential.helper"], {
+    encoding: "utf8",
+    env,
+    cwd: healthy,
+  });
+  for (const run of recordedConfigRuns("resolved-helper-healthy-worktree")) {
+    assert.equal(child.status, run.exit, `${run.git} recorded exit ${String(run.exit)}: ${child.stderr}`);
+    assert.equal(child.stdout, run.stdout, run.git);
+  }
+  /* And the probe's own read, from inside the malformed checkout, does not
+     answer: exit 128 and git's bad-config line, as both captured gits print it. */
+  const unanswered = spawnSync("git", ["config", "--global", "--get-all", "credential.helper"], {
+    encoding: "utf8",
+    env,
+    cwd: home,
+  });
+  for (const run of recordedConfigRuns("global-helper-malformed-local-cwd")) {
+    assert.equal(unanswered.status, run.exit, `${run.git} recorded exit ${String(run.exit)}: ${unanswered.stderr}`);
+    assert.equal(badConfigLine(unanswered.stderr), badConfigLine(run.stderr), run.git);
+  }
+
+  /* The scoped probes inherit the gate's working directory and the resolved
+     probe runs in HOME, so both read from inside the malformed checkout. */
+  const before = process.cwd();
+  process.chdir(home);
+  let probes: ReturnType<typeof credentialsModule.probeCredentialSources>;
+  try {
+    probes = credentialsModule.probeCredentialSources(env);
+  } finally {
+    process.chdir(before);
+  }
+  for (const source of ["git-global-config", "git-resolved-config"]) {
+    const row = probes.find((probe) => probe.source === source);
+    assert.ok(row !== undefined, `${source} must be probed`);
+    assert.equal(row.outcome, "error", `${source} read a probe git did not answer as ${row.outcome}: ${row.detail}`);
+    assert.ok(row.detail.includes("exited 128"), row.detail);
+    assert.ok(row.detail.includes(unanswered.stderr.trim()), row.detail);
+  }
+  const verdict = credentialsModule.verdictFromProbes(probes);
+  assert.equal(verdict.status, "error", verdict.detail);
 });
 
 // ---------------------------------------------------------------------------
