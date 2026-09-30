@@ -42,12 +42,16 @@ after, which is why the loss is silent.
 
 --- BEGIN credential-scrub-usage-stderr ---
 credentials gate: unknown argument --frob
-usage: node src/gates/credentials.ts credential-scrub|credential-token --result <path> --evidence <dir>
+usage: node src/gates/credentials.ts credential-scrub --result <path> --evidence <dir>
 --- END credential-scrub-usage-stderr ---
 
 Command for the block above, exit 64:
 
   node src/gates/credentials.ts credential-scrub --result R --evidence E --frob
+
+Re-taken 2026-09-30 (M6-P3) with the same command on node v26.6.0, after the
+usage line lost `|credential-token` when that gate was deleted; nothing else in
+this file was re-taken.
 
 --- BEGIN suite-red-stdout ---
 suite: red (2 tests reported)

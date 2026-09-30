@@ -76,7 +76,3 @@ extensions.
 
 Every requirement row an artifact discharges appears in that artifact as a
 clause id, here as a `$comment` tag or a property name.
-`scripts/check-clause-map.mjs` fails when a row owned by a phase that is in
-force has no entry, when an entry names a row the plan's inventory does not
-contain, when a named artifact does not exist, or when the clause id does not
-occur inside it.

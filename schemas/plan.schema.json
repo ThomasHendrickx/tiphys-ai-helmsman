@@ -47,7 +47,7 @@
       "minLength": 1
     },
     "report-code-disagreement": {
-      "$comment": "R-011, and the input to the derived check plan-verification-first-present. An entry with verified: false whose owning phase has no verification-first step makes the plan invalid; that is a foreign-key lookup across two arrays and is Kind B, in src/checks.ts.",
+      "$comment": "R-011, and the input to the derived check plan-verification-first-present (deleted by M6-P3). An entry with verified: false whose owning phase has no verification-first step makes the plan invalid; that is a foreign-key lookup across two arrays and is Kind B, in src/checks.ts.",
       "type": "array",
       "items": {
         "type": "object",
@@ -181,7 +181,7 @@
                 "minLength": 1
               },
               "kind": {
-                "$comment": "R-012. A step that confirms a claim before building on it. The derived check plan-verification-first-present requires one in any phase named by an unverified report-code-disagreement entry.",
+                "$comment": "R-012. A step that confirms a claim before building on it. The derived check plan-verification-first-present (deleted by M6-P3) requires one in any phase named by an unverified report-code-disagreement entry.",
                 "type": "string",
                 "const": "verification-first"
               }
@@ -226,7 +226,7 @@
           }
         },
         "hazard-classes": {
-          "$comment": "T-007, D-M3-32 and D-M3-35. minItems 1 and NOT optional: an optional field is the version of this rule that did not survive. T-007 records a phase meeting fifteen of fifteen executed criteria while live-locking every supervision command, and the reviewer who found it differed in its BRIEF, not in its model. addressed-by is resolved by the derived check plan-hazard-classes-addressed-by-resolves (section 2.6).",
+          "$comment": "T-007, D-M3-32 and D-M3-35. minItems 1 and NOT optional: an optional field is the version of this rule that did not survive. T-007 records a phase meeting fifteen of fifteen executed criteria while live-locking every supervision command, and the reviewer who found it differed in its BRIEF, not in its model. addressed-by is resolved by the derived check plan-hazard-classes-addressed-by-resolves (deleted by M6-P3) (section 2.6).",
           "type": "array",
           "minItems": 1,
           "items": {
@@ -272,7 +272,7 @@
           }
         },
         "fill-in": {
-          "$comment": "R-014. Present and unfilled means the phase is valid for REVIEW and invalid for DISPATCH. That is a computed property of the slots rather than of one field, so it is Kind B: the derived check plan-dispatchable reports it.",
+          "$comment": "R-014. Present and unfilled means the phase is valid for REVIEW and invalid for DISPATCH. That is a computed property of the slots rather than of one field, so it is Kind B: the derived check plan-dispatchable (deleted by M6-P3) reports it.",
           "type": "object",
           "additionalProperties": false,
           "required": ["filled", "root-cause", "fix-shape", "files"],

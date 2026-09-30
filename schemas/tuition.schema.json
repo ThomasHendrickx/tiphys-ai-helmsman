@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tiphys.dev/schemas/tuition.schema.json",
   "title": "Tiphys tuition entry",
-  "$comment": "Kernel plan M3, M3-P8 step 1 (R-091). ONE FAILURE MODE PER DOCUMENT, in the form a project that was not there can act on. THE LOAD-BEARING CONSTRAINT IS THE CONDITIONAL ONE: an entry with `kernel-relevant: true` must carry at least one `structural-consequence`, because an entry that claims kernel relevance and proposes no change to any kernel artifact is not tuition, it is an anecdote. The second is `mechanisms[].evidence`, minItems 1, which is T-005's checkability rule expressed as a validation failure rather than as advice: a rule with no citation to an investigation, review or tuition entry is not a rule. WHAT THIS SCHEMA CANNOT DO, stated so nobody reads a green as more than it is. It cannot tell a lesson from a platitude; every prose field is a non-empty string and whether its text changes what a reader does is judgment. It cannot tell whether a `structural-consequence` marked `applied` actually landed: the derived check `tuition-target-exists` resolves the target PATH against the tree, and whether that file contains the change claimed is a semantic relation no keyword and no check reaches (the plan's hazard table says so in the same words). And it cannot see an id collision with the delivery-side `T-nnn` space, which is `test/tuition.test.ts`'s registered duplicate-id scan.",
+  "$comment": "Kernel plan M3, M3-P8 step 1 (R-091). ONE FAILURE MODE PER DOCUMENT, in the form a project that was not there can act on. THE LOAD-BEARING CONSTRAINT IS THE CONDITIONAL ONE: an entry with `kernel-relevant: true` must carry at least one `structural-consequence`, because an entry that claims kernel relevance and proposes no change to any kernel artifact is not tuition, it is an anecdote. The second is `mechanisms[].evidence`, minItems 1, which is T-005's checkability rule expressed as a validation failure rather than as advice: a rule with no citation to an investigation, review or tuition entry is not a rule. WHAT THIS SCHEMA CANNOT DO, stated so nobody reads a green as more than it is. It cannot tell a lesson from a platitude; every prose field is a non-empty string and whether its text changes what a reader does is judgment. It cannot tell whether a `structural-consequence` marked `applied` actually landed: the derived check `tuition-target-exists` (deleted by M6-P3) resolves the target PATH against the tree, and whether that file contains the change claimed is a semantic relation no keyword and no check reaches (the plan's hazard table says so in the same words). And it cannot see an id collision with the delivery-side `T-nnn` space, which is `test/tuition.test.ts`'s registered duplicate-id scan.",
   "description": "One failure mode this project paid for, with the mechanism it established and the change to a kernel artifact it forces. The tuition feed is the archive layer; tuition/mechanism-index.yaml is the dense READ layer projected out of the mechanisms[] field of every entry here.",
   "type": "object",
   "additionalProperties": false,
@@ -98,7 +98,7 @@
             }
           },
           "machine-readable-form": {
-            "$comment": "Where the SAME rule exists as data (D-M3-26). The `destructive-git-operation` row is the worked example: its prose rule and `gates.manifest.json`'s `destructiveCommands` list are two views of one thing, and this field is what stops them drifting apart silently. The derived check mechanism-rule-evidence-resolves resolves both the path and the key against the real document, so a key M2 renames reddens here. Dependency direction is M3 reads M2, never the reverse.",
+            "$comment": "Where the SAME rule exists as data (D-M3-26). The `destructive-git-operation` row is the worked example: its prose rule and `gate-registry.yaml`'s `destructiveCommands` list are two views of one thing, and this field is what stops them drifting apart silently. The derived check mechanism-rule-evidence-resolves (deleted by M6-P3) resolves both the path and the key against the real document, so a key M2 renames reddens here. Dependency direction is M3 reads M2, never the reverse.",
             "type": "object",
             "additionalProperties": false,
             "required": ["path", "key"],
@@ -129,7 +129,7 @@
       }
     },
     "structural-consequence": {
-      "$comment": "The change to a kernel artifact this entry forces. REQUIRED AND NON-EMPTY when `kernel-relevant` is true, by the if/then below. `status` is the honest part: `applied` claims the change is in the tree and is checked against it by tuition-target-exists, `ticketed` names the record that carries it, and `proposed` claims nothing yet.",
+      "$comment": "The change to a kernel artifact this entry forces. REQUIRED AND NON-EMPTY when `kernel-relevant` is true, by the if/then below. `status` is the honest part: `applied` claims the change is in the tree and is checked against it by tuition-target-exists (deleted by M6-P3), `ticketed` names the record that carries it, and `proposed` claims nothing yet.",
       "type": "array",
       "items": {
         "type": "object",
@@ -137,7 +137,7 @@
         "required": ["target", "status", "change"],
         "properties": {
           "target": {
-            "$comment": "A kernel artifact path. Resolved against the repository by tuition-target-exists when `status` is `applied`.",
+            "$comment": "A kernel artifact path. Resolved against the repository by tuition-target-exists (deleted by M6-P3) when `status` is `applied`.",
             "type": "string",
             "minLength": 1,
             "pattern": "\\S"

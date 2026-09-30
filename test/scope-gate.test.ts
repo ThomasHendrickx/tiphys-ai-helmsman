@@ -28,7 +28,7 @@ import { createHash } from "node:crypto";
  * The scope gate is a STANDALONE script (src/gates/scope.ts), not a
  * `tiphys gates` subcommand: this phase's declaration does not include
  * src/cli.ts or src/commands/gates.ts, so it is invoked directly with
- * `node`, the same way `gates.manifest.json`'s `scope` entry invokes it.
+ * `node`, the same way `gate-registry.yaml`'s `scope` entry invokes it.
  */
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));
@@ -534,13 +534,19 @@ function scopeManifest(dir: string): string {
     manifestPath,
     `${JSON.stringify(
       {
+        kind: "gate-registry",
         version: 1,
+        preflight: [{ command: ["npm", "ci"], note: "fixture" }],
         gates: [
           {
             id: "scope",
             command: ["node", scopeEntry, "--declarations", "delivery/plan/phase-declarations"],
             unitLabel: "changed paths audited",
             applicability: "required",
+            prevents: "a fixture failure",
+            "verified-by": "script",
+            modes: ["full"],
+            events: ["pull_request"],
             parameters: ["base", "head"],
             precondition: {
               id: "scope-branch-is-a-phase-branch",
@@ -577,7 +583,7 @@ test("a branch matching the phase pattern with no merge-base declaration is red 
     const run1 = runTiphys(dir, [
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       ev1,
@@ -601,7 +607,7 @@ test("a branch matching the phase pattern with no merge-base declaration is red 
     const run2 = runTiphys(dir, [
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       ev2,
@@ -624,7 +630,7 @@ test("a branch matching the phase pattern with no merge-base declaration is red 
     const run3 = runTiphys(dir, [
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       ev3,

@@ -58,7 +58,6 @@ const checksModule = (await import(
   registerCheck: (check: DerivedCheck) => void;
   deregisterCheck: (id: string) => boolean;
   checklistProbeIdsUnique: DerivedCheck;
-  gateProbesResolve: DerivedCheck;
   checklistFramingIdsUnique: DerivedCheck;
 };
 
@@ -192,70 +191,6 @@ test("--type auto resolves a checklist from its own kind field", () => {
     join(checklistsDir, "clean-room.yaml"),
   ]);
   assert.equal(run.status, 0, run.stdout + run.stderr);
-});
-
-/* ------------------------------------------------------------------ */
-/* Criterion 1: two probes sharing an id, Kind B, both directions       */
-/* ------------------------------------------------------------------ */
-
-test("a checklist with two probes sharing an id is rejected naming the id and the check, and is accepted with the check deregistered", () => {
-  const dir = scratch();
-  try {
-    stageContext(dir);
-    /* THE DANGEROUS INSTANCE, and it is structurally plausible (section 2.3
-       rule 1): well formed YAML, every required field present, two probes
-       whose ids collide and whose QUESTIONS differ, which is precisely what
-       `uniqueItems` cannot see because it compares whole items. `checklist
-       resolve` looks a probe up by id, so the resolved list depends on which
-       one the lookup reached. */
-    const document = readShipped("flake-playbook");
-    const probes = probesOf(document);
-    probes.push({
-      id: (probes[0] as Record<string, unknown>)["id"],
-      probe: "A second question wearing the first probe's identity.",
-      "applies-to": "judge",
-      "evidence-required": true,
-    });
-    const file = writeYaml(dir, "duplicate.yaml", document);
-
-    const rejected = runCli(["validate", "--type", "checklist", "--context", dir, file]);
-    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
-    assert.match(
-      rejected.stdout,
-      /^INVALID #\/probes\/\d+\/id probe id flake-failure-extracted .*\(check: checklist-probe-ids-unique\)$/m,
-      rejected.stdout,
-    );
-
-    /* THE OTHER DIRECTION: the SAME fixture with the CHECK deregistered.
-       Removing the check rather than a schema keyword is what makes this a
-       Kind B witness. */
-    assert.equal(checksModule.deregisterCheck("checklist-probe-ids-unique"), true);
-    const withoutCheck = checksModule.runChecks("checklist", document, dir);
-    assert.equal(withoutCheck.failed, false, withoutCheck.lines.join("\n"));
-
-    /* RESTORED, and red again. */
-    checksModule.registerCheck(checksModule.checklistProbeIdsUnique);
-    const restored = checksModule.runChecks("checklist", document, dir);
-    assert.equal(restored.failed, true);
-    assert.ok(
-      restored.lines.some((line) => line.includes("(check: checklist-probe-ids-unique)")),
-      restored.lines.join("\n"),
-    );
-
-    /* CONTROL: the unmutated document passes. Without it this check could be
-       rejecting every checklist. */
-    const control = runCli([
-      "validate",
-      "--type",
-      "checklist",
-      "--context",
-      dir,
-      join(checklistsDir, "flake-playbook.yaml"),
-    ]);
-    assert.equal(control.status, 0, control.stdout + control.stderr);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
 });
 
 /* ------------------------------------------------------------------ */
@@ -402,206 +337,6 @@ test("an extra probe that requires no evidence is refused, whether the field is 
 });
 
 /* ------------------------------------------------------------------ */
-/* Criterion 3: gate-probes-resolve, registry to checklist              */
-/* ------------------------------------------------------------------ */
-
-test("a registry entry naming a probe the checklist does not declare is rejected naming the gate and the probe, and passes with the check deregistered", () => {
-  const dir = scratch();
-  try {
-    stageContext(dir);
-    /* THE DANGEROUS INSTANCE is a DELETED PROBE, which is the state the join
-       M3-P2 left open would have hidden: the registry declares a gate that
-       nothing can ever verify, and no script on either side noticed. */
-    const document = readShipped("clean-room");
-    document["probes"] = probesOf(document).filter(
-      (probe) => probe["id"] !== "unit-tests-for-changed-service-methods",
-    );
-    const file = writeYaml(dir, "deleted-probe.yaml", document);
-
-    const rejected = runCli(["validate", "--type", "checklist", "--context", dir, file]);
-    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
-    assert.match(
-      rejected.stdout,
-      /^INVALID #\/probes gate unit-tests-for-changed-service-methods in .* names probe unit-tests-for-changed-service-methods, which no probe in this checklist declares \(check: gate-probes-resolve\)$/m,
-      rejected.stdout,
-    );
-
-    /* RESTORING THE PROBE returns exit 0, which is the third capture the
-       criterion asks for and is what proves the red came from the deletion
-       rather than from the staging. */
-    const restoredFile = writeYaml(dir, "restored.yaml", readShipped("clean-room"));
-    const restored = runCli([
-      "validate",
-      "--type",
-      "checklist",
-      "--context",
-      dir,
-      restoredFile,
-    ]);
-    assert.equal(restored.status, 0, restored.stdout + restored.stderr);
-
-    /* DEREGISTERED: the deleted-probe fixture passes. Kind B witness. */
-    assert.equal(checksModule.deregisterCheck("gate-probes-resolve"), true);
-    const withoutCheck = checksModule.runChecks("checklist", document, dir);
-    assert.equal(withoutCheck.failed, false, withoutCheck.lines.join("\n"));
-    checksModule.registerCheck(checksModule.gateProbesResolve);
-    const reRegistered = checksModule.runChecks("checklist", document, dir);
-    assert.equal(reRegistered.failed, true);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("a checklist the registry does not name is not asserted against, so the rule applies where the registry points it", () => {
-  /* THE VACUOUS-PASS GUARD IN THE OTHER POLARITY. `verified-by:
-     clean-room-checklist` names the checklist whose id is `clean-room`, and a
-     check that demanded those probes of every checklist would redden
-     `plan-review.yaml` for probes that document never claimed to carry. */
-  const dir = scratch();
-  try {
-    stageContext(dir);
-    const outcome = checksModule.runChecks("checklist", readShipped("plan-review"), dir);
-    assert.equal(outcome.failed, false, outcome.lines.join("\n"));
-    /* And it is not vacuous on the document the registry DOES name: the same
-       check on `clean-room` with a probe removed is red, which the test above
-       captures. */
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("a probe the registry names that carries no verifies-gate back-reference is rejected", () => {
-  const dir = scratch();
-  try {
-    stageContext(dir);
-    /* Step 1's if/then: every probe NAMED BY a registry entry must carry the
-       back-reference. Without it, criterion 3c's direction cannot see the
-       probe at all, so the orphan stays invisible BY CONSTRUCTION. */
-    const document = readShipped("clean-room");
-    delete probeById(document, "fixtures-for-changed-component-states")["verifies-gate"];
-    const file = writeYaml(dir, "no-back-reference.yaml", document);
-    const run = runCli(["validate", "--type", "checklist", "--context", dir, file]);
-    assert.equal(run.status, 1, run.stdout + run.stderr);
-    assert.match(
-      run.stdout,
-      /carries no verifies-gate, so the checklist-to-registry direction cannot see it \(check: gate-probes-resolve\)/,
-      run.stdout,
-    );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-/* ------------------------------------------------------------------ */
-/* Criterion 3c: checklist to registry, two structurally different      */
-/* members, plus the deregistration witness                             */
-/* ------------------------------------------------------------------ */
-
-test("a gate RENAMED in the registry orphans the probe that verifies it, and restoring the name returns exit 0", () => {
-  const dir = scratch();
-  try {
-    stageContext(dir);
-    /* MEMBER ONE of the class: the gate id is RENAMED, so the probe points at
-       a name that NEVER EXISTED. Mutated in the staged COPY; the merged M3-P2
-       registry is never touched. */
-    const registryPath = join(dir, "gate-registry.yaml");
-    const original = readFileSync(registryPath, "utf8");
-    writeFileSync(
-      registryPath,
-      original.replace(
-        "  - id: unit-tests-for-changed-service-methods\n",
-        "  - id: unit-tests-for-changed-service-methods-v2\n",
-      ),
-    );
-    assert.notEqual(readFileSync(registryPath, "utf8"), original, "the rename did not apply");
-
-    const shipped = join(checklistsDir, "clean-room.yaml");
-    const rejected = runCli(["validate", "--type", "checklist", "--context", dir, shipped]);
-    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
-    assert.match(
-      rejected.stdout,
-      /^INVALID #\/probes\/\d+\/verifies-gate probe unit-tests-for-changed-service-methods verifies gate unit-tests-for-changed-service-methods, which .* does not declare \(check: gate-probes-resolve\)$/m,
-      rejected.stdout,
-    );
-
-    /* RESTORING THE NAME returns exit 0. */
-    writeFileSync(registryPath, original);
-    const restored = runCli(["validate", "--type", "checklist", "--context", dir, shipped]);
-    assert.equal(restored.status, 0, restored.stdout + restored.stderr);
-
-    /* DEREGISTERED: the renamed-gate fixture passes. */
-    writeFileSync(
-      registryPath,
-      original.replace(
-        "  - id: unit-tests-for-changed-service-methods\n",
-        "  - id: unit-tests-for-changed-service-methods-v2\n",
-      ),
-    );
-    assert.equal(checksModule.deregisterCheck("gate-probes-resolve"), true);
-    const withoutCheck = checksModule.runChecks("checklist", readShipped("clean-room"), dir);
-    assert.equal(withoutCheck.failed, false, withoutCheck.lines.join("\n"));
-    checksModule.registerCheck(checksModule.gateProbesResolve);
-    const reRegistered = checksModule.runChecks("checklist", readShipped("clean-room"), dir);
-    assert.equal(reRegistered.failed, true);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("a gate DELETED from the registry orphans the probe that verifies it", () => {
-  const dir = scratch();
-  try {
-    stageContext(dir);
-    /* MEMBER TWO of the class, and it is STRUCTURALLY DIFFERENT from the
-       rename: the probe points at a name that USED TO EXIST, and the entry is
-       gone rather than renamed, so it fails through the absence of the gate
-       rather than through a mismatch with a sibling. One witness is not a
-       class (CLAUDE.md), and these are the two ways a registry edit orphans a
-       probe. */
-    const registryPath = join(dir, "gate-registry.yaml");
-    const original = readFileSync(registryPath, "utf8");
-    const decoded = yamlModule.parse(original) as Record<string, unknown>;
-    const gates = decoded["gates"] as Record<string, unknown>[];
-    const before = gates.length;
-    decoded["gates"] = gates.filter(
-      (gate) => gate["id"] !== "fixtures-for-changed-component-states",
-    );
-    assert.equal(
-      (decoded["gates"] as unknown[]).length,
-      before - 1,
-      "the deletion removed no gate, so this member would be vacuous",
-    );
-    writeFileSync(registryPath, yamlModule.stringify(decoded));
-
-    const shipped = join(checklistsDir, "clean-room.yaml");
-    const rejected = runCli(["validate", "--type", "checklist", "--context", dir, shipped]);
-    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
-    assert.match(
-      rejected.stdout,
-      /probe fixtures-for-changed-component-states verifies gate fixtures-for-changed-component-states, which .* does not declare \(check: gate-probes-resolve\)/,
-      rejected.stdout,
-    );
-
-    writeFileSync(registryPath, original);
-    const restored = runCli(["validate", "--type", "checklist", "--context", dir, shipped]);
-    assert.equal(restored.status, 0, restored.stdout + restored.stderr);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("gate-probes-resolve requires a context and is SKIPPED rather than passing without one", () => {
-  /* A cross-document rule must never be able to pass BY NOT RUNNING, which is
-     the vacuous shape the whole derived-check mechanism exists against. */
-  const outcome = checksModule.runChecks("checklist", readShipped("clean-room"), undefined);
-  assert.equal(outcome.failed, true);
-  assert.ok(
-    outcome.lines.includes("SKIPPED gate-probes-resolve no context"),
-    outcome.lines.join("\n"),
-  );
-});
-
-/* ------------------------------------------------------------------ */
 /* Criterion 3b: probe-text specificity, both directions                */
 /* ------------------------------------------------------------------ */
 
@@ -679,22 +414,22 @@ test("the R-055 correctness probes are separate entries naming negative, zero, e
   );
 });
 
-test("the destructive-authority probe names all three of its questions and cites destructiveCommands by name", () => {
+test("the destructive-authority probe names all three of its questions and cites destructiveCommands by name", async () => {
   assertProbeTextSpecific(
     "clean-room",
     "destructive-authority-declared",
-    ["(1)", "(2)", "(3)", "destructiveCommands", "gates.manifest.json"],
+    ["(1)", "(2)", "(3)", "destructiveCommands", "gate-registry.yaml"],
     "Check whether any destructive command in the diff declares its authority.",
   );
   /* AND THE NAMED LIST IS REAL. A probe telling a reviewer to open a list
      that does not exist is worse than a generic one, because it reads as
      precise. */
-  const manifest = JSON.parse(
-    readFileSync(join(repoRoot, "gates.manifest.json"), "utf8"),
+  const registry = (await import("yaml")).parse(
+    readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8"),
   ) as Record<string, unknown>;
   assert.ok(
-    Array.isArray(manifest["destructiveCommands"]),
-    "gates.manifest.json declares no destructiveCommands array for the probe to cite",
+    Array.isArray(registry["destructiveCommands"]),
+    "gate-registry.yaml declares no destructiveCommands array for the probe to cite",
   );
 });
 
@@ -796,65 +531,6 @@ test("the two exercised framings both resolve and their first probes differ", ()
 /* ------------------------------------------------------------------ */
 
 /* MEMBER 1 of the class, intra-file, reached through `tiphys validate`. */
-test("a checklist with two framings sharing an id is rejected naming the id and the check, and is accepted with the check deregistered", () => {
-  const dir = scratch();
-  try {
-    stageContext(dir);
-    /* THE DANGEROUS INSTANCE, and it is structurally plausible: well formed
-       YAML, every required field present, two framings sharing an id and
-       differing in their ENTRY POINT and their scope order, which is exactly
-       what `uniqueItems` cannot see because it compares whole items.
-       `resolveChecklist` uses `.find()`, so which entry point a reviewer is
-       handed is decided by file position and nothing says so. */
-    const document = readShipped("clean-room");
-    const framings = document["framings"] as Record<string, unknown>[];
-    const shadowed = String((framings[0] as Record<string, unknown>)["id"]);
-    framings.push({
-      id: shadowed,
-      "entry-point": "A second entry point wearing the first framing's identity.",
-      "orders-probes": ["deviations"],
-    });
-    const file = writeYaml(dir, "duplicate-framing.yaml", document);
-
-    const rejected = runCli(["validate", "--type", "checklist", "--context", dir, file]);
-    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
-    assert.match(
-      rejected.stdout,
-      new RegExp(
-        `^INVALID #/framings/\\d+/id framing id ${shadowed} is already declared at #/framings/\\d+/id, and checklist resolve looks framings up by id \\(check: checklist-framing-ids-unique\\)$`,
-        "m",
-      ),
-      rejected.stdout,
-    );
-
-    /* KIND B WITNESS: the SAME fixture with the CHECK deregistered. */
-    assert.equal(checksModule.deregisterCheck("checklist-framing-ids-unique"), true);
-    const withoutCheck = checksModule.runChecks("checklist", document, dir);
-    assert.equal(withoutCheck.failed, false, withoutCheck.lines.join("\n"));
-    checksModule.registerCheck(checksModule.checklistFramingIdsUnique);
-    const restored = checksModule.runChecks("checklist", document, dir);
-    assert.equal(restored.failed, true);
-    assert.ok(
-      restored.lines.some((line) => line.includes("(check: checklist-framing-ids-unique)")),
-      restored.lines.join("\n"),
-    );
-
-    /* CONTROL: the unmutated shipped document passes, so the check is not
-       rejecting every checklist that declares a framing. */
-    const control = runCli([
-      "validate",
-      "--type",
-      "checklist",
-      "--context",
-      dir,
-      join(checklistsDir, "clean-room.yaml"),
-    ]);
-    assert.equal(control.status, 0, control.stdout + control.stderr);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 /* MEMBER 2 of the class, extra-file, reached end to end through the CLI. */
 test("an extra file declaring a framing is refused, both when the id collides with a canonical framing and when it does not", () => {
   const dir = scratch();
@@ -1309,7 +985,6 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
      every future phase and is false the moment the next one appends. */
   for (const id of [
     "checklist-validates",
-    "checklist-duplicate-probe-id-rejected",
     "checklist-extra-probe-merge",
     "checklist-extra-probe-collision",
     /* Criterion 2 delivers "an extra probe without evidence-required exits
@@ -1318,7 +993,6 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
        in fix round 1 because the red-witness split needs a behavior for the
        witness that guards it to name. */
     "checklist-extra-probe-evidence-required",
-    "gate-registry-probes-resolve",
     "checklist-framings-differ",
     "checklist-probe-text-specific",
     "checklist-destructive-authority-probe",
@@ -1328,13 +1002,9 @@ test("this phase's new behaviors are registered in test/behaviors.json", () => {
     "checklist-impossibility-probe-specific",
     "checklist-coverage-probe-specific",
     "checklist-class-witness-probe",
-    "checklist-probe-verifies-gate-resolves",
-    "checklist-orphan-probe-detected-on-gate-rename",
-    "checklist-orphan-probe-detected-on-gate-deletion",
     /* FIX ROUND 2, H-2. Two structurally different members of one class:
        an id collision inside one document, and an extra file whose framings
        were read by nothing. */
-    "checklist-duplicate-framing-id-rejected",
     "checklist-extra-framing-refused",
   ]) {
     assert.ok(

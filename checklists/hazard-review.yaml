@@ -32,9 +32,9 @@ probes:
       one statement per class: either a finding it caused, or what you probed
       and why the class is cleared. Not one statement for the set. This is the
       completeness rule the verdict schema's `hazard-classes-addressed[]`
-      carries and `verdict-hazard-classes-addressed` compares against the plan
-      phase, so a class you silently skip is a red gate rather than an
-      omission nobody notices.
+      carries. No derived check compares it against the plan phase any more
+      (M6-P3 deleted `verdict-hazard-classes-addressed`), so a class you
+      silently skip is an omission only a reader of the verdict will notice.
     applies-to: hazard-classes
     evidence-required: true
 

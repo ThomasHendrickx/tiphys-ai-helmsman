@@ -170,9 +170,16 @@ function assertCallerClean(fixture: Fixture): void {
   assert.equal(git(fixture.dir, "rev-parse", "HEAD"), fixture.head);
 }
 
+/** A fixture gate registry: the red-witness gate reads `destructiveCommands` from it. */
 function fixtureManifest(destructive: string[]): string {
   return `${JSON.stringify(
-    { version: 1, gates: [], destructiveCommands: destructive },
+    {
+      kind: "gate-registry",
+      version: 1,
+      preflight: [{ command: ["npm", "ci"], note: "fixture" }],
+      gates: [],
+      destructiveCommands: destructive,
+    },
     null,
     2,
   )}\n`;
@@ -272,7 +279,7 @@ function adderSpec(overrides: Record<string, unknown>): Record<string, unknown> 
 
 function adderFixture(spec?: Record<string, unknown>, omitSpec = false): Fixture {
   const baseFiles: Record<string, string> = {
-    "gates.manifest.json": fixtureManifest([]),
+    "gate-registry.yaml": fixtureManifest([]),
     "test/behaviors.json": fixtureBehaviors({
       "adder-adds": "adder adds two numbers",
     }),
@@ -615,7 +622,7 @@ function dismantleFixture(
 ): Fixture {
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest(["bin/dismantle"]),
+      "gate-registry.yaml": fixtureManifest(["bin/dismantle"]),
       "test/behaviors.json": fixtureBehaviors({
         "dismantle-refuses-carried-commits":
           "dismantle refuses a branch carrying commits",
@@ -662,7 +669,7 @@ test("correcting the fixture so the branch carries a commit makes the same spec 
 test("a destructive witness whose only member is a baseline ref is refused citing T-003", () => {
   const fixture = makeFixture(
     {
-      "gates.manifest.json": fixtureManifest(["bin/dismantle"]),
+      "gate-registry.yaml": fixtureManifest(["bin/dismantle"]),
       "test/behaviors.json": fixtureBehaviors({
         "dismantle-refuses-carried-commits":
           "dismantle refuses a branch carrying commits",
@@ -785,7 +792,7 @@ function guardFixture(
 ): Fixture {
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({
         "guard-wired": testName,
       }),
@@ -1262,7 +1269,7 @@ const ATOMIC_TEST = fixRead(
 function atomicFixture(deterministic: boolean): Fixture {
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({
         "atomic-two-passes": "two concurrent passes both surface their turn end",
       }),
@@ -1352,7 +1359,7 @@ function classifierFixture(reaching: boolean): Fixture {
     : ["classifier calls a plain failure permanent"];
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({
         "classifier-arms": "classifier calls a plain failure permanent",
       }),
@@ -1462,7 +1469,7 @@ function retryFixture(consumes: Record<string, unknown> | undefined): Fixture {
   }
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({
         "retry-transient": "the real contention stderr is classified transient",
       }),
@@ -1602,7 +1609,7 @@ function classifyFixture(
   }
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({
         "classify-transient": testName,
       }),
@@ -1814,7 +1821,7 @@ function siblingSpec(members: Array<Record<string, unknown>>): string {
 function siblingFixture(extraHeadMembers: Array<Record<string, unknown>> = []): Fixture {
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({ "combo-works": "combo works" }),
       "src/adder.ts": SIBLING_ADDER_BASE,
       "src/legacy.ts": SIBLING_LEGACY,
@@ -1990,7 +1997,7 @@ function ownershipFixture(
 ): Fixture {
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": OWN_BEHAVIORS,
       "src/adder.ts": OWN_ADDER_BASE,
       "src/legacy.ts": OWN_LEGACY,
@@ -2191,7 +2198,7 @@ test("the ownership baseline is read at the merge base, so a spec another phase 
   fixtureDirs.push(dir);
   git(dir, "init", "-q", "-b", "main");
   writeTree(dir, {
-    "gates.manifest.json": fixtureManifest([]),
+    "gate-registry.yaml": fixtureManifest([]),
     "test/behaviors.json": OWN_BEHAVIORS,
     "src/adder.ts": OWN_ADDER_BASE,
     "src/legacy.ts": OWN_LEGACY,
@@ -2416,7 +2423,7 @@ function storedFixture(broken: boolean): Fixture {
   }
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({
         "thing-big": "thing classifies big inputs",
         "util-doubles": "util doubles its input",
@@ -2511,7 +2518,7 @@ test("the recorded baseline sha equals the fetched remote head not the local ref
   const upstream = mkdtempSync(join(tmpdir(), "wup-"));
   git(upstream, "init", "-q", "-b", "main");
   writeTree(upstream, {
-    "gates.manifest.json": fixtureManifest([]),
+    "gate-registry.yaml": fixtureManifest([]),
     "test/behaviors.json": fixtureBehaviors({
       "greeter-world": "greeter greets the world",
     }),
@@ -2874,7 +2881,7 @@ function spawnFixture(
 ): Fixture {
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({ "spare-works": "spare works" }),
       "src/spare.ts": SPAWN_SPARE_BASE,
       "test/spare.test.ts": SPAWN_TEST,
@@ -2969,7 +2976,7 @@ function oversizeReportFixture(): Fixture {
   }
   return makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({}),
       "src/a.ts": "export const a = 1;\n",
     },
@@ -3085,7 +3092,7 @@ test("every red-witness gate CLI arm exits the code its own result record implie
   const green = adderFixture();
   const red = makeFixture(
     {
-      "gates.manifest.json": fixtureManifest([]),
+      "gate-registry.yaml": fixtureManifest([]),
       "test/behaviors.json": fixtureBehaviors({}),
       "src/a.ts": "export const a = 1;\n",
     },

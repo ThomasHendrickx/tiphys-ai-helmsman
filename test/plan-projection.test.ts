@@ -6,7 +6,7 @@
  * only thing that proves that is running THE REAL AUDITOR against a generated
  * declaration, in a repository shaped the way the auditor reads: the
  * declaration at the MERGE BASE, the branch matching `claude/m<n>-p<n>-`, and
- * the auditor invoked exactly as `gates.manifest.json` invokes it.
+ * the auditor invoked exactly as `gate-registry.yaml` invokes it.
  *
  * An auditor run against a declaration present only at the HEAD proves
  * nothing about the property that matters, because the merge-base read is the
@@ -281,7 +281,7 @@ interface AuditOutcome {
   record: { status: string; units: number; detail: string } | undefined;
 }
 
-/** Invoke the auditor EXACTLY as gates.manifest.json invokes it. */
+/** Invoke the auditor EXACTLY as gate-registry.yaml invokes it. */
 function runAuditor(dir: string, outside: string, base: string, head: string): AuditOutcome {
   const unique = Math.random().toString(36).slice(2);
   const evidence = join(outside, `evidence-${unique}`);

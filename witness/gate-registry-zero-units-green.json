@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "src/gates/run.ts",
-      "find": "          ? loadRegistry(options.manifestPath, options.mode ?? DEFAULT_MODE)",
-      "replace": "          ? loadManifest(options.manifestPath)"
+      "find": "        options.mode ?? DEFAULT_MODE,\n        options.event,",
+      "replace": "        DEFAULT_MODE,\n        options.event,"
     },
     {
       "kind": "mutation",

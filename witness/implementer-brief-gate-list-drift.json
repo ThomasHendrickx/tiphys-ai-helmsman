@@ -2,22 +2,22 @@
   "id": "implementer-brief-gate-list-drift",
   "behavior": "implementer-brief-gate-list-drift",
   "tests": [
-    "adding a gate to the registry without re-rendering makes check-brief-drift --check exit nonzero naming the gate, and --write returns it to 0",
-    "drift in the block's non-row lines is caught and named, under both a preflight step and the table header, which the row-and-field check cannot see"
+    "the composed brief's gate-list block is byte-identical to the block gate-registry.yaml renders for the declared mode",
+    "adding a gate to the project's gate-registry.yaml adds its row to the composed brief, and a registry selecting no gate for the brief's mode refuses to compose"
   ],
   "class": "additive",
   "dangerousStates": [
     {
       "kind": "mutation",
-      "file": "src/roles.ts",
-      "find": "  const selected = registry.gates.filter((gate) => (gate.modes ?? []).includes(mode));",
-      "replace": "  const selected = [];"
+      "file": "src/commands/brief.ts",
+      "find": "    registry.document as unknown as Parameters<typeof renderBriefGateBlock>[0],",
+      "replace": "    { preflight: [], gates: [] } as unknown as Parameters<typeof renderBriefGateBlock>[0],"
     },
     {
       "kind": "mutation",
-      "file": "scripts/check-brief-drift.mjs",
-      "find": "  const differences = describeDrift(rendered.text, located.block);",
-      "replace": "  const differences = [];"
+      "file": "src/commands/brief.ts",
+      "find": "    body = body.replace(BRIEF_GATE_LIST_PLACEHOLDER, gateList.text);",
+      "replace": "    body = body.replace(BRIEF_GATE_LIST_PLACEHOLDER, \"\");"
     }
   ],
   "deterministic": true,

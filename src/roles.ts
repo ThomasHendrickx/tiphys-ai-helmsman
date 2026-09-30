@@ -539,66 +539,40 @@ export function missingRequiredSections(body: string): string[] {
 }
 
 /* ------------------------------------------------------------------ */
-/* M3-P6: the generated gate-list block                                 */
+/* The gate-list block, rendered at compose time (M6-P3)                */
 /* ------------------------------------------------------------------ */
 
 /**
- * The markers delimiting the generated gate list inside a brief.
- *
- * THE MODE IS IN THE BEGIN MARKER, which is where the brief DECLARES which
- * mode's gate set it carries. It cannot go in the frontmatter: the frontmatter
- * schema is closed (`additionalProperties: false`) and belongs to M3-P5, and a
- * phase that needed a new frontmatter key would be editing another phase's
- * merged contract. The marker is body text, it is visible to a reader of the
- * brief, and `scripts/check-brief-drift.mjs` reads the mode back out of it, so
- * the declaration and the rendering cannot disagree about which mode was meant.
- *
- * HTML comments, so they are invisible in rendered markdown and unambiguous to
- * a line scanner, and they name the producing script so the next person to edit
- * the block by hand is told what to edit instead. The same shape M3-P2 used for
- * CLAUDE.md, deliberately: two drift checks that look different are two things
- * to learn.
+ * The line a brief's gate-list section carries where `tiphys brief compose`
+ * renders the gate list from the project's `gate-registry.yaml`. The brief
+ * itself holds no copy of the registry, so there is nothing to drift.
+ */
+export const BRIEF_GATE_LIST_PLACEHOLDER =
+  "<!-- GATE LIST: tiphys brief compose renders it here from gate-registry.yaml -->";
+
+/**
+ * The markers delimiting the rendered gate list inside a composed brief. The
+ * mode is in the begin marker so a reader sees which mode's gates it lists.
  */
 export function briefGateBlockBeginMarker(mode: string): string {
   return (
     `<!-- BEGIN GENERATED GATE LIST (mode: ${mode}): rendered from gate-registry.yaml ` +
-    "by scripts/check-brief-drift.mjs. Do not edit by hand; edit the registry. -->"
+    "by tiphys brief compose. Do not edit by hand; edit the registry. -->"
   );
 }
 
 export const BRIEF_GATE_BLOCK_END_MARKER = "<!-- END GENERATED GATE LIST -->";
 
 /**
- * THE MODE THE SHIPPED BRIEF'S GATE BLOCK MUST DECLARE, pinned HERE and not in
- * the brief (M3-P6 fix round 1, CV-1).
- *
- * The mechanism this closes, stated as a mechanism rather than as the instance
- * that exposed it: A CHECK WHOSE SUBJECT IS SELECTED BY A VALUE READ FROM THE
- * ARTIFACT IT AUDITS CAN BE SILENTLY NARROWED BY EDITING THAT ARTIFACT. The
- * mode above is read out of the brief's own begin marker, deliberately, so that
- * no CALLER can point the comparison at a mode the brief never claimed. That
- * left the EDITOR of the brief holding the same power: switching the marker to
- * a narrower mode and re-rendering produces a brief advertising five gates
- * instead of fifteen with the drift check green, which is an instruction-surface
- * defect every future implementer reads.
- *
- * Two clean-room contracts reached this from different directions on the same
- * head, one by forcing the narrowing and one by deriving it from the unit
- * arithmetic below, and neither was pointed at it.
- *
- * WHY IT IS A CONSTANT HERE AND NOT A REGISTRY KEY. `gate-registry.yaml` is
- * closed (`additionalProperties: false`) and its schema belongs to M3-P2, so a
- * registry key would be this phase editing another phase's merged contract, the
- * same reasoning that put the mode in the marker rather than in the frontmatter.
- * WHY `full` IS THE RIGHT VALUE is not asserted here as a bare literal: the
- * registered test derives from the registry that this mode selects every gate
- * any mode selects, so narrowing is the only direction the value can move.
+ * The mode whose gates a composed brief lists, pinned HERE and not in the
+ * brief, so editing a brief cannot narrow the list it carries (M3-P6 CV-1).
+ * `full` selects every gate any mode selects.
  */
 export const BRIEF_GATE_BLOCK_MODE = "full";
 
 /** The begin marker's shape, with the mode captured. */
 const BEGIN_MARKER_PATTERN =
-  /<!-- BEGIN GENERATED GATE LIST \(mode: ([a-z][a-z0-9-]*)\): rendered from gate-registry\.yaml by scripts\/check-brief-drift\.mjs\. Do not edit by hand; edit the registry\. -->/;
+  /<!-- BEGIN GENERATED GATE LIST \(mode: ([a-z][a-z0-9-]*)\): rendered from gate-registry\.yaml by tiphys brief compose\. Do not edit by hand; edit the registry\. -->/;
 
 export type GateBlockLocation =
   | { ok: true; mode: string; block: string; begin: number; end: number }
@@ -693,10 +667,9 @@ export interface GateBlockRendering {
  * forever. This function takes the decoded registry and a mode string, and
  * nothing else; the brief file is opened only to compare against or write into.
  *
- * ONE RENDERER, TWO CALLERS. `scripts/check-brief-drift.mjs` calls it to
- * compare and to write, and the registered test calls it to assert the composed
- * brief is byte-identical to the registry's rendering. A second copy of this
- * table in the test would be the test asserting agreement with itself.
+ * ONE RENDERER. `tiphys brief compose` calls it to put the gate list into the
+ * composed brief; the registered tests check its rows against the registry
+ * independently of it.
  */
 export function renderBriefGateBlock(
   registry: GateRegistryDocument,

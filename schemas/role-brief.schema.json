@@ -92,7 +92,7 @@
       "enum": ["strongest", "cheaper"]
     },
     "clauses": {
-      "$comment": "The clause ids scripts/check-clause-map.mjs resolves against this artifact, plus the shared dispatch-contract clause ids. Every id here must occur EXACTLY ONCE as a body heading anchor of the form `## clause <id>` in the include-expanded body, and every anchor must occur here; that round trip is what stops a clause id being a label with nothing behind it, and it is enforced by src/roles.ts under `tiphys validate --type role-brief`. The pattern admits both requirement-row ids (R-004, R-010a) and named clauses (incremental-output).",
+      "$comment": "The clause ids this artifact discharges, plus the shared dispatch-contract clause ids. Every id here must occur EXACTLY ONCE as a body heading anchor of the form `## clause <id>` in the include-expanded body, and every anchor must occur here; that round trip is what stops a clause id being a label with nothing behind it, and it is enforced by src/roles.ts under `tiphys validate --type role-brief`. The pattern admits both requirement-row ids (R-004, R-010a) and named clauses (incremental-output).",
       "type": "array",
       "minItems": 1,
       "items": {

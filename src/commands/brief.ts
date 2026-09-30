@@ -37,6 +37,8 @@ import { writeFileSync } from "node:fs";
 import { STAMP_FIELD, ownVersionForStamp } from "../stamp.ts";
 import { join } from "node:path";
 import {
+  BRIEF_GATE_BLOCK_MODE,
+  BRIEF_GATE_LIST_PLACEHOLDER,
   DROPPED_REVIEW_CONTRACT,
   REVIEW_CONTRACTS,
   REVIEW_CONTRACT_ROLE,
@@ -46,6 +48,7 @@ import {
   expandIncludes,
   kernelRoot,
   missingRequiredSections,
+  renderBriefGateBlock,
   renderPhase,
   resolveMandatedReading,
   roleBriefFile,
@@ -53,6 +56,7 @@ import {
   splitFrontmatter,
 } from "../roles.ts";
 import { locateCharters } from "../charter.ts";
+import { readRegistryDocument } from "../gates/run.ts";
 import { refuseOpenForWrite, readRegularFileIfPresent } from "../task.ts";
 import { decodeDocument, formatDiagnostics, readOperatorPath } from "../validate.ts";
 
@@ -386,6 +390,23 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
     };
   }
 
+  /* M6-P3: THE GATE LIST IS RENDERED HERE, from the project's registry, so the
+     brief carries no copy of it that could drift. The implementer brief must
+     carry the placeholder, or it would compose with a gate-list section that
+     lists no gate. */
+  if (body.includes(BRIEF_GATE_LIST_PLACEHOLDER)) {
+    const gateList = renderProjectGateList(options.workingDirectory, options.root);
+    if (!gateList.ok) {
+      return { ok: false, reason: gateList.reason };
+    }
+    body = body.replace(BRIEF_GATE_LIST_PLACEHOLDER, gateList.text);
+  } else if (options.roleId === "implementer") {
+    return {
+      ok: false,
+      reason: `${rolePath} carries no gate-list placeholder, so the composed brief would list no gate`,
+    };
+  }
+
   const planRead = readOperatorPath(options.planFile);
   if (!planRead.ok) {
     return { ok: false, reason: `plan ${options.planFile}: ${planRead.reason}` };
@@ -476,6 +497,42 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
   }
 
   return { ok: true, text: `${lines.join("\n").replace(/\n+$/, "")}\n` };
+}
+
+/**
+ * The gate list for a composed brief: the project's `gate-registry.yaml` in the
+ * working directory, or the kernel's shipped one when the project has none,
+ * validated and rendered for BRIEF_GATE_BLOCK_MODE. A registry that selects no
+ * gate for that mode is refused rather than rendered as an empty table.
+ */
+function renderProjectGateList(
+  workingDirectory: string,
+  root: string,
+): { ok: true; text: string } | { ok: false; reason: string } {
+  const projectPath = join(workingDirectory, "gate-registry.yaml");
+  const project = readRegularFileIfPresent(projectPath);
+  if (project.kind === "refused") {
+    return { ok: false, reason: project.reason };
+  }
+  const path = project.kind === "read" ? projectPath : join(root, "gate-registry.yaml");
+  const registry = readRegistryDocument(path);
+  if (!registry.ok) {
+    return {
+      ok: false,
+      reason: [`the gate list could not be rendered: ${registry.reason}`, ...registry.diagnostics].join("; "),
+    };
+  }
+  const rendered = renderBriefGateBlock(
+    registry.document as unknown as Parameters<typeof renderBriefGateBlock>[0],
+    BRIEF_GATE_BLOCK_MODE,
+  );
+  if (rendered.units === 0) {
+    return {
+      ok: false,
+      reason: `${path} declares no gate for mode ${BRIEF_GATE_BLOCK_MODE}, so the brief would list no gate`,
+    };
+  }
+  return { ok: true, text: rendered.text };
 }
 
 interface Options {

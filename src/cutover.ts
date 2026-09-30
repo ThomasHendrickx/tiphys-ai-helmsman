@@ -1226,7 +1226,8 @@ export function evaluatePortRow(
   }
   /* A DESTINATION MAY NAME MORE THAN ONE ARTIFACT, and that is the inventory's
      own declared convention rather than a reading invented here: its checker
-     splits the field on commas at scripts/check-retirement-inventory.mjs:754.
+     (`scripts/check-retirement-inventory.mjs`, deleted by M6-P3) split the
+     field on commas.
      Measured 2026-09-18 against the shipped inventory: three rows
      (`next-script:gittry`, `next-script:gitcount`, `next-script:harderrors`)
      carry `roles/investigator.md, checklists/clean-room.yaml`, and treating
@@ -1316,7 +1317,8 @@ export function evaluatePortRow(
      is a guard that fails open when its own tool fails. The row's own
      `negative-witness.exit` is what it recorded when it was written, so when
      the row declares one it is REQUIRED to match. Same rule, same reason, as
-     scripts/check-retirement-inventory.mjs:628 applies to its widening grep.
+     the deleted `scripts/check-retirement-inventory.mjs` applied to its
+     widening grep.
      Measured 2026-09-18 over the shipped inventory: all 199 PORT rows record
      exit 1 and all 199 observed exit 1, so this changes no verdict today and
      is a guard against the day one of them starts erroring instead. */
@@ -1597,207 +1599,4 @@ export function unmergedBranchCount(repoRoot: string, upstream = "origin/main"):
 
 function singleLineText(text: string): string {
   return text.replace(/\s+/g, " ").trim();
-}
-
-/* -------------------------------------------------------------------- */
-/* M4-P25 criterion 6: the retirement verdict over the real inventory    */
-/* -------------------------------------------------------------------- */
-
-/** The M4-P23 inventory, relative to the REPOSITORY root. */
-export const RETIREMENT_INVENTORY_PATH = "delivery/plan/cutover/retirement-inventory.json";
-
-/**
- * The first tokens a retirement row's command may start a segment with.
- *
- * MIRRORED FROM `scripts/check-retirement-inventory.mjs`, DELIBERATELY, AND
- * THE DRIFT IS ASSERTED BY A TEST rather than by this comment. The script is
- * this project's own predicate and is KEPT rather than shipped (DR-0029), so
- * the kernel cannot import it; but the two lists screening the same rows must
- * not diverge, so `test/cutover.test.ts` reads the script's
- * `ALLOWED_FIRST_TOKENS` and requires this set to be no wider.
- *
- * WHAT THE LIST BUYS AND WHAT IT DOES NOT. Every tool on it is one with no
- * option for writing a file, so a row cannot modify the tree this command is
- * auditing. It is a TOOL allowlist, not a sandbox: the child still runs with
- * this process's privileges and can read anything this process can read.
- */
-export const RETIREMENT_COMMAND_TOKENS: ReadonlySet<string> = new Set([
-  "grep",
-  "test",
-  "ls",
-  "wc",
-  "comm",
-  "diff",
-  "head",
-  "tail",
-  "cat",
-]);
-
-const RETIREMENT_COMMAND_FORBIDDEN: readonly { re: RegExp; why: string }[] = [
-  { re: /[<>]/, why: "redirection" },
-  { re: /\$\(/, why: "command substitution" },
-  { re: /`/, why: "backtick substitution" },
-];
-
-/**
- * Screen one inventory command. The rows are DATA FROM A FILE, so the command
- * is screened before anything spawns it, and the check is on the EXECUTABLE
- * POSITION of every segment rather than on the whole string: a whole-string
- * denylist refuses `grep -c 'npm ci' gate-registry.yaml`, which runs no npm at
- * all and merely searches for those characters.
- */
-export function screenRetirementCommand(command: unknown): string[] {
-  if (!nonEmptyString(command)) {
-    return ["negative-witness command is missing or empty"];
-  }
-  const problems: string[] = [];
-  for (const forbidden of RETIREMENT_COMMAND_FORBIDDEN) {
-    if (forbidden.re.test(command)) {
-      problems.push(`negative-witness command uses ${forbidden.why}`);
-    }
-  }
-  for (const segment of command.split(/\|\||&&|[|;&\n]/)) {
-    const first = segment.trim().split(/\s+/)[0];
-    if (first === undefined || first === "") {
-      continue;
-    }
-    if (!RETIREMENT_COMMAND_TOKENS.has(first)) {
-      problems.push(
-        `negative-witness command segment starts with ${JSON.stringify(first)}, which is not on the allowlist`,
-      );
-    }
-  }
-  return problems;
-}
-
-export type RowAdaptation =
-  | { kind: "row"; row: RetirementRow }
-  | { kind: "refused"; result: PortResult };
-
-/**
- * Turn one row of the SHIPPED inventory into the shape `evaluatePortRow`
- * takes.
- *
- * THIS ADAPTER EXISTS BECAUSE THE TWO SHAPES REALLY ARE DIFFERENT, and the
- * difference is silent in the dangerous direction. `RetirementRow` declares
- * `negativeWitness` as an argv ARRAY (src/cutover.ts:1128), and the M4-P23
- * inventory writes `negative-witness` as an OBJECT carrying a SHELL STRING
- * (delivery/plan/cutover/retirement-inventory.json:1). Handing the shipped
- * document straight to `evaluatePortRow` therefore returns `unported` with
- * "PORT row carries no negative-witness command" for every row in it: a
- * verdict that looks like a finding about the kernel and is a finding about a
- * key spelling. The adapter is named, tested and refuses rather than
- * defaulting, so the mismatch cannot come back as a silent all-red.
- */
-export function retirementRowFromDocument(raw: unknown): RowAdaptation {
-  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
-    return {
-      kind: "refused",
-      result: {
-        id: `(row ${JSON.stringify(raw)})`,
-        verdict: "unported",
-        reason: "inventory row is not an object, so its disposition could not be read",
-      },
-    };
-  }
-  const source = raw as Record<string, unknown>;
-  const id = nonEmptyString(source["id"]) ? source["id"] : "(row with no id)";
-  const row: RetirementRow = {
-    id,
-    disposition: source["disposition"] as Disposition,
-  };
-  if (nonEmptyString(source["destination"])) {
-    row.destination = source["destination"];
-  }
-  const witness = source["negative-witness"];
-  if (source["disposition"] !== "PORT") {
-    return { kind: "row", row };
-  }
-  if (typeof witness !== "object" || witness === null || Array.isArray(witness)) {
-    return {
-      kind: "refused",
-      result: {
-        id,
-        verdict: "unported",
-        reason: "PORT row carries no negative-witness object",
-      },
-    };
-  }
-  const command = (witness as Record<string, unknown>)["command"];
-  const problems = screenRetirementCommand(command);
-  if (problems.length > 0) {
-    return {
-      kind: "refused",
-      result: { id, verdict: "unported", reason: problems.join("; ") },
-    };
-  }
-  /* `sh -c` is how the row's own checker runs it
-     (scripts/check-retirement-inventory.mjs:377), so the command that was
-     screened is the command that runs. */
-  row.negativeWitness = ["sh", "-c", command as string];
-  const recorded = (witness as Record<string, unknown>)["exit"];
-  if (typeof recorded === "number" && Number.isInteger(recorded)) {
-    row.expectedWitnessExit = recorded;
-  }
-  return { kind: "row", row };
-}
-
-export interface RetirementReport {
-  results: PortResult[];
-  unported: number;
-}
-
-export type RetirementRead =
-  | { kind: "read"; report: RetirementReport }
-  | { kind: "refused"; reason: string };
-
-/**
- * Evaluate every PORT row of the inventory.
- *
- * THE VACUOUS VERDICT IS THE ONE THIS GUARDS AGAINST. `ported` is not "the
- * named kernel artifact exists"; a file can exist and say nothing. Both halves
- * are required and the second is the one that matters: the row's negative
- * witness was RED against a subject that does not carry the rule, so a witness
- * exiting 0 means the probe discriminates nothing and the row is `unported`.
- * That derivation is M4-P26's `evaluatePortRow` and is REUSED here rather than
- * reimplemented; this function supplies the reading, the adaptation and the
- * screen.
- */
-export function evaluateRetirementInventory(
-  inventoryPath: string,
-  repoRoot: string,
-): RetirementRead {
-  const read = readRetirementInventory(inventoryPath);
-  if (read.kind === "absent") {
-    return {
-      kind: "refused",
-      reason: `${inventoryPath} is absent, so no retirement criterion could be evaluated`,
-    };
-  }
-  if (read.kind === "refused") {
-    return { kind: "refused", reason: read.reason };
-  }
-  const results: PortResult[] = [];
-  for (const raw of read.rows) {
-    const source =
-      typeof raw === "object" && raw !== null
-        ? (raw as unknown as Record<string, unknown>)
-        : ({} as Record<string, unknown>);
-    /* Only PORT rows are printed (criterion 6). A KEEP or DELETE row is not a
-       retirement that can be incomplete, and an UNREADABLE disposition is not
-       a KEEP: it goes to `evaluatePortRow`, which names it `unported`. */
-    if (source["disposition"] === "KEEP" || source["disposition"] === "DELETE") {
-      continue;
-    }
-    const adapted = retirementRowFromDocument(raw);
-    if (adapted.kind === "refused") {
-      results.push(adapted.result);
-      continue;
-    }
-    results.push(evaluatePortRow(adapted.row, repoRoot));
-  }
-  return {
-    kind: "read",
-    report: { results, unported: results.filter((r) => r.verdict === "unported").length },
-  };
 }

@@ -63,7 +63,6 @@ export interface Mode {
   declaredBy: string;
   pipeline: string[];
   skips: string[];
-  gateSets: string[];
   mergeAuthority: string;
   grantedBy?: string;
   conditions?: string[];
@@ -131,7 +130,6 @@ export function readModes(path: string = join(packageRoot(), MODES_FILENAME)): M
       declaredBy: String(record["declared-by"] ?? ""),
       pipeline: strings(record, "pipeline"),
       skips: strings(record, "skips"),
-      gateSets: strings(record, "gate-sets"),
       mergeAuthority: String(record["merge-authority"] ?? ""),
       grantedBy:
         typeof record["granted-by"] === "string" ? record["granted-by"] : undefined,
@@ -196,25 +194,11 @@ const UNDOWNGRADED_MODE_ID = "full";
  * ground of the claim. That distinction is the whole finding: a number may be
  * shown without being believed.
  *
- * WHAT MAKES THE `full` SENTENCE TRUE IS DATA, AND IT IS GUARDED IN TWO PLACES
- * THAT COVER DIFFERENT DOCUMENTS. Keying off the name moves the burden: the
- * claim is only as good as the `full` in the document being served genuinely
- * being un-downgraded.
- *
- * The VALIDATOR carries it for EVERY document (round 10, CRB9-02).
- * `mode-no-undeclared-downgrade` rejects a `skips[]` entry that the same mode's
- * pipeline runs, and also one that the reference does not run; on the reference
- * those two exhaust the cases, so a `full` declaring any skipped stage at all is
- * refused and this sentence is never printed over it. Until that second part
- * existed, a `full` whose stage had MOVED from `pipeline` into `skips` was an
- * HONEST downgrade that validated at exit 0, and `tiphys mode show --mode full`
- * printed this sentence about fifteen lines above a `skips: deploy-verify` row.
- *
- * A REGISTERED TEST carries it for THIS repository's own document, asserting the
- * shipped `full` declares no skipped stage. It is kept rather than superseded:
- * a test guards the document, the check guards every other document, and the
- * failure this pair exists to prevent is a property asserted where it is stated
- * and not enforced where it is consumed.
+ * WHAT MAKES THE `full` SENTENCE TRUE IS DATA. Keying off the name moves the
+ * burden: the claim is only as good as the `full` in the document being served
+ * genuinely being un-downgraded. A registered test asserts the shipped `full`
+ * declares no skipped stage; M6-P3 deleted the derived check that held every
+ * other document to it (it read only a process document, DR-0061 (b)).
  *
  * WHAT THIS DELIBERATELY DOES NOT SAY. It does not say that tiphys runs
  * anything: nothing runs on tiphys before M4. The un-downgraded mode of the
@@ -270,7 +254,12 @@ export const RELEASE_LIMITS =
  * the twelve stage ids in order" something a test can extract rather than
  * something a reader has to eyeball.
  */
-export function renderMode(mode: Mode, context: RenderContext): string[] {
+export function renderMode(
+  mode: Mode,
+  context: RenderContext,
+  /** The registry gates whose `modes` name this mode (M6-P3: derived, not copied). */
+  gates: readonly string[],
+): string[] {
   const lines: string[] = [`mode: ${mode.id}`];
   /* SECOND LINE, not a footnote. CR-004 measured that `mode show` printed a
      never-exercised mode with exactly the confidence of the exercised one, and
@@ -295,7 +284,7 @@ export function renderMode(mode: Mode, context: RenderContext): string[] {
   };
   section("pipeline", mode.pipeline);
   section("skips", mode.skips);
-  section("gate-sets", mode.gateSets);
+  section("gates", [...gates]);
   section("review-contracts", mode.reviewContracts);
   if (mode.escalationBounds !== undefined) {
     /* CR-004 item 3. The bounds are DATA an orchestrator brief cites. Nothing

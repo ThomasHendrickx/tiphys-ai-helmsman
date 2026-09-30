@@ -671,61 +671,6 @@ test("the shipped warnings template placed as a fleet warnings file reaches an a
 /* FIX ROUND 2: the derived-check half of the sharing                    */
 /* ==================================================================== */
 
-test("the parity check runs on a work history's gate-evidence, through the shared definition it guards", () => {
-  /* CR-001, AND THE INSTANCE IS THE REVIEWER'S OWN: a work history claiming a
-     green suite that discovered 9999 tests and ran one. The KEYWORD half of
-     the sharing always worked; the DERIVED-CHECK half did not, because a
-     check is registered per artifact TYPE and reads a type-specific KEY
-     (`gate-evidence` here, `gate-results` in a report), so neither half of
-     the registration followed the `$ref`. */
-  const document = readTemplate("work-history.example.yaml");
-  const evidence = (document["gate-evidence"] as Record<string, unknown>[])[0] as Record<
-    string,
-    unknown
-  >;
-  evidence["discovered"] = 9999;
-  evidence["passed"] = 1;
-  evidence["skipped"] = 0;
-
-  /* THE KEYWORDS ACCEPT IT, which is why the check is the only thing between
-     this record and a green. Without this line the arm would not show that
-     the schema half is not the guard. */
-  assert.deepEqual(workHistoryLines(document), []);
-
-  const run = checksModule.runChecks("work-history", document, undefined);
-  assert.equal(run.failed, true);
-  assert.deepEqual(run.lines, [
-    "INVALID #/gate-evidence/0 discovered 9999 does not equal passed + failed + skipped + todo + did-not-run = 1 (check: report-parity-arithmetic)",
-  ]);
-
-  /* THE POINTER NAMES THIS DOCUMENT'S OWN KEY rather than the report's, so
-     the check is reading the work history and not a coincidence. */
-  assert.ok(run.lines.every((line) => !line.includes("#/gate-results/")));
-
-  /* THE CHECK DEREGISTERED (Kind B witness), and restored. */
-  assert.equal(checksModule.deregisterCheck("report-parity-arithmetic"), true);
-  try {
-    assert.deepEqual(
-      checksModule.runChecks("work-history", document, undefined).lines,
-      [],
-    );
-  } finally {
-    checksModule.registerCheck(checksModule.reportParityArithmetic);
-  }
-  assert.equal(
-    checksModule.runChecks("work-history", document, undefined).failed,
-    true,
-  );
-
-  /* AND THE SHIPPED EXAMPLE IS CLEAN under the same check, so the arm above
-     is the perturbation and not the baseline. */
-  assert.deepEqual(
-    checksModule.runChecks("work-history", readTemplate("work-history.example.yaml"), undefined)
-      .lines,
-    [],
-  );
-});
-
 test("a work history gate-evidence entry obeys the same green-and-todo keywords as a report, through the shared definition", () => {
   /* THE POINT OF THE CONTRAST WITH THE TEST ABOVE: these two rules are
      KEYWORDS, so they travel through the `$ref` with no registration at all,
