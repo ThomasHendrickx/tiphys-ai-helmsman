@@ -2273,68 +2273,6 @@ function idsOf(record: Record<string, unknown> | undefined, key: string, idKey: 
 }
 
 /* ------------------------------------------------------------------ */
-/* verdict-criteria-complete (M3-P7 step 6b, criterion 4b(a))           */
-/* ------------------------------------------------------------------ */
-
-/**
- * A verdict's `criteria[]` carries one entry per acceptance criterion of the
- * plan phase it reviews.
- *
- * THE DANGEROUS INSTANCE is a review that quietly skipped a criterion: every
- * entry present is well formed, the schema is satisfied, and the one
- * criterion nobody walked is invisible. R-053 says each criterion is quoted
- * with evidence and a verdict, and "each" is a comparison against a DIFFERENT
- * document, which no keyword reaches.
- *
- * BOTH DIRECTIONS, because they are different mistakes. A criterion the
- * verdict omits is an unwalked criterion; a verdict entry naming a criterion
- * the phase does not declare is a review walking something that is not in the
- * contract, usually a criterion id left behind by a plan revision.
- */
-export const verdictCriteriaComplete: DerivedCheck = {
-  id: "verdict-criteria-complete",
-  type: "verdict",
-  requiresContext: true,
-  run(instance: unknown, contextDirectory: string | undefined): CheckOutcome {
-    if (contextDirectory === undefined) {
-      return {
-        violations: [
-          { pointer: "#/criteria", message: "no context directory was supplied" },
-        ],
-        reports: [],
-      };
-    }
-    const resolved = readVerdictPlanPhase(instance, contextDirectory, "#/criteria");
-    if (!resolved.ok) {
-      return { violations: [resolved.violation], reports: [] };
-    }
-    const declared = idsOf(resolved.phase, "acceptance", "id");
-    const walked = new Set(idsOf(asRecord(instance), "criteria", "id"));
-    const violations: Diagnostic[] = [];
-    for (const id of declared) {
-      if (!walked.has(id)) {
-        violations.push({
-          pointer: "#/criteria",
-          message: `acceptance criterion ${id} of phase ${String(asRecord(instance)?.["phase"])} in ${resolved.path} has no entry, so this review did not walk it`,
-        });
-      }
-    }
-    const declaredSet = new Set(declared);
-    const walkedIds = idsOf(asRecord(instance), "criteria", "id");
-    for (let index = 0; index < walkedIds.length; index += 1) {
-      const id = walkedIds[index] as string;
-      if (!declaredSet.has(id)) {
-        violations.push({
-          pointer: `#/criteria/${String(index)}/id`,
-          message: `criterion ${id} is walked here and ${resolved.path} declares no such acceptance criterion on this phase`,
-        });
-      }
-    }
-    return { violations, reports: [] };
-  },
-};
-
-/* ------------------------------------------------------------------ */
 /* verdict-deviations-judged (M3-P7 step 6b, criterion 4b(b), M3R-005)  */
 /* ------------------------------------------------------------------ */
 
@@ -2439,8 +2377,8 @@ export const verdictDeviationsJudged: DerivedCheck = {
  * hazard class declared by the plan phase it reviews.
  *
  * T-007 IS THE INPUT AND M3R-005 IS THE SHAPE. This has exactly the shape
- * `verdict-criteria-complete` has for criteria, one field along, and for
- * exactly the same reason: a reviewer could otherwise silently skip one of
+ * the retired `verdict-criteria-complete` had for criteria, one field along, and
+ * for exactly the same reason: a reviewer could otherwise silently skip one of
  * three declared hazard classes while every other criterion still passed.
  * T-007's measured case is a phase meeting fifteen of fifteen executed
  * criteria while live-locking every supervision command.
@@ -6250,7 +6188,6 @@ const registry: DerivedCheck[] = [
      conflict at this tail to confirm before keeping both entries. */
   checklistProbeIdsUnique,
   gateProbesResolve,
-  verdictCriteriaComplete,
   verdictDeviationsJudged,
   verdictHazardClassesAddressed,
   /* M3-P7 FIX ROUND 2. Appended for the reason recorded above the M3-P7

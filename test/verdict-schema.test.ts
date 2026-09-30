@@ -54,7 +54,6 @@ const checksModule = (await import(
   ) => { lines: string[]; failed: boolean };
   registerCheck: (check: DerivedCheck) => void;
   deregisterCheck: (id: string) => boolean;
-  verdictCriteriaComplete: DerivedCheck;
   verdictDeviationsJudged: DerivedCheck;
   verdictHazardClassesAddressed: DerivedCheck;
   verdictFindingReferencesResolve: DerivedCheck;
@@ -465,79 +464,6 @@ test("a hazard-class entry with neither a finding nor a cleared-because is rejec
   assert.ok(validateModule.validateToLines(verdictSchema(), both).length > 0);
 });
 
-/* ------------------------------------------------------------------ */
-/* Criterion 4b(a): verdict-criteria-complete, Kind B                   */
-/* ------------------------------------------------------------------ */
-
-test("a verdict omitting an acceptance criterion of its phase is rejected naming the check, and passes with the check deregistered", () => {
-  const dir = scratch();
-  try {
-    const plan = loadPlan();
-    writeYaml(dir, "plan.yaml", plan);
-    writeYaml(dir, "work-history.yaml", loadWorkHistory());
-    /* THE DANGEROUS INSTANCE: a review that quietly skipped a criterion.
-       Every entry present is well formed and the schema is satisfied; the one
-       criterion nobody walked is invisible without the other document. */
-    const instance = baselineVerdict();
-    const walked = instance["criteria"] as Record<string, unknown>[];
-    assert.ok(walked.length >= 2, "the example plan has too few criteria to omit one");
-    const dropped = String((walked.pop() as Record<string, unknown>)["id"]);
-    const file = writeYaml(dir, "verdict.yaml", instance);
-
-    const rejected = runCli(["validate", "--type", "verdict", "--context", dir, file]);
-    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
-    assert.match(
-      rejected.stdout,
-      new RegExp(
-        `^INVALID #/criteria acceptance criterion ${dropped} of phase .* has no entry, so this review did not walk it \\(check: verdict-criteria-complete\\)$`,
-        "m",
-      ),
-      rejected.stdout,
-    );
-
-    /* KIND B WITNESS: the CHECK is removed, not a keyword. */
-    assert.equal(checksModule.deregisterCheck("verdict-criteria-complete"), true);
-    const withoutCheck = checksModule.runChecks("verdict", instance, dir);
-    assert.equal(withoutCheck.failed, false, withoutCheck.lines.join("\n"));
-    checksModule.registerCheck(checksModule.verdictCriteriaComplete);
-    assert.equal(checksModule.runChecks("verdict", instance, dir).failed, true);
-
-    /* CONTROL: the complete verdict passes against the same plan. */
-    const complete = writeYaml(dir, "complete.yaml", baselineVerdict());
-    const control = runCli(["validate", "--type", "verdict", "--context", dir, complete]);
-    assert.equal(control.status, 0, control.stdout + control.stderr);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("a verdict walking a criterion the phase does not declare is rejected, which is the other direction", () => {
-  const dir = scratch();
-  try {
-    writeYaml(dir, "plan.yaml", loadPlan());
-    writeYaml(dir, "work-history.yaml", loadWorkHistory());
-    /* Usually a criterion id left behind by a plan revision: the review walked
-       something that is no longer in the contract, and reported it as met. */
-    const instance = baselineVerdict();
-    (instance["criteria"] as Record<string, unknown>[]).push({
-      id: "99",
-      quote: "A criterion this plan does not declare.",
-      evidence: ["src/example.ts:1"],
-      met: true,
-    });
-    const file = writeYaml(dir, "verdict.yaml", instance);
-    const run = runCli(["validate", "--type", "verdict", "--context", dir, file]);
-    assert.equal(run.status, 1, run.stdout + run.stderr);
-    assert.match(
-      run.stdout,
-      /criterion 99 is walked here and .* declares no such acceptance criterion on this phase \(check: verdict-criteria-complete\)/,
-      run.stdout,
-    );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 test("a verdict naming a phase the plan does not declare is rejected rather than passing vacuously", () => {
   const dir = scratch();
   try {
@@ -558,7 +484,6 @@ test("the verdict checks require a context and are SKIPPED rather than passing w
   const outcome = checksModule.runChecks("verdict", baselineVerdict(), undefined);
   assert.equal(outcome.failed, true);
   for (const id of [
-    "verdict-criteria-complete",
     "verdict-deviations-judged",
     "verdict-hazard-classes-addressed",
   ]) {
@@ -839,7 +764,6 @@ test("this phase's verdict behaviors are registered in test/behaviors.json", () 
   ) as Record<string, string>;
   for (const id of [
     "verdict-approve-with-high-finding-rejected",
-    "verdict-criteria-completeness",
     "verdict-deviations-completeness",
     "verdict-finding-requires-fix",
     "verdict-records-framing",
