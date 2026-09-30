@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "if [ \"$CLAUDE_CODE_REMOTE\" = \"true\" ]; then bash \"$CLAUDE_PROJECT_DIR/scripts/setup-env.sh\"; fi",
+            "command": "if [ \"$CLAUDE_CODE_REMOTE\" = \"true\" ]; then TIPHYS_TOOLCHAINS_DIR=/opt/tiphys-toolchains bash \"$CLAUDE_PROJECT_DIR/scripts/setup-env.sh\"; fi",
             "timeout": 600
           }
         ]
