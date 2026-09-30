@@ -252,10 +252,7 @@ probes:
     applies-to: blast-radius
     evidence-required: true
 
-  # The two gate-registry entries whose `verified-by` is `clean-room-checklist`
-  # (M3-P2, R-043 and R-044, D-11). Their probe ids are declared there and
-  # supplied here; `verifies-gate` is the back-reference that makes the
-  # checklist-to-registry direction computable (criterion 3c).
+  # R-043 and R-044 (D-11): not machine-enumerable, so they are review probes.
   - id: unit-tests-for-changed-service-methods
     probe: >-
       Does every service method changed in this diff have a unit test that
@@ -265,7 +262,6 @@ probes:
       (D-11); enumerating it is your half of the gate.
     applies-to: gate-probe
     evidence-required: true
-    verifies-gate: unit-tests-for-changed-service-methods
 
   - id: fixtures-for-changed-component-states
     probe: >-
@@ -275,7 +271,6 @@ probes:
       component state is not machine-enumerable (D-11).
     applies-to: gate-probe
     evidence-required: true
-    verifies-gate: fixtures-for-changed-component-states
 
 framings:
   # T-001's ACTUALLY EXERCISED entry point from the M1-P4 dual review, cited

@@ -225,55 +225,6 @@ gates:
       kind: command-exit-zero
       command: [node, scripts/check-dual-review.mjs, --precondition, --review-budget, .]
 
-  # NEW IN M3-P2, entry two of three (R-043, D-11).
-  - id: unit-tests-for-changed-service-methods
-    $comment: >-
-      R-043. Every changed service method has a unit test. D-11 settles that
-      this is NOT reliably computable from a diff (mapping changed methods to
-      tests produces false positives and negatives on any nontrivial codebase),
-      so it is verified by a clean-room checklist probe at L3 rather than by a
-      script at L1, and the registry says so in `verified-by` instead of leaving
-      a reader to infer it from a missing command. The probe id below is
-      M3-P7's to supply. WHAT THE RUNNER DOES WITH THIS ENTRY, stated exactly
-      because criterion 3c is about not confusing these two: it is NOT
-      executed and its precondition is NOT evaluated. There is no command to
-      run, so the runner selects it out before any precondition is reached and
-      reports it on stdout and in `summary.declaredByChecklist` as declared
-      and not executed. It produces no record, no evidence directory and no
-      status, and `not-applicable` is not among the things it can report. The
-      `precondition` below is a DECLARATION for M3-P7's checklist, not
-      something this runner evaluates.
-    unitLabel: changed service methods checked
-    applicability: conditional
-    verified-by: clean-room-checklist
-    probe: unit-tests-for-changed-service-methods
-    modes: [full, direct-pr]
-    events: [pull_request]
-    precondition:
-      id: clean-room-checklist-present
-      kind: file-exists
-      path: checklists/clean-room.yaml
-
-  # NEW IN M3-P2, entry three of three (R-044, D-11).
-  - id: fixtures-for-changed-component-states
-    $comment: >-
-      R-044. Every changed component state has a story or fixture. Same shape as
-      R-043 and settled the same way by D-11: "component state" is not
-      machine-enumerable, so the gate is a clean-room checklist probe. Not
-      executed and its precondition not evaluated, for the reason spelled out
-      on the entry above. Same declared precondition, so M3-P7's checklist is
-      what both wait on.
-    unitLabel: changed component states checked
-    applicability: conditional
-    verified-by: clean-room-checklist
-    probe: fixtures-for-changed-component-states
-    modes: [full, direct-pr]
-    events: [pull_request]
-    precondition:
-      id: clean-room-checklist-present
-      kind: file-exists
-      path: checklists/clean-room.yaml
-
 # Carried across from gates.manifest.json unchanged. M2-P2 rule (e) DERIVES a
 # witness class from this list rather than trusting an implementer to declare
 # one, so shortening it weakens the red-witness gate.
