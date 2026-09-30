@@ -224,8 +224,10 @@ command with its expected exit. `not-testable` criteria carry a reason.
 - tier: `pair`.
 - files-to-touch: `src/`, `bin/`, `plugin/`, `schemas/`, `scripts/`,
   `test/`, `witness/`, `charter.yaml`, `gate-registry.yaml`,
-  `role-model-config.yaml`, `roles/`, `AGENTS.md`, `checklists/`,
-  `.github/`, `.claude/`, `delivery/`.
+  `assurance-modes.yaml`, `role-model-config.yaml`, `roles/`, `AGENTS.md`,
+  `checklists/`, `.github/`, `.claude/`, `delivery/`. P5 also does the
+  comment diet of `gate-registry.yaml`, `assurance-modes.yaml` and
+  `role-model-config.yaml`, because it edits them and runs alongside P6.
 - steps:
   1. `tiphys review dispatch --role clean-room-reviewer --tier <t> --head
      <sha> --phase <id>` launches the reviewer through the executor and
@@ -271,8 +273,13 @@ command with its expected exit. `not-testable` criteria carry a reason.
      Keep in prose only what a script cannot fix.
   2. Rewrite `CLAUDE.md` down to current rules; history lives in git and the
      decision records.
-  3. Comments only where a field's meaning is not obvious, in the registry,
-     the modes file, the role config, the role briefs and the mechanism index.
+  3. Comments only where a field's meaning is not obvious, in the
+     implementer brief, the shared dispatch contract and the mechanism index.
+     The registry, the modes file and the role config are P5's (see there).
+  4. P6 does not edit `AGENTS.md`, `roles/clean-room-reviewer.md`,
+     `gate-registry.yaml`, `assurance-modes.yaml` or `role-model-config.yaml`,
+     so it can run alongside P5. The setup script also runs from a
+     `.claude/settings.json` SessionStart hook in cloud sessions only.
 - acceptance:
   - p6-claude: `CLAUDE.md` at most 25,000 bytes. check: `wc -c`.
   - p6-reading: the implementer brief plus its mandated reading at most
