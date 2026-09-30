@@ -16,8 +16,8 @@
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    tier: \"dual\",\n    source: \"DR-0027 row 1",
-      "replace": "    tier: \"none\",\n    source: \"DR-0027 row 1"
+      "find": "      tier: \"pair\",\n      reason: `no usable runtime-set declaration at the merge base (${input.declaration.reason}), fail closed`,",
+      "replace": "      tier: \"single\",\n      reason: `no usable runtime-set declaration at the merge base (${input.declaration.reason}), fail closed`,"
     }
   ],
   "deterministic": true,

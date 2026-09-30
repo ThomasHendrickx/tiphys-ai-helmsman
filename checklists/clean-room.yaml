@@ -68,6 +68,10 @@ probes:
     applies-to: deviations
     evidence-required: true
 
+  # R-053 (each acceptance criterion quoted and walked) is no longer a review
+  # probe: DR-0064 makes acceptance criteria tests the kernel runs, so M6-P2
+  # removed the two criteria-walk probes that stood here.
+
   # R-055 correctness probes. FIVE SEPARATE ENTRIES, not one "check the edge
   # cases" row (criterion 3b). A single generic row is answerable without
   # opening anything, which is exactly the hazard class this phase names.

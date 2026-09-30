@@ -1937,10 +1937,9 @@ test("two approving hazard verdicts with distinct produced-by and the same frami
     /* THE PAIR SHARES framing AND review-contract, which the M4-P10 rule
        refused; DR-0064 dropped both comparisons, so only produced-by must
        differ, and it does. */
-    for (const name of Object.keys(verdicts)) {
-      const body = readFileSync(join(staged.dir, "delivery", "review", name), "utf8");
-      assert.match(body, /^framing: destructive-paths$/m, name);
-      assert.match(body, /^review-contract: hazard$/m, name);
+    for (const [name, body] of Object.entries(verdicts)) {
+      assert.ok(body.includes("\nframing: destructive-paths\n"), name);
+      assert.ok(body.includes("\nreview-contract: hazard\n"), name);
     }
     await withApi(greenApi(head), async (apiBase) => {
       const run = await runGate(gateSource, staged, apiBase, ["--base", base], head);

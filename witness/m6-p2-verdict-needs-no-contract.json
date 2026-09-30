@@ -1,0 +1,24 @@
+{
+  "id": "m6-p2-verdict-needs-no-contract",
+  "behavior": "m6-p2-verdict-needs-no-contract",
+  "tests": [
+    "a hazard verdict with no review-contract and no criteria validates, the same verdict without hazard classes is rejected, and a criteria verdict still validates"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "schemas/verdict.schema.json",
+      "find": "    \"framing\",\n    \"findings\",\n    \"deviations-judged\"\n  ],",
+      "replace": "    \"framing\",\n    \"review-contract\",\n    \"findings\",\n    \"deviations-judged\"\n  ],"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/verdict.schema.json",
+      "find": "      \"required\": [\"review-contract\"],\n",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

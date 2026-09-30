@@ -622,7 +622,9 @@ test("the green decorrelation report says produced-by was compared as a string a
   const staged = stage(PAIR);
   const run = runGate(staged, staged.reviewed);
   assert.equal(run.record.status, "green", run.output);
-  assert.match(run.output, /are distinct on produced-by, framing, review-contract/, run.output);
+  /* M6-P2: produced-by is the one compared dimension (DR-0064 dropped framing
+     and review-contract). */
+  assert.match(run.output, /are distinct on produced-by; /, run.output);
   assert.match(
     run.output,
     /produced-by was compared as a canonicalised STRING and not as a model FAMILY/,

@@ -216,6 +216,9 @@ test("the fixture framings name framings the shipped checklist actually declares
     readFileSync(join(repoRoot, "checklists", "clean-room.yaml"), "utf8"),
   ) as { framings: { id: string }[] };
   const declared = new Set(checklist.framings.map((framing) => framing.id));
+  /* M6-P2 removed the criteria-contract framing with the criteria contract
+     (DR-0064). Fixtures naming it are history, as committed verdicts are. */
+  declared.add("criteria-contract");
   for (const name of readdirSync(fixturesDir).filter((entry) => entry.endsWith(".yaml"))) {
     const verdict = yamlModule.parse(
       readFileSync(join(fixturesDir, name), "utf8"),
@@ -895,16 +898,11 @@ test("check-dual-review is declared on the pull request arm with a precondition 
   assert.match(step.run as string, /--precondition/);
 });
 
-test("the check's declared dimensions are the three the criteria name, read from the shipped module", () => {
-  /* DERIVED, NOT PINNED BY COUNT. If a later phase adds a sixth dimension this
-     asserts the three that exist today are still among them, rather than that
-     there are exactly three (CLAUDE.md:233). */
-  for (const dimension of ["produced-by", "framing", "review-contract"]) {
-    assert.ok(
-      checksModule.DECORRELATION_DIMENSIONS.includes(dimension),
-      `${dimension} is not a declared decorrelation dimension`,
-    );
-  }
+test("the check's declared dimension is produced-by alone, read from the shipped module", () => {
+  /* M6-P2: DR-0064 dropped the criteria contract, so framing and
+     review-contract distinctness are no longer compared; DR-0063's pair is two
+     hazard reviews distinct on produced-by. */
+  assert.deepEqual([...checksModule.DECORRELATION_DIMENSIONS], ["produced-by"]);
   assert.equal(scriptModule.CHECK_ID, "dual-review-decorrelation");
 });
 
@@ -974,13 +972,18 @@ interface BudgetRepo {
  */
 function stageBudgetRepo(
   verdicts: BudgetVerdict[],
-  options: { shipped?: boolean; shippedAfterReview?: boolean } = {},
+  options: { shipped?: boolean; shippedAfterReview?: boolean; declared?: boolean } = {},
 ): BudgetRepo {
   const dir = mkdtempSync(join(tmpdir(), "tiphys-review-budget-"));
   copyFileSync(join(repoRoot, "assurance-modes.yaml"), join(dir, "assurance-modes.yaml"));
   const charter = readFileSync(join(repoRoot, "templates", "charter.example.yaml"), "utf8");
   assert.match(charter, /^delivery-mode: full$/m, "the shipped template no longer declares mode full");
-  writeFileSync(join(dir, "charter.yaml"), charter);
+  /* M6-P2: `declared` adds a runtime-set block (DR-0063) naming src/, so a
+     delivery-only change is single; without it every change is pair. */
+  writeFileSync(
+    join(dir, "charter.yaml"),
+    options.declared === true ? `${charter}\nruntime-set:\n  paths: [src/]\n` : charter,
+  );
   mkdirSync(join(dir, "src"), { recursive: true });
   writeFileSync(join(dir, "src", "feature.ts"), "export const feature = 1;\n");
   fixtureGit(dir, ["init", "-q", "."]);
@@ -1075,7 +1078,7 @@ function runRegistryGate(repo: BudgetRepo, gate: string, head?: string): RunnerO
 
 function withBudgetRepo<T>(
   verdicts: BudgetVerdict[],
-  options: { shipped?: boolean; shippedAfterReview?: boolean },
+  options: { shipped?: boolean; shippedAfterReview?: boolean; declared?: boolean },
   body: (repo: BudgetRepo) => T,
 ): T {
   const repo = stageBudgetRepo(verdicts, options);
@@ -1136,7 +1139,7 @@ test("an approving decorrelated pair over the reviewed shipped tree is green thr
   });
 });
 
-test("a refusing pair, a shared family, a shared framing and a shared contract are each red through the real runner", () => {
+test("a refusing pair and a shared family are each red through the real runner, and a shared framing or contract is not", () => {
   const arms: [string, RegExp, BudgetVerdict[]][] = [
     [
       "FIX-ROUND-NEEDED",
@@ -1154,22 +1157,6 @@ test("a refusing pair, a shared family, a shared framing and a shared contract a
         { fixture: "shared-family-hazard.yaml", as: "m3-p9-hazard.yaml" },
       ],
     ],
-    [
-      "shared framing",
-      /not decorrelated on framing/,
-      [
-        { fixture: "decorrelated-criteria.yaml", as: "m3-p9-criteria.yaml" },
-        { fixture: "shared-framing-hazard.yaml", as: "m3-p9-hazard.yaml" },
-      ],
-    ],
-    [
-      "shared contract",
-      /not decorrelated on review-contract/,
-      [
-        { fixture: "decorrelated-criteria.yaml", as: "m3-p9-criteria.yaml" },
-        { fixture: "shared-contract-criteria.yaml", as: "m3-p9-criteria-2.yaml" },
-      ],
-    ],
   ];
   for (const [name, reason, verdicts] of arms) {
     withBudgetRepo(verdicts, {}, (repo) => {
@@ -1179,6 +1166,29 @@ test("a refusing pair, a shared family, a shared framing and a shared contract a
       /* RED FOR THE NAMED REASON, not merely red: a pair refused for some
          unrelated staging defect would pass a status-only assertion. */
       assert.match(run.record.detail ?? "", reason, `${name}: ${run.record.detail ?? ""}`);
+    });
+  }
+  /* M6-P2 (DR-0064): framing and review-contract are no longer compared, so a
+     pair distinct on produced-by and sharing either one is green. */
+  for (const [name, verdicts] of [
+    [
+      "shared framing",
+      [
+        { fixture: "decorrelated-criteria.yaml", as: "m3-p9-criteria.yaml" },
+        { fixture: "shared-framing-hazard.yaml", as: "m3-p9-hazard.yaml" },
+      ],
+    ],
+    [
+      "shared contract",
+      [
+        { fixture: "decorrelated-criteria.yaml", as: "m3-p9-criteria.yaml" },
+        { fixture: "shared-contract-criteria.yaml", as: "m3-p9-criteria-2.yaml" },
+      ],
+    ],
+  ] as [string, BudgetVerdict[]][]) {
+    withBudgetRepo(verdicts, {}, (repo) => {
+      const run = runRegistryGate(repo, "check-dual-review");
+      assert.equal(run.record.status, "green", `${name}: ${run.output}`);
     });
   }
 });
@@ -1195,13 +1205,13 @@ test("an approving pair that names an ancestor whose gap adds shipped bytes is r
 });
 
 test("a delivery-only change is not forced through the two-verdict rule and names its tier", () => {
-  withBudgetRepo([], { shipped: false }, (repo) => {
+  withBudgetRepo([], { shipped: false, declared: true }, (repo) => {
     const run = runRegistryGate(repo, "check-dual-review");
     assert.equal(run.record.status, "not-applicable", run.output);
-    assert.equal(run.record.precondition?.id, "review-budget-requires-dual-review", run.output);
+    assert.equal(run.record.precondition?.id, "review-budget-requires-pair-review", run.output);
     assert.equal(run.record.precondition?.met, false);
-    assert.match(run.record.precondition?.reason ?? "", /every one is below the dual-review tier/);
-    assert.ok((run.record.precondition?.evidence ?? []).includes("tier: none"), JSON.stringify(run.record.precondition));
+    assert.match(run.record.precondition?.reason ?? "", /every one is in the DR-0063 single tier/);
+    assert.ok((run.record.precondition?.evidence ?? []).includes("tier: single"), JSON.stringify(run.record.precondition));
     assert.ok(
       (run.record.precondition?.evidence ?? []).some((line) => line.includes("delivery/notes/state.md")),
       JSON.stringify(run.record.precondition),
@@ -1233,12 +1243,15 @@ test("merge-preconditions, the review gate the pull-request bundle runs, is red 
   }
 });
 
-test("merge-preconditions through the real runner is not-applicable for a delivery-only change, and an approving pair reaches the network conditions", () => {
-  withBudgetRepo([], { shipped: false }, (repo) => {
+test("merge-preconditions through the real runner is red for a delivery-only change with no review, naming 0 of 1, and an approving pair reaches the network conditions", () => {
+  /* M6-P2 (DR-0063): there is no tier that owes no review. A single change
+     owes one, and without it the gate is red before any network request. */
+  withBudgetRepo([], { shipped: false, declared: true }, (repo) => {
     const run = runRegistryGate(repo, "merge-preconditions");
-    assert.equal(run.record.status, "not-applicable", run.output);
-    assert.equal(run.record.precondition?.id, "review-budget-requires-dual-review", run.output);
-    assert.ok((run.record.precondition?.evidence ?? []).includes("tier: none"), JSON.stringify(run.record.precondition));
+    assert.equal(run.record.status, "red", run.output);
+    assert.match(run.record.detail ?? "", /^DR-0063 single at head/);
+    assert.match(run.record.detail ?? "", /0 of 1 are admitted and 1 missing/);
+    assert.doesNotMatch(run.record.detail ?? "", /no repository could be established/);
   });
   /* THE CONTROL: the same command over an approving pair is NOT red on the
      review evidence and goes on to condition 4, which needs a repository this
@@ -1257,7 +1270,7 @@ const budgetModule = (await import(new URL("../src/gates/merge-preconditions.ts"
     base: string,
     head: string,
   ) =>
-    | { ok: true; budget: { tier: string; paths: { path: string; tier: string }[]; dual: string[] } }
+    | { ok: true; budget: { tier: string; paths: { path: string; tier: string }[]; pair: string[] } }
     | { ok: false; reason: string };
 };
 
@@ -1272,7 +1285,7 @@ const budgetModule = (await import(new URL("../src/gates/merge-preconditions.ts"
  */
 const GIT_BUDGET_CAPTURE = join(repoRoot, "witness", "captures", "m5-p3-git-review-budget.json");
 
-test("the review budget classifies git's real NUL-separated, rename-split name list for a nested project by DR-0027's table", () => {
+test("the review budget classifies git's real NUL-separated, rename-split name list for a nested project by DR-0063's runtime set", () => {
   const recorded = JSON.parse(readFileSync(GIT_BUDGET_CAPTURE, "utf8")) as {
     commands: { argv: string[]; cwd: string; stdout: string }[];
   };
@@ -1280,6 +1293,10 @@ test("the review budget classifies git's real NUL-separated, rename-split name l
   try {
     const kernel = join(dir, "kernel");
     mkdirSync(join(kernel, "src"), { recursive: true });
+    /* M6-P2: the nested project DECLARES its runtime set at the base. The
+       charter is unchanged by the change, so neither recorded command's output
+       depends on it; the live comparison below proves that. */
+    writeFileSync(join(kernel, "charter.yaml"), "kind: charter\nruntime-set:\n  paths: [src/]\n");
     writeFileSync(join(kernel, "src", "feature.ts"), "export const feature = 1;\n");
     writeFileSync(join(kernel, "src", "old.ts"), "export const old = 1;\n");
     fixtureGit(dir, ["init", "-q", "."]);
@@ -1311,20 +1328,20 @@ test("the review budget classifies git's real NUL-separated, rename-split name l
     assert.deepEqual(
       Object.fromEntries(tiers),
       {
-        "kernel/CLAUDE.md": "none",
-        "kernel/delivery/a b.md": "none",
-        "kernel/delivery/old.md": "none",
+        "kernel/CLAUDE.md": "single",
+        "kernel/delivery/a b.md": "single",
+        "kernel/delivery/old.md": "single",
         /* THE SOURCE HALF OF A MOVE INTO delivery/ IS SEEN, which is what
            `--no-renames` is for: without it only the destination prints and a
            shipped file moved into paperwork reads as paperwork. */
-        "kernel/src/old.ts": "dual",
-        "kernel/src/feature.ts": "dual",
+        "kernel/src/old.ts": "pair",
+        "kernel/src/feature.ts": "pair",
         "kernel/test/x.test.ts": "single",
         /* OUTSIDE THE PROJECT, fail closed. */
-        "outside.md": "dual",
+        "outside.md": "pair",
       },
     );
-    assert.equal(classified.budget.tier, "dual");
+    assert.equal(classified.budget.tier, "pair");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

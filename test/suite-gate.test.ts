@@ -350,10 +350,12 @@ test("suite gate names a behavior whose test was renamed and passes when the nam
   assert.equal(green.status, 0, green.record.detail);
 });
 
-test("suite gate names a behavior deleted from the head registry since the merge base", () => {
-  // Section 1.5 row 7 (F-3 in part): deleting a registered behavior's test
-  // AND its registry row leaves the bare runner green; the merge-base copy
-  // is what makes the deletion visible.
+test("a behavior registered at the merge base and deleted on the head no longer reddens the suite gate", () => {
+  // M6-P2 (DR-0061 (a)): removing a test and its registry row is one commit
+  // with a reason, not a register of removals, so the suite gate no longer
+  // compares the head registry with the merge base's. What the gate still
+  // requires is that every behavior the HEAD registers resolves, which the
+  // renamed-test case above keeps red.
   const { dir, base } = greenFixture({
     headEdit: (fixtureDir) => {
       const registryPath = join(fixtureDir, "test", "behaviors.json");
@@ -371,11 +373,9 @@ test("suite gate names a behavior deleted from the head registry since the merge
   });
   assert.equal(bareRunner(dir), 0, "the bare runner must be green at exit 0");
   const run = runGate(dir, base);
-  assert.equal(run.status, 1);
-  assert.match(
-    run.record.detail,
-    /behavior subx is registered at the merge base .* and deleted from the head registry/,
-  );
+  assert.equal(run.record.status, "green", run.record.detail);
+  assert.equal(run.status, 0, run.record.detail);
+  assert.doesNotMatch(run.record.detail, /deleted from the head registry/);
 });
 
 test("suite gate rejects a skip without a reason and accepts one with a reason", () => {

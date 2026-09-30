@@ -464,6 +464,27 @@ test("a hazard-class entry with neither a finding nor a cleared-because is rejec
   assert.ok(validateModule.validateToLines(verdictSchema(), both).length > 0);
 });
 
+/* ------------------------------------------------------------------ */
+/* M6-P2 (DR-0064): a new verdict needs neither criteria nor contract     */
+/* ------------------------------------------------------------------ */
+
+test("a hazard verdict with no review-contract and no criteria validates, the same verdict without hazard classes is rejected, and a criteria verdict still validates", () => {
+  const schema = verdictSchema();
+  const fresh = baselineHazardVerdict();
+  delete fresh["review-contract"];
+  delete fresh["criteria"];
+  assert.deepEqual(validateModule.validateToLines(schema, fresh), []);
+
+  /* WITHOUT review-contract A VERDICT IS A HAZARD VERDICT, so it still owes its
+     hazard classes: dropping the field must not drop the obligation. */
+  const noClasses = { ...fresh };
+  delete noClasses["hazard-classes-addressed"];
+  assert.notDeepEqual(validateModule.validateToLines(schema, noClasses), []);
+
+  /* HISTORY (DR-0054): a committed criteria-contract verdict stays valid. */
+  assert.deepEqual(validateModule.validateToLines(schema, baselineVerdict()), []);
+});
+
 test("a verdict naming a phase the plan does not declare is rejected rather than passing vacuously", () => {
   const dir = scratch();
   try {
