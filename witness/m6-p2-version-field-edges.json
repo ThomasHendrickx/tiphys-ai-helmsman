@@ -1,28 +1,28 @@
 {
-  "id": "m6-p2-version-bump-single",
-  "behavior": "m6-p2-version-bump-single",
+  "id": "m6-p2-version-field-edges",
+  "behavior": "m6-p2-version-field-edges",
   "tests": [
-    "the real 0.2.2 version bump of package.json, package-lock.json and plugin/package.json classifies single under this repository's runtime-set declaration"
+    "a workspace's nested node_modules/ entry, a pinned name inside a node_modules/ entry, and a pinned name in peerDependencies are not version fields, so each classifies pair"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    return PIN_FIELDS.has(segments[0] as string) && pins.includes(segments[1] as string);",
-      "replace": "    return false;"
+      "find": "  return !key.split(\"/\").includes(\"node_modules\");",
+      "replace": "  return !key.startsWith(\"node_modules/\");"
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    isWorkspaceKey(segments[1] as string)",
-      "replace": "    segments[1] === \"never\""
+      "find": "  if (segments.length === 4 && segments[0] === \"packages\" && isWorkspaceKey(segments[1] as string)) {",
+      "replace": "  if (segments.length === 4 && segments[0] === \"packages\") {"
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "  if (set.manifests.includes(projectPath)) {",
-      "replace": "  if (set.manifests.includes(projectPath) && !set.paths.some((declared) => projectPath.startsWith(declared))) {"
+      "find": "const PIN_FIELDS = new Set([\"dependencies\", \"devDependencies\", \"optionalDependencies\"]);",
+      "replace": "const PIN_FIELDS = new Set([\"dependencies\", \"devDependencies\", \"peerDependencies\", \"optionalDependencies\"]);"
     }
   ],
   "deterministic": true,

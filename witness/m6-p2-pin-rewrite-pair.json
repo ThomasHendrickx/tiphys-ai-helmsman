@@ -1,28 +1,22 @@
 {
-  "id": "m6-p2-version-bump-single",
-  "behavior": "m6-p2-version-bump-single",
+  "id": "m6-p2-pin-rewrite-pair",
+  "behavior": "m6-p2-pin-rewrite-pair",
   "tests": [
-    "the real 0.2.2 version bump of package.json, package-lock.json and plugin/package.json classifies single under this repository's runtime-set declaration"
+    "a pinned name rewritten from a version to file:, a git URL or an npm: alias is not a version change, so the manifest classifies pair"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    return PIN_FIELDS.has(segments[0] as string) && pins.includes(segments[1] as string);",
-      "replace": "    return false;"
+      "find": "      VERSION_VALUE.test(left) &&\n      VERSION_VALUE.test(right)",
+      "replace": "      true"
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    isWorkspaceKey(segments[1] as string)",
-      "replace": "    segments[1] === \"never\""
-    },
-    {
-      "kind": "mutation",
-      "file": "src/gates/merge-preconditions.ts",
-      "find": "  if (set.manifests.includes(projectPath)) {",
-      "replace": "  if (set.manifests.includes(projectPath) && !set.paths.some((declared) => projectPath.startsWith(declared))) {"
+      "find": "const VERSION_VALUE = /^[~^]?(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\\+[0-9A-Za-z.-]+)?$/;",
+      "replace": "const VERSION_VALUE = /./;"
     }
   ],
   "deterministic": true,

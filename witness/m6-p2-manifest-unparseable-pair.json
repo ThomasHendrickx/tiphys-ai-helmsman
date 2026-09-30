@@ -1,28 +1,22 @@
 {
-  "id": "m6-p2-version-bump-single",
-  "behavior": "m6-p2-version-bump-single",
+  "id": "m6-p2-manifest-unparseable-pair",
+  "behavior": "m6-p2-manifest-unparseable-pair",
   "tests": [
-    "the real 0.2.2 version bump of package.json, package-lock.json and plugin/package.json classifies single under this repository's runtime-set declaration"
+    "a declared manifest that does not parse as JSON on either side classifies pair"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    return PIN_FIELDS.has(segments[0] as string) && pins.includes(segments[1] as string);",
-      "replace": "    return false;"
+      "find": "        tier: \"pair\",\n        reason: `a declared manifest that does not parse as JSON",
+      "replace": "        tier: \"single\",\n        reason: `a declared manifest that does not parse as JSON"
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    isWorkspaceKey(segments[1] as string)",
-      "replace": "    segments[1] === \"never\""
-    },
-    {
-      "kind": "mutation",
-      "file": "src/gates/merge-preconditions.ts",
-      "find": "  if (set.manifests.includes(projectPath)) {",
-      "replace": "  if (set.manifests.includes(projectPath) && !set.paths.some((declared) => projectPath.startsWith(declared))) {"
+      "find": "      before = JSON.parse(sides.base);\n      after = JSON.parse(sides.head);",
+      "replace": "      before = {};\n      after = {};"
     }
   ],
   "deterministic": true,

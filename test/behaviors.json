@@ -1109,5 +1109,15 @@
   "gate-schema-documents-load-closed-keyword-set": "every schema document under src/gates/schemas loads through the closed keyword set",
   "mode-show-gates-derived-from-registry": "mode show lists exactly the gates the registry beside the document selects for the mode, and refuses when that registry cannot be read",
   "gate-registry-prevents-required-one-line": "the registry schema rejects a gate without prevents and one whose prevents spans two lines, and accepts a one-line prevents",
-  "gates-run-fails-on-required-red-vacuous-error-not-applicable": "on each CI event the runner exits nonzero when a required gate is red, vacuous, errors or is not applicable beside a green control, and 0 only when it is green"
+  "gates-run-fails-on-required-red-vacuous-error-not-applicable": "on each CI event the runner exits nonzero when a required gate is red, vacuous, errors or is not applicable beside a green control, and 0 only when it is green",
+  "m6-p2-version-field-edges": "a workspace's nested node_modules/ entry, a pinned name inside a node_modules/ entry, and a pinned name in peerDependencies are not version fields, so each classifies pair",
+  "m6-p2-merge-base-bounds-admission": "with --base, verdicts whose declared head the merge base already contains are excluded by name in both tiers, so an unreviewed delivery-only change on top of a reviewed phase is red",
+  "m6-p2-dual-review-merge-base-bound": "check-dual-review with --base excludes by name verdicts whose declared head the merge base already contains, so an unreviewed delivery-only change on top of a reviewed pair is red",
+  "m6-p2-declaration-shape-refused": "a runtime-set entry with a glob character, a leading ./ or /, a .. segment or an empty segment (src/**, ./src/, /src/, src/*, src/../src/, src//, a manifest ./package.json) is refused by the reader and by the schema, so the change is pair",
+  "m6-p2-directory-entry-pair": "a runtime-set paths entry without a trailing slash that names a directory at the merge base is an invalid declaration, so a change under it is pair, and an exact entry naming a file is still declared",
+  "m6-p2-criteria-contract-needs-criteria": "a verdict declaring review-contract criteria without criteria[] is rejected, with or without hazard classes, and a committed criteria verdict still validates",
+  "m6-p2-single-refusal-red": "a single change whose one hazard verdict reads FIX-ROUND-NEEDED is red at condition-2 through the real gate",
+  "m6-p2-pin-rewrite-pair": "a pinned name rewritten from a version to file:, a git URL or an npm: alias is not a version change, so the manifest classifies pair",
+  "m6-p2-manifest-added-deleted-pair": "a declared manifest added or deleted by the change classifies pair, naming which",
+  "m6-p2-manifest-unparseable-pair": "a declared manifest that does not parse as JSON on either side classifies pair"
 }

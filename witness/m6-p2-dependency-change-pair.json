@@ -15,13 +15,13 @@
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    return DEPENDENCY_FIELDS.has(field) && pins.includes(name);",
-      "replace": "    return DEPENDENCY_FIELDS.has(field);"
+      "find": "    return PIN_FIELDS.has(segments[0] as string) && pins.includes(segments[1] as string);",
+      "replace": "    return PIN_FIELDS.has(segments[0] as string);"
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    !(segments[1] as string).startsWith(\"node_modules/\")",
+      "find": "    isWorkspaceKey(segments[1] as string)",
       "replace": "    true"
     }
   ],

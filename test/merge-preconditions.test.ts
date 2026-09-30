@@ -1712,6 +1712,158 @@ test("adding a dependency to package.json and the lockfile classifies pair, and 
   }
 });
 
+/**
+ * Both sides of the three PR #224 manifests, each parsed from its REAL bytes
+ * at 0e29760 and 7c9602d and then edited, so an edge case can put the same key
+ * on both sides and change only its value.
+ */
+function editedBumpSides(
+  edit: (path: string, side: "base" | "head", doc: Record<string, unknown>) => void,
+): Map<string, { base: string; head: string }> {
+  const sides = new Map<string, { base: string; head: string }>();
+  for (const path of BUMP_MANIFESTS) {
+    const both = { base: "", head: "" };
+    for (const [side, commit] of [
+      ["base", BUMP_BASE],
+      ["head", BUMP_HEAD],
+    ] as const) {
+      const doc = JSON.parse(atCommit(commit, path)) as Record<string, unknown>;
+      edit(path, side, doc);
+      both[side] = `${JSON.stringify(doc, null, 2)}\n`;
+    }
+    sides.set(path, both);
+  }
+  return sides;
+}
+
+test("a workspace's nested node_modules/ entry, a pinned name inside a node_modules/ entry, and a pinned name in peerDependencies are not version fields, so each classifies pair", () => {
+  /* FIX ROUND 1, CR-M6P2A-03 and CR-M6P2B-05. THE MECHANISM: the version-field
+     rule recognised a dependency entry by the START of its lockfile key and
+     applied the version-pins rule at any depth and in any dependency field. */
+  const packagesOf = (doc: Record<string, unknown>): Record<string, unknown> =>
+    doc["packages"] as Record<string, unknown>;
+  const arms: [string, (path: string, side: "base" | "head", doc: Record<string, unknown>) => void, string, RegExp][] = [
+    [
+      "a workspace's nested install changes version only",
+      (path, side, doc) => {
+        if (path === "package-lock.json") {
+          packagesOf(doc)["plugin/node_modules/yaml"] = { version: side === "base" ? "2.0.0" : "2.9.9", license: "ISC" };
+        }
+      },
+      "package-lock.json",
+      /\/packages\/plugin~1node_modules~1yaml\/version changed/,
+    ],
+    [
+      "a transitive dependency's pin on a pinned name changes",
+      (path, side, doc) => {
+        if (path === "package-lock.json") {
+          packagesOf(doc)["node_modules/probe-host"] = {
+            version: "1.0.0",
+            dependencies: { "@tiphys/kernel": side === "base" ? "0.2.1" : "0.2.2" },
+          };
+        }
+      },
+      "package-lock.json",
+      /\/packages\/node_modules~1probe-host\/dependencies\/@tiphys~1kernel changed/,
+    ],
+    [
+      "a peer range on a pinned name changes",
+      (path, side, doc) => {
+        if (path === "plugin/package.json") {
+          doc["peerDependencies"] = { "@tiphys/kernel": side === "base" ? "^0.2.0" : "^9.9.9" };
+        }
+      },
+      "plugin/package.json",
+      /\/peerDependencies\/@tiphys~1kernel changed/,
+    ],
+  ];
+  for (const [name, edit, checked, reason] of arms) {
+    const classified = tierModule.classifyTier({
+      declaration: repositoryDeclaration(),
+      changed: atRoot(BUMP_MANIFESTS),
+      sides: editedBumpSides(edit),
+    });
+    assert.equal(classified.tier, "pair", `${name}: ${JSON.stringify(classified.paths)}`);
+    const manifest = classified.paths.find((entry) => entry.path === checked) as TierPath;
+    assert.equal(manifest.tier, "pair", `${name}: ${manifest.reason}`);
+    assert.match(manifest.reason, reason, `${name}: ${manifest.reason}`);
+    /* CONTROL: the same key present and UNCHANGED on both sides leaves the
+       real bump single, so the pair above is the value change, not the key. */
+    const unchanged = tierModule.classifyTier({
+      declaration: repositoryDeclaration(),
+      changed: atRoot(BUMP_MANIFESTS),
+      sides: editedBumpSides((path, _side, doc) => edit(path, "base", doc)),
+    });
+    assert.equal(unchanged.tier, "single", `${name} control: ${JSON.stringify(unchanged.paths)}`);
+  }
+  /* A pinned name in a workspace entry's devDependencies IS a version field:
+     PR #224 changed /packages/plugin/devDependencies/@tiphys~1kernel. */
+  const real = tierModule.classifyTier({ declaration: repositoryDeclaration(), changed: atRoot(BUMP_MANIFESTS), sides: bumpSides() });
+  assert.match(
+    (real.paths.find((entry) => entry.path === "package-lock.json") as TierPath).reason,
+    /\/packages\/plugin\/devDependencies\/@tiphys~1kernel 0\.2\.1 -> 0\.2\.2/,
+  );
+});
+
+test("a pinned name rewritten from a version to file:, a git URL or an npm: alias is not a version change, so the manifest classifies pair", () => {
+  /* FIX ROUND 1, CR-M6P2B-03 (MB). A version field counts only when BOTH
+     sides are versions: the rewrite changes WHAT is installed, not which
+     release. The real PR #224 bump with only the plugin's pin rewritten. */
+  for (const rewritten of ["file:../kernel", "git+https://example.invalid/tiphys/kernel.git#v0.2.2", "npm:@other/kernel@0.2.2"]) {
+    const classified = tierModule.classifyTier({
+      declaration: repositoryDeclaration(),
+      changed: atRoot(BUMP_MANIFESTS),
+      sides: bumpSides((path, head) => {
+        if (path === "plugin/package.json") {
+          (head["devDependencies"] as Record<string, string>)["@tiphys/kernel"] = rewritten;
+        }
+      }),
+    });
+    const plugin = classified.paths.find((entry) => entry.path === "plugin/package.json") as TierPath;
+    assert.equal(plugin.tier, "pair", `${rewritten}: ${plugin.reason}`);
+    assert.match(plugin.reason, /\/devDependencies\/@tiphys~1kernel changed/, `${rewritten}: ${plugin.reason}`);
+    assert.equal(classified.tier, "pair", rewritten);
+  }
+});
+
+test("a declared manifest added or deleted by the change classifies pair, naming which", () => {
+  /* FIX ROUND 1, CR-M6P2B-03 (MC). One side absent is not a version bump. */
+  const real = atCommit(BUMP_HEAD, "plugin/package.json");
+  const arms: [string, { base: string | undefined; head: string | undefined }, RegExp][] = [
+    ["added", { base: undefined, head: real }, /a declared manifest added by the change/],
+    ["deleted", { base: real, head: undefined }, /a declared manifest deleted by the change/],
+  ];
+  for (const [name, sides, reason] of arms) {
+    const classified = tierModule.classifyTier({
+      declaration: repositoryDeclaration(),
+      changed: atRoot(["plugin/package.json"]),
+      sides: new Map([["plugin/package.json", sides]]),
+    });
+    assert.equal(classified.tier, "pair", `${name}: ${JSON.stringify(classified.paths)}`);
+    assert.match((classified.paths[0] as TierPath).reason, reason, name);
+  }
+});
+
+test("a declared manifest that does not parse as JSON on either side classifies pair", () => {
+  /* FIX ROUND 1, CR-M6P2B-03 (MD). Content that could not be read was not
+     shown to be a version bump. */
+  const real = atCommit(BUMP_HEAD, "plugin/package.json");
+  const broken = real.replace(/\}\s*$/, "");
+  assert.notEqual(broken, real);
+  for (const [name, sides] of [
+    ["base unparseable", { base: broken, head: real }],
+    ["head unparseable", { base: real, head: broken }],
+  ] as const) {
+    const classified = tierModule.classifyTier({
+      declaration: repositoryDeclaration(),
+      changed: atRoot(["plugin/package.json"]),
+      sides: new Map([["plugin/package.json", sides]]),
+    });
+    assert.equal(classified.tier, "pair", `${name}: ${JSON.stringify(classified.paths)}`);
+    assert.match((classified.paths[0] as TierPath).reason, /does not parse as JSON on both sides/, name);
+  }
+});
+
 test("a diff touching src/ classifies pair under this repository's declaration", () => {
   const classified = tierModule.classifyTier({
     declaration: repositoryDeclaration(),
@@ -1767,6 +1919,88 @@ test("a project with no runtime-set declaration classifies a delivery-only diff 
     tierModule.classifyTier({ declaration: declared, changed: atRoot(["delivery/notes.md"]), sides: new Map() }).tier,
     "single",
   );
+});
+
+/* The charter schema's validator and the YAML parser, for the shape test. */
+const charterValidate = (await import(new URL("../src/validate.ts", import.meta.url).href)) as {
+  validateToLines: (schema: Record<string, unknown>, instance: unknown) => string[];
+};
+const charterYaml = (await import("yaml")) as unknown as { parse: (text: string) => unknown };
+
+test("a runtime-set entry with a glob character, a leading ./ or /, a .. segment or an empty segment (src/**, ./src/, /src/, src/*, src/../src/, src//, a manifest ./package.json) is refused by the reader and by the schema, so the change is pair", () => {
+  /* FIX ROUND 1, CR-M6P2B-02 and CR-M6P2A-02. THE MECHANISM: an entry that
+     matches no path git prints was a VALID declaration, so the declared set was
+     silently empty and every change was single. The reviewers' measured
+     shapes, plus one arm per remaining refused rule. */
+  const schema = JSON.parse(readFileSync(join(repoRoot, "schemas", "charter.schema.json"), "utf8")) as Record<
+    string,
+    unknown
+  >;
+  const repositoryCharter = charterYaml.parse(readFileSync(join(repoRoot, "charter.yaml"), "utf8")) as Record<
+    string,
+    unknown
+  >;
+  /* Reviewer B's manifest probe: package.json ADDS a dependency. */
+  const addDependency = new Map([
+    [
+      "package.json",
+      {
+        base: '{\n  "name": "probe",\n  "version": "1.0.0"\n}\n',
+        head: '{\n  "name": "probe",\n  "version": "1.0.0",\n  "dependencies": { "evil": "1.0.0" }\n}\n',
+      },
+    ],
+  ]);
+  const charterText = (set: { paths: string[]; manifests: string[] }): string =>
+    `kind: charter\nruntime-set:\n  paths: ${JSON.stringify(set.paths)}\n  manifests: ${JSON.stringify(set.manifests)}\n`;
+  const arms: [string, { paths: string[]; manifests: string[] }, string, "paths" | "manifests"][] = [
+    ["src/**", { paths: ["src/**"], manifests: [] }, "src/a.ts", "paths"],
+    ["./src/", { paths: ["./src/"], manifests: [] }, "src/a.ts", "paths"],
+    ["/src/", { paths: ["/src/"], manifests: [] }, "src/a.ts", "paths"],
+    ["src/*", { paths: ["src/*"], manifests: [] }, "src/a.ts", "paths"],
+    ["src/../src/", { paths: ["src/../src/"], manifests: [] }, "src/a.ts", "paths"],
+    ["src//", { paths: ["src//"], manifests: [] }, "src/a.ts", "paths"],
+    ["./package.json", { paths: ["src/"], manifests: ["./package.json"] }, "package.json", "manifests"],
+  ];
+  for (const [entry, set, changedPath, field] of arms) {
+    const declaration = tierModule.readRuntimeSet(charterText(set), "charter.yaml");
+    assert.equal(declaration.kind, "invalid", `${entry}: ${JSON.stringify(declaration)}`);
+    assert.ok(
+      (declaration as { reason: string }).reason.includes(`runtime-set.${field} entry ${JSON.stringify(entry)}`),
+      `${entry}: the reason does not name the entry: ${JSON.stringify(declaration)}`,
+    );
+    const classified = tierModule.classifyTier({ declaration, changed: atRoot([changedPath]), sides: addDependency });
+    assert.equal(classified.tier, "pair", `${entry}: ${JSON.stringify(classified.paths)}`);
+    assert.match((classified.paths[0] as TierPath).reason, /no usable runtime-set declaration at the merge base/, entry);
+    /* THE SCHEMA REFUSES THE SAME ENTRY, at its own pointer. */
+    const document = { ...repositoryCharter, "runtime-set": { ...set, "version-pins": [] } };
+    const index = set[field].indexOf(entry);
+    const lines = charterValidate.validateToLines(schema, document);
+    assert.ok(
+      lines.some((line) => line.startsWith(`INVALID #/runtime-set/${field}/${String(index)} `) && line.includes("pattern")),
+      `${entry}: the schema did not refuse it: ${JSON.stringify(lines)}`,
+    );
+  }
+  /* CONTROL: the same sets spelled as git prints them are declared and schema
+     valid, and they judge the same changes: src/a.ts pair by the path rule, and
+     the dependency added to the declared package.json pair by the manifest
+     rule rather than by fail closed. */
+  const control = { paths: ["src/"], manifests: ["package.json"] };
+  const declared = tierModule.readRuntimeSet(charterText(control), "charter.yaml");
+  assert.equal(declared.kind, "declared", JSON.stringify(declared));
+  assert.deepEqual(
+    charterValidate.validateToLines(schema, { ...repositoryCharter, "runtime-set": { ...control, "version-pins": [] } }),
+    [],
+  );
+  const judged = tierModule.classifyTier({
+    declaration: declared,
+    changed: atRoot(["src/a.ts", "package.json"]),
+    sides: addDependency,
+  });
+  assert.deepEqual(
+    judged.paths.map((entry) => `${entry.path}=${entry.tier}`),
+    ["src/a.ts=pair", "package.json=pair"],
+  );
+  assert.match((judged.paths[1] as TierPath).reason, /\/dependencies added/);
 });
 
 /* ------------------------------------------------------------------ */
@@ -1846,6 +2080,83 @@ test("a head that removes src/ from its runtime-set declaration while touching s
   }
 });
 
+/**
+ * THE DIRECTORY LOOKUP CONSUMES git's OUTPUT, so it is asserted against REAL
+ * captured output: witness/captures/m6-p2-git-runtime-set-directory.json was
+ * taken from this exact staging (fixed identity and dates), and the test
+ * re-stages it, re-runs every command and requires git's live output to equal
+ * the recorded bytes before asking the shipped classifier.
+ */
+const RUNTIME_SET_DIRECTORY_CAPTURE = join(repoRoot, "witness", "captures", "m6-p2-git-runtime-set-directory.json");
+
+/** Base declares `paths` as given with src/ a directory; the head edits src/feature.ts. */
+function stageDirectoryEntryRepo(paths: string): { dir: string; base: string; head: string } {
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-runtime-set-directory-"));
+  mkdirSync(join(dir, "src"), { recursive: true });
+  writeFileSync(join(dir, "charter.yaml"), `kind: charter\nruntime-set:\n  paths: ${paths}\n`);
+  writeFileSync(join(dir, "src", "feature.ts"), "export const feature = 1;\n");
+  shrinkGit(dir, ["init", "-q", "-b", "main", "."]);
+  shrinkGit(dir, ["add", "-A"]);
+  shrinkGit(dir, ["commit", "-q", "-m", "base"]);
+  const base = shrinkGit(dir, ["rev-parse", "HEAD"]).trim();
+  writeFileSync(join(dir, "src", "feature.ts"), "export const feature = 2;\n");
+  shrinkGit(dir, ["add", "-A"]);
+  shrinkGit(dir, ["commit", "-q", "-m", "change under the directory the entry names"]);
+  const head = shrinkGit(dir, ["rev-parse", "HEAD"]).trim();
+  return { dir, base, head };
+}
+
+test("a runtime-set paths entry without a trailing slash that names a directory at the merge base is an invalid declaration, so a change under it is pair, and an exact entry naming a file is still declared", () => {
+  /* FIX ROUND 1, CR-M6P2B-02: `paths: [src]`, the most natural YAML spelling
+     of a directory list, was a valid declaration matching nothing under src/,
+     measured single by both reviewers. */
+  const recorded = JSON.parse(readFileSync(RUNTIME_SET_DIRECTORY_CAPTURE, "utf8")) as {
+    commands: { argv: string[]; exit: number; stdout: string }[];
+  };
+  assert.ok(
+    recorded.commands.some((command) => command.stdout.startsWith("040000 tree ")),
+    "the capture holds no tree entry",
+  );
+  const staged = stageDirectoryEntryRepo("[src]");
+  try {
+    for (const command of recorded.commands) {
+      const argv = command.argv
+        .slice(1)
+        .map((arg) => arg.replace("<base>", staged.base).replace("<head>", staged.head));
+      const live = spawnSync("git", argv, { cwd: staged.dir, encoding: "utf8" });
+      assert.equal(live.status, command.exit, live.stderr);
+      assert.equal(
+        live.stdout.replaceAll(staged.base, "<base>").replaceAll(staged.head, "<head>"),
+        command.stdout,
+        `git ${argv.join(" ")} no longer prints what was captured`,
+      );
+    }
+    const classified = tierModule.classifyReviewBudget(staged.dir, staged.base, staged.head);
+    assert.ok(classified.ok, classified.ok ? "" : classified.reason);
+    assert.equal(classified.budget.tier, "pair", JSON.stringify(classified.budget.paths));
+    const reason = (classified.budget.paths[0] as TierPath).reason;
+    assert.match(reason, /no usable runtime-set declaration at the merge base/, reason);
+    assert.match(reason, /runtime-set\.paths entry "src" names a DIRECTORY/, reason);
+  } finally {
+    rmSync(staged.dir, { recursive: true, force: true });
+  }
+  /* CONTROL: an exact entry that names a FILE at the merge base is declared,
+     and the change to that file is pair by the declared set. */
+  const control = stageDirectoryEntryRepo("[src/feature.ts]");
+  try {
+    const classified = tierModule.classifyReviewBudget(control.dir, control.base, control.head);
+    assert.ok(classified.ok, classified.ok ? "" : classified.reason);
+    assert.equal(classified.budget.tier, "pair", JSON.stringify(classified.budget.paths));
+    assert.match(
+      (classified.budget.paths[0] as TierPath).reason,
+      /in the declared runtime set \(src\/feature\.ts\)/,
+      JSON.stringify(classified.budget.paths),
+    );
+  } finally {
+    rmSync(control.dir, { recursive: true, force: true });
+  }
+});
+
 /* ------------------------------------------------------------------ */
 /* M6-P2: the merge gate by tier                                         */
 /* ------------------------------------------------------------------ */
@@ -1860,9 +2171,10 @@ const DECLARED_RUNTIME_SET = "\nruntime-set:\n  paths: [src/, bin/]\n  manifests
 function stageTierBranch(
   change: "src" | "delivery",
   verdicts: Record<string, string>,
+  declaration: string = DECLARED_RUNTIME_SET,
 ): { staged: { dir: string; evidence: string }; base: string; head: string } {
   const staged = stage({ verdicts, scopeRecord: scopeRecord("green") });
-  writeFileSync(join(staged.dir, "charter.yaml"), `${readFileSync(join(staged.dir, "charter.yaml"), "utf8")}${DECLARED_RUNTIME_SET}`);
+  writeFileSync(join(staged.dir, "charter.yaml"), `${readFileSync(join(staged.dir, "charter.yaml"), "utf8")}${declaration}`);
   git(staged.dir, ["init", "-q", "."]);
   git(staged.dir, ["add", "charter.yaml", "assurance-modes.yaml"]);
   git(staged.dir, ["commit", "-q", "-m", "base"]);
@@ -1916,6 +2228,32 @@ test("a single change with one approving hazard verdict and no arbitration docum
   }
 });
 
+test("a single change whose one hazard verdict reads FIX-ROUND-NEEDED is red at condition-2 through the real gate", async () => {
+  /* FIX ROUND 1, CR-M6P2A-06 and CR-M6P2B-03 (M-E). Condition-2 is the single
+     tier's ONLY refusal row, so a refusing review must redden it. The API is a
+     GREEN one, as reviewer B's probe had: under the mutant the gate reaches
+     green through it, and the refusal is decided before any request. */
+  const { staged, base, head } = stageTierBranch("delivery", {
+    "m3-p9-hazard.yaml": fixture("decorrelated-hazard.yaml", [["verdict: APPROVE", "verdict: FIX-ROUND-NEEDED"]]),
+  });
+  try {
+    const run = await withApi(greenApi(head), (apiBase) => runGate(gateSource, staged, apiBase, ["--base", base], head));
+    const printed = rows(run.stdout);
+    assert.equal(status(printed.get("verdict-selection")), "green", run.stdout);
+    assert.equal(status(printed.get("condition-2")), "red", run.stdout);
+    assert.match(
+      printed.get("condition-2") ?? "",
+      /reads FIX-ROUND-NEEDED, and the single tier's review must read APPROVE/,
+      run.stdout,
+    );
+    assert.equal(run.record["status"], "red", `${run.stdout}${run.stderr}`);
+    assert.match(String(run.record["detail"]), /^DR-0063 single at head/);
+    assert.notEqual(run.exit, 0, run.stdout);
+  } finally {
+    cleanup(staged);
+  }
+});
+
 test("a pair change with one approving verdict is red naming 1 of 2, and a single change with none is red naming 0 of 1", async () => {
   const port = await closedPort();
   const arms: ["src" | "delivery", Record<string, string>, string, RegExp][] = [
@@ -1964,5 +2302,68 @@ test("two approving hazard verdicts with distinct produced-by and the same frami
     });
   } finally {
     cleanup(staged);
+  }
+});
+
+test("with --base, verdicts whose declared head the merge base already contains are excluded by name in both tiers, so an unreviewed delivery-only change on top of a reviewed phase is red", async () => {
+  /* FIX ROUND 1, CR-M6P2A-01 and CR-M6P2B-01. THE MECHANISM: a verdict was
+     admitted by ancestry with no bound at the merge base. Reviewer A's probe 2,
+     staged: a phase's two approving verdicts reach the base, then one
+     delivery-only commit that no verdict names. Before the fix the gap from the
+     reviewed head to the new commit is paperwork only, so both old verdicts
+     were admitted as reviews of the new change. The pair arm uses a charter
+     with no runtime-set block, so the delivery-only change is pair (fail
+     closed) and the bound is shown in that tier too. */
+  const verdicts = {
+    "m3-p9-hazard-a.yaml": fixture("decorrelated-hazard.yaml"),
+    "m3-p9-hazard-b.yaml": fixture("shared-family-hazard.yaml"),
+  };
+  const arms: [string, string, RegExp][] = [
+    ["single", DECLARED_RUNTIME_SET, /0 of 1 are admitted and 1 missing/],
+    ["pair", "", /0 of 2 are admitted and 2 missing/],
+  ];
+  for (const [tier, declaration, missing] of arms) {
+    const { staged, base, head: merged } = stageTierBranch("src", verdicts, declaration);
+    try {
+      const reviewed = git(staged.dir, ["rev-parse", `${merged}~1`]);
+      /* CONTROL, THE NORMAL FLOW STILL ADMITS: verdicts for H committed at V,
+         H..V paperwork only, H not on the base. Both verdicts are admitted and
+         the selection row is green. */
+      await withApi(greenApi(merged), async (apiBase) => {
+        const run = await runGate(gateSource, staged, apiBase, ["--base", base], merged);
+        const selection = rows(run.stdout).get("verdict-selection") ?? "";
+        assert.equal(status(selection), "green", `${tier} control: ${run.stdout}`);
+        assert.match(selection, /2 verdict\(s\) admitted and 0 excluded/, `${tier} control: ${selection}`);
+      });
+      /* REVIEWER A'S CASE: the reviewed phase IS the base now, and one
+         delivery-only commit on top of it carries no review. */
+      mkdirSync(join(staged.dir, "delivery", "decisions"), { recursive: true });
+      writeFileSync(join(staged.dir, "delivery", "decisions", "DR-9999-probe.md"), "a decision no review read\n");
+      git(staged.dir, ["add", "delivery/decisions"]);
+      git(staged.dir, ["commit", "-q", "-m", "unreviewed paperwork on top of a reviewed phase"]);
+      const unreviewed = git(staged.dir, ["rev-parse", "HEAD"]);
+      /* A GREEN API, as reviewer A's stub was: before the fix the single arm
+         reached green through it. The red below is decided before any request. */
+      const run = await withApi(greenApi(unreviewed), (apiBase) =>
+        runGate(gateSource, staged, apiBase, ["--base", merged], unreviewed),
+      );
+      const detail = String(run.record["detail"]);
+      assert.equal(run.record["status"], "red", `${tier}: ${run.stdout}${run.stderr}`);
+      assert.notEqual(run.exit, 0, run.stdout);
+      assert.match(detail, new RegExp(`^DR-0063 ${tier} at head ${unreviewed}`), detail);
+      assert.match(detail, missing, detail);
+      const selection = rows(run.stdout).get("verdict-selection") ?? "";
+      assert.match(selection, /0 verdict\(s\) admitted and 2 excluded/, selection);
+      for (const name of Object.keys(verdicts)) {
+        assert.ok(
+          selection.includes(
+            `${name} declares head ${reviewed}, which the merge base ${merged} of the review budget already contains`,
+          ),
+          `${tier}: ${name} is not excluded by name as on the base: ${selection}`,
+        );
+      }
+    } finally {
+      cleanup(staged);
+    }
   }
 });

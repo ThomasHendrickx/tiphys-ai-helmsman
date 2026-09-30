@@ -34,31 +34,6 @@ const yamlModule = (await import("yaml")) as unknown as {
   stringify: (value: unknown) => string;
 };
 
-interface DerivedCheck {
-  id: string;
-  type: string;
-  requiresContext: boolean;
-  run: (
-    instance: unknown,
-    contextDirectory: string | undefined,
-  ) => { violations: { pointer: string; message: string }[]; reports: string[] };
-}
-
-const checksModule = (await import(
-  new URL("../src/checks.ts", import.meta.url).href
-)) as {
-  runChecks: (
-    type: string,
-    instance: unknown,
-    contextDirectory: string | undefined,
-  ) => { lines: string[]; failed: boolean };
-  registerCheck: (check: DerivedCheck) => void;
-  deregisterCheck: (id: string) => boolean;
-  verdictDeviationsJudged: DerivedCheck;
-  verdictHazardClassesAddressed: DerivedCheck;
-  verdictFindingReferencesResolve: DerivedCheck;
-};
-
 const validateModule = (await import(
   new URL("../src/validate.ts", import.meta.url).href
 )) as {
@@ -485,8 +460,37 @@ test("a hazard verdict with no review-contract and no criteria validates, the sa
   assert.deepEqual(validateModule.validateToLines(schema, baselineVerdict()), []);
 });
 
+test("a verdict declaring review-contract criteria without criteria[] is rejected, with or without hazard classes, and a committed criteria verdict still validates", () => {
+  /* M6-P2 FIX ROUND 1, CR-M6P2B-04. THE MECHANISM: branch A required only
+     `review-contract: criteria`, so a NEW verdict could declare the dropped
+     contract and carry neither completeness array, and the hazard-class check
+     (since deleted by M6-P3) skipped a criteria verdict. Both arms are the
+     reviewer's dodge. */
+  const schema = verdictSchema();
+  const dodge = baselineHazardVerdict();
+  dodge["review-contract"] = "criteria";
+  delete dodge["criteria"];
+  delete dodge["hazard-classes-addressed"];
+  const withClasses = baselineHazardVerdict();
+  withClasses["review-contract"] = "criteria";
+  delete withClasses["criteria"];
+  for (const [name, instance] of [
+    ["no criteria and no hazard classes", dodge],
+    ["no criteria, hazard classes present", withClasses],
+  ] as const) {
+    assert.notDeepEqual(validateModule.validateToLines(schema, instance), [], `${name}: accepted`);
+    /* THE ONE DIFFERENCE: the same document WITH criteria[] validates, so the
+       rejection above is the missing array and nothing else. */
+    const restored = { ...instance, criteria: baselineVerdict()["criteria"] };
+    assert.deepEqual(validateModule.validateToLines(schema, restored), [], `${name}: restored`);
+  }
+  /* HISTORY (DR-0054): the committed shape, a criteria verdict WITH criteria[],
+     is unaffected. */
+  assert.deepEqual(validateModule.validateToLines(schema, baselineVerdict()), []);
+});
+
 /* ------------------------------------------------------------------ */
-/* Fix round 2, H-1: the intra-document finding reference               */
+/* Registration and behaviors                                           */
 /* ------------------------------------------------------------------ */
 
 test("verdict is registered in the validator type table and its schema declares the dialect", async () => {

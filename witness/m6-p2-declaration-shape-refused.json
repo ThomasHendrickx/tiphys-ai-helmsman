@@ -1,28 +1,28 @@
 {
-  "id": "m6-p2-version-bump-single",
-  "behavior": "m6-p2-version-bump-single",
+  "id": "m6-p2-declaration-shape-refused",
+  "behavior": "m6-p2-declaration-shape-refused",
   "tests": [
-    "the real 0.2.2 version bump of package.json, package-lock.json and plugin/package.json classifies single under this repository's runtime-set declaration"
+    "a runtime-set entry with a glob character, a leading ./ or /, a .. segment or an empty segment (src/**, ./src/, /src/, src/*, src/../src/, src//, a manifest ./package.json) is refused by the reader and by the schema, so the change is pair"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    return PIN_FIELDS.has(segments[0] as string) && pins.includes(segments[1] as string);",
-      "replace": "    return false;"
+      "find": "  if (/[*?[]/.test(entry)) {",
+      "replace": "  if (false) {"
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    isWorkspaceKey(segments[1] as string)",
-      "replace": "    segments[1] === \"never\""
+      "find": "      const fault = entryShapeFault(entry, field === \"manifests\");",
+      "replace": "      const fault = field === \"never\" ? \"\" : undefined;"
     },
     {
       "kind": "mutation",
-      "file": "src/gates/merge-preconditions.ts",
-      "find": "  if (set.manifests.includes(projectPath)) {",
-      "replace": "  if (set.manifests.includes(projectPath) && !set.paths.some((declared) => projectPath.startsWith(declared))) {"
+      "file": "schemas/charter.schema.json",
+      "find": "          \"items\": { \"type\": \"string\", \"minLength\": 1, \"pattern\": \"^(?!/)(?!\\\\./)(?!.*//)(?!(?:.*/)?\\\\.{1,2}(?:/|$))(?=.*\\\\S)[^*?\\\\[]+$\" }",
+      "replace": "          \"items\": { \"type\": \"string\", \"minLength\": 1, \"pattern\": \"\\\\S\" }"
     }
   ],
   "deterministic": true,

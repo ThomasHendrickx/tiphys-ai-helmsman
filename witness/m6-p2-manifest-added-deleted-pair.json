@@ -1,28 +1,22 @@
 {
-  "id": "m6-p2-version-bump-single",
-  "behavior": "m6-p2-version-bump-single",
+  "id": "m6-p2-manifest-added-deleted-pair",
+  "behavior": "m6-p2-manifest-added-deleted-pair",
   "tests": [
-    "the real 0.2.2 version bump of package.json, package-lock.json and plugin/package.json classifies single under this repository's runtime-set declaration"
+    "a declared manifest added or deleted by the change classifies pair, naming which"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    return PIN_FIELDS.has(segments[0] as string) && pins.includes(segments[1] as string);",
-      "replace": "    return false;"
+      "find": "        tier: \"pair\",\n        reason: `a declared manifest ${sides.base === undefined ? \"added\" : \"deleted\"} by the change`,",
+      "replace": "        tier: \"single\",\n        reason: `a declared manifest ${sides.base === undefined ? \"added\" : \"deleted\"} by the change`,"
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    isWorkspaceKey(segments[1] as string)",
-      "replace": "    segments[1] === \"never\""
-    },
-    {
-      "kind": "mutation",
-      "file": "src/gates/merge-preconditions.ts",
-      "find": "  if (set.manifests.includes(projectPath)) {",
-      "replace": "  if (set.manifests.includes(projectPath) && !set.paths.some((declared) => projectPath.startsWith(declared))) {"
+      "find": "    if (sides.base === undefined || sides.head === undefined) {\n      return {\n        tier: \"pair\",\n        reason: `a declared manifest ${sides.base",
+      "replace": "    if (false) {\n      return {\n        tier: \"pair\",\n        reason: `a declared manifest ${sides.base"
     }
   ],
   "deterministic": true,

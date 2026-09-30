@@ -1088,6 +1088,38 @@ test("check-dual-review through the real runner resolves --head HEAD to the stag
   });
 });
 
+test("check-dual-review with --base excludes by name verdicts whose declared head the merge base already contains, so an unreviewed delivery-only change on top of a reviewed pair is red", () => {
+  /* M6-P2 FIX ROUND 1, CR-M6P2A-01 and CR-M6P2B-01, the second gate. The
+     same bound merge-preconditions applies, through the same helper, so the
+     two gates cannot disagree about a verdict already on the base. The
+     charter declares no runtime set, so the delivery-only change is pair. */
+  withBudgetRepo(APPROVING_PAIR, {}, (repo) => {
+    /* CONTROL, THE NORMAL FLOW STILL ADMITS: verdicts for the reviewed commit,
+       committed one commit later, the reviewed commit not on the base. */
+    const control = runRegistryGate(repo, "check-dual-review");
+    assert.equal(control.record.status, "green", control.output);
+    rmSync(join(repo.dir, "evidence"), { recursive: true, force: true });
+    mkdirSync(join(repo.dir, "delivery", "decisions"), { recursive: true });
+    writeFileSync(join(repo.dir, "delivery", "decisions", "DR-9999-probe.md"), "a decision no review read\n");
+    fixtureGit(repo.dir, ["add", "delivery/decisions"]);
+    fixtureGit(repo.dir, ["commit", "-q", "-m", "unreviewed paperwork on top of a reviewed pair"]);
+    const unreviewed = fixtureGit(repo.dir, ["rev-parse", "HEAD"]);
+    const run = runRegistryGate({ ...repo, base: repo.head }, "check-dual-review", unreviewed);
+    assert.equal(run.record.status, "red", run.output);
+    assert.notEqual(run.exit, 0, run.output);
+    assert.match(run.record.detail ?? "", /0 of 2 are admitted and 2 missing/, run.record.detail ?? "");
+    const said = `${run.record.detail ?? ""}\n${run.output}`;
+    for (const entry of APPROVING_PAIR) {
+      assert.ok(
+        said.includes(
+          `${entry.as} declares head ${repo.reviewed}, which the merge base ${repo.head} of the review budget already contains`,
+        ),
+        `${entry.as} is not excluded by name as on the base: ${said}`,
+      );
+    }
+  });
+});
+
 test("a shipped change with one committed review is red through the real runner, naming one missing", () => {
   withBudgetRepo([APPROVING_PAIR[0] as BudgetVerdict], {}, (repo) => {
     const run = runRegistryGate(repo, "check-dual-review");

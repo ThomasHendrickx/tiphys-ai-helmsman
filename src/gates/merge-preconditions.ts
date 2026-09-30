@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { pathsIdentifySameObject } from "../path-identity.ts";
 import {
+  boundAtMergeBase,
   declaresNoHead,
   describeAdmittedVerdicts,
   describeOffHeadVerdicts,
@@ -892,6 +893,76 @@ function stringList(
 }
 
 /**
+ * Why one declared `paths` or `manifests` entry is refused for its SHAPE, or
+ * undefined (M6-P2 fix round 1, CR-M6P2B-02 and CR-M6P2A-02). THE MECHANISM: an entry that matches nothing was a valid
+ * declaration, so the set was silently empty and every change was `single`.
+ * git prints project-relative paths with no leading `./` or `/`, no `.` or
+ * `..` segment and no empty segment, so those shapes match nothing. The
+ * classifier compares entries literally, so a glob character matches only a
+ * file whose name carries that character, which is not what a glob means. A
+ * manifest is one file, so it may not end in `/` either. schemas/charter.schema.json
+ * carries the same rule as a pattern; this is the reader's copy, because the
+ * gate reads a blob and never runs the schema validator.
+ */
+function entryShapeFault(entry: string, isManifest: boolean): string | undefined {
+  if (/[*?[]/.test(entry)) {
+    return "carries a glob character (*, ? or [), and entries are literal paths";
+  }
+  if (entry.startsWith("/")) {
+    return "starts with /, and entries are relative to the project";
+  }
+  if (entry.startsWith("./")) {
+    return "starts with ./, and git prints no such prefix";
+  }
+  const segments = (entry.endsWith("/") ? entry.slice(0, -1) : entry).split("/");
+  if (segments.some((segment) => segment === "")) {
+    return "has an empty segment";
+  }
+  if (segments.some((segment) => segment === "." || segment === "..")) {
+    return "has a . or .. segment";
+  }
+  if (isManifest && entry.endsWith("/")) {
+    return "ends in /, and a manifest is one file";
+  }
+  return undefined;
+}
+
+/**
+ * The first EXACT entry (a `paths` entry with no trailing `/`, or any
+ * `manifests` entry) that names a DIRECTORY at `rev`, as a sentence, or
+ * undefined. An exact entry is compared with `===`, and git never prints a
+ * directory as a changed path, so `paths: [src]` over a directory `src/`
+ * matches nothing under it (CR-M6P2B-02). A listing git could not produce is
+ * a sentence too, so the caller fails closed on it.
+ */
+function exactEntryNamingDirectory(contextDirectory: string, rev: string, set: RuntimeSet): string | undefined {
+  const exact: [string, string][] = [
+    ...set.paths.filter((entry) => !entry.endsWith("/")).map((entry): [string, string] => ["paths", entry]),
+    ...set.manifests.map((entry): [string, string] => ["manifests", entry]),
+  ];
+  for (const [field, entry] of exact) {
+    const listed = spawnSync("git", ["--literal-pathspecs", "ls-tree", "-z", rev, "--", entry], {
+      cwd: contextDirectory,
+      encoding: "utf8",
+    });
+    if (listed.error !== undefined || listed.status !== 0) {
+      return (
+        `${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} could not be looked up at ${rev} ` +
+        `(git ls-tree failed: ${singleLine(String(listed.error ?? listed.stderr ?? ""))})`
+      );
+    }
+    const first = (listed.stdout ?? "").split("\0")[0] ?? "";
+    if (/^\d{6} tree /.test(first)) {
+      return (
+        `${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} names a DIRECTORY at ${rev}, and an exact ` +
+        `entry is compared with ===, so no path under it matches (a directory entry ends in /)`
+      );
+    }
+  }
+  return undefined;
+}
+
+/**
  * Read the `runtime-set` block out of one charter's TEXT. Pure.
  *
  * `undefined` text means the charter does not exist at that revision. Every
@@ -945,6 +1016,22 @@ export function readRuntimeSet(text: string | undefined, label: string): Runtime
   if (!pins.ok) {
     return { kind: "invalid", reason: pins.reason };
   }
+  for (const [field, list] of [
+    ["paths", paths.list],
+    ["manifests", manifests.list],
+  ] as const) {
+    for (const entry of list) {
+      const fault = entryShapeFault(entry, field === "manifests");
+      if (fault !== undefined) {
+        return {
+          kind: "invalid",
+          reason:
+            `${label} ${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} ${fault}, ` +
+            "so it does not name the paths it looks like it names, and the declaration is refused (fail closed)",
+        };
+      }
+    }
+  }
   return {
     kind: "declared",
     set: { paths: [...paths.list], manifests: [...manifests.list], versionPins: [...pins.list] },
@@ -976,12 +1063,13 @@ function canonicalJson(value: unknown): string {
   return value === undefined ? "undefined" : JSON.stringify(value);
 }
 
-const DEPENDENCY_FIELDS = new Set([
-  "dependencies",
-  "devDependencies",
-  "peerDependencies",
-  "optionalDependencies",
-]);
+/**
+ * The dependency fields in which a pinned name's value is a version field.
+ * NOT peerDependencies: a peer range is the package's compatibility contract
+ * with its host, not which release it installs, so changing it is `pair`
+ * (fix round 1, CR-M6P2B-05).
+ */
+const PIN_FIELDS = new Set(["dependencies", "devDependencies", "optionalDependencies"]);
 
 /** A version as a manifest spells it: exact, or a caret or tilde range of one. */
 const VERSION_VALUE = /^[~^]?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
@@ -991,11 +1079,24 @@ function pointerOf(segments: readonly string[]): string {
 }
 
 /**
+ * Is a lockfile `packages` key a workspace entry, the root entry `""` included?
+ * Only when NO segment of it is `node_modules`: npm writes a workspace's own
+ * nested installs as `<workspace>/node_modules/<name>`, and those are
+ * dependencies exactly as `node_modules/<name>` is (fix round 1, CR-M6P2A-03
+ * and CR-M6P2B-05; the rule before it tested only the key's START).
+ */
+function isWorkspaceKey(key: string): boolean {
+  return !key.split("/").includes("node_modules");
+}
+
+/**
  * Is the leaf at `segments` a version field (DR-0063)? Three shapes, and only
- * these: the top-level `version`; the `version` of a lockfile's root entry
- * `packages[""]` or of a workspace entry (a `packages` key that does not start
- * with `node_modules/`); and a dependency pin, anywhere in the document, whose
- * package name is declared in `version-pins`.
+ * these: the top-level `version`; the `version` of a lockfile workspace entry
+ * (`packages[""]` or a `packages` key with no `node_modules` segment); and a
+ * pin of a name declared in `version-pins`, in `dependencies`,
+ * `devDependencies` or `optionalDependencies` of the document's root or of a
+ * lockfile workspace entry. A pin anywhere else (inside a `node_modules` entry,
+ * in `peerDependencies`, at any other depth) is not a version field.
  */
 function isVersionField(segments: readonly string[], pins: readonly string[]): boolean {
   if (segments.length === 1 && segments[0] === "version") {
@@ -1005,14 +1106,15 @@ function isVersionField(segments: readonly string[], pins: readonly string[]): b
     segments.length === 3 &&
     segments[0] === "packages" &&
     segments[2] === "version" &&
-    !(segments[1] as string).startsWith("node_modules/")
+    isWorkspaceKey(segments[1] as string)
   ) {
     return true;
   }
-  if (segments.length >= 2) {
-    const field = segments[segments.length - 2] as string;
-    const name = segments[segments.length - 1] as string;
-    return DEPENDENCY_FIELDS.has(field) && pins.includes(name);
+  if (segments.length === 2) {
+    return PIN_FIELDS.has(segments[0] as string) && pins.includes(segments[1] as string);
+  }
+  if (segments.length === 4 && segments[0] === "packages" && isWorkspaceKey(segments[1] as string)) {
+    return PIN_FIELDS.has(segments[2] as string) && pins.includes(segments[3] as string);
   }
   return false;
 }
@@ -1382,10 +1484,16 @@ export function classifyReviewBudget(
 
   const charterLabel = `${mergeBase}:${prefix}${RUNTIME_SET_CHARTER}`;
   const charterBlob = blobAt(contextDirectory, mergeBase, RUNTIME_SET_CHARTER);
-  const declaration: RuntimeSetReading =
+  const charterReading: RuntimeSetReading =
     charterBlob.kind === "error"
       ? { kind: "invalid", reason: charterBlob.reason }
       : readRuntimeSet(charterBlob.kind === "read" ? charterBlob.body : undefined, charterLabel);
+  /* M6-P2 FIX ROUND 1 (CR-M6P2B-02): an exact entry that is a DIRECTORY at the
+     merge base makes the declaration invalid, so the change is pair, named. */
+  const directoryFault =
+    charterReading.kind === "declared" ? exactEntryNamingDirectory(contextDirectory, mergeBase, charterReading.set) : undefined;
+  const declaration: RuntimeSetReading =
+    directoryFault === undefined ? charterReading : { kind: "invalid", reason: `${charterLabel} ${directoryFault}` };
 
   const wanted = new Set<string>();
   for (const entry of changed) {
@@ -1597,7 +1705,7 @@ type ReviewCorpus =
       forHead: VerdictForHead[];
     };
 
-function readReviewCorpus(contextDirectory: string, head: string): ReviewCorpus {
+function readReviewCorpus(contextDirectory: string, head: string, mergeBase?: string): ReviewCorpus {
   /* THE CORPUS, READ THROUGH THE SHIPPED PRIMITIVES (plan step 6). Every
      refusal below is `error` rather than red, and each is the one
      `scripts/check-dual-review.mjs` already makes at the same layer: a merge
@@ -1669,7 +1777,11 @@ function readReviewCorpus(contextDirectory: string, head: string): ReviewCorpus 
        in `partitionByAuditedHead`, so the two gates cannot disagree about a
        stamp. Every rule here applies to every verdict, stamped or not. */
     const declared = String(entry.record["head"] ?? "").toLowerCase();
-    const relation = relateDeclaredHead(contextDirectory, declared, head);
+    /* M6-P2 FIX ROUND 1 (CR-M6P2A-01, CR-M6P2B-01): ANCESTRY IS BOUNDED AT THE
+       MERGE BASE. With `--base`, a verdict whose declared head the merge base
+       already contains reviewed content on the base, not this change, and is
+       excluded by name as `on-the-base`. No phase match (M6-P5). */
+    const relation = boundAtMergeBase(contextDirectory, declared, mergeBase, relateDeclaredHead(contextDirectory, declared, head));
     if (relation.kind === "same" || relation.kind === "evidence-only-ancestor") {
       admitted.push({ path: entry.path, declared, relation });
       forHead.push({ path: entry.path, record: entry.record });
@@ -1841,7 +1953,7 @@ export async function runGate(flags: Flags): Promise<number> {
       );
     }
     budget = classified.budget;
-    const read = readReviewCorpus(contextDirectory, head);
+    const read = readReviewCorpus(contextDirectory, head, budget.mergeBase);
     if (!read.ok) {
       return emit(
         resultPath,

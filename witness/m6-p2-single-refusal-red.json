@@ -1,28 +1,22 @@
 {
-  "id": "m6-p2-version-bump-single",
-  "behavior": "m6-p2-version-bump-single",
+  "id": "m6-p2-single-refusal-red",
+  "behavior": "m6-p2-single-refusal-red",
   "tests": [
-    "the real 0.2.2 version bump of package.json, package-lock.json and plugin/package.json classifies single under this repository's runtime-set declaration"
+    "a single change whose one hazard verdict reads FIX-ROUND-NEEDED is red at condition-2 through the real gate"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    return PIN_FIELDS.has(segments[0] as string) && pins.includes(segments[1] as string);",
-      "replace": "    return false;"
+      "find": "    if (word !== \"APPROVE\") {",
+      "replace": "    if (false) {"
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    isWorkspaceKey(segments[1] as string)",
-      "replace": "    segments[1] === \"never\""
-    },
-    {
-      "kind": "mutation",
-      "file": "src/gates/merge-preconditions.ts",
-      "find": "  if (set.manifests.includes(projectPath)) {",
-      "replace": "  if (set.manifests.includes(projectPath) && !set.paths.some((declared) => projectPath.startsWith(declared))) {"
+      "find": "    faults.push(\"no review is admitted for this head, so nothing approves it\");\n  }\n  if (faults.length > 0) {",
+      "replace": "    faults.push(\"no review is admitted for this head, so nothing approves it\");\n  }\n  if (faults.length > verdicts.length) {"
     }
   ],
   "deterministic": true,
