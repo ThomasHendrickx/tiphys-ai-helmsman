@@ -1,28 +1,28 @@
 {
-  "id": "m6-p4-criteria-invalid-plan-error",
-  "behavior": "m6-p4-criteria-invalid-plan-error",
+  "id": "m6-p4-criteria-no-phase-not-applicable",
+  "behavior": "m6-p4-criteria-no-phase-not-applicable",
   "tests": [
-    "an invalid plan makes the suite gate error before the suite runs, with a phase and without one"
+    "a suite run given --plan and no --phase runs the suite and reports the criteria not applicable naming no phase, and --phase with no --plan proves nothing"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
-      "file": "src/criteria.ts",
-      "find": "  if (invalid.length > 0) {",
-      "replace": "  if (invalid.length > 1000) {"
+      "file": "src/gates/suite.ts",
+      "find": "      criteriaState = {\n        kind: \"not-applicable\",\n        reason: `no phase: this run names none, so no criteria of plan ${flags.plan} are proven`,\n      };",
+      "replace": "      criteriaState = { kind: \"off\" };"
     },
     {
       "kind": "mutation",
       "file": "src/gates/suite.ts",
-      "find": "    if (!planRead.ok) {\n      return error(planRead.reason);\n    }\n",
-      "replace": ""
+      "find": "    if (flags.phase === undefined) {\n      criteriaState = {",
+      "replace": "    if (flags.phase === undefined) {\n      return error(\"no phase\");\n      criteriaState = {"
     },
     {
       "kind": "mutation",
       "file": "src/gates/suite.ts",
       "find": "  if (flags.plan !== undefined) {\n    let planRead",
-      "replace": "  if (flags.plan !== undefined && flags.phase !== undefined) {\n    let planRead"
+      "replace": "  if (flags.plan !== undefined || flags.phase !== undefined) {\n    let planRead"
     }
   ],
   "deterministic": true,

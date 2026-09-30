@@ -1,0 +1,37 @@
+{
+  "id": "m6-p4-registry-criteria-by-event",
+  "behavior": "m6-p4-registry-criteria-by-event",
+  "tests": [
+    "a project registry whose suite passes --plan and declares phase? proves the phase's criteria on a pull request and reports them not applicable on a push"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "    if (supplied !== undefined) {\n      argv.push(`--${name}`, supplied);\n    }",
+      "replace": "    if (supplied !== undefined) {\n    }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "    if (flags.phase === undefined) {\n      criteriaState = {",
+      "replace": "    if (flags.phase === undefined) {\n      return error(\"no phase\");\n      criteriaState = {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "      criteriaState = {\n        kind: \"not-applicable\",\n        reason: `no phase: this run names none, so no criteria of plan ${flags.plan} are proven`,\n      };",
+      "replace": "      criteriaState = { kind: \"off\" };"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node bin/tiphys.ts gates run, the gate runner, which spawns each registry gate with the run parameters it declares and ingests the record the gate writes; here the gates are a fixture script and the real suite gate",
+    "captures": [
+      "witness/captures/m6-p4-criteria-by-event.txt"
+    ],
+    "provenance": "Captured 2026-09-30 in the kernel container on node v26.6.0 by running the gate runner over the fixture registries test/criteria.test.ts builds (the command and exit are recorded above each block, and the three substitutions are declared in the file's header: the random run id line dropped, the fixture base commit and the suite child's node version written as placeholders). test/criteria.test.ts compares live runner output with those blocks byte for byte after the same substitutions; nothing asserted is a hand-written string standing in for another program's output."
+  }
+}
