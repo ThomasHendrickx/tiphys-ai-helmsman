@@ -1,0 +1,171 @@
+{
+  "kind": "verdict",
+  "phase": "M6-P2",
+  "head": "773ced60c700c460e2fe995a62e76a88c99761f0",
+  "tiphys-version": "0.2.2",
+  "produced-by": "claude-fable-5-1",
+  "framing": "hazard-classifier-first",
+  "review-contract": "hazard",
+  "verdict": "APPROVE",
+  "findings": [
+    {
+      "id": "CR-M6P2A-07",
+      "severity": "low",
+      "evidence": [
+        "Delta review, fix round 1. The implementer's own open question under item 2 ('An entry ending in / that names a FILE at the merge base matches nothing and is not refused'), measured through git (scratchpad rev-a/entry-probe.mjs, classifyReviewBudget over a staged repository): 'prefix-entry-naming-a-file: tier single ... the runtime set declared at <base>:charter.yaml is paths [package.json/] ... src/feature.ts=single (outside the declared runtime set)'; and with the head editing package.json itself: 'prefix-entry-naming-a-file-touching-it: tier single ... package.json=single (outside the declared runtime set)'. The pure reader accepts it: 'paths: [package.json/] -> reader declared -> tier single'.",
+        "It is the mirror of the shape fix round 1 closed: exactEntryNamingDirectory (src/gates/merge-preconditions.ts:938) refuses an exact entry that is a tree at the merge base, and nothing refuses a prefix entry that is a blob there. The backslash shape reviewer B listed is also still accepted (the work history states the arbitration's list omits it): 'src\\' is an exact entry, absent at the merge base, so declared and matching nothing."
+      ],
+      "concrete-fix": "In exactEntryNamingDirectory (or a sibling), also look up every prefix entry with its trailing slash removed at the merge base and make the declaration invalid when the listing is a blob (a file spelled as a prefix), with a sentence naming the entry; refuse a backslash in entryShapeFault alongside the glob characters. One arm each in the directory test, with a witness member.",
+      "analysis": "Same family and severity as CR-M6P2A-02 was: fail-open only through a misdeclaration, and the shipped spellings are correct. Not blocking."
+    },
+    {
+      "id": "CR-M6P2A-08",
+      "severity": "low",
+      "evidence": [
+        "Delta review, fix round 1. The implementer's item 3 derivation lists the arms with NO witness member and leaves them open: src/gates/merge-preconditions.ts (fix-round numbering) 1254 'the charter changed and its two sides were not read', 1258/1266 the charter absent or deleted, or unreadable on a side, and 1277 'a declared manifest whose two sides were not read'.",
+        "Each arm works at head, measured through git with a staged repository (scratchpad rev-a/entry-probe.mjs): a charter that becomes a symlink at the head -> 'charter.yaml=pair (the charter changed and its two sides were not read, fail closed)' with the declaration sentence carrying 'unreadable, so pair: charter.yaml: ... is not one regular file (120000 blob'; a manifest that becomes a symlink -> 'package.json=pair (a declared manifest whose two sides were not read, fail closed)'; the charter deleted at the head -> 'charter.yaml=pair (the charter is deleted at the head, so the runtime-set declaration changed)'; the charter unparseable at the head -> 'charter.yaml=pair (the charter could not be read on both sides (charter.yaml at the head is not valid YAML ...'.",
+        "No named test stages any of the four and no witness member flips their tier, so a later edit that opens one of them keeps the suite and the red-witness gate green. This is the class CR-M6P2A-06 named for the single tier's refusal row, on four narrower arms."
+      ],
+      "concrete-fix": "One named test in test/merge-preconditions.test.ts staging the four states above through git (a symlink charter and a symlink manifest at the head, the charter deleted, the charter unparseable), asserting pair with each arm's sentence, registered in test/behaviors.json, plus one witness spec whose members flip each arm's tier to single so the red-witness gate holds them.",
+      "analysis": "Low because every arm needs a symlink, a deletion or a parse failure at a declared path, far off the ordinary path, and because each was measured correct. Tracked rather than blocking."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "p2-version-bump",
+      "quote": "a version-only bump of package.json, package-lock.json and plugin/package.json (the real #224 diff) is single. check: a named test in test/merge-preconditions.test.ts.",
+      "evidence": [
+        "npm test at 773ced6 (node v26.6.0, dist built): 1525 tests, 1525 pass, 0 fail, 0 skipped, exit 0, so the named test 'the real 0.2.2 version bump ... classifies single' is green at head; the fix-round edge test asserts in the same run that the real bump stays single and that the workspace pin /packages/plugin/devDependencies/@tiphys~1kernel 0.2.1 -> 0.2.2 is still a version field (test/merge-preconditions.test.ts, fix round 1, its final assertion).",
+        "Mutation M-A (declaration read at the head) at 773ced6: the shrink test exit 1, 1 fail, src/feature.ts reported single."
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-dependency",
+      "quote": "adding a dependency is pair. check: named test.",
+      "evidence": [
+        "scratchpad rev-a/probe-manifest.mjs at 773ced6: the two shapes that were version-only in round 0 are now PAIR ('nested workspace dep version only (plugin/node_modules/foo) other=[/packages/plugin~1node_modules~1foo/version changed]'; 'transitive dep's pin on a pinned name other=[/packages/node_modules~1foo/dependencies/@tiphys~1kernel changed]'); overrides, file:, URL, npm:, added workspace key, node_modules version, scripts, deleted key, array element, object-vs-null stay PAIR; 'exact pin widened to caret' stays version-only, stated by the work history as intended (DR-0063 counts the pin; VERSION_VALUE accepts ^ and ~).",
+        "Mutations at 773ced6 (rev-a/mutate-r1-out.txt): M-B (isWorkspaceKey always true) red on the lockfile arm; M-D (added key counted as version) red on the added-dependency arm; M-M (isWorkspaceKey back to the key prefix) red 'a workspace's nested install changes version only'; M-N (peerDependencies a pin field again) red 'a peer range on a pinned name changes'. Each exit 1, 1 fail; each file restored."
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-src",
+      "quote": "a diff touching src/ is pair. check: named test.",
+      "evidence": [
+        "Green in the 1525-pass suite at 773ced6. Mutations M-G (outside the project read as single) and M-H (--no-renames dropped) each turned the nested rename-split test in test/dual-review.test.ts red, exit 1, 1 fail."
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-delivery",
+      "quote": "a delivery/-only diff is single. check: named test.",
+      "evidence": [
+        "Green in the 1525-pass suite. Probe 2 re-run at 773ced6 (scratchpad rev-a/stale-single-probe-r1.mjs) classifies the delivery-only commit 'every one is in the DR-0063 single tier (delivery/decisions/DR-9999-probe.md: outside the declared runtime set)' through git, and the gate is now RED on it for want of its own review (class 4)."
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-undeclared",
+      "quote": "a project with no runtime declaration is pair. check: named test.",
+      "evidence": [
+        "Green in the 1525-pass suite; mutation M-I (a missing charter read as an empty declared set) red: 'no charter: {\"kind\":\"declared\",\"set\":{\"paths\":[],...}}', exit 1. Probe 1 re-run at 773ced6 (a delivery-only commit on today's base cd2dafe, whose charter predates the declaration): 'NO runtime set is declared at the merge base (... carries no runtime-set block), so every changed path is pair (DR-0063 fail closed)', selection red with 0 admitted (the 0.2.2 release-bump verdicts round 0 saw admitted are now excluded)."
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-single-green",
+      "quote": "a single change with one approving hazard verdict and no arbitration document is green. check: named test.",
+      "evidence": [
+        "Green in the 1525-pass suite. Its staging is the reviewed-head-then-verdict-commit flow, which boundAtMergeBase keeps admitting: the new merge-base test's control arm asserts '2 verdict(s) admitted and 0 excluded' for exactly that flow, and passed at head before mutations M-J, M-P and M-Q were applied."
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-pair-one",
+      "quote": "a pair change with one verdict is red. check: named test.",
+      "evidence": [
+        "Green in the 1525-pass suite; mutation M-C (single requires zero) red on its second arm: 'DR-0063 single at head ...: verdict-selection=green condition-2=red', exit 1."
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-hazard-pair",
+      "quote": "two approving hazard verdicts with distinct produced-by are green. check: named test.",
+      "evidence": [
+        "Green in the 1525-pass suite at 773ced6; its fixtures share framing and review-contract, asserted in the test, so the dropped comparisons are exercised."
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-build",
+      "quote": "npm run build exits 0, npm test exits 0 with 0 fail.",
+      "evidence": [
+        "At 773ced6, node v26.6.0 (/home/user/.toolchains/node-v26.6.0-linux-x64/bin first on PATH), from /home/user/wt/rev-m6-p2-a: npm run build exit 0; git status --short afterwards lists only this untracked verdict file; npm test (node --test \"test/**/*.test.ts\", dist built): tests 1525, pass 1525, fail 0, cancelled 0, skipped 0, todo 0, duration 525092 ms, exit 0, 04:01:37Z to 04:10:25Z. Scratch record rev-a/full-suite-r1.txt.",
+        "The suite GATE, observed by me in the gate run at 773ced6 (record rev-a/gates-run-r1.txt): 'gates: suite: green: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 1525 test(s) from 73 file(s) (pass 1525, fail 0, skipped 0, todo 0, did-not-run 0); discovered 73 file(s) walking test for .test.ts; 1403 behavior(s) resolve; merge base cd2dafe2c25b', summary.json row {\"id\":\"suite\",\"status\":\"green\",\"units\":1525,\"applicable\":true,\"vacuous\":false}."
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-deleted-behavior",
+      "quote": "a behavior registered at the merge base and deleted on the head no longer reddens the suite gate. check: named test in test/suite-gate.test.ts.",
+      "evidence": [
+        "src/gates/suite.ts is not in the delta (git diff --stat e898e4e 773ced6 lists no src/gates/suite.ts), the named test is green in the 1525-pass suite at 773ced6, and round 0 ran it alone at e898e4e: exit 0."
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-red-witness",
+      "quote": "node bin/tiphys.ts gates run --registry gate-registry.yaml --only red-witness is green on the phase head.",
+      "evidence": [
+        "Observed by me: node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --evidence <scratch>/gates-evidence-r1 --base cd2dafe2c25bd16679d9ca6a155c0ce25870cd3e --head HEAD --only red-witness --only suite at 773ced6, node v26.6.0, 04:12:32Z to 04:49:27Z, run b8c879aa6f92f9b5606576c6: 'gates: declared 2 applicable 2 verdict 2 green 2 red 0 not-applicable 0 error 0 vacuous 0'; 'gates: red-witness: green: 119 witness(es) evaluated (28 own, 91 stored re-evaluated in 1203974ms); every witness red against every declared dangerous state and green at head'; exit 0; summary.json row {\"id\":\"red-witness\",\"status\":\"green\",\"units\":119,\"applicable\":true,\"vacuous\":false}. git status --short afterwards lists only this untracked verdict file. One run, green, where the implementer's first run at 9a9119b errored on a fetch and its second was green.",
+        "Independent of that run, seventeen mutations of my own at 773ced6 (rev-a/mutate-r1.mjs, output rev-a/mutate-r1-out.txt) each turned their named test red, exit 1, 0 pass, with every file restored byte for byte (git diff --quiet exit 0, git status --short listing only this verdict): the round-0 nine (M-A declaration at head; M-B and M-M isWorkspaceKey; M-C single requires zero; M-D added key as version; M-E judgeSingleApproves never faults, now red against the new single-refusal test with 'merge-preconditions: green (5 merge preconditions evaluated)' as the failing detail; M-F branch B without hazard-classes-addressed; M-G outside the project as single; M-H --no-renames dropped; M-I missing charter as an empty set) and the fix-round eight (M-J boundAtMergeBase never on-the-base, red in both the merge-preconditions and the check-dual-review tests; M-P merge-preconditions not passing the merge base; M-Q check-dual-review not passing it; M-K entryShapeFault disabled; M-L the directory lookup never reporting a tree; M-N peerDependencies as a pin field; M-O branch A without criteria)."
+      ],
+      "met": true
+    }
+  ],
+  "deviations-judged": [
+    {
+      "deviation": "the plan puts the retirement machinery in M6-P3; the two retirement register tests (retirement inventory resolves every rule in the three roots; every line removed from CLAUDE.md or AGENTS.md since the diet baseline has a disposition) were deleted in M6-P2",
+      "serves-plan-intent": true,
+      "reasoning": "Unchanged from round 0. DR-0061 (a) is in force and supersedes any rule asking for a register before a removal; the two tests pinned exactly that register; the checker they ran is not a CI step (grep -n -i retirement over gate-registry.yaml, gates.manifest.json, .github/workflows/gates.yml, scripts/m2-exit-test.sh and package.json: no match), and at head it reports 6 unresolved items naming rows this phase rightly changed. The rest of the file, the inventory and the script are left for M6-P3 as the arbitration also records."
+    },
+    {
+      "deviation": "fix round 1 item 2 refuses a `.` segment in a runtime-set entry although the arbitration's list names only `..`",
+      "serves-plan-intent": true,
+      "reasoning": "git prints no `.` segment either, and `./src/` was the instance I measured single in round 0 (CR-M6P2A-02); refusing it is the fail-closed direction the item exists for, one rule wider than asked, and it is stated as a deviation in the work history rather than folded in."
+    }
+  ],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "runtime-change-classified-single",
+      "probed": "Delta: re-read classifyOne, classifyReviewBudget, entryShapeFault (src/gates/merge-preconditions.ts:907) and exactEntryNamingDirectory (:938). Measured through git (rev-a/entry-probe.mjs): 'paths: [src]' over a directory is now 'the runtime-set declaration is INVALID at the merge base (... runtime-set.paths entry \"src\" names a DIRECTORY at ...)' and the change is pair; the exact-file control 'paths: [src/feature.ts]' stays declared and pair; 'manifests: [src]' naming a directory is invalid. The pure reader refuses ./src/, /src/, src/**, src//, src/../src/ (each 'invalid ... refused (fail closed)') and the change is pair under each. Mutations at 773ced6, all red: M-A, M-G, M-H, M-I (round 0), M-K (entryShapeFault disabled: 'src/**: {\"kind\":\"declared\"...'), M-L (the directory lookup never reporting a tree: 'src/feature.ts ... single ... outside the declared runtime set'). The one shape left open, a prefix entry naming a file, is the finding.",
+      "finding": "CR-M6P2A-07"
+    },
+    {
+      "class-id": "dependency-change-hidden-in-version-only-manifest-diff",
+      "probed": "Delta: re-drove manifestDifferences with the round-0 fourteen shapes (rev-a/probe-manifest.mjs at 773ced6): the nested workspace entry version and the transitive entry's pin on a pinned name are now PAIR; every shape that was PAIR stays PAIR; an exact pin widened to a caret range stays version-only, which the work history states is by design (DR-0063 counts the pin) and which I record rather than re-raise. Read isWorkspaceKey (:1088), PIN_FIELDS (:1072, peerDependencies removed) and the new isVersionField (:1101): the root's three pin fields, packages[''] and workspace entries' version, and depth-4 pins under a workspace entry only. Mutations M-B, M-D, M-M, M-N each red on the arm they open.",
+      "cleared-because": "The two lockfile shapes round 0 measured single are pair with their reasons printed, peerDependencies is out of the pin fields, each rule has a red witness of my own, and the one remaining version-only shape (an exact pin widened to a range) is stated as intended by the decision rather than left silent."
+    },
+    {
+      "class-id": "unreadable-or-invalid-declaration-read-as-no-runtime-paths",
+      "probed": "Delta: readRuntimeSet's readings are unchanged and the shape refusals are added on top; a directory lookup git cannot answer becomes a sentence and the declaration invalid (classifyReviewBudget, the directoryFault block). Measured the four read-failure arms through git (rev-a/entry-probe.mjs): symlink charter at head, symlink manifest at head, charter deleted at head, charter unparseable at head, each pair with its own sentence. Mutation M-I red. None of the four arms has a test or a witness member, which is the finding.",
+      "finding": "CR-M6P2A-08"
+    },
+    {
+      "class-id": "merge-gate-green-with-fewer-verdicts-or-a-wrong-phase-or-head-admitted",
+      "probed": "Delta, CR-M6P2A-01 and CR-M6P2A-06 re-checked with my own probes at 773ced6. Probe 2 (this phase's two APPROVE verdicts merged into main with a merge commit, then an unreviewed delivery-only commit; real gate CLI, API stubbed green): 'merge-preconditions: red (1 merge preconditions evaluated)', 'DR-0063 single ...; 0 of 1 are admitted and 1 missing', exit 1; the selection sentence names the route: 'm6-p2-hazard-a.yaml declares head 773ced6..., which the merge base <main> of the review budget already contains, so the review covered content that is on the base rather than the change being merged and it is not evidence about the commit under audit'. Probe 1 (today's base): 0 admitted, red. Refusing control: '1 verdict(s) admitted and 16 excluded', condition-2 red on the FIX-ROUND-NEEDED verdict, exit 1, so an existing review is still honoured. Read boundAtMergeBase (src/checks.ts:4486): an admitting relation becomes on-the-base when the declared head equals or is an ancestor of the merge base; a git failure is undetermined (never admitted); no merge base (no --base) leaves the pre-M6-P2 reading, stated. Both gates call it (merge-preconditions :1784, check-dual-review through partitionByAuditedHead :4628). The registry's precondition commands (gate-registry.yaml:324, :497) pass --review-budget, which never reads the corpus, so the unbounded --precondition arm at scripts/check-dual-review.mjs:803 the implementer left open is off the CI path. No phase match, as arbitrated (M6-P5). Mutations, all red: M-C; M-E against the new test 'a single change whose one hazard verdict reads FIX-ROUND-NEEDED is red at condition-2 through the real gate' (the refusing review merging green under the mutant); M-J in both gates' tests; M-P; M-Q.",
+      "cleared-because": "The stale-admission path is closed in both gates with the exclusion named by route, the normal reviewed-head-then-verdict-commit flow is still admitted (the new test's control arm), the single tier's refusal row has a named test that my mutation turns red, and the remaining gap is the phase match, deferred by the arbitration to M6-P5 with a named phase."
+    },
+    {
+      "class-id": "failing-test-deleted-to-get-green",
+      "probed": "Delta: git diff e898e4e 773ced6 -- test/ | grep -E '^-\\s*(test|it)\\(': none. Removed rows in test/behaviors.json: the one '-' line (m6-p2-verdict-needs-no-contract) is immediately re-emitted with a trailing comma, the row is at test/behaviors.json:1393 at head and its test at test/verdict-schema.test.ts:471. git diff --diff-filter=D --name-only e898e4e 773ced6: none. node scripts/check-authored-bytes.mjs: exit 0.",
+      "cleared-because": "The delta deletes no test, removes no registry row and no file, and round 0's eight deletions each mapped to a rule an owner decision in force removed."
+    },
+    {
+      "class-id": "history-verdicts-and-fixtures-still-load-and-the-new-schema-cannot-skip-finding-fields",
+      "probed": "Delta: node bin/tiphys.ts validate --type verdict over every tracked YAML/JSON document whose content is a verdict (git ls-files | grep -l '^kind: verdict$|\"kind\": \"verdict\"', the implementer's content-derived set): 27 checked, 0 nonzero exits, 0 INVALID lines. The round-0 seven schema probes re-run at 773ced6: missing concrete-fix, missing evidence, APPROVE beside high, no contract + no classes, hazard + no classes, and now also review-contract criteria with no criteria[] are each INVALID; no contract + classes validates. Read branch A (schemas/verdict.schema.json:123): required review-contract and criteria, criteria restated as array minItems 1. Mutations M-F (branch B without hazard-classes-addressed) red on two tests and M-O (branch A without criteria) red: 'no criteria and no hazard classes: accepted'.",
+      "cleared-because": "Every committed verdict still validates under the tightened branch A, the finding definition is untouched, and the dodge reviewer B named (declare the dropped contract and carry neither array) is now refused, with a red witness of my own."
+    }
+  ]
+}
