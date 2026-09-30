@@ -193,11 +193,11 @@
           }
         },
         "parameters": {
-          "description": "Run parameters this gate's command requires; an absent declared parameter makes the gate error, never not-applicable (M2-C-3).",
+          "description": "Run parameters this gate's command takes: a bare name is required and its absence is error (M2-C-3); a trailing ? is passed only when the run has it.",
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["base", "head", "phase"]
+            "enum": ["base", "head", "phase", "base?", "head?", "phase?"]
           }
         },
         "precondition": {

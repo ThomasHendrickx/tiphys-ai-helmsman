@@ -586,7 +586,7 @@ interface Flags {
 const USAGE =
   "usage: node src/gates/suite.ts --result <file> --evidence <dir> --base <ref> " +
   "[--head <ref>] [--test-root <dir>]... [--pin-root <dir>]... " +
-  "[--suffix <s>] [--registry <path>] [--plan <file> --phase <id> [--check-timeout <seconds>]]";
+  "[--suffix <s>] [--registry <path>] [--plan <file>] [--phase <id>] [--check-timeout <seconds>]";
 
 function parseFlags(args: string[]): Flags | string {
   const flags: Flags = {
@@ -647,9 +647,6 @@ function parseFlags(args: string[]): Flags | string {
       flags.registry = value;
     }
     index += 1;
-  }
-  if ((flags.plan === undefined) !== (flags.phase === undefined)) {
-    return "--plan and --phase are given together: the criteria of one phase of one plan are proven";
   }
   if (flags.testRoots.length === 0) {
     flags.testRoots.push("test");
@@ -885,13 +882,17 @@ export function runSuiteGate(argv: string[]): number {
 
   // M6-P4 (DR-0064): the phase's acceptance criteria, read and validated
   // BEFORE the suite runs, so a plan that cannot be read costs no suite run.
-  // An unreadable or invalid plan is `error` (M2-C-3). A plan with no such
-  // phase is the one not-applicable arm, and it is printed in the detail.
+  // An unreadable or invalid plan is `error` (M2-C-3), with a phase or
+  // without one. The not-applicable arms are printed in the detail: a run
+  // that names no phase (a push; the runner passes `--phase` only when the
+  // run has one, gate parameter `phase?`) and a plan with no such phase. A
+  // `--phase` with no `--plan` proves nothing and says nothing: the registry
+  // entry that omits `--plan` is where that choice is made and read.
   let criteriaState:
     | { kind: "off" }
     | { kind: "not-applicable"; reason: string }
     | { kind: "on"; phaseId: string; criteria: Criterion[] } = { kind: "off" };
-  if (flags.plan !== undefined && flags.phase !== undefined) {
+  if (flags.plan !== undefined) {
     let planRead: ReturnType<typeof readPlan>;
     try {
       planRead = readPlan(resolve(cwd, flags.plan), loadTypeSchema("plan"));
@@ -901,16 +902,23 @@ export function runSuiteGate(argv: string[]): number {
     if (!planRead.ok) {
       return error(planRead.reason);
     }
-    const lookup = findPlanPhase(planRead.plan, flags.phase);
-    if (lookup.kind === "ambiguous") {
-      return error(
-        `plan ${flags.plan} declares ${String(lookup.count)} phases with id ${flags.phase}, so its criteria cannot be told apart`,
-      );
+    if (flags.phase === undefined) {
+      criteriaState = {
+        kind: "not-applicable",
+        reason: `no phase: this run names none, so no criteria of plan ${flags.plan} are proven`,
+      };
+    } else {
+      const lookup = findPlanPhase(planRead.plan, flags.phase);
+      if (lookup.kind === "ambiguous") {
+        return error(
+          `plan ${flags.plan} declares ${String(lookup.count)} phases with id ${flags.phase}, so its criteria cannot be told apart`,
+        );
+      }
+      criteriaState =
+        lookup.kind === "absent"
+          ? { kind: "not-applicable", reason: `plan ${flags.plan} declares no phase ${flags.phase}` }
+          : { kind: "on", phaseId: lookup.id, criteria: phaseCriteria(lookup.phase) };
     }
-    criteriaState =
-      lookup.kind === "absent"
-        ? { kind: "not-applicable", reason: `plan ${flags.plan} declares no phase ${flags.phase}` }
-        : { kind: "on", phaseId: lookup.id, criteria: phaseCriteria(lookup.phase) };
   }
 
   // Independent discovery walk (step 3).

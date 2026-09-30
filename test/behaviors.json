@@ -1142,8 +1142,11 @@
   "m6-p4-criterion-command-red": "a criterion whose command exits nonzero, times out or hands a script to a shell is red with the exit and the output tail",
   "m6-p4-criterion-proven-green": "a criterion whose named tests pass and whose command exits 0 is green, the phase id matches in any case, and the not-testable count is printed",
   "m6-p4-criteria-phase-absent-not-applicable": "a plan that does not declare the phase leaves the suite verdict alone and says the criteria are not applicable",
-  "m6-p4-criteria-invalid-plan-error": "an invalid plan makes the suite gate error before the suite runs, and --plan without --phase is a usage error",
+  "m6-p4-criteria-invalid-plan-error": "an invalid plan makes the suite gate error before the suite runs, with a phase and without one",
   "m6-p4-plan-count": "tiphys plan count prints each phase's criteria and not-testable count from the plan, and refuses an invalid plan",
   "m6-p4-final-report-not-testable": "the final report schema rejects a current report without the per-phase not-testable count and accepts it with one",
-  "m6-p4-hazard-brief-not-testable-questions": "the composed hazard review brief carries each not-testable criterion as a question, and says so when there is none"
+  "m6-p4-hazard-brief-not-testable-questions": "the composed hazard review brief carries each not-testable criterion as a question, and says so when there is none",
+  "m6-p4-criteria-no-phase-not-applicable": "a suite run given --plan and no --phase runs the suite and reports the criteria not applicable naming no phase, and --phase with no --plan proves nothing",
+  "m6-p4-runner-optional-parameter": "a gate declaring phase? is passed --phase when the run has one and runs without it when the run has none, while a gate requiring phase still errors without it",
+  "m6-p4-registry-criteria-by-event": "a project registry whose suite passes --plan and declares phase? proves the phase's criteria on a pull request and reports them not applicable on a push"
 }

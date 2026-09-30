@@ -30,7 +30,11 @@ import {
 import { loadTypeSchema } from "../commands/validate.ts";
 import { decodeDocument, formatDiagnostics, validateInstance } from "../validate.ts";
 import type { SchemaDocument } from "../validate.ts";
-import { validateManifestDocument, validateResultDocument } from "./manifest.ts";
+import {
+  readParameterDeclaration,
+  validateManifestDocument,
+  validateResultDocument,
+} from "./manifest.ts";
 import { comparePins, describePinDifference } from "./pin.ts";
 import {
   EXIT_GATE_ERROR,
@@ -43,7 +47,13 @@ import {
   renderGateResult,
   statusForExitCode,
 } from "./result.ts";
-import type { GateEntry, GateManifest, PreconditionSpec, RunParameter } from "./manifest.ts";
+import type {
+  GateEntry,
+  GateManifest,
+  ParameterDeclaration,
+  PreconditionSpec,
+  RunParameter,
+} from "./manifest.ts";
 import type { GateResult, GateStatus, PreconditionRecord } from "./result.ts";
 
 /** The stamp for a summary, or nothing when the version cannot be read. */
@@ -352,7 +362,7 @@ interface RegistryGateEntry {
   probe?: string;
   modes: string[];
   events: string[];
-  parameters?: RunParameter[];
+  parameters?: ParameterDeclaration[];
   precondition?: PreconditionSpec;
 }
 
@@ -727,7 +737,13 @@ function guardedWrite(path: string, body: string): string | undefined {
  * reading is one flag on an invocation that already carries three.
  */
 export function requiredParameters(entry: GateEntry): RunParameter[] {
-  const required = new Set<RunParameter>(entry.parameters ?? []);
+  const required = new Set<RunParameter>();
+  for (const declared of entry.parameters ?? []) {
+    const read = readParameterDeclaration(declared);
+    if (!read.optional) {
+      required.add(read.name);
+    }
+  }
   const kind = entry.precondition?.kind;
   if (kind === "diff-touches") {
     required.add("base");
@@ -736,6 +752,26 @@ export function requiredParameters(entry: GateEntry): RunParameter[] {
     required.add("phase");
   }
   return [...required].sort();
+}
+
+/**
+ * Which run parameters a gate takes when the run has them (M6-P4): the ones
+ * declared with a trailing `?`, less any the gate also requires, because a
+ * required parameter stays required however else it is declared. The runner
+ * passes each one the run supplies and omits the rest, and the gate runs
+ * either way. The case this exists for: `suite` proves a phase's criteria
+ * when the pull-request run names a phase, and a push run names none.
+ */
+export function optionalParameters(entry: GateEntry): RunParameter[] {
+  const required = new Set(requiredParameters(entry));
+  const optional = new Set<RunParameter>();
+  for (const declared of entry.parameters ?? []) {
+    const read = readParameterDeclaration(declared);
+    if (read.optional && !required.has(read.name)) {
+      optional.add(read.name);
+    }
+  }
+  return [...optional].sort();
 }
 
 type PreconditionOutcome =
@@ -1588,6 +1624,12 @@ function runOneGate(
   const argv = [...entry.command.slice(1), "--result", recordPath, "--evidence", gateDir];
   for (const name of requiredParameters(entry)) {
     argv.push(`--${name}`, options[name] as string);
+  }
+  for (const name of optionalParameters(entry)) {
+    const supplied = options[name];
+    if (supplied !== undefined) {
+      argv.push(`--${name}`, supplied);
+    }
   }
   const child = spawnSync(entry.command[0] as string, argv, {
     cwd,

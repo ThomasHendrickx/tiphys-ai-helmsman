@@ -57,11 +57,11 @@
           "enum": ["required", "conditional"]
         },
         "parameters": {
-          "description": "Run parameters this gate's command REQUIRES. Declared rather than inferred: deciding what another program needs by pattern-matching its command line is the mechanism MECHANISMS.md forbids. An absent declared parameter makes the gate error, never not-applicable (M2-C-3, M2R-003).",
+          "description": "Run parameters this gate's command takes. Declared rather than inferred: deciding what another program needs by pattern-matching its command line is the mechanism MECHANISMS.md forbids. A bare name is REQUIRED, and its absence makes the gate error, never not-applicable (M2-C-3, M2R-003). A name with a trailing ? is OPTIONAL (M6-P4): passed when the run has it, omitted otherwise.",
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["base", "head", "phase"]
+            "enum": ["base", "head", "phase", "base?", "head?", "phase?"]
           }
         },
         "precondition": {

@@ -26,6 +26,7 @@ const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const cliEntry = join(repoRoot, "bin", "tiphys.ts");
 const gatePath = join(repoRoot, "src", "gates", "suite.ts");
 const capturePath = join(repoRoot, "witness", "captures", "m6-p4-criteria-gate-cli.txt");
+const byEventCapturePath = join(repoRoot, "witness", "captures", "m6-p4-criteria-by-event.txt");
 
 const yamlModule = (await import("yaml")) as unknown as { parse: (text: string) => unknown };
 
@@ -136,9 +137,9 @@ function runGate(dir: string, base: string, extra: string[]): GateRun {
   return run;
 }
 
-/** One block of the real captured gate output. */
-function captured(block: string): string {
-  const body = readFileSync(capturePath, "utf8");
+/** One block of the real captured gate (or runner) output. */
+function captured(block: string, path = capturePath): string {
+  const body = readFileSync(path, "utf8");
   const begin = `--- BEGIN ${block} ---\n`;
   const from = body.indexOf(begin);
   assert.notEqual(from, -1, `capture block ${block} is absent`);
@@ -341,23 +342,156 @@ test("a plan that does not declare the phase leaves the suite verdict alone and 
   assert.equal(run.criteria?.["applicable"], false);
 });
 
-test("an invalid plan makes the suite gate error before the suite runs, and --plan without --phase is a usage error", () => {
+test("an invalid plan makes the suite gate error before the suite runs, with a phase and without one", () => {
   const plan = planWith([{ id: "c-bare", criterion: "neither check nor not-testable" }]);
   const { dir, base } = makeFixture({ "test/a.test.ts": TESTS_FILE }, plan);
-  const run = runGate(dir, base, ["--plan", "plan.json", "--phase", "M9-P1"]);
-  assert.equal(run.record.status, "error", run.record.detail);
-  assert.equal(run.status, 21);
-  assert.match(run.record.detail, /does not validate against the plan schema: INVALID #\/phases\/0\/acceptance\/0 /);
-  /* The suite never ran: its reporter stream was never written. */
-  assert.equal(existsSync(join(run.evidenceDir, "suite-events.ndjson")), false);
+  /* With a phase (a pull request) and without one (a push): the plan is read
+     and validated either way, so a push does not wave an invalid plan through. */
+  for (const extra of [["--plan", "plan.json", "--phase", "M9-P1"], ["--plan", "plan.json"]]) {
+    const run = runGate(dir, base, extra);
+    assert.equal(run.record.status, "error", `${extra.join(" ")}: ${run.record.detail}`);
+    assert.equal(run.status, 21);
+    assert.match(run.record.detail, /does not validate against the plan schema: INVALID #\/phases\/0\/acceptance\/0 /);
+    /* The suite never ran: its reporter stream was never written. */
+    assert.equal(existsSync(join(run.evidenceDir, "suite-events.ndjson")), false);
+  }
+});
 
-  const usage = spawnSync(
-    process.execPath,
-    [gatePath, "--result", join(run.evidenceDir, "r.json"), "--evidence", run.evidenceDir, "--base", base, "--plan", "plan.json"],
-    { cwd: dir, encoding: "utf8", env: scrubbedEnv() },
+test("a suite run given --plan and no --phase runs the suite and reports the criteria not applicable naming no phase, and --phase with no --plan proves nothing", () => {
+  /* The criterion would be RED if it were judged (its test is skipped), so a
+     green run is the proof that the criteria half did not run. */
+  const plan = planWith([{ id: "c-skip", criterion: "beta", check: { tests: ["beta is skipped"] } }]);
+  const { dir, base } = makeFixture({ "test/a.test.ts": TESTS_FILE }, plan);
+
+  const noPhase = runGate(dir, base, ["--plan", "plan.json"]);
+  assert.equal(noPhase.status, 0, noPhase.record.detail);
+  assert.equal(noPhase.record.status, "green");
+  assert.match(
+    noPhase.record.detail,
+    /; criteria not applicable: no phase: this run names none, so no criteria of plan plan\.json are proven$/,
   );
-  assert.equal(usage.status, 64, usage.stderr);
-  assert.match(usage.stderr, /--plan and --phase are given together/);
+  assert.equal(noPhase.criteria?.["applicable"], false);
+
+  /* A phase with no plan: this repository's own registry entry passes
+     `phase?` and no `--plan`, so on a pull request the suite gets `--phase`
+     alone. It runs, it is green, and it claims nothing about criteria. */
+  const noPlan = runGate(dir, base, ["--phase", "M9-P1"]);
+  assert.equal(noPlan.status, 0, noPlan.record.detail);
+  assert.equal(noPlan.record.status, "green");
+  assert.doesNotMatch(noPlan.record.detail, /criteri/);
+  assert.equal(noPlan.criteria, undefined);
+});
+
+/* ------------------------------------------------------------------ */
+/* The runner arm: an OPTIONAL run parameter (gate parameter `phase?`)  */
+/* ------------------------------------------------------------------ */
+
+/** A fixture gate that reports, as its detail, the --phase it was given. */
+const RUNNER_GATE =
+  'import { writeFileSync } from "node:fs";\n' +
+  "const argv = process.argv.slice(2);\n" +
+  "const at = (name) => { const i = argv.indexOf(name); return i === -1 ? undefined : argv[i + 1]; };\n" +
+  'const phase = at("--phase");\n' +
+  'const record = { gate: argv[0], status: "green", units: 1, unitLabel: "fixture units", startedAt: "2026-09-30T00:00:00.000Z", endedAt: "2026-09-30T00:00:01.000Z", detail: phase === undefined ? "received no --phase" : `received --phase ${phase}`, evidence: [] };\n' +
+  'writeFileSync(at("--result"), `${JSON.stringify(record)}\\n`);\n';
+
+function registryEntry(
+  id: string,
+  command: string[],
+  parameters: string[],
+  unitLabel: string,
+): Record<string, unknown> {
+  return {
+    id,
+    prevents: "a fixture failure",
+    command,
+    unitLabel,
+    applicability: "required",
+    "verified-by": "script",
+    modes: ["full"],
+    events: ["pull_request", "push"],
+    parameters,
+  };
+}
+
+function writeRegistry(dir: string, gates: Record<string, unknown>[]): void {
+  const document = {
+    kind: "gate-registry",
+    version: 1,
+    preflight: [{ command: ["npm", "ci"], note: "install exactly the lockfile" }],
+    gates,
+    destructiveCommands: [],
+  };
+  writeFileSync(join(dir, "registry.json"), `${JSON.stringify(document, null, 2)}\n`);
+}
+
+/**
+ * The REAL runner over `registry.json` in `dir`. The first stdout line names a
+ * random run id and is dropped, exactly as the capture drops it.
+ */
+function runRunner(dir: string, extra: string[]): { status: number | null; stdout: string; output: string } {
+  const evidence = join(dir, `evidence-${String(Math.random()).slice(2)}`);
+  const run = spawnSync(
+    process.execPath,
+    [cliEntry, "gates", "run", "--registry", "registry.json", "--mode", "full", "--evidence", evidence, ...extra],
+    { cwd: dir, encoding: "utf8", env: scrubbedEnv(), timeout: 300000 },
+  );
+  const stdout = run.stdout ?? "";
+  return {
+    status: run.status,
+    stdout: stdout.split("\n").slice(1).join("\n"),
+    output: `${stdout}${run.stderr ?? ""}`,
+  };
+}
+
+/** The capture's declared substitutions: the base commit and the child's node version. */
+function scrubRun(stdout: string, base: string): string {
+  return stdout
+    .split(base)
+    .join("<base>")
+    .split(base.slice(0, 12))
+    .join("<base12>")
+    .replace(/\(child node v[0-9.]+\)/g, "(child node <node>)");
+}
+
+test("a gate declaring phase? is passed --phase when the run has one and runs without it when the run has none, while a gate requiring phase still errors without it", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-criteria-runner-"));
+  writeFileSync(join(dir, "gate.mjs"), RUNNER_GATE);
+  writeRegistry(dir, [
+    registryEntry("takes-phase", ["node", join(dir, "gate.mjs"), "takes-phase"], ["phase?"], "fixture units"),
+    registryEntry("needs-phase", ["node", join(dir, "gate.mjs"), "needs-phase"], ["phase"], "fixture units"),
+  ]);
+
+  const withPhase = runRunner(dir, ["--phase", "M9-P1"]);
+  assert.equal(withPhase.status, 0, withPhase.output);
+  assert.match(withPhase.stdout, /^gates: takes-phase: green: received --phase M9-P1$/m);
+  assert.match(withPhase.stdout, /^gates: needs-phase: green: received --phase M9-P1$/m);
+
+  /* No phase: the optional one runs without it, the required one is error
+     (M2-C-3 unchanged). Compared with the real captured runner output. */
+  const withoutPhase = runRunner(dir, []);
+  assert.equal(withoutPhase.status, 21, withoutPhase.output);
+  assert.equal(withoutPhase.stdout, captured("runner-no-phase", byEventCapturePath));
+});
+
+test("a project registry whose suite passes --plan and declares phase? proves the phase's criteria on a pull request and reports them not applicable on a push", () => {
+  /* The criterion's test is skipped, so wherever the criteria half runs it is
+     red: red on the pull request is the proof that it ran there, and green on
+     the push is the proof that a push, which names no phase, is not held to
+     one phase's criteria. */
+  const plan = planWith([{ id: "c-skip", criterion: "beta", check: { tests: ["beta is skipped"] } }]);
+  const { dir, base } = makeFixture({ "test/a.test.ts": TESTS_FILE }, plan);
+  writeRegistry(dir, [
+    registryEntry("suite", ["node", gatePath, "--plan", "plan.json"], ["base", "phase?"], "tests reported"),
+  ]);
+
+  const pullRequest = runRunner(dir, ["--event", "pull_request", "--base", base, "--phase", "m9-p1"]);
+  assert.equal(pullRequest.status, 1, pullRequest.output);
+  assert.equal(scrubRun(pullRequest.stdout, base), captured("suite-pull-request", byEventCapturePath));
+
+  const push = runRunner(dir, ["--event", "push", "--base", base]);
+  assert.equal(push.status, 0, push.output);
+  assert.equal(scrubRun(push.stdout, base), captured("suite-push", byEventCapturePath));
 });
 
 /* ------------------------------------------------------------------ */
