@@ -1,0 +1,43 @@
+{
+  "id": "m6-p4-criterion-pass-shaped-red",
+  "behavior": "m6-p4-criterion-pass-shaped-red",
+  "tests": [
+    "a criterion whose named test passes only under expectFailure, or only as a replay of an earlier run, is red naming the criterion and the title"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "  \"        expectFailure: data.expectFailure,\\n\" +\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "  \"        passedOnAttempt: details.passed_on_attempt,\\n\" +\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "  if (point.expectFailure !== undefined && point.expectFailure !== false) {\n    return \"expected-failure\";\n  }\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "  if (point.passedOnAttempt !== undefined) {\n    return \"replayed\";\n  }\n",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node src/gates/suite.ts, the suite gate CLI, which spawns the configured node:test run and parses its reporter stream, and runs each criterion's check.command through src/criteria.ts",
+    "captures": [
+      "witness/captures/m6-p4-criteria-gate-cli.txt"
+    ],
+    "provenance": "Captured 2026-09-30 in the kernel container on node v26.6.0 by running the gate CLI over the fixtures test/criteria.test.ts builds (the command and exit are recorded above each block; this witness's test compares block pass-shaped-red). The named test drives a real node:test run or a real spawned command and, where it names a block, compares the live gate stdout with it byte for byte; nothing asserted is a hand-written string standing in for another program's output."
+  }
+}
