@@ -143,10 +143,6 @@
       "additionalProperties": false,
       "required": ["id", "prevents", "unitLabel", "applicability", "verified-by", "modes", "events"],
       "properties": {
-        "$comment": {
-          "description": "Clause ids this entry discharges, per schemas/README.md.",
-          "type": "string"
-        },
         "id": {
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9-]*$"
@@ -197,11 +193,11 @@
           }
         },
         "parameters": {
-          "description": "Run parameters this gate's command requires; an absent declared parameter makes the gate error, never not-applicable (M2-C-3). The exception is event: a run naming no --event is a run over every gate, so a gate declaring event is then told nothing and takes its no-event arm.",
+          "description": "Run parameters this gate's command takes: a bare name is required and its absence is error (M2-C-3), except event: a run naming no --event is a run over every gate, so a gate declaring event is then told nothing and takes its no-event arm (M6-P8). A trailing ? is passed only when the run has it (M6-P4).",
           "type": "array",
           "items": {
             "type": "string",
-            "enum": ["base", "head", "phase", "event"]
+            "enum": ["base", "head", "phase", "event", "base?", "head?", "phase?", "event?"]
           }
         },
         "precondition": {
@@ -233,7 +229,7 @@
           "type": "string"
         },
         "pattern": {
-          "description": "branch-matches: a JavaScript regular expression compiled as ^(?:<pattern>)$ against the whole branch name, with {phase} replaced by the regex-escaped --phase value.",
+          "description": "branch-matches: a JavaScript regex matched as ^(?:<pattern>)$ against the whole branch name, {phase} replaced by the regex-escaped --phase value.",
           "type": "string"
         },
         "paths": {

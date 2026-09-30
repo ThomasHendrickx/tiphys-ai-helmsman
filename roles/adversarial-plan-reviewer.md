@@ -40,6 +40,12 @@ satisfies every acceptance criterion as written and is still wrong, and to name
 it. If you cannot construct one for a criterion, say so; that is a stronger
 statement than "looks fine" and it tells the next reader what you actually did.
 
+Every criterion carries a `check` or a `not-testable` reason (DR-0064), and
+both are yours to break. A criterion whose `check` would still pass while the
+criterion is false (a test that does not exercise it, a command that cannot
+fail) is a finding. A `not-testable` criterion that could have been a test or
+a command is a finding, and its concrete edit is the `check` to write instead.
+
 A finding with no `concrete-edit` is a remark. The schema refuses it, and the
 reason is that a review made of remarks costs a round trip and moves nothing:
 the plan writer cannot act on "this section is vague", and can act on "replace

@@ -40,14 +40,18 @@ gates:
     events: [pull_request, push]
 
   - id: suite
-    prevents: a change that breaks a test, or a registered behavior whose test no longer runs
+    prevents: a change that breaks a test, a registered behavior whose test no longer runs, or (given --plan) a criterion reported met with nothing proving it
+    # No --plan here: this repository's plans are markdown, and the criteria
+    # proof reads a plan that validates as a plan (YAML or JSON). phase? is
+    # declared so a project that adds `--plan <file>` gets the criteria half on
+    # a pull request (the run names a phase) and not-applicable on a push.
     command: [node, src/gates/suite.ts, --pin-root, src, --pin-root, bin, --pin-root, test]
     unitLabel: tests reported
     applicability: required
     verified-by: script
     modes: [full, direct-pr, local-only]
     events: [pull_request, push]
-    parameters: [base]
+    parameters: [base, "phase?"]
 
   - id: typecheck
     prevents: a type error in src/, test/ or plugin/

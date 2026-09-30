@@ -146,10 +146,6 @@
         "merge-authority"
       ],
       "properties": {
-        "$comment": {
-          "description": "Clause ids this entry discharges, per schemas/README.md.",
-          "type": "string"
-        },
         "id": {
           "description": "The closed mode vocabulary at v0.1.0 (DR-0020): the three modes of blueprint section 8.",
           "type": "string",

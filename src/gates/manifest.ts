@@ -69,6 +69,25 @@ export type RunParameter = "base" | "head" | "phase" | "event";
  */
 export const OPTIONAL_PARAMETERS: ReadonlySet<RunParameter> = new Set<RunParameter>(["event"]);
 
+/**
+ * A gate's declaration of one run parameter. The bare name is REQUIRED: the
+ * gate errors without it (M2-C-3). A trailing `?` makes it OPTIONAL (M6-P4):
+ * passed when the run has it, omitted otherwise, and the gate still runs. A
+ * push run has no phase, so a gate that proves a phase's criteria on a pull
+ * request and still has to run on the push declares `phase?`.
+ */
+export type ParameterDeclaration = RunParameter | `${RunParameter}?`;
+
+/** A parameter declaration split into the parameter and whether it is optional. */
+export function readParameterDeclaration(declared: ParameterDeclaration): {
+  name: RunParameter;
+  optional: boolean;
+} {
+  return declared.endsWith("?")
+    ? { name: declared.slice(0, -1) as RunParameter, optional: true }
+    : { name: declared as RunParameter, optional: false };
+}
+
 export interface PreconditionSpec {
   id: string;
   kind: PreconditionKind;
@@ -83,7 +102,7 @@ export interface GateEntry {
   command: string[];
   unitLabel: string;
   applicability: "required" | "conditional";
-  parameters?: RunParameter[];
+  parameters?: ParameterDeclaration[];
   precondition?: PreconditionSpec;
   modes?: string[];
 }

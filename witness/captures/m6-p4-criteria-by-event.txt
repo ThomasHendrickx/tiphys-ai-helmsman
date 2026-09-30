@@ -1,0 +1,45 @@
+M6-P4: the real stdout of the gate runner over fixture registries that
+declare an optional run parameter.
+
+Captured 2026-09-30 in the kernel container on node v26.6.0
+(/home/user/.toolchains/node-v26.6.0-linux-x64/bin/node), git 2.43.0. Each block is
+the runner's stdout from the command above it, byte for byte except three
+substitutions that are declared here: the first line (`gates: run <random id>`)
+is dropped; the fixture's base commit is written <base> (40 hex digits) or
+<base12> (its first 12), because it changes with every commit time; and the
+suite child's node version is written <node>, because it is the version of
+whichever toolchain runs the test. The fixtures are built exactly as
+test/criteria.test.ts builds them. Nothing below is hand-written; the named
+tests reproduce each block live, apply the same substitutions, and compare it
+with assert.equal.
+
+WHY THIS FILE EXISTS. Red-witness rule (f) binds witnesses whose members touch
+src/gates/run.ts or src/gates/suite.ts, because both spawn another program and
+judge what it reports. What the runner passed and what the gate made of it is
+the contract, so the contract is the runner's output.
+
+# node bin/tiphys.ts gates run --registry registry.json --mode full --evidence <evidence>
+# exit 21
+--- BEGIN runner-no-phase ---
+gates: registry registry.json mode full
+gates: declared 2 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 1 vacuous 0
+gates: takes-phase: green: received no --phase
+gates: needs-phase: error: gate needs-phase requires --phase, which was not supplied
+--- END runner-no-phase ---
+
+# node bin/tiphys.ts gates run --registry registry.json --mode full --evidence <evidence> --event pull_request --base <base> --phase m9-p1
+# exit 1
+--- BEGIN suite-pull-request ---
+gates: registry registry.json mode full event pull_request
+gates: declared 1 applicable 1 verdict 1 green 0 red 1 not-applicable 0 error 0 vacuous 0
+gates: suite: red: 1 finding(s): criterion c-skip: test "beta is skipped" was skipped (test/a.test.ts); criteria of M9-P1 in plan.json: 1 criterion(s), 0 proven by their check, 1 unproven, 0 not-testable
+--- END suite-pull-request ---
+
+# node bin/tiphys.ts gates run --registry registry.json --mode full --evidence <evidence> --event push --base <base>
+# exit 0
+--- BEGIN suite-push ---
+gates: registry registry.json mode full event push
+gates: declared 1 applicable 1 verdict 1 green 1 red 0 not-applicable 0 error 0 vacuous 0
+gates: suite: green: suite green via tiphys-suite-events-v1 (child node <node>): reported 3 test(s) from 1 file(s) (pass 1, fail 0, skipped 1, todo 1, did-not-run 0); discovered 1 file(s) walking test for .test.ts; 0 behavior(s) resolve; merge base <base12>; criteria not applicable: no phase: this run names none, so no criteria of plan plan.json are proven
+gates: every applicable gate is green
+--- END suite-push ---
