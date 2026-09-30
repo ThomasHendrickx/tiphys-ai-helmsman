@@ -1659,6 +1659,151 @@ test("the gates workflow checks out the pull-request head branch by name (ref: g
   assert.equal(String(inputs["fetch-depth"]), "0");
 });
 
+/* ------------------------------------------------------------------ */
+/* M6-P5 CI landing: --phase from the pull request title (DR-0057)      */
+/* ------------------------------------------------------------------ */
+
+/** A branch that carries every M6 phase in turn, so its name names no phase. */
+const NON_PHASE_BRANCH = "claude/upbeat-gates-w3cm5m";
+
+/**
+ * The --phase the pull-request gates step passes for one branch and title, run
+ * as the runner runs it. Every `${{ expr }}` in the step's `env:` and `run:` is
+ * substituted TEXTUALLY with the value this context gives, as Actions does
+ * before the shell sees the script, so an expression interpolated into `run:`
+ * puts the title into the script text. An expression the context has no value
+ * for throws rather than becoming a placeholder. The runner is a stub
+ * `bin/tiphys.ts` that prints its argv.
+ */
+function pullRequestStepPhase(
+  workflowText: string,
+  dir: string,
+  branch: string,
+  title: string,
+): { phase: string | undefined; output: string } {
+  const steps = gatesRunStepsFor(gatesJobSteps(workflowText), "pull_request");
+  assert.equal(steps.length, 1, "expected exactly one pull-request gates run step");
+  const step = steps[0] as UploadStep & { env?: Record<string, unknown> };
+  const context: Record<string, string> = {
+    "github.head_ref": branch,
+    "github.event.pull_request.title": title,
+    "github.token": "fixture-token",
+    "runner.temp": join(dir, "runner-temp"),
+    "github.event.pull_request.base.sha": "fixture-base-sha",
+    "github.event.pull_request.head.sha": "fixture-head-sha",
+  };
+  const substitute = (text: string): string =>
+    text.replace(/\$\{\{\s*([^}]*?)\s*\}\}/g, (_whole: string, expression: string) => {
+      const value = context[expression];
+      if (value === undefined) throw new Error(`the pull-request gates step reads ${expression}, which this harness has no value for`);
+      return value;
+    });
+  const env: Record<string, string> = { PATH: `${dirname(process.execPath)}:${process.env["PATH"] ?? ""}` };
+  for (const [name, value] of Object.entries(step.env ?? {})) env[name] = substitute(String(value));
+  mkdirSync(join(dir, "bin"), { recursive: true });
+  writeFileSync(join(dir, "bin", "tiphys.ts"), 'console.log("STUB-ARGV " + JSON.stringify(process.argv.slice(2)));\n');
+  const scriptFile = join(dir, "step.sh");
+  writeFileSync(scriptFile, substitute(step.run as string));
+  const result = spawnSync("bash", ["-e", scriptFile], { cwd: dir, encoding: "utf8", env });
+  const line = result.stdout.split("\n").find((candidate) => candidate.startsWith("STUB-ARGV "));
+  let phase: string | undefined;
+  if (line !== undefined) {
+    const argv = JSON.parse(line.slice("STUB-ARGV ".length)) as string[];
+    const at = argv.indexOf("--phase");
+    phase = at >= 0 ? argv[at + 1] : undefined;
+  }
+  return { phase, output: `exit ${String(result.status)}\n${result.stdout}${result.stderr}` };
+}
+
+/** Why the pull-request step's phase derivation is wrong or runs title text; empty when it is not. */
+function phaseDerivationDefects(workflowText: string, dir: string): string[] {
+  const defects: string[] = [];
+  const cases: { branch: string; title: string; want: string }[] = [
+    { branch: "claude/m6-p5-x", title: "M6-P5: x", want: "m6-p5" },
+    { branch: "claude/m6-p5-x", title: "M9-P9: another phase's title", want: "m6-p5" },
+    { branch: "claude/m6-p5-x", title: "no phase in this title", want: "m6-p5" },
+    { branch: NON_PHASE_BRANCH, title: "M6-P5: x", want: "m6-p5" },
+    { branch: NON_PHASE_BRANCH, title: "M12-P34: two digits each", want: "m12-p34" },
+    { branch: NON_PHASE_BRANCH, title: "land every M6 phase", want: NON_PHASE_BRANCH },
+    { branch: NON_PHASE_BRANCH, title: "fix for M6-P5: not leading", want: NON_PHASE_BRANCH },
+  ];
+  /* THE TITLE IS FREE TEXT. Three structurally different ways shell syntax
+     in it would run if it reached the script text: command substitution,
+     backticks, and a single quote closing a quoted string. Each touches its
+     own marker; the title must stay literal and the phase is still m6-p5. */
+  const injections = [
+    (marker: string): string => `M6-P5: $(touch ${marker})`,
+    (marker: string): string => `M6-P5: \`touch ${marker}\``,
+    (marker: string): string => `M6-P5: '; touch ${marker}; '`,
+  ];
+  injections.forEach((make, index) => {
+    const marker = join(dir, `injected-${String(index)}`);
+    cases.push({ branch: NON_PHASE_BRANCH, title: make(marker), want: "m6-p5" });
+  });
+  for (const { branch, title, want } of cases) {
+    const { phase, output } = pullRequestStepPhase(workflowText, dir, branch, title);
+    if (phase !== want) {
+      defects.push(`branch ${branch} title ${JSON.stringify(title)}: --phase ${JSON.stringify(phase)}, not ${want} (${output.trim()})`);
+    }
+  }
+  injections.forEach((_make, index) => {
+    if (existsSync(join(dir, `injected-${String(index)}`))) {
+      defects.push(`injection ${String(index)}: the title's shell syntax ran a command`);
+    }
+  });
+  return defects;
+}
+
+test("the pull-request gates step takes --phase from a phase branch, else from the title's leading Mn-Pn: lowercased, else the branch name, and the title's shell syntax runs nothing", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  const dir = scratch("phase-from-title");
+  try {
+    assert.deepEqual(phaseDerivationDefects(workflow, dir), []);
+
+    /* TWO STRUCTURALLY DIFFERENT INTERPOLATIONS of the title into `run:`,
+       each reddening under a different member of the class: inside double
+       quotes (command substitution and backticks run) and inside single
+       quotes (a closing quote runs the rest). */
+    const readTitle = '[[ "$PR_TITLE" =~';
+    assert.ok(workflow.includes(readTitle), "the workflow no longer reads the title from PR_TITLE");
+    const doubleQuoted = workflow.replace(readTitle, '[[ "${{ github.event.pull_request.title }}" =~');
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    const doubleDefects = phaseDerivationDefects(doubleQuoted, dir).join("\n");
+    assert.match(doubleDefects, /injection 0: the title's shell syntax ran a command/);
+    assert.match(doubleDefects, /injection 1: the title's shell syntax ran a command/);
+
+    const runStart = "        run: |\n          if [[ \"$HEAD_REF\"";
+    assert.ok(workflow.includes(runStart), "the pull-request step no longer starts with the branch test");
+    const singleQuoted = workflow.replace(
+      runStart,
+      "        run: |\n          PR_TITLE='${{ github.event.pull_request.title }}'\n          if [[ \"$HEAD_REF\"",
+    );
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    assert.match(
+      phaseDerivationDefects(singleQuoted, dir).join("\n"),
+      /injection 2: the title's shell syntax ran a command/,
+    );
+
+    /* And the title arm removed: the branch that carries no phase passes its
+       own name, which is what reddened merge-preconditions on this pull
+       request. */
+    const titleArm = workflow.indexOf('          elif [[ "$PR_TITLE"');
+    const elseArm = workflow.indexOf("          else\n", titleArm);
+    assert.ok(titleArm > 0 && elseArm > titleArm, "the title arm could not be located");
+    const noTitleArm = workflow.slice(0, titleArm) + workflow.slice(elseArm);
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(dir, { recursive: true });
+    assert.match(
+      phaseDerivationDefects(noTitleArm, dir).join("\n"),
+      /branch claude\/upbeat-gates-w3cm5m title "M6-P5: x": --phase "claude\/upbeat-gates-w3cm5m", not m6-p5/,
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("no environment variable changes a production gate's reported status (grep over the gate sources)", () => {
   /* A production gate must not read a NAMED environment variable that steers
      its verdict. The only named read allowed is the token a gate is told to
