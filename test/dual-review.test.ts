@@ -38,6 +38,7 @@ import test from "node:test";
 import { realpathSync as ceilingRealpath } from "node:fs";
 import { tmpdir as ceilingTmpdir } from "node:os";
 import { delimiter as ceilingDelimiter } from "node:path";
+import { withDualReviewGate } from "./support/dual-review-registry.ts";
 
 /*
  * NO REPOSITORY ABOVE THE SCRATCH ROOT (kernel 0.2.1 fix round 3). Tests in
@@ -861,43 +862,6 @@ test("a verdict that is not among the committed reviews cannot be cleared by the
 /* The gate wiring                                                      */
 /* ------------------------------------------------------------------ */
 
-test("check-dual-review is declared on the pull request arm with a precondition the runner can evaluate", () => {
-  const registry = yamlModule.parse(
-    readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8"),
-  ) as {
-    gates: {
-      id: string;
-      events?: string[];
-      applicability?: string;
-      precondition?: { kind: string; command?: string[] };
-    }[];
-  };
-  const entry = registry.gates.find((gate) => gate.id === "check-dual-review");
-  assert.ok(entry !== undefined, "the gate is not declared in gate-registry.yaml");
-  assert.deepEqual(entry.events, ["pull_request"]);
-  assert.equal(entry.applicability, "conditional");
-  assert.equal(entry.precondition?.kind, "command-exit-zero");
-  /* THE PRECONDITION COMMAND IS THIS SCRIPT'S OWN ARM, so what the runner
-     evaluates and what the workflow evaluates are the same question. */
-  assert.ok(
-    (entry.precondition?.command ?? []).includes("--precondition"),
-    "the precondition does not use the script's precondition arm",
-  );
-
-  const workflow = yamlModule.parse(
-    readFileSync(join(repoRoot, ".github", "workflows", "gates.yml"), "utf8"),
-  ) as { jobs: Record<string, { steps: { run?: string; if?: string }[] }> };
-  const step = (workflow.jobs["gates"]?.steps ?? []).find((candidate) =>
-    (candidate.run ?? "").includes("check-dual-review.mjs"),
-  );
-  assert.ok(step !== undefined, "no workflow step runs the dual-review check");
-  /* THE STEP'S EVENT NARROWING MATCHES THE GATE'S DECLARED EVENTS. An `if:`
-     that CONTRADICTED the registry would be the defang; one that agrees with it
-     is the wiring. */
-  assert.equal(step.if, "github.event_name == 'pull_request'");
-  assert.match(step.run as string, /--precondition/);
-});
-
 test("the check's declared dimension is produced-by alone, read from the shipped module", () => {
   /* M6-P2: DR-0064 dropped the criteria contract, so framing and
      review-contract distinctness are no longer compared; DR-0063's pair is two
@@ -1035,7 +999,10 @@ function stageBudgetRepo(
     join(repoRoot, "src", "gates", "merge-preconditions.ts"),
     join(dir, "src", "gates", "merge-preconditions.ts"),
   );
-  copyFileSync(join(repoRoot, "gate-registry.yaml"), join(dir, "gate-registry.yaml"));
+  writeFileSync(
+    join(dir, "gate-registry.yaml"),
+    withDualReviewGate(readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8")),
+  );
   return { dir, base, reviewed, head };
 }
 

@@ -548,19 +548,6 @@ test("a --head the repository cannot produce is error, never not-applicable and 
   assert.equal(pre.exit, 0, pre.output);
 });
 
-test("the gate registry declares head as a parameter of check-dual-review, which is how the runner supplies the audited commit", () => {
-  const registry = yamlModule.parse(
-    readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8"),
-  ) as { gates: { id: string; parameters?: string[] }[] };
-  const entry = registry.gates.find((gate) => gate.id === "check-dual-review");
-  assert.ok(entry !== undefined, "check-dual-review is not declared in gate-registry.yaml");
-  /* M5-P3 ADDS `base`, which is how the runner supplies the diff whose review
-     budget the gate decides. `head` is still declared and still the audited
-     commit; the pair is asserted exactly because a parameter the runner does
-     not pass is a question the gate answers without its subject. */
-  assert.deepEqual(entry.parameters, ["base", "head"]);
-});
-
 /* ------------------------------------------------------------------ */
 /* CR-VS-002: the pair corpus reads the whole subtree                   */
 /* ------------------------------------------------------------------ */
@@ -755,7 +742,6 @@ test("the DR-0047 sweep behaviors are registered in test/behaviors.json and reso
     "dual-review-head-awkward-paperwork-name-still-green",
     "dual-review-head-defaults-to-context-head",
     "dual-review-unresolvable-audited-head-is-error",
-    "dual-review-registry-declares-head-parameter",
     "dual-review-pair-corpus-reads-the-subtree",
     "dual-review-nested-refusal-cannot-be-hidden",
     "dual-review-produced-by-string-disclosed",

@@ -48,6 +48,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
+import { withDualReviewGate } from "./support/dual-review-registry.ts";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const cliEntry = join(repoRoot, "bin", "tiphys.ts");
@@ -326,7 +327,10 @@ function stageReviewedChange(
   symlinkSync(scriptPath, join(dir, "scripts", "check-dual-review.mjs"));
   mkdirSync(join(dir, "src", "gates"), { recursive: true });
   symlinkSync(join(repoRoot, "src", "gates", "merge-preconditions.ts"), join(dir, "src", "gates", "merge-preconditions.ts"));
-  copyFileSync(join(repoRoot, "gate-registry.yaml"), join(dir, "gate-registry.yaml"));
+  writeFileSync(
+    join(dir, "gate-registry.yaml"),
+    withDualReviewGate(readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8")),
+  );
   return { dir, base, reviewed, head };
 }
 

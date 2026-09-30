@@ -1105,7 +1105,6 @@
   "dual-review-head-other-commit-never-green": "an approving pair naming a real commit that is not the one under audit is never green, and is named as a review of other work",
   "dual-review-head-defaults-to-context-head": "with no --head the audited commit is the context's own HEAD, so the workflow step that passes no flag is anchored too",
   "dual-review-unresolvable-audited-head-is-error": "a --head the repository cannot produce is error, never not-applicable and never green",
-  "dual-review-registry-declares-head-parameter": "the gate registry declares head as a parameter of check-dual-review, which is how the runner supplies the audited commit",
   "dual-review-pair-corpus-reads-the-subtree": "a verdict pair committed one directory down is read, rather than reported as an empty corpus",
   "dual-review-nested-refusal-cannot-be-hidden": "a committed third review refusing the audited head is counted even one directory down, so the pair cannot be approved over it",
   "dual-review-produced-by-string-disclosed": "the green decorrelation report says produced-by was compared as a string and is not a cross-family assertion",

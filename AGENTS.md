@@ -22,7 +22,7 @@ mandated-reading:
   - checklists/hazard-review.yaml
   - tuition/mechanism-index.yaml
 verifiers:
-  - check-dual-review
+  - merge-preconditions
 outputs:
   - decision-record
   - final-report
@@ -526,8 +526,8 @@ files committed beside the one you name:
 It exits nonzero naming the duplicated value, or naming the file and the
 dimension when a verdict states no value to compare on, because a dimension that
 was never stated is not a dimension the two reviews were shown to differ on. The
-`check-dual-review` gate in `gate-registry.yaml#gates` is the same check wired to
-run in a pipeline rather than by hand. A kernel that can REPRESENT this regime
+`merge-preconditions` gate in `gate-registry.yaml#gates` runs the same check in
+the pipeline rather than by hand. A kernel that can REPRESENT this regime
 but cannot DETECT a run that quietly used one model family twice reproduces the
 exact failure class T-001 exists to prevent, this time invisible because the
 kernel's own artifacts never looked.

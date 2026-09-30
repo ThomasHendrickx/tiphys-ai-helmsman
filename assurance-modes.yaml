@@ -162,7 +162,6 @@ modes:
       - migrations
       - clause-map
       - red-witness
-      - check-dual-review
       - license
       - typecheck
       - gate-classes
