@@ -131,7 +131,13 @@ else
   npm ci >&2 || fail "npm ci" "npm ci failed"
 fi
 
-# 4. Build. Always: tsc -b is incremental, and a skipped build is a stale dist/.
+# 4. Build, from clean. tsc -b decides what to emit from its .tsbuildinfo, not
+# from the outputs, so an output deleted or edited since the last build
+# survives an incremental build that exits 0. Remove dist/ and every ignored,
+# untracked .tsbuildinfo (plugin/dist carries one) first.
+rm -rf dist || fail "build" "cannot remove dist/"
+git ls-files -z --others --ignored --exclude-standard -- '*.tsbuildinfo' | xargs -0 rm -f \
+  || fail "build" "cannot remove the ignored .tsbuildinfo files"
 npm run build >&2 || fail "build" "npm run build failed"
 [ -d dist ] || fail "build" "npm run build exited 0 and left no dist/"
 

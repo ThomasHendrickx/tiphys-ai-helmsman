@@ -36,6 +36,13 @@ const SUMMARY = /^setup-env: full clone, node v[0-9]+\.[0-9]+\.[0-9]+, dist buil
 const OK_BUILD =
   "node -e \"require('fs').mkdirSync('dist',{recursive:true});require('fs').writeFileSync('dist/built.txt','built')\"";
 
+/* A build that trusts its own record of what it emitted, as `tsc -b` trusts
+   its .tsbuildinfo: while build.tsbuildinfo exists it writes nothing. Measured
+   on this repository: after `rm dist/src/exec/env.js`, `npm run build` exits 0
+   and does not re-emit the file. */
+const INCREMENTAL_BUILD =
+  "node -e \"const fs=require('fs');if(fs.existsSync('build.tsbuildinfo'))process.exit(0);fs.mkdirSync('dist',{recursive:true});fs.writeFileSync('dist/built.txt','built');fs.writeFileSync('build.tsbuildinfo','emitted')\"";
+
 const GIT_IDENTITY = {
   GIT_AUTHOR_NAME: "setup-env test",
   GIT_AUTHOR_EMAIL: "setup-env-test@example.invalid",
@@ -72,7 +79,7 @@ function sourceRepo(root: string, floor: string, build = OK_BUILD): string {
     join(source, "package-lock.json"),
     `${JSON.stringify({ name: "fixture", version: "1.0.0", lockfileVersion: 3, requires: true, packages: { "": { name: "fixture", version: "1.0.0", engines: { node: floor } } } }, null, 2)}\n`,
   );
-  writeFileSync(join(source, ".gitignore"), "dist/\nnode_modules/\n");
+  writeFileSync(join(source, ".gitignore"), "dist/\nnode_modules/\n*.tsbuildinfo\n");
   cpSync(script, join(source, "scripts", "setup-env.sh"));
   git(source, ["add", "-A"]);
   git(source, ["commit", "-q", "-m", "one"]);
@@ -261,4 +268,73 @@ test("setup-env exits nonzero naming the full-clone step when the clone cannot b
   assert.match(run.stderr, /^setup-env: full clone: /m);
   assert.doesNotMatch(run.stdout, /dist built/);
   assert.equal(git(clone, ["rev-parse", "--is-shallow-repository"]), "true");
+});
+
+test("setup-env builds from clean, so an output deleted or edited since the last build is rebuilt even when the incremental build would skip it", (t) => {
+  const root = scratch(t);
+  const home = join(root, "home");
+  mkdirSync(home);
+  const env = baseEnv(home, `${realBin}:${process.env["PATH"] ?? ""}`);
+  const source = sourceRepo(root, `>=${major}`, INCREMENTAL_BUILD);
+  const built = join(source, "dist", "built.txt");
+  const first = runScript(source, env);
+  assert.equal(first.status, 0, `stdout=${first.stdout} stderr=${first.stderr}`);
+  assert.equal(readFileSync(built, "utf8"), "built");
+  /* The dangerous state: the build's record says everything is emitted. */
+  assert.ok(existsSync(join(source, "build.tsbuildinfo")));
+
+  const arms: Array<{ name: string; stale: () => void }> = [
+    { name: "deleted output", stale: () => rmSync(built) },
+    { name: "edited output", stale: () => writeFileSync(built, "stale") },
+  ];
+  for (const arm of arms) {
+    arm.stale();
+    const run = runScript(source, env);
+    assert.equal(run.status, 0, `${arm.name}: stdout=${run.stdout} stderr=${run.stderr}`);
+    assert.match(lastLine(run.stdout), SUMMARY);
+    assert.ok(existsSync(built), `${arm.name}: the script reported dist built and dist/built.txt is absent`);
+    assert.equal(readFileSync(built, "utf8"), "built", `${arm.name}: dist/built.txt is stale after the script`);
+  }
+});
+
+test("the SessionStart hook in .claude/settings.json runs setup-env only when CLAUDE_CODE_REMOTE is true, on startup and resume, with a 600 second timeout", (t) => {
+  const settings = JSON.parse(readFileSync(join(repoRoot, ".claude", "settings.json"), "utf8")) as {
+    hooks?: { SessionStart?: Array<{ matcher?: string; hooks?: Array<{ type?: string; command?: string; timeout?: number }> }> };
+  };
+  const entries = settings.hooks?.SessionStart ?? [];
+  assert.equal(entries.length, 1, "expected exactly one SessionStart entry");
+  const entry = entries[0] as NonNullable<typeof entries[number]>;
+  assert.equal(entry.matcher, "startup|resume");
+  assert.equal(entry.hooks?.length, 1, "expected exactly one hook in the SessionStart entry");
+  const hook = entry.hooks?.[0] as { type?: string; command?: string; timeout?: number };
+  assert.equal(hook.type, "command");
+  assert.equal(hook.timeout, 600);
+  assert.equal(typeof hook.command, "string");
+
+  /* Run the hook's own command against a project whose setup-env.sh only
+     leaves a marker, under each value an owner's local session can carry. */
+  const project = scratch(t);
+  writeExecutable(
+    join(project, "scripts", "setup-env.sh"),
+    '#!/bin/sh\necho ran > "$CLAUDE_PROJECT_DIR/ran"\n',
+  );
+  const marker = join(project, "ran");
+  const arms: Array<{ remote: string | undefined; runs: boolean }> = [
+    { remote: undefined, runs: false },
+    { remote: "", runs: false },
+    { remote: "false", runs: false },
+    { remote: "true", runs: true },
+  ];
+  for (const arm of arms) {
+    rmSync(marker, { force: true });
+    const env: NodeJS.ProcessEnv = { ...process.env, CLAUDE_PROJECT_DIR: project };
+    delete env["CLAUDE_CODE_REMOTE"];
+    if (arm.remote !== undefined) {
+      env["CLAUDE_CODE_REMOTE"] = arm.remote;
+    }
+    const run = spawnSync("bash", ["-c", hook.command as string], { cwd: project, encoding: "utf8", env, timeout: 30_000 });
+    const label = `CLAUDE_CODE_REMOTE=${arm.remote === undefined ? "(unset)" : JSON.stringify(arm.remote)}`;
+    assert.equal(run.status, 0, `${label}: stdout=${run.stdout} stderr=${run.stderr}`);
+    assert.equal(existsSync(marker), arm.runs, `${label}: setup-env ${arm.runs ? "did not run" : "ran"}`);
+  }
 });
