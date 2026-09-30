@@ -104,7 +104,6 @@ mechanisms:
       count, because these registries are append-only.
     siblings:
       - scripts/check-brief-drift.mjs
-      - scripts/render-agent-rules-gates.mjs
       - src/roles.ts
       - test/implementer-brief.test.ts
     evidence:

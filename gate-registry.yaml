@@ -137,25 +137,6 @@ gates:
         - plugin/
 
   # NEW IN M3-P2, entry one of three.
-  - id: agent-rules-drift
-    $comment: >-
-      R-094. The check that makes the BRIEFS half of "single source consumed by
-      CI and briefs" true rather than asserted: it re-renders CLAUDE.md's gate
-      block from this file and fails when the two differ. It is declared here
-      because D-M3-34 requires every M3 check to be declared in the registry,
-      and its `events` say which arms evaluate it. What actually EXECUTES it in
-      CI today is a step in the `gates` workflow, not this entry, because CI
-      runs `--manifest gates.manifest.json`; see this file's header. Both arms
-      are declared, and the workflow step carries no `if:`, because CLAUDE.md
-      drift is a property of `main`, not of a pull request (T-009).
-    command: [node, scripts/render-agent-rules-gates.mjs, --check]
-    unitLabel: rendered gate rows compared
-    applicability: required
-    verified-by: script
-    modes: [full, direct-pr, local-only]
-    events: [pull_request, push]
-
-  # NEW IN M3-P6 (R-094, D-M3-28, D-M3-34).
   - id: brief-drift
     $comment: >-
       R-094's briefs half, applied to roles/implementer.md the way

@@ -457,7 +457,6 @@
   "gate-registry-zero-units-green-becomes-error": "a registry gate writing green with zero units is rewritten to error and vacuous under --mode full and under a non-full mode",
   "gate-registry-missing-parameter-is-error-not-na": "a registry gate declaring a parameter that is not supplied reports error naming the flag, never not-applicable, and reports green once it is supplied",
   "gate-registry-diff-scoped-na-accepted-with-reason": "a diff-scoped registry gate whose trigger is untouched reports not-applicable carrying its evaluated precondition",
-  "agent-rules-gate-drift-detected": "adding a gate to the registry without re-rendering makes --check exit nonzero naming the added gate, and re-rendering returns exit 0",
   "gate-registry-mode-excludes-other-modes": "a gate declaring only another mode is EXCLUDED from the run, with no row, no record and no evidence directory",
   "gate-registry-checklist-entry-not-executed": "a clean-room-checklist entry is reported as declared and not executed, and produces no record, no evidence and no status",
   "modes-validate": "the shipped assurance-modes.yaml and role-model-config.yaml validate and resolve through --type auto",

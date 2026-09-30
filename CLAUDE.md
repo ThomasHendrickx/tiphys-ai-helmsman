@@ -239,65 +239,11 @@ artifact behind it is treated as unknown.
 
 ## Gates
 
-**`gate-registry.yaml` is the canonical gate registry and the source this
-section is generated from (R-094).** The block below is RENDERED from it by
-`scripts/render-agent-rules-gates.mjs`. To change a gate, edit the registry and
-re-render with `node scripts/render-agent-rules-gates.mjs --write`; editing the
-block by hand makes `--check` exit nonzero, and the `gates` workflow runs that
-command as a step on BOTH CI events, so a hand edit fails the build. This
-replaces the hand-maintained list that line 3 of this file promised the
-registry would take over.
-
-**R-094 is PARTIALLY delivered, and the half that is not is stated here rather
-than left to be discovered.** The briefs half is done: this section is
-generated. The CI half is not: `scripts/m2-exit-test.sh` invokes the gate
-runner with `--manifest gates.manifest.json` on both arms and `--registry`
-occurs nowhere in it or in the workflow, so a gate declared only in the
-registry does not run in CI. `agent-rules-drift` is that case and runs only
-because the workflow carries a direct step for it. `test/gate-registry.test.ts`
-asserts the divergence in both directions, so a new registry-only script gate
-reddens rather than silently not running. Closing it is an edit to
-`scripts/m2-exit-test.sh` and is tracked with the orchestrator.
-
-<!-- BEGIN GENERATED GATE LIST: rendered from gate-registry.yaml by scripts/render-agent-rules-gates.mjs. Do not edit by hand; edit the registry. -->
-
-Every change must pass these, in order:
-
-1. `npm ci` (install exactly the lockfile, npm only, never pnpm or yarn)
-2. `npm run build` (the type gate (tsc -b); emits dist/, which is never committed, and git status must be clean afterwards)
-3. `node --test` (sources are TypeScript run natively via Node type stripping, so the suite needs no prior build)
-
-Then the registry's gates, run by `tiphys gates run --registry gate-registry.yaml --mode <mode>`:
-
-| Gate | Verified by | Applicability | Modes | CI events | One unit is |
-|---|---|---|---|---|---|
-| `manifest-self-check` | script | required | full, direct-pr, local-only | pull_request, push | schema documents validated |
-| `coverage` | script | required | full, direct-pr | pull_request, push | finding ids checked |
-| `credential-scrub` | script | required | full, direct-pr, local-only | pull_request, push | credential sources probed |
-| `credential-token` | script | conditional | full, direct-pr | pull_request | tokens probed |
-| `suite` | script | required | full, direct-pr, local-only | pull_request, push | tests reported |
-| `citations` | script | required | full, direct-pr | pull_request | citations resolved |
-| `scope` | script | required | full, direct-pr | pull_request | changed paths audited |
-| `deploy` | script | conditional | full | pull_request, push | release verifications satisfied |
-| `migrations` | script | conditional | full | pull_request, push | migrations compared |
-| `clause-map` | script | required | full, direct-pr | pull_request | clause-map rows checked |
-| `red-witness` | script | required | full, direct-pr | pull_request | witnesses evaluated |
-| `agent-rules-drift` | script | required | full, direct-pr, local-only | pull_request, push | rendered gate rows compared |
-| `brief-drift` | script | required | full, direct-pr, local-only | pull_request | generated brief gate rows compared |
-| `check-agents-references` | script | required | full, direct-pr, local-only | pull_request, push | references resolved |
-| `check-dual-review` | script | conditional | full, direct-pr | pull_request | review verdicts examined for decorrelation |
-| `license` | script | required | full, direct-pr, local-only | pull_request, push | production packages licensed |
-| `typecheck` | script | required | full, direct-pr, local-only | pull_request | source files type-checked |
-| `gate-classes` | script | required | full, direct-pr | pull_request | declared gate classes checked |
-| `merge-preconditions` | script | conditional | full, direct-pr | pull_request | merge preconditions evaluated |
-| `unit-tests-for-changed-service-methods` | clean-room-checklist (probe `unit-tests-for-changed-service-methods`) | conditional | full, direct-pr | pull_request | changed service methods checked |
-| `fixtures-for-changed-component-states` | clean-room-checklist (probe `fixtures-for-changed-component-states`) | conditional | full, direct-pr | pull_request | changed component states checked |
-
-<!-- END GENERATED GATE LIST -->
-
-Notes: sources are TypeScript run natively via Node type stripping (tests
-need no prior build); the build (tsc -b) is the type gate and emits dist/,
-which is never committed (plan decisions D-17, D-18).
+The gates are listed in `gate-registry.yaml`, the only gate list: every change
+passes `npm ci`, `npm run build` and `npm test`, then
+`node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --event <pull_request|push> --evidence <dir>`
+(plus `--base`, `--head` and, on a pull request, `--phase`), which is exactly
+what CI runs on each event.
 
 Beyond the mechanical gates, a phase is not done until: every acceptance
 criterion in its plan section has been walked with evidence or explicitly

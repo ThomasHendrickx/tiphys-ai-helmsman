@@ -43,7 +43,6 @@ const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const cliEntry = join(repoRoot, "bin", "tiphys.ts");
 const fixturesDir = join(repoRoot, "test", "fixtures");
 const registryPath = join(repoRoot, "gate-registry.yaml");
-const rendererPath = join(repoRoot, "scripts", "render-agent-rules-gates.mjs");
 const workflowPath = join(repoRoot, ".github", "workflows", "gates.yml");
 
 /* CLAUDE.md warning 4: a literal relative import of a `src` module from
@@ -675,102 +674,6 @@ test("a diff-scoped registry gate whose trigger is untouched reports not-applica
        for the diff-scoped gates separately instead of accepting an N/A. */
     assert.notEqual(run.status, 0, `${run.stdout}${run.stderr}`);
     assert.match(`${run.stdout}${run.stderr}`, /no applicable gate/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-/* ------------------------------------------------------------------ */
-/* Criterion 5: the drift check                                         */
-/* ------------------------------------------------------------------ */
-
-/** Copy the four files the renderer needs into a scratch tree. */
-function stageRendererTree(dir: string): { registry: string; rules: string } {
-  mkdirSync(join(dir, "scripts"), { recursive: true });
-  mkdirSync(join(dir, "src", "gates"), { recursive: true });
-  const registry = join(dir, "gate-registry.yaml");
-  const rules = join(dir, "CLAUDE.md");
-  writeFileSync(registry, readFileSync(registryPath, "utf8"));
-  writeFileSync(rules, readFileSync(join(repoRoot, "CLAUDE.md"), "utf8"));
-  return { registry, rules };
-}
-
-function runRenderer(args: string[], cwd: string): {
-  status: number | null;
-  stdout: string;
-  stderr: string;
-} {
-  const run = spawnSync(process.execPath, [rendererPath, ...args], {
-    encoding: "utf8",
-    cwd,
-  });
-  return { status: run.status, stdout: run.stdout, stderr: run.stderr };
-}
-
-/** Append a gate to a registry file. The realistic drift: a new gate lands. */
-function addGateToRegistry(path: string, id: string): void {
-  const text = readFileSync(path, "utf8");
-  const addition = `
-  - id: ${id}
-    command: [node, scripts/${id}.mjs]
-    unitLabel: ${id} things checked
-    applicability: required
-    verified-by: script
-    modes: [full]
-    events: [pull_request]
-`;
-  const marker = "\ndestructiveCommands:";
-  writeFileSync(path, text.replace(marker, `${addition}${marker}`));
-}
-
-test("adding a gate to the registry without re-rendering makes --check exit nonzero naming the added gate, and re-rendering returns exit 0", () => {
-  const dir = scratch("drift");
-  try {
-    const staged = stageRendererTree(dir);
-    const clean = runRenderer(["--check", "--registry", staged.registry, "--agent-rules", staged.rules], dir);
-    assert.equal(clean.status, 0, `${clean.stdout}${clean.stderr}`);
-
-    addGateToRegistry(staged.registry, "a-newly-added-gate");
-    const drifted = runRenderer(
-      ["--check", "--registry", staged.registry, "--agent-rules", staged.rules],
-      dir,
-    );
-    assert.notEqual(drifted.status, 0, "an unrendered new gate did not redden --check");
-    assert.match(
-      `${drifted.stdout}${drifted.stderr}`,
-      /a-newly-added-gate/,
-      "the drift report does not NAME the added gate",
-    );
-
-    const rewritten = runRenderer(
-      ["--write", "--registry", staged.registry, "--agent-rules", staged.rules],
-      dir,
-    );
-    assert.equal(rewritten.status, 0, `${rewritten.stdout}${rewritten.stderr}`);
-    const rechecked = runRenderer(
-      ["--check", "--registry", staged.registry, "--agent-rules", staged.rules],
-      dir,
-    );
-    assert.equal(rechecked.status, 0, `${rechecked.stdout}${rechecked.stderr}`);
-
-    /* THE RENDERER DERIVES FROM THE REGISTRY, IT DOES NOT READ THE BLOCK.
-       A renderer that read CLAUDE.md's block and called it the rendering
-       would pass every assertion above, because the two would agree by
-       construction. Emptying the block and re-checking distinguishes them:
-       a deriving renderer reddens, a block-reading one stays green. */
-    const rules = readFileSync(staged.rules, "utf8");
-    const begin = rules.indexOf("<!-- BEGIN GENERATED GATE LIST");
-    const end = rules.indexOf("<!-- END GENERATED GATE LIST -->");
-    const beginLineEnd = rules.indexOf("\n", begin);
-    writeFileSync(
-      staged.rules,
-      rules.slice(0, beginLineEnd + 1) + "\n" + rules.slice(end),
-    );
-    const emptied = runRenderer(
-      ["--check", "--registry", staged.registry, "--agent-rules", staged.rules],
-      dir,
-    );
-    assert.notEqual(emptied.status, 0, "an emptied block did not redden: the renderer reads the block");
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

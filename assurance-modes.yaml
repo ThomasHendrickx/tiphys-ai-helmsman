@@ -162,7 +162,6 @@ modes:
       - migrations
       - clause-map
       - red-witness
-      - agent-rules-drift
       - brief-drift
       - check-agents-references
       - check-dual-review
@@ -278,7 +277,6 @@ modes:
       - scope
       - clause-map
       - red-witness
-      - agent-rules-drift
       - unit-tests-for-changed-service-methods
       - fixtures-for-changed-component-states
     merge-authority: owner
@@ -312,7 +310,6 @@ modes:
     gate-sets:
       - credential-scrub
       - suite
-      - agent-rules-drift
     # SEE THE $comment ON THIS FIELD IN THE SCHEMA. This value describes a
     # regime the Tiphys kernel itself has left (DR-0015): for this project the
     # owner is not an approval step anywhere in execution. It is kept because
