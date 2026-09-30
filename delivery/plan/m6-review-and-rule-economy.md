@@ -34,6 +34,13 @@ thing is not written here, it is not being made.
   The "one gate list" cleanup moves into P3, because deleting gates while the
   M2 exit-test harness still pins them would mean editing its tables only to
   delete it one phase later.
+- **Landing order after P3: P4, then P6, then P5.** P5 reads the
+  single-vendor exception (`review-families` in `charter.yaml`) at the merge
+  base, so the declaration must be on `main` before P5 merges. P6 is
+  `single` tier and carries it; measured under the pre-P5 merge gate, a
+  single-tier change adding the declaration passes the review rows, while a
+  pair change after it would not, so P6 lands after P4. P5 also waits on
+  delivery/decisions/DR-0065-what-a-kernel-launched-reviewer-may-do.md:1.
 
 ## Acceptance criteria are tests, here too
 
