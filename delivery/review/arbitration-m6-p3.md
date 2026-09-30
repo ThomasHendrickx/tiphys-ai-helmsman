@@ -52,3 +52,27 @@ replacement string. Older than this phase, not shipped, and no witness
 member uses a `$` pattern.
 
 Review A's second delta waits for round 3, so it judges the final head once.
+
+## Round 3, both deltas (head ea3edb3)
+
+Review B: CR-M6P3B-05 cleared (the unwitnessed non-ASCII file is now red and
+named). Both reviews independently found one new medium, introduced by round
+3: CR-M6P3A-07 = CR-M6P3B-06. src/pool.ts reads `git worktree list
+--porcelain -z`, which git before 2.36 rejects; the listing is read only on
+exit 0, so on such a git `pool destroy` deletes a branch another worktree has
+checked out. Both measured it (review B against git 2.34.1, review A with a
+wrapper rejecting `-z`). Review A also found low CR-M6P3A-08: a quoted `+++`
+header with git's trailing TAB is missed and its hunk credited to the file
+before it.
+
+Ruling: this is the third fix round after the first dual review, past
+DR-0012's limit of two. Under DR-0016 something different happens: a fresh
+implementer does round 4, and a third review contract (a different model and
+a fix-regression-first framing) judges the result. Fix: a failed listing
+refuses the destroy; git's unknown-switch refusal falls back to the newline
+listing, so old git keeps working. No git floor in `doctor` (a policy change
+this phase does not need). Derivations: every safety check that reads a
+failed command as a negative answer, and every git flag this phase added,
+run against git 2.34.1.
+
+The owner is told asynchronously, not asked.
