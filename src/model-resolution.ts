@@ -356,19 +356,3 @@ export function compareResolvedFamilies(
     families: [leftFamily, rightFamily],
   };
 }
-
-/**
- * The value closeout copies into a verdict's `produced-by` (M4-P7 criterion 8).
- *
- * VERBATIM, AND THE FUNCTION EXISTS SO THAT "VERBATIM" IS TESTABLE. DR-0031
- * requires a pull request to carry all its own evidence, so the family token
- * has to reach the verdict document rather than being left in a task
- * directory that no reviewer of the pull request can see. A copy that
- * normalised, lowercased or prefixed the token would satisfy every reading of
- * that sentence and would break the one comparison the token exists for.
- */
-export function producedByFromRecord(
-  record: Record<string, unknown>,
-): string | undefined {
-  return stringAt(asRecord(record["resolved"]), "family");
-}

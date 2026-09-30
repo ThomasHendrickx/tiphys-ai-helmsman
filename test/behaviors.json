@@ -862,7 +862,6 @@
   "model-resolution-observed-provenance-must-agree": "a record whose observation contradicts the echoed request is refused by the reader",
   "model-resolution-empty-observation-is-unresolved": "an observation channel that answers nothing is unresolved and never a fallback to the self-report",
   "model-resolution-charter-override-resolved": "a charter overrides the tier of a role that allows it and not of a role that forbids it",
-  "model-resolution-family-token-reaches-verdict": "the family token copied into a verdict equals the record's byte for byte",
   "shared-exclusion-absent-field-unchanged": "a fleet home without the shared exclusion field runs the existing lock behaviors unchanged against an unreachable remote",
   "shared-exclusion-second-environment-refused": "the shared register refuses a second environment with one line naming the holder and leaves the register sha unchanged",
   "shared-exclusion-identity-not-the-machine": "the exclusion module names no machine identity source",
