@@ -513,6 +513,62 @@ test("a verdict declaring review-contract criteria without criteria[] is rejecte
   assert.deepEqual(validateModule.validateToLines(schema, baselineVerdict()), []);
 });
 
+/**
+ * The real output of `tiphys validate` for the MI staging below, with the
+ * scratch directory spelled <context>. The test re-runs the command and
+ * requires the same exit code and the same bytes before reading the sentence.
+ */
+const HAZARD_NO_CONTRACT_CAPTURE = join(
+  repoRoot,
+  "witness",
+  "captures",
+  "m6-p2-validate-hazard-classes-no-contract.json",
+);
+
+test("a verdict with no review-contract that omits a declared hazard class is refused by verdict-hazard-classes-addressed, and the same verdict addressing every class is accepted", () => {
+  /* M6-P2 FIX ROUND 1, CR-M6P2B-03 (MI). Since DR-0064 a verdict need not say
+     `review-contract`, and roles/clean-room-reviewer.md tells reviewers so,
+     which puts a verdict WITHOUT the field on the real path. The check's guard
+     must exempt only `criteria` history; its pre-M6-P2 spelling `!== "hazard"`
+     would exempt every new verdict. */
+  const recorded = JSON.parse(readFileSync(HAZARD_NO_CONTRACT_CAPTURE, "utf8")) as {
+    argv: string[];
+    exit: number;
+    stdout: string;
+  };
+  const dir = scratch();
+  try {
+    writeYaml(dir, "plan.yaml", loadPlan());
+    writeYaml(dir, "work-history.yaml", loadWorkHistory());
+    const complete = baselineHazardVerdict();
+    delete complete["review-contract"];
+    delete complete["criteria"];
+    /* CONTROL: every declared class addressed, accepted end to end. */
+    const accepted = runCli(["validate", "--type", "verdict", "--context", dir, writeYaml(dir, "complete.yaml", complete)]);
+    assert.equal(accepted.status, 0, accepted.stdout + accepted.stderr);
+    /* THE DANGEROUS INSTANCE: the first declared class has no entry. */
+    const partial = {
+      ...complete,
+      "hazard-classes-addressed": (complete["hazard-classes-addressed"] as unknown[]).slice(1),
+    };
+    const refused = runCli(["validate", "--type", "verdict", "--context", dir, writeYaml(dir, "verdict.yaml", partial)]);
+    assert.equal(refused.status, recorded.exit, refused.stdout + refused.stderr);
+    /* THE REFUSAL LINES ARE COMPARED BYTE FOR BYTE. The other lines carry what
+       git says about the scratch directory, which depends on where the
+       temporary directory is, so they are not part of the comparison. */
+    const invalid = (text: string): string[] => text.split("\n").filter((line) => line.startsWith("INVALID "));
+    assert.equal(invalid(recorded.stdout).length, 1, recorded.stdout);
+    assert.deepEqual(
+      invalid(refused.stdout.replaceAll(dir, "<context>")),
+      invalid(recorded.stdout),
+      `tiphys validate no longer prints what was captured:\n${refused.stdout}`,
+    );
+    assert.match(refused.stdout, /hazard class H1 of phase M9-P1 in .* has no entry, so this hazard review did not address it/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("a verdict naming a phase the plan does not declare is rejected rather than passing vacuously", () => {
   const dir = scratch();
   try {

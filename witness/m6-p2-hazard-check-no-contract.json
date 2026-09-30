@@ -1,0 +1,31 @@
+{
+  "id": "m6-p2-hazard-check-no-contract",
+  "behavior": "m6-p2-hazard-check-no-contract",
+  "tests": [
+    "a verdict with no review-contract that omits a declared hazard class is refused by verdict-hazard-classes-addressed, and the same verdict addressing every class is accepted"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    if (verdict?.[\"review-contract\"] === \"criteria\") {",
+      "replace": "    if (verdict?.[\"review-contract\"] !== \"hazard\") {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "      if (!addressedSet.has(id)) {\n        violations.push({\n          pointer: \"#/hazard-classes-addressed\",\n          message: `hazard class ${id} of phase ${String(verdict?.[\"phase\"])} in ${resolved.path} has no entry, so this hazard review did not address it`,",
+      "replace": "      if (false) {\n        violations.push({\n          pointer: \"#/hazard-classes-addressed\",\n          message: `hazard class ${id} of phase ${String(verdict?.[\"phase\"])} in ${resolved.path} has no entry, so this hazard review did not address it`,"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "tiphys validate",
+    "captures": [
+      "witness/captures/m6-p2-validate-hazard-classes-no-contract.json"
+    ],
+    "provenance": "Real output of node bin/tiphys.ts validate --type verdict --context <context> <context>/verdict.yaml, captured 2026-09-30 by the M6-P2 fix round 1 implementer against the scratch context test/verdict-schema.test.ts stages for MI (the shipped example plan and work history, and a hazard verdict with no review-contract that omits declared class H1). The test stages the context again, re-runs the command and compares the live exit code and INVALID lines with the recorded ones before reading the refusal; the check it guards reads git through src/checks.ts, which is why the capture obligation applies."
+  }
+}

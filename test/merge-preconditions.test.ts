@@ -1810,6 +1810,65 @@ test("a workspace's nested node_modules/ entry, a pinned name inside a node_modu
   );
 });
 
+test("a pinned name rewritten from a version to file:, a git URL or an npm: alias is not a version change, so the manifest classifies pair", () => {
+  /* FIX ROUND 1, CR-M6P2B-03 (MB). A version field counts only when BOTH
+     sides are versions: the rewrite changes WHAT is installed, not which
+     release. The real PR #224 bump with only the plugin's pin rewritten. */
+  for (const rewritten of ["file:../kernel", "git+https://example.invalid/tiphys/kernel.git#v0.2.2", "npm:@other/kernel@0.2.2"]) {
+    const classified = tierModule.classifyTier({
+      declaration: repositoryDeclaration(),
+      changed: atRoot(BUMP_MANIFESTS),
+      sides: bumpSides((path, head) => {
+        if (path === "plugin/package.json") {
+          (head["devDependencies"] as Record<string, string>)["@tiphys/kernel"] = rewritten;
+        }
+      }),
+    });
+    const plugin = classified.paths.find((entry) => entry.path === "plugin/package.json") as TierPath;
+    assert.equal(plugin.tier, "pair", `${rewritten}: ${plugin.reason}`);
+    assert.match(plugin.reason, /\/devDependencies\/@tiphys~1kernel changed/, `${rewritten}: ${plugin.reason}`);
+    assert.equal(classified.tier, "pair", rewritten);
+  }
+});
+
+test("a declared manifest added or deleted by the change classifies pair, naming which", () => {
+  /* FIX ROUND 1, CR-M6P2B-03 (MC). One side absent is not a version bump. */
+  const real = atCommit(BUMP_HEAD, "plugin/package.json");
+  const arms: [string, { base: string | undefined; head: string | undefined }, RegExp][] = [
+    ["added", { base: undefined, head: real }, /a declared manifest added by the change/],
+    ["deleted", { base: real, head: undefined }, /a declared manifest deleted by the change/],
+  ];
+  for (const [name, sides, reason] of arms) {
+    const classified = tierModule.classifyTier({
+      declaration: repositoryDeclaration(),
+      changed: atRoot(["plugin/package.json"]),
+      sides: new Map([["plugin/package.json", sides]]),
+    });
+    assert.equal(classified.tier, "pair", `${name}: ${JSON.stringify(classified.paths)}`);
+    assert.match((classified.paths[0] as TierPath).reason, reason, name);
+  }
+});
+
+test("a declared manifest that does not parse as JSON on either side classifies pair", () => {
+  /* FIX ROUND 1, CR-M6P2B-03 (MD). Content that could not be read was not
+     shown to be a version bump. */
+  const real = atCommit(BUMP_HEAD, "plugin/package.json");
+  const broken = real.replace(/\}\s*$/, "");
+  assert.notEqual(broken, real);
+  for (const [name, sides] of [
+    ["base unparseable", { base: broken, head: real }],
+    ["head unparseable", { base: real, head: broken }],
+  ] as const) {
+    const classified = tierModule.classifyTier({
+      declaration: repositoryDeclaration(),
+      changed: atRoot(["plugin/package.json"]),
+      sides: new Map([["plugin/package.json", sides]]),
+    });
+    assert.equal(classified.tier, "pair", `${name}: ${JSON.stringify(classified.paths)}`);
+    assert.match((classified.paths[0] as TierPath).reason, /does not parse as JSON on both sides/, name);
+  }
+});
+
 test("a diff touching src/ classifies pair under this repository's declaration", () => {
   const classified = tierModule.classifyTier({
     declaration: repositoryDeclaration(),
@@ -2169,6 +2228,32 @@ test("a single change with one approving hazard verdict and no arbitration docum
       assert.match(String(run.record["detail"]), /^DR-0063 single at head/);
       assert.equal(run.exit, 0, run.stdout);
     });
+  } finally {
+    cleanup(staged);
+  }
+});
+
+test("a single change whose one hazard verdict reads FIX-ROUND-NEEDED is red at condition-2 through the real gate", async () => {
+  /* FIX ROUND 1, CR-M6P2A-06 and CR-M6P2B-03 (M-E). Condition-2 is the single
+     tier's ONLY refusal row, so a refusing review must redden it. The API is a
+     GREEN one, as reviewer B's probe had: under the mutant the gate reaches
+     green through it, and the refusal is decided before any request. */
+  const { staged, base, head } = stageTierBranch("delivery", {
+    "m3-p9-hazard.yaml": fixture("decorrelated-hazard.yaml", [["verdict: APPROVE", "verdict: FIX-ROUND-NEEDED"]]),
+  });
+  try {
+    const run = await withApi(greenApi(head), (apiBase) => runGate(gateSource, staged, apiBase, ["--base", base], head));
+    const printed = rows(run.stdout);
+    assert.equal(status(printed.get("verdict-selection")), "green", run.stdout);
+    assert.equal(status(printed.get("condition-2")), "red", run.stdout);
+    assert.match(
+      printed.get("condition-2") ?? "",
+      /reads FIX-ROUND-NEEDED, and the single tier's review must read APPROVE/,
+      run.stdout,
+    );
+    assert.equal(run.record["status"], "red", `${run.stdout}${run.stderr}`);
+    assert.match(String(run.record["detail"]), /^DR-0063 single at head/);
+    assert.notEqual(run.exit, 0, run.stdout);
   } finally {
     cleanup(staged);
   }

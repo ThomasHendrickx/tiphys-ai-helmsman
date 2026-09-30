@@ -1,0 +1,31 @@
+{
+  "id": "m6-p2-manifest-unparseable-pair",
+  "behavior": "m6-p2-manifest-unparseable-pair",
+  "tests": [
+    "a declared manifest that does not parse as JSON on either side classifies pair"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "        tier: \"pair\",\n        reason: `a declared manifest that does not parse as JSON",
+      "replace": "        tier: \"single\",\n        reason: `a declared manifest that does not parse as JSON"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "      before = JSON.parse(sides.base);\n      after = JSON.parse(sides.head);",
+      "replace": "      before = {};\n      after = {};"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set.json"
+    ],
+    "provenance": "Real output of the git commands classifyReviewBudget in src/gates/merge-preconditions.ts runs for DR-0063's tier (the prefix, the NUL-separated name list, the merge base and the ls-tree presence probe of charter.yaml), captured 2026-09-29 by the M6-P2 implementer against the repository test/merge-preconditions.test.ts stages in stageShrinkRepo, which re-runs every command and compares git's live output with the recorded stdout before trusting the classifier. The other named tests in that file consume git too: git show of the PR #224 manifests at 0e29760 and 7c9602d (file bytes, not reformatted by git) and the staged phase branches the gate itself reads through the same commands."
+  }
+}
