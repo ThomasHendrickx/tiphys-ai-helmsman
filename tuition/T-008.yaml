@@ -53,21 +53,17 @@ mechanisms:
       - "`NODE_OPTIONS=--test-reporter=tap` scoped to the child"
   - mechanism: Deciding what another program will do by pattern-matching the text of a file it consumes
     rule: >-
-      A regex over a file and the consuming program's evaluation of that file
-      are DIFFERENT FUNCTIONS, so every finding is another input where they
-      differ, and rounds close instances forever. Three tiers instead, each
-      labelled by what enforces it: execute the extractable part against stubs;
-      PIN the accepted shapes and fail closed on anything else, never widen the
-      pattern; and where a denylist is unavoidable, DERIVE it by walking the
-      consuming program's closed documented vocabulary once, publishing the
-      walk. Name what remains unguarded rather than chasing it.
+      A regex over a file and the consuming program's evaluation of it are
+      DIFFERENT FUNCTIONS, so each finding is one more input where they differ.
+      Instead: execute the extractable part against stubs; PIN the accepted
+      shapes and fail closed, never widen the pattern; where a denylist is
+      unavoidable, DERIVE it by walking the consumer's documented vocabulary
+      once and publish the walk. Name what stays unguarded.
     siblings:
       - test/exit-test-local.test.ts
       - test/gate-registry.test.ts
     evidence:
       - Four M1-P6 rounds, CR-640, CR-661, CR-681, CR-720 to CR-725
-      - the derived walk found two members no reviewer had named (`working-directory`, a custom `shell` template)
-      - "the widen-the-regex approach produced a guard that both missed real defangs and rejected `needs: [test, lint]`, an edit that STRENGTHENS the guarded property"
   - mechanism: Asserting a CI step is wired
     rule: >-
       Assert BEHAVIOUR, not text. A text assertion catches deletion and misses
