@@ -4,13 +4,13 @@
   "tests": [
     "a diff-touches precondition is met by an edit to a non-ASCII path under a declared path, so the gate runs"
   ],
-  "class": "classification",
+  "class": "destructive",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/gates/run.ts",
-      "find": "      [\"diff\", \"-z\", \"--no-renames\", \"--name-only\", `${options.base}...${head}`],\n      \"\\0\",",
-      "replace": "      [\"diff\", \"--name-only\", `${options.base}...${head}`],\n      \"\\n\","
+      "find": "      [\"diff\", \"-z\", \"--no-renames\", \"--name-only\", `${options.base}...${head}`],",
+      "replace": "      [\"diff\", \"--name-only\", `${options.base}...${head}`],"
     },
     {
       "kind": "mutation",
