@@ -364,15 +364,21 @@ type DiffResult = { ok: true; paths: TouchedPath[] } | { ok: false; reason: stri
 /**
  * `git diff --name-status <mergeBase> <head>`. Never `<base> <head>` and
  * never against `main`'s tip: see the module comment on the anti-widening
- * property. A rename or copy line (`R###` / `C###`) carries the old path
- * and the new path tab-separated on one line; every other status carries
- * exactly one path. Pinned against the captured shape in this phase's work
+ * property. A rename or copy record (`R###` / `C###`) carries the old path
+ * and the new path; every other status carries exactly one path.
+ *
+ * READ WITH -z (M6-P3 fix round 3, the CR-M6P3B-05 mechanism). Line output
+ * C-quotes a path holding a non-ASCII byte, a double quote, a backslash or a
+ * control character, so a declared `src/caf\u00e9.ts` was audited as
+ * `"src/caf\303\251.ts"`, matched no declared entry, and reddened a phase
+ * that had touched only what it declared. With -z every field is
+ * NUL-terminated and unquoted: the status, then one path, or two for R and C. Pinned against the captured shape in this phase's work
  * history, not against a hand-written example (MECHANISMS.md, "Deciding
  * what another program will do by pattern-matching the text of a file it
  * consumes").
  */
 function computeTouchedPaths(cwd: string, mergeBase: string, head: string): DiffResult {
-  const result = runGit(cwd, ["diff", "--name-status", mergeBase, head]);
+  const result = runGit(cwd, ["diff", "-z", "--name-status", mergeBase, head]);
   if (result.error !== undefined) {
     return {
       ok: false,
@@ -385,34 +391,37 @@ function computeTouchedPaths(cwd: string, mergeBase: string, head: string): Diff
       reason: `git diff --name-status ${mergeBase} ${head} exited ${String(result.status)}: ${singleLine(bufferToUtf8(result.stderr))}`,
     };
   }
-  const lines = bufferToUtf8(result.stdout)
-    .split("\n")
-    .filter((line) => line !== "");
+  const fields = bufferToUtf8(result.stdout).split("\0");
+  if (fields[fields.length - 1] === "") {
+    fields.pop();
+  }
   const paths: TouchedPath[] = [];
-  for (const line of lines) {
-    const fields = line.split("\t");
-    const status = fields[0] ?? "";
+  let index = 0;
+  while (index < fields.length) {
+    const status = fields[index] ?? "";
     if (status.startsWith("R") || status.startsWith("C")) {
-      const oldPath = fields[1];
-      const newPath = fields[2];
+      const oldPath = fields[index + 1];
+      const newPath = fields[index + 2];
       if (oldPath === undefined || newPath === undefined) {
         return {
           ok: false,
-          reason: `git diff --name-status produced an unparseable rename/copy line: ${JSON.stringify(line)}`,
+          reason: `git diff -z --name-status produced an unparseable rename/copy record: ${JSON.stringify(fields.slice(index))}`,
         };
       }
       paths.push({ path: oldPath, status });
       paths.push({ path: newPath, status });
+      index += 3;
       continue;
     }
-    const path = fields[1];
-    if (path === undefined) {
+    const path = fields[index + 1];
+    if (status === "" || path === undefined) {
       return {
         ok: false,
-        reason: `git diff --name-status produced an unparseable line: ${JSON.stringify(line)}`,
+        reason: `git diff -z --name-status produced an unparseable record: ${JSON.stringify(fields.slice(index))}`,
       };
     }
     paths.push({ path, status });
+    index += 2;
   }
   return { ok: true, paths };
 }

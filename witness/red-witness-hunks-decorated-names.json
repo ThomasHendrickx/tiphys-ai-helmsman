@@ -1,0 +1,37 @@
+{
+  "id": "red-witness-hunks-decorated-names",
+  "behavior": "red-witness-hunks-decorated-names",
+  "tests": [
+    "an honest witness over files whose names git decorates is green: a space in a hunk header, a non-ASCII byte in a listing and a hunk header, a non-ASCII test file name"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/witness/run.ts",
+      "find": "    return path.endsWith(\"\\t\") ? path.slice(0, -1) : path;",
+      "replace": "    return path;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/witness/run.ts",
+      "find": "  if (line.startsWith('+++ \"') && line.endsWith('\"') && line.length > 6) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/witness/run.ts",
+      "find": "    \"-r\",\n    \"-z\",\n    \"--name-only\",\n    headSha,\n    \"--\",\n    \"test/\",\n  ]);\n  if (!listed.ok) {\n    return { ok: false, reason: listed.reason };\n  }\n  const files = new Map<string, string>();\n  for (const path of listed.stdout.split(\"\\0\")) {",
+      "replace": "    \"-r\",\n    \"--name-only\",\n    headSha,\n    \"--\",\n    \"test/\",\n  ]);\n  if (!listed.ok) {\n    return { ok: false, reason: listed.reason };\n  }\n  const files = new Map<string, string>();\n  for (const path of listed.stdout.split(\"\\n\")) {"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p3-git-path-listings.json"
+    ],
+    "provenance": "Real git 2.43.0 output of the path listings src/witness/run.ts reads, in the line form it read before M6-P3 fix round 3 and the -z form it reads now, recorded 2026-09-30 inside the named tests against the fixtures they stage (the capture's own provenance says how). Required by rule (f) because every member mutates a file the spawn/parse derivation matches. The named tests re-run each recorded command and require git's live stdout to equal the recorded stdout before the code under test runs."
+  },
+  "deterministic": true,
+  "repeats": 2
+}

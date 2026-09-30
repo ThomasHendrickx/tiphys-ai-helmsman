@@ -1,0 +1,31 @@
+{
+  "id": "scope-quoted-name-audited-by-its-own-name",
+  "behavior": "scope-quoted-name-audited-by-its-own-name",
+  "tests": [
+    "a declared file whose name git quotes is audited by its own name: editing it is green, and renaming it to an undeclared quoted name is red naming the new name"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/scope.ts",
+      "find": "  const result = runGit(cwd, [\"diff\", \"-z\", \"--name-status\", mergeBase, head]);\n  if (result.error !== undefined) {\n    return {\n      ok: false,\n      reason: `git diff --name-status ${mergeBase} ${head} could not be run: ${singleLine(String(result.error))}`,\n    };\n  }\n  if (result.status !== 0) {\n    return {\n      ok: false,\n      reason: `git diff --name-status ${mergeBase} ${head} exited ${String(result.status)}: ${singleLine(bufferToUtf8(result.stderr))}`,\n    };\n  }\n  const fields = bufferToUtf8(result.stdout).split(\"\\0\");\n  if (fields[fields.length - 1] === \"\") {\n    fields.pop();\n  }\n  const paths: TouchedPath[] = [];\n  let index = 0;\n  while (index < fields.length) {\n    const status = fields[index] ?? \"\";\n    if (status.startsWith(\"R\") || status.startsWith(\"C\")) {\n      const oldPath = fields[index + 1];\n      const newPath = fields[index + 2];\n      if (oldPath === undefined || newPath === undefined) {\n        return {\n          ok: false,\n          reason: `git diff -z --name-status produced an unparseable rename/copy record: ${JSON.stringify(fields.slice(index))}`,\n        };\n      }\n      paths.push({ path: oldPath, status });\n      paths.push({ path: newPath, status });\n      index += 3;\n      continue;\n    }\n    const path = fields[index + 1];\n    if (status === \"\" || path === undefined) {\n      return {\n        ok: false,\n        reason: `git diff -z --name-status produced an unparseable record: ${JSON.stringify(fields.slice(index))}`,\n      };\n    }\n    paths.push({ path, status });\n    index += 2;\n  }\n  return { ok: true, paths };",
+      "replace": "  const result = runGit(cwd, [\"diff\", \"--name-status\", mergeBase, head]);\n  if (result.error !== undefined) {\n    return {\n      ok: false,\n      reason: `git diff --name-status ${mergeBase} ${head} could not be run: ${singleLine(String(result.error))}`,\n    };\n  }\n  if (result.status !== 0) {\n    return {\n      ok: false,\n      reason: `git diff --name-status ${mergeBase} ${head} exited ${String(result.status)}: ${singleLine(bufferToUtf8(result.stderr))}`,\n    };\n  }\n  const lines = bufferToUtf8(result.stdout)\n    .split(\"\\n\")\n    .filter((line) => line !== \"\");\n  const paths: TouchedPath[] = [];\n  for (const line of lines) {\n    const fields = line.split(\"\\t\");\n    const status = fields[0] ?? \"\";\n    if (status.startsWith(\"R\") || status.startsWith(\"C\")) {\n      const oldPath = fields[1];\n      const newPath = fields[2];\n      if (oldPath === undefined || newPath === undefined) {\n        return {\n          ok: false,\n          reason: `git diff --name-status produced an unparseable rename/copy line: ${JSON.stringify(line)}`,\n        };\n      }\n      paths.push({ path: oldPath, status });\n      paths.push({ path: newPath, status });\n      continue;\n    }\n    const path = fields[1];\n    if (path === undefined) {\n      return {\n        ok: false,\n        reason: `git diff --name-status produced an unparseable line: ${JSON.stringify(line)}`,\n      };\n    }\n    paths.push({ path, status });\n  }\n  return { ok: true, paths };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/scope.ts",
+      "find": "[\"diff\", \"-z\", \"--name-status\", mergeBase, head]",
+      "replace": "[\"diff\", \"--name-status\", mergeBase, head]"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p3-git-path-listings.json"
+    ],
+    "provenance": "Real git 2.43.0 output of the path listings src/gates/scope.ts reads, in the line form it read before M6-P3 fix round 3 and the -z form it reads now, recorded 2026-09-30 inside the named tests against the fixtures they stage (the capture's own provenance says how). Required by rule (f) because every member mutates a file the spawn/parse derivation matches. The named tests re-run each recorded command and require git's live stdout to equal the recorded stdout before the code under test runs."
+  },
+  "deterministic": true,
+  "repeats": 2
+}

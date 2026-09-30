@@ -1,0 +1,31 @@
+{
+  "id": "red-witness-coverage-quoted-name",
+  "behavior": "red-witness-coverage-quoted-name",
+  "tests": [
+    "an unwitnessed source file whose name git quotes is red naming the file, beside one evaluated witness"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/witness/run.ts",
+      "find": "    \"-z\",\n    \"--name-status\",\n    \"--no-renames\",\n    `${baseSha}...${headSha}`,\n  ]);\n  if (!names.ok) {\n    return { ok: false, reason: names.reason };\n  }\n  const files = new Map<string, DiffFile>();\n  const fields = names.stdout.split(\"\\0\");\n  for (let index = 0; index + 1 < fields.length; index += 2) {\n    const status = fields[index] as string;\n    const path = fields[index + 1] as string;\n    if (status === \"\" || path === \"\") {\n      continue;\n    }\n    files.set(path, { path, status, hunks: [] });\n  }",
+      "replace": "    \"--name-status\",\n    \"--no-renames\",\n    `${baseSha}...${headSha}`,\n  ]);\n  if (!names.ok) {\n    return { ok: false, reason: names.reason };\n  }\n  const files = new Map<string, DiffFile>();\n  for (const line of names.stdout.split(\"\\n\")) {\n    if (line.trim() === \"\") {\n      continue;\n    }\n    const [status, ...rest] = line.split(\"\\t\");\n    const path = rest.join(\"\\t\");\n    if (status === undefined || path === \"\") {\n      continue;\n    }\n    files.set(path, { path, status, hunks: [] });\n  }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/witness/run.ts",
+      "find": "    \"diff\",\n    \"-z\",\n    \"--name-status\",\n    \"--no-renames\",",
+      "replace": "    \"diff\",\n    \"--name-status\",\n    \"--no-renames\","
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p3-git-path-listings.json"
+    ],
+    "provenance": "Real git 2.43.0 output of the path listings src/witness/run.ts reads, in the line form it read before M6-P3 fix round 3 and the -z form it reads now, recorded 2026-09-30 inside the named tests against the fixtures they stage (the capture's own provenance says how). Required by rule (f) because every member mutates a file the spawn/parse derivation matches. The named tests re-run each recorded command and require git's live stdout to equal the recorded stdout before the code under test runs."
+  },
+  "deterministic": true,
+  "repeats": 2
+}

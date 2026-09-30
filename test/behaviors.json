@@ -1129,5 +1129,11 @@
   "brief-compose-refuses-without-project-registry": "brief compose of an implementer brief from a directory with no gate-registry.yaml refuses naming the missing file",
   "brief-compose-gate-block-dollar-patterns": "a registry whose preflight command contains $' and $$ composes a brief whose gate block is byte-identical to renderBriefGateBlock's output",
   "diff-touches-rename-out-of-declared-path": "a diff-touches precondition is met by a rename out of a declared path, so the gate runs",
-  "diff-touches-non-ascii-path": "a diff-touches precondition is met by an edit to a non-ASCII path under a declared path, so the gate runs"
+  "diff-touches-non-ascii-path": "a diff-touches precondition is met by an edit to a non-ASCII path under a declared path, so the gate runs",
+  "red-witness-coverage-quoted-name": "an unwitnessed source file whose name git quotes is red naming the file, beside one evaluated witness",
+  "red-witness-hunks-decorated-names": "an honest witness over files whose names git decorates is green: a space in a hunk header, a non-ASCII byte in a listing and a hunk header, a non-ASCII test file name",
+  "scope-quoted-name-audited-by-its-own-name": "a declared file whose name git quotes is audited by its own name: editing it is green, and renaming it to an undeclared quoted name is red naming the new name",
+  "cutover-sync-stages-a-quoted-name": "a scoped rollback commit stages a path whose name git quotes and does not call it stray",
+  "cutover-restore-removes-a-quoted-name": "restoring a retirement root removes a post-freeze addition whose name git quotes",
+  "pool-destroy-newline-worktree-path": "pool destroy refuses while a foreign worktree at the task's own path plus a newline holds the task branch"
 }
