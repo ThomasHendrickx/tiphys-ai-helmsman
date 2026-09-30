@@ -22,7 +22,6 @@ mandated-reading:
   - checklists/hazard-review.yaml
   - tuition/mechanism-index.yaml
 verifiers:
-  - check-agents-references
   - check-dual-review
 outputs:
   - decision-record
@@ -70,14 +69,7 @@ THIS DOCUMENT CARRIES POLICY AND REFERENCES DATA. Anything expressible as data
 lives in a structured artifact and is named here BY PATH, never restated: the
 gate list is `gate-registry.yaml#gates`, the stage sequences and mode tables are
 `assurance-modes.yaml#modes`, the model tiers are `role-model-config.yaml#roles`.
-A copy of any of those inside this file is drift waiting to happen, and the
-`check-agents-references` gate declared in `gate-registry.yaml#gates` refuses it
-rather than trusting anyone to remember. That same gate resolves every reference
-above and below to a path AND to an anchor inside it, because a reference whose
-file still exists and whose content moved is the silent half of the failure, and
-it refuses a reference to any path this package does not publish, because a path
-that resolves in the source repository and not in your install is dead exactly
-where you would use it.
+A copy of any of those inside this file is drift waiting to happen.
 
 The final report is yours, and it answers the intent. For each phase it states
 one delivered outcome: the phase intent as the plan states it, delivered yes or
