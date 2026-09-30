@@ -2732,7 +2732,7 @@ test("the phase diff credits every hunk to its own file: a quoted +++ header tha
      src/plain.ts, which has no such lines. The same file adds a line whose
      text is `++ b/src/plain.ts`, printed `+++ b/src/plain.ts` inside the hunk,
      which is not a header. */
-  const quoted = "src/zcafé x.ts";
+  const quoted = "src/zcaf\u00e9 x.ts";
   const fixture = makeFixture(
     { "src/plain.ts": numberedLines("p", 10), [quoted]: numberedLines("q", 8) },
     {
