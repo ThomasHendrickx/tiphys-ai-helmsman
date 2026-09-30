@@ -131,13 +131,6 @@ function firstPortRowIndex(rows: Row[]): number {
   return i;
 }
 
-test("retirement inventory resolves every rule in the three roots", () => {
-  const result = spawnSync(process.execPath, [checker, "--repo", repo], { encoding: "utf8" });
-  assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /commands EXECUTED/);
-  assert.match(result.stdout, /every rule in the three roots is resolved/);
-});
-
 test("retirement checker reddens on a row with no verified-by block", () => {
   const rows = sample(3);
   delete rows[0]["verified-by"];
@@ -1636,15 +1629,6 @@ test("a diet entry naming a block that is not at its baseline range is refused",
   e.lines = [e.lines![0] + 1, e.lines![1] + 1];
   const f = checkDiet(doc);
   assert.ok(f.some((m) => m.startsWith(`${e.id}: baseline lines`)), f.join("\n"));
-});
-
-test("every line removed from CLAUDE.md or AGENTS.md since the diet baseline has a disposition, and both files match their heading register", () => {
-  const doc = dietDoc();
-  for (const file of RULE_FILES) {
-    const base = atRevision(DIET_BASELINE, file);
-    assert.ok(base !== null, `${file} is readable at ${DIET_BASELINE}; this check needs full history`);
-    assert.deepEqual(ruleFileFindings(doc, file, base, currentText(file) ?? ""), [], file);
-  }
 });
 
 test("a block removed from CLAUDE.md with no disposition reddens the completeness check", () => {

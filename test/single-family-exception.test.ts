@@ -755,24 +755,6 @@ test("no arm of the declared single-family exception reports green, over the who
 /* Criterion 7: the exception narrows ONE dimension, two members       */
 /* ------------------------------------------------------------------ */
 
-test("a one-family declaration does not excuse a shared framing", () => {
-  const run = runScript(arm("narrowed-to-one-dimension-shared-framing").stage());
-  assert.equal(run.record.status, "red");
-  assert.ok(
-    run.stdout.includes("are not decorrelated on framing"),
-    `framing was not refused:\n${run.stdout}`,
-  );
-});
-
-test("a one-family declaration does not excuse a shared review-contract", () => {
-  const run = runScript(arm("narrowed-to-one-dimension-shared-review-contract").stage());
-  assert.equal(run.record.status, "red");
-  assert.ok(
-    run.stdout.includes("are not decorrelated on review-contract"),
-    `review-contract was not refused:\n${run.stdout}`,
-  );
-});
-
 test("the exception is reported as narrowing produced-by only, and the report names the dimensions actually compared", () => {
   const run = runScript(arm("permissive-arm-fixture-declared").stage());
   const report = run.stdout

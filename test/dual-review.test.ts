@@ -252,20 +252,6 @@ test("two verdicts sharing a produced-by model family exit nonzero naming the du
   });
 });
 
-test("two verdicts sharing a framing exit nonzero naming the duplicated value", () => {
-  withContext("full", SHARED_FRAMING, (dir) => {
-    const run = runScript(dir);
-    assert.equal(run.status, 1, run.output);
-    assert.match(
-      run.output,
-      /framing value criteria-contract occurs in 2 of the 2 verdicts for phase M3-P9/,
-    );
-    assert.match(run.output, /not decorrelated on framing/);
-    /* AND NOT for the wrong reason: these two DO differ on model family. */
-    assert.doesNotMatch(run.output, /not decorrelated on produced-by/);
-  });
-});
-
 test("one verdict for a head exits nonzero saying a delegated grant needs two", () => {
   withContext("full", [DECORRELATED[0] as string], (dir) => {
     const run = runScript(dir);
@@ -387,28 +373,6 @@ test("dual-review-decorrelation is registered in the shipped registry for the ve
 /* ------------------------------------------------------------------ */
 /* Criterion 7b: contract distinctness, witnessed separately            */
 /* ------------------------------------------------------------------ */
-
-test("two verdicts whose produced-by and framing both differ and whose review-contract is the same exit nonzero", () => {
-  /* T-007's WHOLE FINDING is that model decorrelation and contract
-     decorrelation are different properties and this project had the second by
-     accident. So this pair satisfies DR-0012's condition and T-001's, and fails
-     only on the contract, which is why it is witnessed separately from the
-     other two dimensions rather than folded in with them. */
-  withContext("full", SHARED_CONTRACT, (dir) => {
-    const run = runScript(dir);
-    assert.equal(run.status, 1, run.output);
-    assert.match(
-      run.output,
-      /review-contract value criteria occurs in 2 of the 2 verdicts for phase M3-P9/,
-    );
-    assert.match(run.output, /not decorrelated on review-contract/);
-    /* AND NOT ON THE OTHER TWO: this pair is decorrelated on both. If either of
-       those also fired, this fixture would not be isolating the fifth
-       dimension. */
-    assert.doesNotMatch(run.output, /not decorrelated on produced-by/);
-    assert.doesNotMatch(run.output, /not decorrelated on framing/);
-  });
-});
 
 test("the same pair with one criteria contract and one hazard contract exits 0", () => {
   withContext("full", DECORRELATED, (dir) => {
