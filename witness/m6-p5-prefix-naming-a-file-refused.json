@@ -1,0 +1,31 @@
+{
+  "id": "m6-p5-prefix-naming-a-file-refused",
+  "behavior": "m6-p5-prefix-naming-a-file-refused",
+  "tests": [
+    "a runtime-set paths prefix that names a FILE at the merge base (src/feature.ts/) is an invalid declaration, so the change is pair"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "      if (!/^\\d{6} tree /.test(first)) {",
+      "replace": "      if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    ...set.paths.map((entry): [string, string, boolean] => [\"paths\", entry, entry.endsWith(\"/\")]),",
+      "replace": "    ...set.paths.filter((entry) => !entry.endsWith(\"/\")).map((entry): [string, string, boolean] => [\"paths\", entry, false]),"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p5-git-runtime-set-lookup.json"
+    ],
+    "provenance": "Real output of git ls-tree as entryLookupFault in src/gates/merge-preconditions.ts runs it at the merge base, captured 2026-09-30 by the M6-P5 implementer with git 2.43.0 against the repository test/merge-preconditions.test.ts stages in stageDirectoryEntryRepo: a blob for a file, a tree for a directory and nothing for a name that is not there. The named test replays every command and compares git's live output with the recorded stdout before it asks the shipped classifier."
+  }
+}

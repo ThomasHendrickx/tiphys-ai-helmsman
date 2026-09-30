@@ -1,0 +1,31 @@
+{
+  "id": "m6-p5-head-from-record",
+  "behavior": "m6-p5-head-from-record",
+  "tests": [
+    "a verdict's own head line is never read: a verdict naming another commit, or none, counts through the head its kernel record names"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "    const relation = boundAtMergeBase(\n      contextDirectory,\n      record.head,\n      input.mergeBase,\n      relateDeclaredHead(contextDirectory, record.head, auditedHead),\n    );",
+      "replace": "    const verdictHead = String(verdictByPath.get(record.verdict.path)?.record[\"head\"]);\n    const relation = boundAtMergeBase(\n      contextDirectory,\n      verdictHead,\n      input.mergeBase,\n      relateDeclaredHead(contextDirectory, verdictHead, auditedHead),\n    );"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "relateDeclaredHead(contextDirectory, record.head, auditedHead),",
+      "replace": "relateDeclaredHead(contextDirectory, String(verdictByPath.get(record.verdict.path)?.record[\"head\"] ?? record.head), auditedHead),"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set.json"
+    ],
+    "provenance": "Real output of the git commands the merge gate runs (the prefix, the NUL-separated name list, the merge base and the ls-tree presence probe), captured 2026-09-29 by the M6-P2 implementer against the repository test/merge-preconditions.test.ts stages in stageShrinkRepo, which re-runs every command and compares git's live output with the recorded stdout. The named tests here read git through the same resolveCorpusSource and relateDeclaredHead calls on repositories they stage and commit themselves."
+  }
+}

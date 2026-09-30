@@ -156,6 +156,9 @@ export const TYPE_TABLE: ReadonlyMap<string, string> = new Map([
      src/checks.ts is Kind B and reaches agreement between sibling fields, and
      nothing runs it until the type resolves here. */
   ["model-resolution", "model-resolution.schema.json"],
+  /* M6-P5 (DR-0062). The record `tiphys review dispatch` writes; it carries a
+     `kind`, so one row serves `--type` and `--type auto`. */
+  ["review-record", "review-record.schema.json"],
   /* M4-P9 step 4. <fleet>/write-bypass.json, the infrastructure-hotfix bypass
      the project-write block reads.
 

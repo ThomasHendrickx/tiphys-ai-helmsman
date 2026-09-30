@@ -9,14 +9,14 @@
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "  if (messages.size > 0) {\n    return { status: \"red\", sentence: [...messages].sort().join(\" | \") };",
-      "replace": "  if (false) {\n    return { status: \"red\", sentence: [...messages].sort().join(\" | \") };"
+      "find": "    status: faults.length === 0 && review.count.counted.length > 0 ? \"green\" : \"red\",",
+      "replace": "    status: review.count.counted.length > 0 ? \"green\" : \"red\","
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "      const outcome = check.run(verdict.record, contextDirectory, { base });",
-      "replace": "      const outcome = { violations: [], reports: [] };"
+      "find": "    verdictApprovalFaults({ path: entry.verdictPath, record: entry.verdict }, phase, entry.record.head).map(",
+      "replace": "    ([] as { pointer: string; message: string }[]).map("
     }
   ],
   "deterministic": true,

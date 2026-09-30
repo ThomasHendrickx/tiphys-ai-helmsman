@@ -40,17 +40,19 @@ modes:
     # two for pair, one for single.
     review-contracts:
       - hazard
-    # Not the blueprint's `owner`: DR-0012 delegated merge authority and
-    # DR-0015 took the owner off the merge path.
     merge-authority: delegated-under-conditions
     granted-by: DR-0012
-    # DR-0012's conditions in the record's words, less condition 3 (both
-    # reviewers walked the acceptance criteria), which DR-0064 supersedes.
+    # DR-0012's conditions, less condition 3 (superseded by DR-0064).
+    # Condition 1 is restated for kernel-launched reviews (DR-0062) and the
+    # review tiers (DR-0063).
     conditions:
       - >-
-        Two independent clean-room reviews exist for the current head, produced
-        on different model families, each written to `delivery/review/` and
-        committed.
+        The kernel launched each clean-room review the change's tier owes (two
+        for pair, one for single) on the current head, and each verdict is
+        committed under `delivery/review/` with the kernel's review record under
+        `delivery/review/records/`. A pair's two records name different observed
+        model families, or the charter's `review-families` declares the one
+        family both name (DR-0038).
       - >-
         Neither review carries an unresolved finding at high or medium
         severity. Low findings may be merged with, provided each is either

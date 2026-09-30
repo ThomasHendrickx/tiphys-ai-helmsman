@@ -43,8 +43,14 @@ change gets is its review tier (DR-0063), decided from the diff:
   one hazard review, no arbitration, one fix round. A finding blocks only if it
   makes a shipped artefact wrong; you say so through your verdict word.
 - `pair` (the diff touches the runtime set): two hazard reviews on the same
-  head, distinct in `produced-by`. The orchestrator arbitrates disagreements.
-  An unresolved high or medium finding blocks.
+  head, on distinct model families as the kernel observed them. The
+  orchestrator arbitrates disagreements. An unresolved high or medium finding
+  blocks.
+
+The kernel launched you (`tiphys review dispatch`, DR-0062). You run in a
+worktree it made at the head under review, and it records which model served
+you. Write the verdict at the path your prompt names, relative to the current
+directory.
 
 Your output is ONE verdict document. Its contract is
 `schemas/verdict.schema.json`, and each finding inside it follows
@@ -74,17 +80,21 @@ about it, and the merge gate excludes it and names the exclusion.
 `tiphys-version` is the kernel version on the `tiphys-version:` line at the top
 of your composed brief; copy it exactly. It is recommended, not required: it
 tells `tiphys validate` which rules the verdict was written to. The merge gate
-does not read it, and holds every verdict to every current rule either way. `produced-by`
-names your model family and `framing` names your entry point. `review-contract`
-is optional; if you write it, it is `hazard`.
+does not read it, and holds every verdict to every current rule either way.
+`framing` names your entry point. Do not write `produced-by`: your family is
+the one the kernel observed, and nothing reads a family a reviewer writes.
+`review-contract` is optional; if you write it, it is `hazard`.
 
 What happens to it. You do not commit it. The orchestrator commits the verdicts
-on the phase branch. At merge a `single` change needs one admitted verdict
-reading APPROVE; a `pair` change needs two, both APPROVE, distinct in
-`produced-by`, with no unresolved high or medium finding. A missing review is
-red, never not-applicable. Commits after the reviewed head that touch only
-`delivery/` keep your verdict admitted; any other later commit means your
-verdict no longer covers the head, and a new review is owed.
+on the phase branch, each with the review record the kernel wrote for its run.
+The kernel hashes your verdict when you exit, and a verdict changed after that
+does not count. At merge a `single` change needs one counted verdict reading
+APPROVE; a `pair` change needs two, both APPROVE, on distinct observed families
+or on the one family the charter declares (DR-0038), with no unresolved high or
+medium finding. A missing review is red, never not-applicable. Commits after the
+reviewed head that touch only `delivery/` keep your verdict counted; any other
+later commit means your verdict no longer covers the head, and a new review is
+owed.
 
 The delivered outcome. Your brief carries the project's product intent, from
 the charter, next to the phase's intent. The final report answers the phase

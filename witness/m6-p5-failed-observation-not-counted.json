@@ -1,0 +1,31 @@
+{
+  "id": "m6-p5-failed-observation-not-counted",
+  "behavior": "m6-p5-failed-observation-not-counted",
+  "tests": [
+    "a kernel review record whose observation failed is not counted, and the gate says the kernel observed no served model"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "    if (record.observation.model === null) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "        reason: `observed no served model (${record.observation.reason}), so the kernel cannot say which family reviewed and the record does not count`,\n      });\n      continue;\n    }",
+      "replace": "        reason: `observed no served model (${record.observation.reason}), so the kernel cannot say which family reviewed and the record does not count`,\n      });\n    }"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set.json"
+    ],
+    "provenance": "Real output of the git commands the merge gate runs (the prefix, the NUL-separated name list, the merge base and the ls-tree presence probe), captured 2026-09-29 by the M6-P2 implementer against the repository test/merge-preconditions.test.ts stages in stageShrinkRepo, which re-runs every command and compares git's live output with the recorded stdout. The named test reads the committed verdicts and kernel review records through the same git-backed corpus source on a repository it stages and commits itself."
+  }
+}

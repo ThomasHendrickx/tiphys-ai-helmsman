@@ -1,20 +1,6 @@
-# THE KERNEL'S ROLE-TO-MODEL DEFAULTS (kernel plan M3, M3-P3; R-075).
-#
-# R-075, from process doc section 5: "Model tier per risk: strongest model for
-# money-path/architecture phases, investigations, and all reviews; cheaper tier
-# for mechanical phases (a measurement script, copy)."
-#
-# CONFIGURATION ONLY. M3 ships the data and no resolver. Binding is done by the
-# harness adapter (blueprint section 6) and the charter override is L4, which
-# lands at M4. DR-0010, which asks whether any judgment-layer fan-out should
-# target the harness's native orchestration primitive, is `status: open` with
-# "no action required before M4", so nothing here targets a harness, names an
-# executor, or names a model: a tier and a family POLICY, and nothing else.
-#
-# WHY A TIER AND NOT A MODEL. A model id in a versioned kernel artifact goes
-# stale in weeks and puts a vendor's product name inside the package. The
-# adapter maps tier to model at M4, where the mapping can change without a
-# kernel release.
+# Role-to-model defaults (R-075). Each role names a TIER, never a model id: the
+# harness adapter maps a tier to a model, so a model rename needs no kernel
+# release and no vendor name ships in the kernel.
 
 kind: role-model-config
 version: 1
@@ -48,11 +34,8 @@ roles:
   - role: adversarial-plan-reviewer
     tier: strongest
     charter-override: allowed
-    # T-001: an external review on a different model family found two genuine
-    # defects that had survived three same-family internal rounds plus one
-    # targeted verification. The record's own ask was "at minimum, a
-    # charter-level option to route one review round of a full-mode plan
-    # through a different family"; this is that option, as a policy.
+    # T-001: a review on another model family found two defects that three
+    # same-family rounds had missed.
     review-model-family: must-differ-from-previous-round
     rationale: >-
       R-075 puts all reviews at the strongest tier, and T-001 is the recorded
@@ -60,10 +43,8 @@ roles:
 
   - role: implementer
     tier: cheaper
-    # R-075 IS PHASE-CLASS SCOPED FOR THIS ROLE, so a flat tier would drop half
-    # of it. The default is the mechanical case the rule names ("a measurement
-    # script, copy"); the classes below are where the same rule raises it.
-    # Nothing in M3 classifies a phase, and no resolver reads this field.
+    # R-075 raises the implementer to the strongest tier for these phase
+    # classes. Nothing classifies a phase yet, so nothing reads this field.
     strongest-for:
       - money-path
       - architecture
@@ -74,21 +55,11 @@ roles:
       role whose tier is a function of the phase rather than of the role.
 
   - role: clean-room-reviewer
-    # `tier` is the value when the review tier is not known, and it is the
-    # stronger one so that case fails closed.
     tier: strongest
-    # DR-0063 (M6-P2): the reviewer's model tier follows the review tier of the
-    # change. `pair` (the diff touches the declared runtime set) gets the
-    # strongest tier; `single` gets the cheaper one.
-    tier-by-review-tier:
-      pair: strongest
-      single: cheaper
     charter-override: allowed
-    # DR-0012 condition 1: two independent clean-room reviews of the same head,
-    # produced on different model families. Since DR-0063 that is the `pair`
-    # tier's rule. Family policy is M6-P5's.
-    review-model-family: must-differ-from-sibling-review
     rationale: >-
-      R-075 puts all reviews at the strongest tier; DR-0063 narrows that to the
-      pair tier, whose reviews are the signature on a runtime change, and puts
-      a single-tier review (no runtime path touched) on the cheaper tier.
+      R-075 puts all reviews at the strongest tier. The orchestrator chooses
+      each review's model tier and passes it to `tiphys review dispatch --tier`
+      (strongest or cheaper); nothing in this document maps a DR-0063 review
+      tier to a model tier. The family rule is the charter's `review-families`
+      over the kernel's review records (DR-0062).

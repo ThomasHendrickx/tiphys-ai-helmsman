@@ -1,0 +1,31 @@
+{
+  "id": "m6-p5-vocabulary-mismatch-red",
+  "behavior": "m6-p5-vocabulary-mismatch-red",
+  "tests": [
+    "two counted reviews on different families minted under different vocabulary ids are red at condition-1, naming both ids"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "  if (vocabularies.length > 1) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "new Set(counted.map((review) => review.record.vocabulary.id))",
+      "replace": "new Set(counted.map((review) => review.record.vocabulary.version))"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set.json"
+    ],
+    "provenance": "Real output of the git commands the merge gate runs (the prefix, the NUL-separated name list, the merge base and the ls-tree presence probe), captured 2026-09-29 by the M6-P2 implementer against the repository test/merge-preconditions.test.ts stages in stageShrinkRepo, which re-runs every command and compares git's live output with the recorded stdout. The named test reads the committed charter, verdicts and kernel review records through the same git-backed reads on a repository it stages and commits itself."
+  }
+}

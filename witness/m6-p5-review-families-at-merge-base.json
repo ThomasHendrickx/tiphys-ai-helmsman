@@ -1,0 +1,31 @@
+{
+  "id": "m6-p5-review-families-at-merge-base",
+  "behavior": "m6-p5-review-families-at-merge-base",
+  "tests": [
+    "a head that adds the single-vendor exception while touching the runtime set is still red at condition-1, because the declaration is read at the merge base"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "readReviewFamilies(contextDirectory, mergeBase)",
+      "replace": "readReviewFamilies(contextDirectory)"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "mergeBase === undefined ? readReviewFamilies",
+      "replace": "true ? readReviewFamilies"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set.json"
+    ],
+    "provenance": "Real output of the git commands the merge gate runs (the prefix, the NUL-separated name list, the merge base and the ls-tree presence probe), captured 2026-09-29 by the M6-P2 implementer against the repository test/merge-preconditions.test.ts stages in stageShrinkRepo, which re-runs every command and compares git's live output with the recorded stdout. The named test reads the committed charter, verdicts and kernel review records through the same git-backed reads on a repository it stages and commits itself."
+  }
+}

@@ -22,7 +22,8 @@
  * victim test from each STRUCTURALLY DIFFERENT shape of the class in a nested
  * `node --test`:
  *
- *   - a staged repository whose `.git` is REMOVED (single-family-exception);
+ *   - a staged repository whose `.git` is REMOVED (dual-review, since M6-P5
+ *     deleted single-family-exception, where this arm first failed);
  *   - a context that was NEVER a repository (dual-review);
  *   - a context reached through an environment that strips GIT_* names
  *     (exit-test-local).
@@ -155,13 +156,13 @@ function runVictim(ancestor: string, file: string, title: string, inherited: Rec
 const VICTIMS: Array<{ shape: string; file: string; title: string }> = [
   {
     shape: "removed .git",
-    file: "single-family-exception.test.ts",
+    file: "dual-review.test.ts",
     title: "a corpus-scoped refusal names the source that corpus was read from, on both arms",
   },
   {
     shape: "never a repository",
     file: "dual-review.test.ts",
-    title: "two verdicts sharing a produced-by model family exit nonzero naming the duplicated value",
+    title: "a mode that states no merge-authority is refused rather than reported as not a delegated grant",
   },
   {
     shape: "GIT_* stripped from the child environment",

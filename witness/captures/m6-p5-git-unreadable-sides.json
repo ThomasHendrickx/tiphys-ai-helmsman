@@ -1,0 +1,76 @@
+{
+  "provenance": "Real output of git ls-tree as src/gates/merge-preconditions.ts blobAt runs it (git --literal-pathspecs ls-tree -z <rev> -- <path>) on the side each arm makes unreadable or absent, captured 2026-09-30 by the M6-P5 implementer with git 2.43.0 against the scratch repositories test/merge-preconditions.test.ts stages in stageReadFailure. A symlink lists as mode 120000 blob, which blobAt refuses to read as one regular file; a deleted file lists as nothing, which blobAt reads as absent. Blob ids are of the link target names and file contents, so no stdout byte is rewritten and only <base> and <head> in argv are placeholders. JSON escapes NUL as \\u0000 and TAB as \\t, so this file is ASCII.",
+  "git": "git version 2.43.0",
+  "commands": [
+    {
+      "arm": "charter-link-at-base",
+      "argv": [
+        "git",
+        "--literal-pathspecs",
+        "ls-tree",
+        "-z",
+        "<base>",
+        "--",
+        "charter.yaml"
+      ],
+      "exit": 0,
+      "stdout": "120000 blob 6efc9583926e2e946d02ddcff3ca2124bc6e44e9\tcharter.yaml\u0000"
+    },
+    {
+      "arm": "charter-link-at-head",
+      "argv": [
+        "git",
+        "--literal-pathspecs",
+        "ls-tree",
+        "-z",
+        "<head>",
+        "--",
+        "charter.yaml"
+      ],
+      "exit": 0,
+      "stdout": "120000 blob 6efc9583926e2e946d02ddcff3ca2124bc6e44e9\tcharter.yaml\u0000"
+    },
+    {
+      "arm": "charter-deleted-at-head",
+      "argv": [
+        "git",
+        "--literal-pathspecs",
+        "ls-tree",
+        "-z",
+        "<head>",
+        "--",
+        "charter.yaml"
+      ],
+      "exit": 0,
+      "stdout": ""
+    },
+    {
+      "arm": "manifest-link-at-base",
+      "argv": [
+        "git",
+        "--literal-pathspecs",
+        "ls-tree",
+        "-z",
+        "<base>",
+        "--",
+        "package.json"
+      ],
+      "exit": 0,
+      "stdout": "120000 blob c82e96db7eb38e7d21107b3fc3e6bcdf55a49612\tpackage.json\u0000"
+    },
+    {
+      "arm": "manifest-link-at-head",
+      "argv": [
+        "git",
+        "--literal-pathspecs",
+        "ls-tree",
+        "-z",
+        "<head>",
+        "--",
+        "package.json"
+      ],
+      "exit": 0,
+      "stdout": "120000 blob c82e96db7eb38e7d21107b3fc3e6bcdf55a49612\tpackage.json\u0000"
+    }
+  ]
+}

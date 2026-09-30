@@ -37,3 +37,8 @@ export type {
 export { requirableRequestFields } from "./spawn.ts";
 
 export { BUILT_IN_ADAPTER_NAME } from "./adapters/load.ts";
+
+/* M6-P5 (DR-0062): the contract a harness implements so the kernel can launch
+   a reviewer and observe what it served, and the shape of the grant it maps
+   (DR-0065). Types only. */
+export type { ReviewExecutor, ReviewerGrant, ReviewStreamReading } from "./review.ts";

@@ -1,0 +1,37 @@
+{
+  "id": "m6-p5-failed-install-refuses-cleanly",
+  "behavior": "m6-p5-failed-install-refuses-cleanly",
+  "tests": [
+    "a failing dependency install refuses before launch with exit 1 and one line naming npm ci, writes no record, and leaves no review worktree registered"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "  if (!installed.ok) {\n",
+      "replace": "  if (false) {\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "    const removed = git(project, [\"worktree\", \"remove\", \"--force\", worktree]);\n    return {\n      ok: false,",
+      "replace": "    const removed = { ok: true } as const;\n    return {\n      ok: false,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "    if (run.status !== 0) {\n      return {\n        ok: false,\n        reason: `npm ci exited",
+      "replace": "    if (run.status === null) {\n      return {\n        ok: false,\n        reason: `npm ci exited"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "claude",
+    "captures": [
+      "test/fixtures/review-dispatch/haiku-with-sonnet-subagent.stream.jsonl"
+    ],
+    "provenance": "Real stdout of the harness CLI in headless stream mode, Claude Code 2.1.285, captured 2026-09-30 in this container; its provenance and declared alterations are in the README beside it. The named test replays it through the plugin's own review executor with only its command swapped for replay.mjs, so the kernel's dispatch spawns real child processes (git, npm ci, and the replay) in the environment it builds. Of npm the kernel reads only the exit status, never its output, so npm needs no capture."
+  }
+}

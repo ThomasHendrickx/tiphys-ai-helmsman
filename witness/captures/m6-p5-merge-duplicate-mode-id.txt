@@ -1,0 +1,34 @@
+Real output of the SHIPPED tiphys validate --type verdict command, which runs
+the verdict-pair-approves check and so reads the merge-authority regime, over
+an assurance-modes document that declares mode full twice, the weaker copy
+(merge-authority owner, no granted-by, no conditions) placed first. Captured so
+that test/dual-review.test.ts asserts against what the program really printed
+(CLAUDE.md red-witness rule). Rule (f) of the red-witness gate requires it:
+members of witness/mode-ids-unique-merge-checks.json mutate src/checks.ts,
+which the spawn/parse derivation matches.
+
+Why a second capture: witness/captures/m6-p3-duplicate-mode-id.txt holds the
+merge-checks case from scripts/check-dual-review.mjs, which M6-P5 deleted
+(DR-0062), so that program can no longer be run. M6-P5 moved the regime
+reader's pointer from #/produced-by to #/verdict, which is why the INVALID
+line below differs from the old one in its pointer and its check name.
+
+Captured 2026-09-30, node v26.6.0, git 2.43.0, from the M6-P5 worktree with
+the merge of 3007547 (main plus M6-P4 and M6-P6) into b074be8 resolved and
+built, before that merge was committed. The scratch directory held the charter
+template with delivery-mode full, the dual-review fixture
+decorrelated-criteria.yaml, and the repository's assurance-modes.yaml with its
+full row duplicated as above, serialised by the yaml package exactly as the
+named test does. GIT_CEILING_DIRECTORIES was set to os.tmpdir(), as the test
+file sets it.
+
+ONE ALTERATION, declared: the scratch directory's absolute path is written
+<dir>, everywhere it occurred. Nothing else in the output below was changed.
+
+case: merge-checks-verdict
+  command: node bin/tiphys.ts validate --type verdict --context <dir> <dir>/delivery/review/decorrelated-criteria.yaml
+  exit: 1
+  stdout:
+    INVALID #/verdict <dir>/assurance-modes.yaml declares mode full 2 times (entries 0, 1), so a reader taking the first would shadow the rest; the merge-authority of mode full is therefore ambiguous, and a merge check must not choose one (check: verdict-pair-approves)
+  stderr:
+

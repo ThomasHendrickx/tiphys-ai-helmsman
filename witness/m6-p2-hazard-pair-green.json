@@ -2,21 +2,21 @@
   "id": "m6-p2-hazard-pair-green",
   "behavior": "m6-p2-hazard-pair-green",
   "tests": [
-    "two approving hazard verdicts with distinct produced-by and the same framing are green on the review rows of a pair change"
+    "two approving hazard verdicts on distinct kernel-recorded families with the same framing are green on the review rows of a pair change"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
-      "file": "src/checks.ts",
-      "find": "export const DECORRELATION_DIMENSIONS: readonly string[] = [\"produced-by\"];",
-      "replace": "export const DECORRELATION_DIMENSIONS: readonly string[] = [\"produced-by\", \"framing\"];"
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    status: families.ok ? \"green\" : \"red\",",
+      "replace": "    status: families.ok && new Set(review.count.counted.map((entry) => String((entry.verdict as Record<string, unknown>)[\"framing\"]))).size === review.count.counted.length ? \"green\" : \"red\","
     },
     {
       "kind": "mutation",
-      "file": "src/checks.ts",
-      "find": "export const DECORRELATION_DIMENSIONS: readonly string[] = [\"produced-by\"",
-      "replace": "export const DECORRELATION_DIMENSIONS: readonly string[] = [\"review-contract\", \"produced-by\""
+      "file": "src/review.ts",
+      "find": "  if (known.length >= 2) {",
+      "replace": "  if (known.length >= 2 && new Set(counted.map((review) => String((review.verdict as Record<string, unknown>)[\"review-contract\"]))).size === counted.length) {"
     }
   ],
   "deterministic": true,
