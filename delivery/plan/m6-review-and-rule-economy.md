@@ -404,9 +404,12 @@ command with its expected exit. `not-testable` criteria carry a reason.
   3. The `red-witness` gate, on the `pull_request` event, evaluates the
      pull request's own witness specs, and a stored spec only when the diff
      from the merge base changes a file one of its members mutates or a test
-     file it runs. On the `push` event it evaluates every stored spec, as
-     today. The gate's detail line names how many stored specs it skipped
-     and why, so a skip is visible, never silent.
+     file it runs. On the `push` event it evaluates every stored spec. Today
+     the gate's registry entry names `events: [pull_request]` only, so the
+     push run never sweeps; `push` is added (same `diff-touches`
+     precondition), so the full sweep moves after the merge rather than
+     disappearing. The gate's detail line names how many stored specs it
+     skipped and why, so a skip is visible, never silent.
 - acceptance:
   - p8-selection: named tests, one per case: on `pull_request`, a stored spec
     whose files the diff does not touch is skipped and counted; one whose
