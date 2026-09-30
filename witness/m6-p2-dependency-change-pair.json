@@ -17,6 +17,12 @@
       "file": "src/gates/merge-preconditions.ts",
       "find": "    return DEPENDENCY_FIELDS.has(field) && pins.includes(name);",
       "replace": "    return DEPENDENCY_FIELDS.has(field);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    !(segments[1] as string).startsWith(\"node_modules/\")",
+      "replace": "    true"
     }
   ],
   "deterministic": true,

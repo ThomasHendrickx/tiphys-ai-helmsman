@@ -1663,7 +1663,7 @@ test("the real 0.2.2 version bump of package.json, package-lock.json and plugin/
 });
 
 test("adding a dependency to package.json and the lockfile classifies pair, and so does changing the version of a package not in version-pins", () => {
-  const arms: [string, (path: string, head: Record<string, unknown>) => void, RegExp][] = [
+  const arms: [string, (path: string, head: Record<string, unknown>) => void, RegExp, string?][] = [
     [
       "added dependency",
       (path, head) => {
@@ -1689,15 +1689,29 @@ test("adding a dependency to package.json and the lockfile classifies pair, and 
       },
       /devDependencies\/.* changed/,
     ],
+    [
+      /* THE REALISTIC HIDDEN ONE: the lockfile resolves a dependency to a new
+         release while every manifest-level field stays put. A
+         node_modules/ entry's version is never a version field. */
+      "lockfile resolves a new release of a dependency",
+      (path, head) => {
+        if (path === "package-lock.json") {
+          const packages = head["packages"] as Record<string, Record<string, unknown>>;
+          (packages["node_modules/yaml"] as Record<string, unknown>)["version"] = "2.99.0";
+        }
+      },
+      /\/packages\/node_modules~1yaml\/version changed/,
+      "package-lock.json",
+    ],
   ];
-  for (const [name, edit, reason] of arms) {
+  for (const [name, edit, reason, checked] of arms) {
     const classified = tierModule.classifyTier({
       declaration: repositoryDeclaration(),
       changed: atRoot(BUMP_MANIFESTS),
       sides: bumpSides(edit),
     });
     assert.equal(classified.tier, "pair", `${name}: ${JSON.stringify(classified.paths)}`);
-    const manifest = classified.paths.find((entry) => entry.path === "package.json") as TierPath;
+    const manifest = classified.paths.find((entry) => entry.path === (checked ?? "package.json")) as TierPath;
     assert.equal(manifest.tier, "pair", `${name}: ${manifest.reason}`);
     assert.match(manifest.reason, reason, `${name}: ${manifest.reason}`);
   }
