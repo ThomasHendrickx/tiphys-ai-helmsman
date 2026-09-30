@@ -1523,6 +1523,87 @@ test("--event push selects only the gates whose events include push, --event pul
   }
 });
 
+test("on each CI event the runner exits nonzero when a required gate is red, vacuous, errors or is not applicable beside a green control, and 0 only when it is green", () => {
+  /* M6-P3, p3-red-fails-ci. CI now runs this runner directly, so its exit code
+     IS the step's result. Each arm is ISOLATED: beside the gate under test the
+     registry carries one control gate that is always green, so no other
+     gate's status can supply the nonzero exit, and "no applicable gate" (21)
+     cannot stand in for the not-applicable rule (20). */
+  const dir = scratch("red-fails-ci");
+  try {
+    writeFileSync(join(dir, "fixture-gate.mjs"), FIXTURE_GATE_SOURCE);
+    writeFileSync(
+      join(dir, "control-gate.mjs"),
+      `process.env.FIXTURE_GATE_ID = "control";\nprocess.env.FIXTURE_STATUS = "green";\nprocess.env.FIXTURE_UNITS = "1";\nprocess.env.FIXTURE_EXIT = "0";\nawait import(${JSON.stringify(join(dir, "fixture-gate.mjs"))});\n`,
+    );
+    const control = {
+      id: "control",
+      prevents: "a fixture failure",
+      command: ["node", join(dir, "control-gate.mjs")],
+      unitLabel: "fixture units",
+      applicability: "required",
+      "verified-by": "script",
+      modes: ["full"],
+      events: ["pull_request", "push"],
+    };
+    const registryFor = (name: string, precondition?: Record<string, unknown>): string => {
+      const gate: Record<string, unknown> = {
+        id: "only",
+        prevents: "a fixture failure",
+        command: ["node", join(dir, "fixture-gate.mjs")],
+        unitLabel: "fixture units",
+        applicability: "required",
+        "verified-by": "script",
+        modes: ["full"],
+        events: ["pull_request", "push"],
+      };
+      if (precondition !== undefined) gate["precondition"] = precondition;
+      const path = join(dir, `${name}.json`);
+      writeFileSync(
+        path,
+        `${JSON.stringify({ kind: "gate-registry", version: 1, preflight: [{ command: ["npm", "ci"], note: "install exactly the lockfile" }], gates: [control, gate], destructiveCommands: [] }, null, 2)}\n`,
+      );
+      return path;
+    };
+    const plain = registryFor("plain");
+    const unmet = registryFor("unmet", {
+      id: "needs-a-file-nobody-wrote",
+      kind: "file-exists",
+      path: join(dir, "absent.json"),
+    });
+    const arms: { name: string; registry: string; status: string; units: string; exit: string; want: number }[] = [
+      { name: "green", registry: plain, status: "green", units: "1", exit: "0", want: 0 },
+      { name: "red", registry: plain, status: "red", units: "1", exit: "1", want: 1 },
+      { name: "vacuous", registry: plain, status: "green", units: "0", exit: "0", want: 21 },
+      { name: "error", registry: plain, status: "error", units: "0", exit: "21", want: 21 },
+      { name: "not-applicable", registry: unmet, status: "green", units: "1", exit: "0", want: 20 },
+    ];
+    for (const event of ["pull_request", "push"]) {
+      for (const arm of arms) {
+        const evidence = join(dir, `evidence-${event}-${arm.name}`);
+        const run = spawnSync(
+          process.execPath,
+          [cliEntry, "gates", "run", "--registry", arm.registry, "--mode", "full", "--event", event, "--evidence", evidence],
+          {
+            encoding: "utf8",
+            cwd: dir,
+            env: {
+              ...process.env,
+              FIXTURE_GATE_ID: "only",
+              FIXTURE_STATUS: arm.status,
+              FIXTURE_UNITS: arm.units,
+              FIXTURE_EXIT: arm.exit,
+            },
+          },
+        );
+        assert.equal(run.status, arm.want, `${event} ${arm.name}: ${run.stdout}${run.stderr}`);
+      }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 /* Kept from the deleted M2 exit-test suite: both guard a gate, not the harness. */
 
 test("the gates workflow checks out the pull-request head branch by name (ref: github.head_ref) so scope is not detached", () => {

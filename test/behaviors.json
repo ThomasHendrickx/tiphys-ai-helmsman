@@ -1108,5 +1108,6 @@
   "authored-bytes-registry-gate-both-events": "the authored-bytes registry gate records red naming the byte on a control character and green counting the tracked files on a clean tree, on both CI events",
   "gate-schema-documents-load-closed-keyword-set": "every schema document under src/gates/schemas loads through the closed keyword set",
   "mode-show-gates-derived-from-registry": "mode show lists exactly the gates the registry beside the document selects for the mode, and refuses when that registry cannot be read",
-  "gate-registry-prevents-required-one-line": "the registry schema rejects a gate without prevents and one whose prevents spans two lines, and accepts a one-line prevents"
+  "gate-registry-prevents-required-one-line": "the registry schema rejects a gate without prevents and one whose prevents spans two lines, and accepts a one-line prevents",
+  "gates-run-fails-on-required-red-vacuous-error-not-applicable": "on each CI event the runner exits nonzero when a required gate is red, vacuous, errors or is not applicable beside a green control, and 0 only when it is green"
 }
