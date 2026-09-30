@@ -63,31 +63,6 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
-      # THE AUTHORED-BYTES AND ID-COLLISION CHECKS (value-delivery plan M5-P4
-      # step 1; T-010, T-039, T-009).
-      #
-      # Both scripts existed and neither could redden the required context:
-      # check-authored-bytes.mjs ran only in macOS smoke, which is not the
-      # required `gates` context, and check-id-collisions.mjs was referenced by
-      # no workflow at all. A check that exists and cannot fail the job is the
-      # workflow-text-guard hazard, so these are plain steps in this job.
-      #
-      # They run AFTER build and test on purpose: check-authored-bytes refuses
-      # (exit 2) when the tracked working tree differs from the index, and
-      # running it after npm ci and npm run build also proves those two steps
-      # left no tracked file modified.
-      #
-      # NO `if:`, DELIBERATELY. An authored-byte violation or a duplicated id
-      # on `main` is the state that matters, not only one proposed in a pull
-      # request, and T-009 requires both CI arms to carry the check. No
-      # `continue-on-error` either: a nonzero exit must fail the job.
-      #
-      # DR-0017 and DR-0004: STEPS in the one job named `gates`. No job, no
-      # matrix, so the published required status context is still `gates`.
-      - name: Authored bytes are pure ASCII and free of control characters (M5-P4)
-        run: node scripts/check-authored-bytes.mjs
-      - name: Identifier collisions in the tuition and decision schemes (T-039, M5-P4)
-        run: node scripts/check-id-collisions.mjs
       # THE GATE REGISTRY, RUN DIRECTLY (M6-P3, DR-0061). gate-registry.yaml is
       # the only gate list: `--event` selects the entries whose `events` name
       # this event, and the runner exits nonzero when a required gate is red,

@@ -16,6 +16,14 @@ preflight:
     note: sources are TypeScript run natively via Node type stripping, so the suite needs no prior build
 
 gates:
+  - id: authored-bytes
+    command: [node, scripts/check-authored-bytes.mjs]
+    unitLabel: tracked files checked
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr, local-only]
+    events: [pull_request, push]
+
   - id: credential-scrub
     command: [node, src/gates/credentials.ts, credential-scrub]
     unitLabel: credential sources probed
