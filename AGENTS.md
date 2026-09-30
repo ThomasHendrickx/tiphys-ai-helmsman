@@ -428,8 +428,22 @@ diff against the project's declared runtime set:
   the cheaper tier. No arbitration. One fix round. A finding blocks only if it
   makes a shipped artefact wrong.
 - `pair` (the diff touches the runtime set): TWO hazard reviews, on the
-  strongest tier, distinct in `produced-by`. You arbitrate disagreements. An
-  unresolved high or medium finding blocks.
+  strongest tier, on distinct families as the kernel observed them. You
+  arbitrate disagreements. An unresolved high or medium finding blocks.
+
+You dispatch every review with the kernel, never as your own subagent (DR-0062):
+
+    tiphys review dispatch --role clean-room-reviewer --tier <strongest|cheaper>
+      --head <sha> --phase <id> --brief <composed brief> --verdict <path>
+      --out <records dir>
+
+The kernel launches the reviewer in a detached worktree at the head, with the
+brief on standard input, observes the served model from the harness's own
+output, and writes a review record: the head, the observed model and its family,
+the verdict's sha256, cost and token usage. You commit the verdict at its path
+and the record under `delivery/review/records/`. The merge gate counts a verdict
+only through such a record, so a verdict the kernel did not launch, or one
+edited after the kernel hashed it, does not count.
 
 WHY THE HAZARD CONTRACT IS THE ONE KEPT, with T-007's evidence. Two reviewers on
 different model families walked all fifteen of one phase's acceptance criteria
@@ -474,9 +488,8 @@ The orchestrator half of R-054. The review checklists carry an extension
 mechanism, and the phase's own risks are injected into the review through it
 rather than pasted into a dispatch message. The entry point a review is given is
 selected from `checklists/clean-room.yaml#framings`, and the verdict records
-which one it ran at `schemas/verdict.schema.json#properties.produced-by` and its
-neighbours, which is what makes decorrelation checkable afterwards instead of
-remembered.
+which one it ran at `schemas/verdict.schema.json#properties.framing`, so the
+entry point is on record afterwards instead of remembered.
 
 A probe injected as prose in a dispatch message is invisible to every later
 check and is gone the moment the session ends. A probe injected through the
@@ -495,19 +508,22 @@ mechanism must NAME that mechanism, in the form the index reads, or the index at
 story rather than a rule anybody looks up before writing code. An unnamed
 mechanism is an entry that will be read once, by whoever wrote it.
 
-## clause decorrelated-review: verify decorrelation against the verdict FILES, never against memory
+## clause decorrelated-review: verify decorrelation against the committed FILES, never against memory
 
 DR-0012 and T-001, cited by id because this clause encodes both.
 
 When the declared mode's merge authority is a delegated grant, you may merge only
-after VERIFYING, against the verdict files rather than against your memory of the
-session, these, per the change's DR-0063 tier:
+after VERIFYING, against the committed verdicts and review records rather than
+against your memory of the session, these, per the change's DR-0063 tier:
 
-(a) the verdicts the tier owes exist for the exact head being merged: TWO for
-    `pair`, ONE for `single`;
-(b) for `pair`, their `produced-by` model families are DISTINCT, which is
-    DR-0012 condition one narrowed by DR-0063, and the field is
-    `schemas/verdict.schema.json#properties.produced-by`;
+(a) the verdicts the tier owes exist for the exact head being merged, each
+    counted through a committed kernel review record
+    (`schemas/review-record.schema.json`) for this phase that names the
+    verdict's path and the sha256 of its committed bytes: TWO for `pair`, ONE
+    for `single`;
+(b) for `pair`, the two records name DISTINCT observed families, which is
+    DR-0012 condition one narrowed by DR-0063 and restated by DR-0062, or the
+    charter's `review-families` declares the one family both name (DR-0038);
 (c) for `pair`, NEITHER carries an unresolved finding at high or medium
     severity, which is DR-0012 condition two; for `single`, the one verdict
     reads APPROVE.
@@ -517,17 +533,11 @@ gone: DR-0064 dropped the criteria contract, so every review is a hazard review.
 T-001's lesson, that the entry point matters, now lives in the hazard contract's
 starting question rather than in a comparison between two reviews.
 
-THE VERIFICATION IS A COMMAND, not a habit. Point the CLI this package installs
-at a project and it runs the `dual-review-decorrelation` check over the verdict
-files committed beside the one you name:
-
-    tiphys validate --type verdict --context <project> <verdict>
-
-It exits nonzero naming the duplicated value, or naming the file and the
-dimension when a verdict states no value to compare on, because a dimension that
-was never stated is not a dimension the two reviews were shown to differ on. The
-`merge-preconditions` gate in `gate-registry.yaml#gates` runs the same check in
-the pipeline rather than by hand. A kernel that can REPRESENT this regime
+THE VERIFICATION IS A COMMAND, not a habit. The `merge-preconditions` gate in
+`gate-registry.yaml#gates` counts the reviews through the kernel's records and
+prints every record it COUNTED and NOT COUNTED, with the reason. The family it
+compares is the one the kernel observed when it launched the reviewer, never a
+value a reviewer wrote. A kernel that can REPRESENT this regime
 but cannot DETECT a run that quietly used one model family twice reproduces the
 exact failure class T-001 exists to prevent, this time invisible because the
 kernel's own artifacts never looked.
