@@ -1,0 +1,24 @@
+{
+  "id": "mode-show-gates-derived-from-registry",
+  "behavior": "mode-show-gates-derived-from-registry",
+  "tests": [
+    "mode show lists exactly the gates the registry beside the document selects for the mode, and refuses when that registry cannot be read"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/mode.ts",
+      "find": "    .filter((gate) => gate.modes.includes(wanted))",
+      "replace": "    .filter(() => true)"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/modes.ts",
+      "find": "  section(\"gates\", [...gates]);",
+      "replace": "  section(\"gates\", []);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

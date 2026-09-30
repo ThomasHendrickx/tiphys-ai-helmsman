@@ -157,17 +157,6 @@ function checkLines(instance: unknown, context: string | undefined): {
 /* ------------------------------------------------------------------ */
 
 test("the shipped assurance-modes.yaml and role-model-config.yaml validate and resolve through --type auto", () => {
-  /* CRITERION 1 AS THE PLAN WORDS IT NAMES NO --context, AND THE COMMAND IT
-     WORDS EXITS 1. That is not a defect in either half: criterion 3(d) and the
-     hazard map require `mode-gate-sets-resolve` to be a context-requiring
-     check precisely so a cross-document rule cannot pass by not running, and
-     M3-P1 criterion 4c's rule was that such a check without --context
-     prints SKIPPED and exits nonzero. The two sentences did not both hold for
-     the same invocation. (Kernel 0.2.1 changed the exit to 0 for a
-     skipped-only run; the SKIPPED line is unchanged.) The context-bearing form is asserted here and the
-     bare form is asserted, with its SKIPPED lines, in the gate-set test below;
-     delivery/work-history/m3-p3.md records the discrepancy rather than
-     choosing one and staying quiet. */
   const modes = runCli(["validate", "--type", "assurance-modes", "--context", ".", modesPath]);
   assert.equal(modes.status, 0, modes.stdout + modes.stderr);
 
@@ -313,10 +302,6 @@ test("a full mode with no fix-round-verification stage is rejected, and is accep
     [],
   );
 });
-
-/* ------------------------------------------------------------------ */
-/* Criterion 3(d): mode-gate-sets-resolve, Kind B, with --context       */
-/* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
 /* Criterion 4: the charter's mode enum                                 */
@@ -1421,3 +1406,54 @@ function nearMissRecord(marker: string, count: number): string {
   return `${opening}[r]: https://example.invalid/x\n\t${marker.repeat(count)}tail\n`;
 }
 
+
+/* ------------------------------------------------------------------ */
+/* M6-P3: a mode's gates are derived from the registry, never copied    */
+/* ------------------------------------------------------------------ */
+
+test("mode show lists exactly the gates the registry beside the document selects for the mode, and refuses when that registry cannot be read", () => {
+  const dir = scratch();
+  try {
+    cpSync(schemasDir, join(dir, "schemas"), { recursive: true });
+    const modesPath = writeDocument(dir, loadModes());
+    const gate = (id: string, modes: string[]): Record<string, unknown> => ({
+      id,
+      command: ["node", "gate.mjs"],
+      unitLabel: "units",
+      applicability: "required",
+      "verified-by": "script",
+      modes,
+      events: ["pull_request"],
+    });
+    writeFileSync(
+      join(dir, "gate-registry.yaml"),
+      `${JSON.stringify(
+        {
+          kind: "gate-registry",
+          version: 1,
+          preflight: [{ command: ["npm", "ci"], note: "fixture" }],
+          gates: [gate("only-full", ["full"]), gate("full-and-direct", ["full", "direct-pr"])],
+          destructiveCommands: [],
+        },
+        null,
+        2,
+      )}\n`,
+    );
+
+    const direct = runCli(["mode", "show", "--mode", "direct-pr", "--file", modesPath]);
+    assert.equal(direct.status, 0, direct.stdout + direct.stderr);
+    assert.deepEqual(section(direct.stdout, "gates"), ["full-and-direct"]);
+    const full = runCli(["mode", "show", "--mode", "full", "--file", modesPath]);
+    assert.equal(full.status, 0, full.stdout + full.stderr);
+    assert.deepEqual(section(full.stdout, "gates"), ["only-full", "full-and-direct"]);
+
+    /* No registry beside the document: refused, never an empty gate list. */
+    rmSync(join(dir, "gate-registry.yaml"));
+    const missing = runCli(["mode", "show", "--mode", "full", "--file", modesPath]);
+    assert.equal(missing.status, 1, missing.stdout + missing.stderr);
+    assert.equal(missing.stdout, "");
+    assert.match(missing.stderr, /gate-registry\.yaml, which could not be read/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

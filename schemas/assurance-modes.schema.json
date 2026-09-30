@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tiphys.dev/schemas/assurance-modes.schema.json",
   "title": "Tiphys assurance modes",
-  "$comment": "R-024, R-096. Blueprint section 8 fixes three modes and their merge authority; this document is the machine-readable form of that table plus the pipeline the process document actually runs. Kernel plan M3, M3-P3 step 1. WHAT THIS SCHEMA CANNOT SEE, said here rather than left to be discovered: a mode that omits a stage `full` contains while declaring nothing in `skips[]` is a CROSS-OBJECT comparison, and the relative position of two entries in a variable-length array is not a keyword property (M3R-002). Those are Kind B and live in src/checks.ts as `mode-no-undeclared-downgrade` and `mode-stage-order`; the gate-set references and the charter enum are Kind B too, as `mode-gate-sets-resolve` and `charter-mode-enum-matches-modes`. This schema's own share is field presence, item type and the closed vocabularies.",
+  "$comment": "R-024, R-096. Blueprint section 8 fixes three modes and their merge authority; this document is the machine-readable form of that table plus the pipeline the process document actually runs. Kernel plan M3, M3-P3 step 1. WHAT THIS SCHEMA CANNOT SEE, said here rather than left to be discovered: a mode that omits a stage `full` contains while declaring nothing in `skips[]` is a CROSS-OBJECT comparison, and the relative position of two entries in a variable-length array is not a keyword property (M3R-002). M6-P3 deleted the derived checks that compared them (they read only process documents, DR-0061 (b)). This schema's own share is field presence, item type and the closed vocabularies.",
   "description": "One document per repository. Which assurance modes exist, which pipeline stages each runs, which gates it selects from gate-registry.yaml, who may merge under it, and which stages it declares itself to skip.",
   "type": "object",
   "additionalProperties": false,
@@ -23,7 +23,7 @@
       "enum": [1]
     },
     "modes": {
-      "description": "Every mode this repository declares. Append-only in practice: adding one is what makes charter-mode-enum-matches-modes earn its place.",
+      "description": "Every mode this repository declares.",
       "type": "array",
       "minItems": 1,
       "uniqueItems": true,
@@ -148,7 +148,6 @@
         "declared-by",
         "pipeline",
         "skips",
-        "gate-sets",
         "merge-authority"
       ],
       "properties": {
@@ -157,7 +156,7 @@
           "type": "string"
         },
         "id": {
-          "$comment": "The three ids of blueprint section 8. Closed here and closed again in gate-registry.schema.json's `modes` item enum and in schemas/charter.schema.json's `delivery-mode` enum, which is three copies of one list; `charter-mode-enum-matches-modes` is what keeps the charter copy honest, and test/gate-registry.test.ts already binds the registry copy. CLOSED VOCABULARY AT v0.1.0 (DR-0020): these three are the tiphys kernel's OWN mode ids. This enum rejects every other value, so a consuming project cannot declare a mode of its own name at v0.1.0. Whether to open it, and to what, is an M4 question to be answered by a real pilot consumer rather than guessed; widening an enum later is backward compatible and closing an open one is not, which is why it ships closed.",
+          "$comment": "The three ids of blueprint section 8. Closed here and closed again in gate-registry.schema.json's `modes` item enum and in schemas/charter.schema.json's `delivery-mode` enum, which is three copies of one list. CLOSED VOCABULARY AT v0.1.0 (DR-0020): these three are the tiphys kernel's OWN mode ids. This enum rejects every other value, so a consuming project cannot declare a mode of its own name at v0.1.0. Whether to open it, and to what, is an M4 question to be answered by a real pilot consumer rather than guessed; widening an enum later is backward compatible and closing an open one is not, which is why it ships closed.",
           "type": "string",
           "enum": ["full", "direct-pr", "local-only"]
         },
@@ -176,7 +175,7 @@
           }
         },
         "skips": {
-          "$comment": "Blueprint section 8: \"Downgrades are declared, never improvised.\" This is the declaration. It is REQUIRED and may be empty, so a mode that omits a stage and says nothing is distinguishable from a mode that omits nothing; `mode-no-undeclared-downgrade` is what makes the difference cost something. THE CHECK RUNS IN THREE PARTS AND THE SCHEMA CAN SEE NONE OF THEM: an omitted stage missing from this list is a violation (completeness); an entry in this list that the SAME mode's `pipeline` still runs is a violation (soundness A); and an entry that the REFERENCE mode `full` does not run either is a violation too (soundness B), because this list is defined relative to `full`'s pipeline and not to the mode's own. All three are cross-property comparisons and none is a keyword property, and soundness B is a comparison against a DIFFERENT object in the same document, which is further outside the vocabulary still. Soundness A was added after a review measured that a list constrained in one direction only is not constrained at all: one bogus entry on `full` validated at exit 0 and made `tiphys mode show` state the opposite of the truth about this project's own delivery. Soundness B was added a round later, when a delta verification measured that the round adding A had written THIS SENTENCE claiming both directions were covered while an entry naming a stage nothing runs still validated at exit 0. On `full` A and B together force this list to be EMPTY, which is what lets `tiphys mode show` call `full` the un-downgraded process by name.",
+          "$comment": "Blueprint section 8: \"Downgrades are declared, never improvised.\" This is the declaration: required and possibly empty, the stages of `full`'s pipeline this mode omits.",
           "type": "array",
           "uniqueItems": true,
           "items": {
@@ -184,13 +183,10 @@
           }
         },
         "gate-sets": {
-          "$comment": "The gate ids from gate-registry.yaml this mode selects. `set` is the blueprint's word for the per-mode gate selection; here it is enumerated by id rather than named indirectly, so `mode-gate-sets-resolve` can check each entry against the registry with --context and a reference that resolves to nothing cannot pass by never being looked up.",
+          "$comment": "IGNORED since M6-P3. A mode's gates are the gate-registry.yaml gates whose `modes` name it, derived by `tiphys mode show`. Accepted, not required, so a document written before M6-P3 still validates (DR-0054).",
           "type": "array",
-          "minItems": 1,
-          "uniqueItems": true,
           "items": {
-            "type": "string",
-            "pattern": "^[a-z0-9][a-z0-9-]*$"
+            "type": "string"
           }
         },
         "merge-authority": {
