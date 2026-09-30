@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "[\"diff\", \"-z\", \"--no-renames\", \"--name-only\", `${base}...${head}`, \"--\"]",
-      "replace": "[\"diff\", \"-z\", \"--name-only\", `${base}...${head}`, \"--\"]"
+      "find": "    return { tier: \"pair\", reason: \"outside the project, fail closed\" };",
+      "replace": "    return { tier: \"single\", reason: \"outside the project, fail closed\" };"
     }
   ],
   "deterministic": true,

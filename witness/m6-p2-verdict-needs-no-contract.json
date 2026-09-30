@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "schemas/verdict.schema.json",
-      "find": "    \"framing\",\n    \"findings\",\n    \"deviations-judged\"\n  ],",
-      "replace": "    \"framing\",\n    \"review-contract\",\n    \"findings\",\n    \"deviations-judged\"\n  ],"
+      "find": "      \"$comment\": \"Branch B, the hazard contract (T-007), and since M6-P2 every verdict that does not say `criteria`, including one with no `review-contract` at all. `review-contract` and `hazard-classes-addressed` are BOTH restated in a sibling `properties` here, which is not redundancy: measured against ajv 8.20.0 under this validator's `strict: true`, a `required` naming a property not declared in `properties` at the same level fails COMPILATION under strictRequired. The two branches are discriminated by a `const` on one field, so exactly one can ever match and `oneOf` is an exclusive choice rather than an ambiguity.\",\n      \"required\": [\"hazard-classes-addressed\"],",
+      "replace": "      \"$comment\": \"Branch B, the hazard contract (T-007), and since M6-P2 every verdict that does not say `criteria`, including one with no `review-contract` at all. `review-contract` and `hazard-classes-addressed` are BOTH restated in a sibling `properties` here, which is not redundancy: measured against ajv 8.20.0 under this validator's `strict: true`, a `required` naming a property not declared in `properties` at the same level fails COMPILATION under strictRequired. The two branches are discriminated by a `const` on one field, so exactly one can ever match and `oneOf` is an exclusive choice rather than an ambiguity.\",\n      \"required\": [\"hazard-classes-addressed\", \"review-contract\"],"
     },
     {
       "kind": "mutation",
