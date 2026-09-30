@@ -1,0 +1,25 @@
+{
+  "id": "m6-p8-push-evaluates-every-stored",
+  "behavior": "red-witness-push-evaluates-every-stored",
+  "tests": [
+    "on push every stored witness is evaluated, and so on a run naming no event"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/red-witness.ts",
+      "find": "  if (facts.event !== \"pull_request\") {\n    return true;\n  }",
+      "replace": "  if (facts.event === undefined) {\n    return true;\n  }"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git diff --name-status --no-renames",
+    "captures": [
+      "witness/captures/m6-p8-git-diff-test-file-move.txt"
+    ],
+    "provenance": "Rule (f) binds this member because src/gates/red-witness.ts matches the spawn grep. The gate's selection consumes git's phase diff (src/witness/run.ts computePhaseDiff, --no-renames); the cited capture is real git output of that diff, compared by a test in the same file. The member sends push down the pull-request arm, so the full sweep on main would never run."
+  }
+}

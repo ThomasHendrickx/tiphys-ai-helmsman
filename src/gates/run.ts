@@ -30,7 +30,7 @@ import {
 import { loadTypeSchema } from "../commands/validate.ts";
 import { decodeDocument, formatDiagnostics, validateInstance } from "../validate.ts";
 import type { SchemaDocument } from "../validate.ts";
-import { validateManifestDocument, validateResultDocument } from "./manifest.ts";
+import { OPTIONAL_PARAMETERS, validateManifestDocument, validateResultDocument } from "./manifest.ts";
 import { comparePins, describePinDifference } from "./pin.ts";
 import {
   EXIT_GATE_ERROR,
@@ -69,7 +69,8 @@ function stampField(): { "tiphys-version"?: string } {
  *
  *   invocation  <command...> --result <abs path> --evidence <abs dir>
  *               plus one --<name> <value> for each parameter the gate
- *               DECLARES in the manifest (base, head, phase)
+ *               DECLARES in the manifest (base, head, phase, event); a
+ *               declared `event` is passed only when the run names one
  *   cwd         the runner's working directory
  *   output      exactly one GateResult JSON document at --result
  *   exit codes  0 green, 1 red, 20 not-applicable, 21 error, 64 usage
@@ -1464,7 +1465,7 @@ function runOneGate(
   // Parameters first: a gate invoked without something it needs measured
   // nothing, and that is `error`, never `not-applicable` (M2-C-3, M2R-003).
   const missing = requiredParameters(entry).filter(
-    (name) => options[name] === undefined,
+    (name) => options[name] === undefined && !OPTIONAL_PARAMETERS.has(name),
   );
   if (missing.length > 0) {
     return {
@@ -1587,7 +1588,10 @@ function runOneGate(
 
   const argv = [...entry.command.slice(1), "--result", recordPath, "--evidence", gateDir];
   for (const name of requiredParameters(entry)) {
-    argv.push(`--${name}`, options[name] as string);
+    const value = options[name];
+    if (value !== undefined) {
+      argv.push(`--${name}`, value);
+    }
   }
   const child = spawnSync(entry.command[0] as string, argv, {
     cwd,
