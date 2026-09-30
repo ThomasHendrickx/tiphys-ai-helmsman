@@ -1078,5 +1078,10 @@
   "m6-p5-failed-observation-not-counted": "a kernel review record whose observation failed is not counted, and the gate says the kernel observed no served model",
   "m6-p5-record-verdict-apart": "a verdict placed in the records directory is neither a verdict nor a record, and a record placed beside the verdicts is neither a record nor a verdict",
   "m6-p5-head-from-record": "a verdict's own head line is never read: a verdict naming another commit, or none, counts through the head its kernel record names",
-  "m6-p5-precondition-resolves-a-commit": "the registry precondition of merge-preconditions exits 0 in a directory that resolves a commit and 1 in one that does not, naming why"
+  "m6-p5-precondition-resolves-a-commit": "the registry precondition of merge-preconditions exits 0 in a directory that resolves a commit and 1 in one that does not, naming why",
+  "m6-p5-prefix-naming-a-file-refused": "a runtime-set paths prefix that names a FILE at the merge base (src/feature.ts/) is an invalid declaration, so the change is pair",
+  "m6-p5-prefix-naming-nothing-refused": "a runtime-set paths prefix naming a directory that does not exist at the merge base (source/) is an invalid declaration, so the change is pair",
+  "m6-p5-backslash-entry-refused": "a runtime-set paths entry carrying a backslash is refused by the reader and by the schema, so the change is pair",
+  "m6-p5-edge-space-entry-refused": "a runtime-set paths entry with a leading or a trailing space (' src/', 'src/ ') is refused by the reader and by the schema, so the change is pair",
+  "m6-p5-read-failure-arms-pair": "a charter or a declared manifest that git cannot show as one regular file, a charter deleted or unparseable at the head, each classify the change pair"
 }

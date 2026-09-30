@@ -177,15 +177,15 @@
       "required": ["paths"],
       "properties": {
         "paths": {
-          "$comment": "Project-relative. An entry ending in `/` is a directory prefix; any other entry is an exact path, and an exact entry that is a DIRECTORY at the merge base makes the declaration invalid (so pair). The pattern refuses (M6-P2 fix round 1) a leading ./ or /, a . or .. segment and an empty segment, which match no path git prints, and a glob character (* ? [), which is compared literally and so does not mean what it looks like. The gate's reader, readRuntimeSet in src/gates/merge-preconditions.ts, refuses the same shapes.",
+          "$comment": "Project-relative. An entry ending in `/` is a directory prefix; any other entry is an exact path. An exact entry that is a DIRECTORY at the merge base, or a prefix entry that is a FILE or nothing there, makes the declaration invalid (so pair). The pattern refuses a leading ./ or /, a . or .. segment and an empty segment (M6-P2 fix round 1), and a backslash or a leading or trailing space (M6-P5), which match no path git prints, and a glob character (* ? [), which is compared literally and so does not mean what it looks like. The gate's reader, readRuntimeSet in src/gates/merge-preconditions.ts, refuses the same shapes.",
           "type": "array",
           "minItems": 1,
-          "items": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!\\./)(?!.*//)(?!(?:.*/)?\\.{1,2}(?:/|$))(?=.*\\S)[^*?\\[]+$" }
+          "items": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!\\./)(?!.*//)(?!(?:.*/)?\\.{1,2}(?:/|$))(?!\\s)(?!.*\\s$)[^*?\\[\\\\]+$" }
         },
         "manifests": {
           "$comment": "JSON manifests (package.json, a lockfile) that count only when something other than a version field changes: the top-level version, a lockfile's root or workspace entry version (a packages key with no node_modules segment), or a pin on a package named in version-pins in dependencies, devDependencies or optionalDependencies of the root or a lockfile workspace entry. Judged BEFORE paths, so a manifest under a declared prefix can still be a version-only bump. Same shape rules as paths, and no trailing /: a manifest is one file.",
           "type": "array",
-          "items": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!\\./)(?!.*//)(?!.*/$)(?!(?:.*/)?\\.{1,2}(?:/|$))(?=.*\\S)[^*?\\[]+$" }
+          "items": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!\\./)(?!.*//)(?!.*/$)(?!(?:.*/)?\\.{1,2}(?:/|$))(?!\\s)(?!.*\\s$)[^*?\\[\\\\]+$" }
         },
         "version-pins": {
           "$comment": "Package names whose pin counts as a version field, in dependencies, devDependencies or optionalDependencies of a declared manifest's root or of a lockfile workspace entry. Not in peerDependencies, and not inside a node_modules entry.",

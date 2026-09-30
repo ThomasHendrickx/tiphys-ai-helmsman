@@ -842,13 +842,22 @@ function stringList(
  * `..` segment and no empty segment, so those shapes match nothing. The
  * classifier compares entries literally, so a glob character matches only a
  * file whose name carries that character, which is not what a glob means. A
- * manifest is one file, so it may not end in `/` either. schemas/charter.schema.json
- * carries the same rule as a pattern; this is the reader's copy, because the
- * gate reads a blob and never runs the schema validator.
+ * manifest is one file, so it may not end in `/` either. M6-P5 (CR-M6P2A-07,
+ * CR-M6P2B-08): git separates segments with `/` and prints no path that starts
+ * or ends with whitespace, so a backslash or a leading or trailing space
+ * matches nothing too. schemas/charter.schema.json carries the same rule as a
+ * pattern; this is the reader's copy, because the gate reads a blob and never
+ * runs the schema validator.
  */
 function entryShapeFault(entry: string, isManifest: boolean): string | undefined {
   if (/[*?[]/.test(entry)) {
     return "carries a glob character (*, ? or [), and entries are literal paths";
+  }
+  if (entry.includes("\\")) {
+    return "carries a backslash, and git separates path segments with /";
+  }
+  if (/^\s|\s$/.test(entry)) {
+    return "starts or ends with whitespace, and git prints no such path";
   }
   if (entry.startsWith("/")) {
     return "starts with /, and entries are relative to the project";
@@ -870,20 +879,24 @@ function entryShapeFault(entry: string, isManifest: boolean): string | undefined
 }
 
 /**
- * The first EXACT entry (a `paths` entry with no trailing `/`, or any
- * `manifests` entry) that names a DIRECTORY at `rev`, as a sentence, or
- * undefined. An exact entry is compared with `===`, and git never prints a
- * directory as a changed path, so `paths: [src]` over a directory `src/`
- * matches nothing under it (CR-M6P2B-02). A listing git could not produce is
- * a sentence too, so the caller fails closed on it.
+ * The first declared entry that matches nothing git prints, judged by what it
+ * names at `rev`, as a sentence, or undefined. An EXACT entry (a `paths` entry
+ * with no trailing `/`, or any `manifests` entry) is compared with `===`, and
+ * git never prints a directory as a changed path, so `paths: [src]` over a
+ * directory `src/` matches nothing under it (CR-M6P2B-02). A PREFIX entry (a
+ * `paths` entry ending in `/`) matches only paths under a directory, so one
+ * that names a FILE at `rev`, or names nothing there, matches nothing either
+ * (M6-P5, CR-M6P2A-07 and CR-M6P2B-08). A listing git could not produce is a
+ * sentence too, so the caller fails closed on it.
  */
-function exactEntryNamingDirectory(contextDirectory: string, rev: string, set: RuntimeSet): string | undefined {
-  const exact: [string, string][] = [
-    ...set.paths.filter((entry) => !entry.endsWith("/")).map((entry): [string, string] => ["paths", entry]),
-    ...set.manifests.map((entry): [string, string] => ["manifests", entry]),
+function entryLookupFault(contextDirectory: string, rev: string, set: RuntimeSet): string | undefined {
+  const entries: [string, string, boolean][] = [
+    ...set.paths.map((entry): [string, string, boolean] => ["paths", entry, entry.endsWith("/")]),
+    ...set.manifests.map((entry): [string, string, boolean] => ["manifests", entry, false]),
   ];
-  for (const [field, entry] of exact) {
-    const listed = spawnSync("git", ["--literal-pathspecs", "ls-tree", "-z", rev, "--", entry], {
+  for (const [field, entry, prefix] of entries) {
+    const name = prefix ? entry.slice(0, -1) : entry;
+    const listed = spawnSync("git", ["--literal-pathspecs", "ls-tree", "-z", rev, "--", name], {
       cwd: contextDirectory,
       encoding: "utf8",
     });
@@ -894,6 +907,21 @@ function exactEntryNamingDirectory(contextDirectory: string, rev: string, set: R
       );
     }
     const first = (listed.stdout ?? "").split("\0")[0] ?? "";
+    if (prefix) {
+      if (first === "") {
+        return (
+          `${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} names nothing at ${rev}, so no path ` +
+          `git prints lies under it (a prefix entry names an existing directory)`
+        );
+      }
+      if (!/^\d{6} tree /.test(first)) {
+        return (
+          `${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} names a FILE at ${rev}, and a prefix ` +
+          `entry matches only paths under a directory (a file entry has no trailing /)`
+        );
+      }
+      continue;
+    }
     if (/^\d{6} tree /.test(first)) {
       return (
         `${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} names a DIRECTORY at ${rev}, and an exact ` +
@@ -1191,11 +1219,15 @@ function classifyOne(entry: ChangedPath, input: TierInput): { tier: ReviewTier; 
   }
   const set = input.declaration.set;
   if (projectPath === RUNTIME_SET_CHARTER) {
+    /* CR-M6P2A-08, CR-M6P2B-09: each arm that could not compare the two blocks
+       is pair. test/merge-preconditions.test.ts stages every one through git. */
     const sides = input.sides.get(projectPath);
     if (sides === undefined) {
+      /* A side git could not show as one regular file (a symlink, a submodule). */
       return { tier: "pair", reason: "the charter changed and its two sides were not read, fail closed" };
     }
     if (sides.base === undefined || sides.head === undefined) {
+      /* Absent at the merge base or deleted at the head. */
       return {
         tier: "pair",
         reason: `the charter is ${sides.base === undefined ? "absent at the merge base" : "deleted at the head"}, so the runtime-set declaration changed`,
@@ -1204,6 +1236,7 @@ function classifyOne(entry: ChangedPath, input: TierInput): { tier: ReviewTier; 
     const before = runtimeSetBlockText(sides.base, `${RUNTIME_SET_CHARTER} at the merge base`);
     const after = runtimeSetBlockText(sides.head, `${RUNTIME_SET_CHARTER} at the head`);
     if (!before.ok || !after.ok) {
+      /* A side that does not parse. */
       return {
         tier: "pair",
         reason: `the charter could not be read on both sides (${before.ok ? "" : before.reason}${!before.ok && !after.ok ? "; " : ""}${after.ok ? "" : after.reason}), fail closed`,
@@ -1216,6 +1249,7 @@ function classifyOne(entry: ChangedPath, input: TierInput): { tier: ReviewTier; 
   if (set.manifests.includes(projectPath)) {
     const sides = input.sides.get(projectPath);
     if (sides === undefined) {
+      /* Unreadable at the merge base or the head (CR-M6P2A-08, CR-M6P2B-09). */
       return { tier: "pair", reason: "a declared manifest whose two sides were not read, fail closed" };
     }
     if (sides.base === undefined || sides.head === undefined) {
@@ -1426,14 +1460,18 @@ export function classifyReviewBudget(
 
   const charterLabel = `${mergeBase}:${prefix}${RUNTIME_SET_CHARTER}`;
   const charterBlob = blobAt(contextDirectory, mergeBase, RUNTIME_SET_CHARTER);
+  /* A charter git cannot show as one regular file is an INVALID declaration,
+     never an empty one (CR-M6P2A-08). */
   const charterReading: RuntimeSetReading =
     charterBlob.kind === "error"
       ? { kind: "invalid", reason: charterBlob.reason }
       : readRuntimeSet(charterBlob.kind === "read" ? charterBlob.body : undefined, charterLabel);
-  /* M6-P2 FIX ROUND 1 (CR-M6P2B-02): an exact entry that is a DIRECTORY at the
-     merge base makes the declaration invalid, so the change is pair, named. */
+  /* An entry that matches nothing git prints makes the declaration invalid, so
+     the change is pair, named: an exact entry that is a DIRECTORY at the merge
+     base (M6-P2 fix round 1, CR-M6P2B-02), a prefix entry that is a FILE or
+     nothing there (M6-P5, CR-M6P2A-07, CR-M6P2B-08). */
   const directoryFault =
-    charterReading.kind === "declared" ? exactEntryNamingDirectory(contextDirectory, mergeBase, charterReading.set) : undefined;
+    charterReading.kind === "declared" ? entryLookupFault(contextDirectory, mergeBase, charterReading.set) : undefined;
   const declaration: RuntimeSetReading =
     directoryFault === undefined ? charterReading : { kind: "invalid", reason: `${charterLabel} ${directoryFault}` };
 

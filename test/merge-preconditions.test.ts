@@ -46,6 +46,7 @@ import {
   readFileSync,
   readdirSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { spawn, spawnSync } from "node:child_process";
@@ -2149,6 +2150,202 @@ test("a runtime-set paths entry without a trailing slash that names a directory 
 });
 
 /* ------------------------------------------------------------------ */
+/* M6-P5: entries that still matched nothing (CR-M6P2A-07, CR-M6P2B-08) */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE LOOKUP CONSUMES git's OUTPUT, so the listings it tells apart are replayed
+ * against REAL captured output before the classifier is asked:
+ * witness/captures/m6-p5-git-runtime-set-lookup.json holds `git ls-tree` at the
+ * merge base stageDirectoryEntryRepo builds, for a file (a blob), a directory
+ * (a tree) and a name that is not there (nothing).
+ */
+const RUNTIME_SET_LOOKUP_CAPTURE = join(repoRoot, "witness", "captures", "m6-p5-git-runtime-set-lookup.json");
+
+function replayCapture(capture: string, dir: string, revs: Record<string, string>): void {
+  const recorded = JSON.parse(readFileSync(capture, "utf8")) as {
+    commands: { argv: string[]; exit: number; stdout: string }[];
+  };
+  for (const command of recorded.commands) {
+    const argv = command.argv.slice(1).map((arg) => revs[arg] ?? arg);
+    const live = spawnSync("git", argv, { cwd: dir, encoding: "utf8" });
+    assert.equal(live.status, command.exit, live.stderr);
+    assert.equal(live.stdout, command.stdout, `git ${argv.join(" ")} no longer prints what was captured`);
+  }
+}
+
+/** Stage `paths` over a base holding src/feature.ts, classify through git, require pair, return the reason. */
+function refusedThroughGit(paths: string): string {
+  const staged = stageDirectoryEntryRepo(paths);
+  try {
+    replayCapture(RUNTIME_SET_LOOKUP_CAPTURE, staged.dir, { "<base>": staged.base });
+    const classified = tierModule.classifyReviewBudget(staged.dir, staged.base, staged.head);
+    assert.ok(classified.ok, classified.ok ? "" : classified.reason);
+    assert.equal(classified.budget.tier, "pair", `${paths}: ${JSON.stringify(classified.budget.paths)}`);
+    const reason = (classified.budget.paths[0] as TierPath).reason;
+    assert.match(reason, /no usable runtime-set declaration at the merge base/, reason);
+    return reason;
+  } finally {
+    rmSync(staged.dir, { recursive: true, force: true });
+  }
+}
+
+/** Does the shipped charter schema refuse `entry` as a runtime-set paths entry, by its pattern? */
+function schemaRefusesPathsEntry(entry: string): boolean {
+  const schema = JSON.parse(readFileSync(join(repoRoot, "schemas", "charter.schema.json"), "utf8")) as Record<string, unknown>;
+  const charter = charterYaml.parse(readFileSync(join(repoRoot, "charter.yaml"), "utf8")) as Record<string, unknown>;
+  const lines = charterValidate.validateToLines(schema, {
+    ...charter,
+    "runtime-set": { paths: [entry], manifests: [], "version-pins": [] },
+  });
+  return lines.some((line) => line.startsWith("INVALID #/runtime-set/paths/0 ") && line.includes("pattern"));
+}
+
+test("a runtime-set paths prefix that names a FILE at the merge base (src/feature.ts/) is an invalid declaration, so the change is pair", () => {
+  /* Before M6-P5 the prefix matched nothing, so the edit to src/feature.ts was single. */
+  const reason = refusedThroughGit("[src/feature.ts/]");
+  assert.ok(reason.includes('runtime-set.paths entry "src/feature.ts/" names a FILE at '), reason);
+});
+
+test("a runtime-set paths prefix naming a directory that does not exist at the merge base (source/) is an invalid declaration, so the change is pair", () => {
+  const reason = refusedThroughGit("[source/]");
+  assert.ok(reason.includes('runtime-set.paths entry "source/" names nothing at '), reason);
+});
+
+test("a runtime-set paths entry carrying a backslash is refused by the reader and by the schema, so the change is pair", () => {
+  /* YAML single quotes keep the backslash literal, so the entry is `src\`. */
+  const reason = refusedThroughGit("['src\\']");
+  assert.ok(reason.includes('runtime-set.paths entry "src\\\\" carries a backslash'), reason);
+  assert.ok(schemaRefusesPathsEntry("src\\"), "the schema accepted src\\");
+  assert.ok(!schemaRefusesPathsEntry("src/"), "the schema refused the control src/");
+});
+
+test("a runtime-set paths entry with a leading or a trailing space (' src/', 'src/ ') is refused by the reader and by the schema, so the change is pair", () => {
+  for (const entry of [" src/", "src/ "]) {
+    const reason = refusedThroughGit(`['${entry}']`);
+    assert.ok(reason.includes(`runtime-set.paths entry ${JSON.stringify(entry)} starts or ends with whitespace`), reason);
+    assert.ok(schemaRefusesPathsEntry(entry), `the schema accepted ${JSON.stringify(entry)}`);
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M6-P5: the read-failure arms (CR-M6P2A-08, CR-M6P2B-09)              */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The symlink arms are asserted against REAL captured output first:
+ * witness/captures/m6-p5-git-unreadable-sides.json holds `git ls-tree` for a
+ * charter and a manifest that are symlinks, which is the listing blobAt
+ * refuses to read as one regular file.
+ */
+const UNREADABLE_SIDES_CAPTURE = join(repoRoot, "witness", "captures", "m6-p5-git-unreadable-sides.json");
+
+function replaySidesCapture(arm: string, staged: { dir: string; base: string; head: string }): void {
+  const recorded = JSON.parse(readFileSync(UNREADABLE_SIDES_CAPTURE, "utf8")) as {
+    commands: { arm: string; argv: string[]; exit: number; stdout: string }[];
+  };
+  for (const command of recorded.commands.filter((entry) => entry.arm === arm)) {
+    const argv = command.argv.slice(1).map((arg) => (arg === "<base>" ? staged.base : arg === "<head>" ? staged.head : arg));
+    const live = spawnSync("git", argv, { cwd: staged.dir, encoding: "utf8" });
+    assert.equal(live.status, command.exit, `${arm}: ${live.stderr}`);
+    assert.equal(live.stdout, command.stdout, `${arm}: git ${argv.join(" ")} no longer prints what was captured`);
+  }
+}
+
+type ReadFailureArm =
+  | "charter-link-at-base"
+  | "charter-link-at-head"
+  | "charter-deleted-at-head"
+  | "charter-unparseable-at-head"
+  | "manifest-link-at-base"
+  | "manifest-link-at-head";
+
+const READ_FAILURE_CHARTER = "kind: charter\nruntime-set:\n  paths: [src/]\n  manifests: [package.json]\n";
+
+/** A base declaring paths [src/] and manifests [package.json]; `arm` decides what is unreadable. */
+function stageReadFailure(arm: ReadFailureArm): { dir: string; base: string; head: string } {
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-runtime-set-unreadable-"));
+  mkdirSync(join(dir, "src"), { recursive: true });
+  writeFileSync(join(dir, "src", "feature.ts"), "export const feature = 1;\n");
+  if (arm === "charter-link-at-base") {
+    writeFileSync(join(dir, "charter.real.yaml"), READ_FAILURE_CHARTER);
+    symlinkSync("charter.real.yaml", join(dir, "charter.yaml"));
+  } else {
+    writeFileSync(join(dir, "charter.yaml"), READ_FAILURE_CHARTER);
+  }
+  if (arm === "manifest-link-at-base") {
+    writeFileSync(join(dir, "package.real.json"), '{\n  "name": "probe",\n  "version": "1.0.0"\n}\n');
+    symlinkSync("package.real.json", join(dir, "package.json"));
+  } else {
+    writeFileSync(join(dir, "package.json"), '{\n  "name": "probe",\n  "version": "1.0.0"\n}\n');
+  }
+  shrinkGit(dir, ["init", "-q", "-b", "main", "."]);
+  shrinkGit(dir, ["add", "-A"]);
+  shrinkGit(dir, ["commit", "-q", "-m", "base"]);
+  const base = shrinkGit(dir, ["rev-parse", "HEAD"]).trim();
+  switch (arm) {
+    case "charter-link-at-base":
+      mkdirSync(join(dir, "delivery"), { recursive: true });
+      writeFileSync(join(dir, "delivery", "note.md"), "paperwork\n");
+      break;
+    case "charter-link-at-head":
+      writeFileSync(join(dir, "charter.real.yaml"), READ_FAILURE_CHARTER);
+      rmSync(join(dir, "charter.yaml"));
+      symlinkSync("charter.real.yaml", join(dir, "charter.yaml"));
+      break;
+    case "charter-deleted-at-head":
+      rmSync(join(dir, "charter.yaml"));
+      break;
+    case "charter-unparseable-at-head":
+      writeFileSync(join(dir, "charter.yaml"), "kind: charter\nruntime-set: [unclosed\n");
+      break;
+    case "manifest-link-at-base":
+      rmSync(join(dir, "package.json"));
+      writeFileSync(join(dir, "package.json"), '{\n  "name": "probe",\n  "version": "1.0.1"\n}\n');
+      break;
+    case "manifest-link-at-head":
+      writeFileSync(join(dir, "package.real.json"), '{\n  "name": "probe",\n  "version": "1.0.1"\n}\n');
+      rmSync(join(dir, "package.json"));
+      symlinkSync("package.real.json", join(dir, "package.json"));
+      break;
+  }
+  shrinkGit(dir, ["add", "-A"]);
+  shrinkGit(dir, ["commit", "-q", "-m", `the change: ${arm}`]);
+  const head = shrinkGit(dir, ["rev-parse", "HEAD"]).trim();
+  return { dir, base, head };
+}
+
+test("a charter or a declared manifest that git cannot show as one regular file, a charter deleted or unparseable at the head, each classify the change pair", () => {
+  /* CR-M6P2A-08 and CR-M6P2B-09: every arm below was correct and none had a
+     test, so an edit that let one of them reach single kept the suite green.
+     Each changed path named here is single by the paths rule alone (outside
+     src/, or a version-only manifest bump), so pair can come only from the
+     read-failure arm. */
+  const arms: [ReadFailureArm, string, RegExp][] = [
+    ["charter-link-at-base", "delivery/note.md", /no usable runtime-set declaration at the merge base \(charter\.yaml at [0-9a-f]{40} is not one regular file \(120000 blob /],
+    ["charter-link-at-head", "charter.yaml", /^the charter changed and its two sides were not read, fail closed$/],
+    ["charter-deleted-at-head", "charter.yaml", /^the charter is deleted at the head, so the runtime-set declaration changed$/],
+    ["charter-unparseable-at-head", "charter.yaml", /^the charter could not be read on both sides \(.*at the head/],
+    ["manifest-link-at-base", "package.json", /^a declared manifest whose two sides were not read, fail closed$/],
+    ["manifest-link-at-head", "package.json", /^a declared manifest whose two sides were not read, fail closed$/],
+  ];
+  for (const [arm, path, reason] of arms) {
+    const staged = stageReadFailure(arm);
+    try {
+      replaySidesCapture(arm, staged);
+      const classified = tierModule.classifyReviewBudget(staged.dir, staged.base, staged.head);
+      assert.ok(classified.ok, `${arm}: ${classified.ok ? "" : classified.reason}`);
+      const entry = classified.budget.paths.find((candidate) => candidate.path === path);
+      assert.equal(entry?.tier, "pair", `${arm}: ${JSON.stringify(classified.budget.paths)}`);
+      assert.match(entry?.reason ?? "", reason, `${arm}: ${entry?.reason ?? ""}`);
+      assert.equal(classified.budget.tier, "pair", arm);
+    } finally {
+      rmSync(staged.dir, { recursive: true, force: true });
+    }
+  }
+});
+
+/* ------------------------------------------------------------------ */
 /* M6-P2: the merge gate by tier                                         */
 /* ------------------------------------------------------------------ */
 
@@ -2167,12 +2364,17 @@ function stageTierBranch(
 ): { staged: Staged; base: string; head: string } {
   const staged = stage({ verdicts, scopeRecord: scopeRecord("green"), records });
   writeFileSync(join(staged.dir, "charter.yaml"), `${readFileSync(join(staged.dir, "charter.yaml"), "utf8")}${declaration}`);
+  /* The declared prefixes exist at the base, because a prefix naming nothing
+     there is an invalid declaration (M6-P5, CR-M6P2B-08). */
+  mkdirSync(join(staged.dir, "src"), { recursive: true });
+  mkdirSync(join(staged.dir, "bin"), { recursive: true });
+  writeFileSync(join(staged.dir, "src", "feature.ts"), "export const feature = 1;\n");
+  writeFileSync(join(staged.dir, "bin", "tool.ts"), "export {};\n");
   git(staged.dir, ["init", "-q", "."]);
-  git(staged.dir, ["add", "charter.yaml", "assurance-modes.yaml"]);
+  git(staged.dir, ["add", "charter.yaml", "assurance-modes.yaml", "src", "bin"]);
   git(staged.dir, ["commit", "-q", "-m", "base"]);
   const base = git(staged.dir, ["rev-parse", "HEAD"]);
   if (change === "src") {
-    mkdirSync(join(staged.dir, "src"), { recursive: true });
     writeFileSync(join(staged.dir, "src", "feature.ts"), "export const feature = 2;\n");
     git(staged.dir, ["add", "src"]);
   } else {

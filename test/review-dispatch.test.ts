@@ -222,11 +222,12 @@ test("a stream with zero or two distinct top-level assistant models yields a rec
       "delivery-mode: full",
     );
     writeFileSync(join(repo, "charter.yaml"), `${charter}\nruntime-set:\n  paths: [src/]\n`);
-    git(repo, ["add", "charter.yaml", "assurance-modes.yaml"]);
-    git(repo, ["commit", "-q", "-m", "base"]);
-    const base = git(repo, ["rev-parse", "HEAD"]);
     mkdirSync(join(repo, "src"));
     writeFileSync(join(repo, "src", "feature.ts"), "export const feature = 1;\n");
+    git(repo, ["add", "charter.yaml", "assurance-modes.yaml", "src"]);
+    git(repo, ["commit", "-q", "-m", "base"]);
+    const base = git(repo, ["rev-parse", "HEAD"]);
+    writeFileSync(join(repo, "src", "feature.ts"), "export const feature = 2;\n");
     git(repo, ["add", "src"]);
     git(repo, ["commit", "-q", "-m", "the change under review"]);
     const reviewed = git(repo, ["rev-parse", "HEAD"]);
