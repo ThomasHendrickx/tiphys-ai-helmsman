@@ -9,9 +9,9 @@
   "dangerousStates": [
     {
       "kind": "mutation",
-      "file": "src/roles.ts",
-      "find": "  const selected = registry.gates.filter((gate) => (gate.modes ?? []).includes(mode));",
-      "replace": "  const selected = [];"
+      "file": "src/commands/brief.ts",
+      "find": "    registry.document as unknown as Parameters<typeof renderBriefGateBlock>[0],",
+      "replace": "    { preflight: [], gates: [] } as unknown as Parameters<typeof renderBriefGateBlock>[0],"
     },
     {
       "kind": "mutation",
