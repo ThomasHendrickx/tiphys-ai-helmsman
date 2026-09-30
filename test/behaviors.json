@@ -1390,5 +1390,6 @@
   "m6-p2-single-green": "a single change with one approving hazard verdict and no arbitration document is green, with no decorrelation and no arbitration row",
   "m6-p2-missing-review-per-tier": "a pair change with one approving verdict is red naming 1 of 2, and a single change with none is red naming 0 of 1",
   "m6-p2-hazard-pair-green": "two approving hazard verdicts with distinct produced-by and the same framing are green on the review rows of a pair change",
-  "m6-p2-verdict-needs-no-contract": "a hazard verdict with no review-contract and no criteria validates, the same verdict without hazard classes is rejected, and a criteria verdict still validates"
+  "m6-p2-verdict-needs-no-contract": "a hazard verdict with no review-contract and no criteria validates, the same verdict without hazard classes is rejected, and a criteria verdict still validates",
+  "m6-p2-version-field-edges": "a workspace's nested node_modules/ entry, a pinned name inside a node_modules/ entry, and a pinned name in peerDependencies are not version fields, so each classifies pair"
 }

@@ -1717,6 +1717,99 @@ test("adding a dependency to package.json and the lockfile classifies pair, and 
   }
 });
 
+/**
+ * Both sides of the three PR #224 manifests, each parsed from its REAL bytes
+ * at 0e29760 and 7c9602d and then edited, so an edge case can put the same key
+ * on both sides and change only its value.
+ */
+function editedBumpSides(
+  edit: (path: string, side: "base" | "head", doc: Record<string, unknown>) => void,
+): Map<string, { base: string; head: string }> {
+  const sides = new Map<string, { base: string; head: string }>();
+  for (const path of BUMP_MANIFESTS) {
+    const both = { base: "", head: "" };
+    for (const [side, commit] of [
+      ["base", BUMP_BASE],
+      ["head", BUMP_HEAD],
+    ] as const) {
+      const doc = JSON.parse(atCommit(commit, path)) as Record<string, unknown>;
+      edit(path, side, doc);
+      both[side] = `${JSON.stringify(doc, null, 2)}\n`;
+    }
+    sides.set(path, both);
+  }
+  return sides;
+}
+
+test("a workspace's nested node_modules/ entry, a pinned name inside a node_modules/ entry, and a pinned name in peerDependencies are not version fields, so each classifies pair", () => {
+  /* FIX ROUND 1, CR-M6P2A-03 and CR-M6P2B-05. THE MECHANISM: the version-field
+     rule recognised a dependency entry by the START of its lockfile key and
+     applied the version-pins rule at any depth and in any dependency field. */
+  const packagesOf = (doc: Record<string, unknown>): Record<string, unknown> =>
+    doc["packages"] as Record<string, unknown>;
+  const arms: [string, (path: string, side: "base" | "head", doc: Record<string, unknown>) => void, string, RegExp][] = [
+    [
+      "a workspace's nested install changes version only",
+      (path, side, doc) => {
+        if (path === "package-lock.json") {
+          packagesOf(doc)["plugin/node_modules/yaml"] = { version: side === "base" ? "2.0.0" : "2.9.9", license: "ISC" };
+        }
+      },
+      "package-lock.json",
+      /\/packages\/plugin~1node_modules~1yaml\/version changed/,
+    ],
+    [
+      "a transitive dependency's pin on a pinned name changes",
+      (path, side, doc) => {
+        if (path === "package-lock.json") {
+          packagesOf(doc)["node_modules/probe-host"] = {
+            version: "1.0.0",
+            dependencies: { "@tiphys/kernel": side === "base" ? "0.2.1" : "0.2.2" },
+          };
+        }
+      },
+      "package-lock.json",
+      /\/packages\/node_modules~1probe-host\/dependencies\/@tiphys~1kernel changed/,
+    ],
+    [
+      "a peer range on a pinned name changes",
+      (path, side, doc) => {
+        if (path === "plugin/package.json") {
+          doc["peerDependencies"] = { "@tiphys/kernel": side === "base" ? "^0.2.0" : "^9.9.9" };
+        }
+      },
+      "plugin/package.json",
+      /\/peerDependencies\/@tiphys~1kernel changed/,
+    ],
+  ];
+  for (const [name, edit, checked, reason] of arms) {
+    const classified = tierModule.classifyTier({
+      declaration: repositoryDeclaration(),
+      changed: atRoot(BUMP_MANIFESTS),
+      sides: editedBumpSides(edit),
+    });
+    assert.equal(classified.tier, "pair", `${name}: ${JSON.stringify(classified.paths)}`);
+    const manifest = classified.paths.find((entry) => entry.path === checked) as TierPath;
+    assert.equal(manifest.tier, "pair", `${name}: ${manifest.reason}`);
+    assert.match(manifest.reason, reason, `${name}: ${manifest.reason}`);
+    /* CONTROL: the same key present and UNCHANGED on both sides leaves the
+       real bump single, so the pair above is the value change, not the key. */
+    const unchanged = tierModule.classifyTier({
+      declaration: repositoryDeclaration(),
+      changed: atRoot(BUMP_MANIFESTS),
+      sides: editedBumpSides((path, _side, doc) => edit(path, "base", doc)),
+    });
+    assert.equal(unchanged.tier, "single", `${name} control: ${JSON.stringify(unchanged.paths)}`);
+  }
+  /* A pinned name in a workspace entry's devDependencies IS a version field:
+     PR #224 changed /packages/plugin/devDependencies/@tiphys~1kernel. */
+  const real = tierModule.classifyTier({ declaration: repositoryDeclaration(), changed: atRoot(BUMP_MANIFESTS), sides: bumpSides() });
+  assert.match(
+    (real.paths.find((entry) => entry.path === "package-lock.json") as TierPath).reason,
+    /\/packages\/plugin\/devDependencies\/@tiphys~1kernel 0\.2\.1 -> 0\.2\.2/,
+  );
+});
+
 test("a diff touching src/ classifies pair under this repository's declaration", () => {
   const classified = tierModule.classifyTier({
     declaration: repositoryDeclaration(),

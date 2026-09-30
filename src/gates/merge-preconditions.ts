@@ -976,12 +976,13 @@ function canonicalJson(value: unknown): string {
   return value === undefined ? "undefined" : JSON.stringify(value);
 }
 
-const DEPENDENCY_FIELDS = new Set([
-  "dependencies",
-  "devDependencies",
-  "peerDependencies",
-  "optionalDependencies",
-]);
+/**
+ * The dependency fields in which a pinned name's value is a version field.
+ * NOT peerDependencies: a peer range is the package's compatibility contract
+ * with its host, not which release it installs, so changing it is `pair`
+ * (fix round 1, CR-M6P2B-05).
+ */
+const PIN_FIELDS = new Set(["dependencies", "devDependencies", "optionalDependencies"]);
 
 /** A version as a manifest spells it: exact, or a caret or tilde range of one. */
 const VERSION_VALUE = /^[~^]?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
@@ -991,11 +992,24 @@ function pointerOf(segments: readonly string[]): string {
 }
 
 /**
+ * Is a lockfile `packages` key a workspace entry, the root entry `""` included?
+ * Only when NO segment of it is `node_modules`: npm writes a workspace's own
+ * nested installs as `<workspace>/node_modules/<name>`, and those are
+ * dependencies exactly as `node_modules/<name>` is (fix round 1, CR-M6P2A-03
+ * and CR-M6P2B-05; the rule before it tested only the key's START).
+ */
+function isWorkspaceKey(key: string): boolean {
+  return !key.split("/").includes("node_modules");
+}
+
+/**
  * Is the leaf at `segments` a version field (DR-0063)? Three shapes, and only
- * these: the top-level `version`; the `version` of a lockfile's root entry
- * `packages[""]` or of a workspace entry (a `packages` key that does not start
- * with `node_modules/`); and a dependency pin, anywhere in the document, whose
- * package name is declared in `version-pins`.
+ * these: the top-level `version`; the `version` of a lockfile workspace entry
+ * (`packages[""]` or a `packages` key with no `node_modules` segment); and a
+ * pin of a name declared in `version-pins`, in `dependencies`,
+ * `devDependencies` or `optionalDependencies` of the document's root or of a
+ * lockfile workspace entry. A pin anywhere else (inside a `node_modules` entry,
+ * in `peerDependencies`, at any other depth) is not a version field.
  */
 function isVersionField(segments: readonly string[], pins: readonly string[]): boolean {
   if (segments.length === 1 && segments[0] === "version") {
@@ -1005,14 +1019,15 @@ function isVersionField(segments: readonly string[], pins: readonly string[]): b
     segments.length === 3 &&
     segments[0] === "packages" &&
     segments[2] === "version" &&
-    !(segments[1] as string).startsWith("node_modules/")
+    isWorkspaceKey(segments[1] as string)
   ) {
     return true;
   }
-  if (segments.length >= 2) {
-    const field = segments[segments.length - 2] as string;
-    const name = segments[segments.length - 1] as string;
-    return DEPENDENCY_FIELDS.has(field) && pins.includes(name);
+  if (segments.length === 2) {
+    return PIN_FIELDS.has(segments[0] as string) && pins.includes(segments[1] as string);
+  }
+  if (segments.length === 4 && segments[0] === "packages" && isWorkspaceKey(segments[1] as string)) {
+    return PIN_FIELDS.has(segments[2] as string) && pins.includes(segments[3] as string);
   }
   return false;
 }
