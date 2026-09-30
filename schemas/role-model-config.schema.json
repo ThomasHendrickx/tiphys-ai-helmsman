@@ -65,6 +65,22 @@
             "enum": ["money-path", "architecture", "investigation", "review"]
           }
         },
+        "tier-by-review-tier": {
+          "$comment": "M6-P2 (DR-0063): a role whose tier follows the review tier of the change it is dispatched on. `pair` is a change touching the project's declared runtime set, `single` is everything else. OPTIONAL: only the clean-room reviewer carries it, and `tier` stays as the value for a caller that does not know the review tier, which is the stronger one so the unknown case fails closed.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["pair", "single"],
+          "properties": {
+            "pair": {
+              "type": "string",
+              "enum": ["strongest", "cheaper"]
+            },
+            "single": {
+              "type": "string",
+              "enum": ["strongest", "cheaper"]
+            }
+          }
+        },
         "charter-override": {
           "$comment": "Blueprint section 6 and R-075's migration-table note: the charter override is L4 and is resolved by the M4 harness adapter. The vocabulary is reserved here so the M4 adapter has a field to read rather than a convention to infer. Every role ships `allowed`, which is stated in delivery/work-history/m3-p3.md as a uniform value rather than presented as if it discriminated.",
           "type": "string",

@@ -74,15 +74,21 @@ roles:
       role whose tier is a function of the phase rather than of the role.
 
   - role: clean-room-reviewer
+    # `tier` is the value when the review tier is not known, and it is the
+    # stronger one so that case fails closed.
     tier: strongest
+    # DR-0063 (M6-P2): the reviewer's model tier follows the review tier of the
+    # change. `pair` (the diff touches the declared runtime set) gets the
+    # strongest tier; `single` gets the cheaper one.
+    tier-by-review-tier:
+      pair: strongest
+      single: cheaper
     charter-override: allowed
     # DR-0012 condition 1: two independent clean-room reviews of the same head,
-    # produced on different model families. That is a constraint between the
-    # two SIBLING reviews of one pull request, which is a different axis from
-    # T-007's two review CONTRACTS in assurance-modes.yaml; full mode requires
-    # both and they are not the same rule.
+    # produced on different model families. Since DR-0063 that is the `pair`
+    # tier's rule. Family policy is M6-P5's.
     review-model-family: must-differ-from-sibling-review
     rationale: >-
-      R-075 puts all reviews at the strongest tier. This is also the role
-      DR-0012 made the signature on every merge, so cheapening it would
-      cheapen the merge condition itself.
+      R-075 puts all reviews at the strongest tier; DR-0063 narrows that to the
+      pair tier, whose reviews are the signature on a runtime change, and puts
+      a single-tier review (no runtime path touched) on the cheaper tier.

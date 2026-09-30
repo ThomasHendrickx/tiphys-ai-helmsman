@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tiphys.dev/schemas/verdict.schema.json",
   "title": "Tiphys clean-room review verdict",
-  "$comment": "R-053, R-057b, R-060, T-001, T-007. Kernel plan M3, M3-P7 steps 6 and 6a. THE OUTPUT OF A CLEAN-ROOM REVIEW, and the document that decides what a review is ALLOWED TO SAY. THE HAZARD THIS DOCUMENT EXISTS AGAINST is the phase's own last item: a verdict that admits APPROVE alongside an unaddressed hazard class. WHAT IT REACHES. (1) APPROVE beside a finding the review itself ranked high or critical, which is a review saying yes while recording a reason to say no, and is how a fix round gets skipped; the root `if`/`then` inverts it into the form the closed vocabulary can carry (schemas/README.md has no `not`): a set CONTAINING such a finding must carry the FIX-ROUND-NEEDED verdict. Stated deliberately WIDER than criterion 4(a), which names `high` alone: `critical` outranks it, and a rule that stopped at `high` would let the worse finding through. (2) A finding with no `concrete-fix`, on EVERY finding rather than on high ones, because a low finding with no proposed edit is a remark. (3) A verdict with no `produced-by` or no `framing`: DR-0012 condition 1 compares two reviews of one head on family AND entry point, and neither comparison is reachable from inside one document, so what is bought here is that neither field can be absent. (4) T-007's `review-contract`, and `hazard-classes-addressed[]` required exactly when the contract is `hazard`, through the `oneOf`. WHAT IT CANNOT REACH, each with its instrument. (a) Whether `criteria[]` covers every acceptance criterion of the phase: that is a comparison against a DIFFERENT document and is the Kind B check `verdict-criteria-complete`. (b) Same for `deviations-judged[]` against the work history's `deviations[]` (M3R-005), check `verdict-deviations-judged`. (c) Same for `hazard-classes-addressed[]` against the plan phase's `hazard-classes[]`, check `verdict-hazard-classes-addressed`. (d) Whether a `cleared-because` statement is true, or whether `met: true` was earned; those are the reviewer's judgement and no keyword reaches them. (e) ADDED IN FIX ROUND 2, and it is INTRA-document rather than cross-document, which is why it was missed: whether `hazard-classes-addressed[].finding` names a finding this document actually declares. It is the check `verdict-finding-references-resolve`, and what it protects is rule (1) above, which reads `findings[]` alone and is therefore blind to a finding recorded one field away.",
+  "$comment": "R-053, R-057b, R-060, T-001, T-007. Kernel plan M3, M3-P7 steps 6 and 6a. THE OUTPUT OF A CLEAN-ROOM REVIEW, and the document that decides what a review is ALLOWED TO SAY. THE HAZARD THIS DOCUMENT EXISTS AGAINST is the phase's own last item: a verdict that admits APPROVE alongside an unaddressed hazard class. WHAT IT REACHES. (1) APPROVE beside a finding the review itself ranked high or critical, which is a review saying yes while recording a reason to say no, and is how a fix round gets skipped; the root `if`/`then` inverts it into the form the closed vocabulary can carry (schemas/README.md has no `not`): a set CONTAINING such a finding must carry the FIX-ROUND-NEEDED verdict. Stated deliberately WIDER than criterion 4(a), which names `high` alone: `critical` outranks it, and a rule that stopped at `high` would let the worse finding through. (2) A finding with no `concrete-fix`, on EVERY finding rather than on high ones, because a low finding with no proposed edit is a remark. (3) A verdict with no `produced-by` or no `framing`: DR-0012 condition 1 compares two reviews of one head on family AND entry point, and neither comparison is reachable from inside one document, so what is bought here is that neither field can be absent. (4) T-007's `review-contract`, and `hazard-classes-addressed[]` required unless the contract is `criteria`, through the `oneOf`. M6-P2 (DR-0064): the criteria contract is dropped, so `review-contract` and `criteria` are no longer required; a verdict without `review-contract` is a hazard verdict, and a committed `criteria` verdict stays valid history (DR-0054) because the enum and the arrays still accept it. WHAT IT CANNOT REACH, each with its instrument. (a) Whether `criteria[]` covers every acceptance criterion of the phase: the check `verdict-criteria-complete` was retired with the criteria contract (DR-0064), and criteria are proven by tests instead. (b) Same for `deviations-judged[]` against the work history's `deviations[]` (M3R-005), check `verdict-deviations-judged`. (c) Same for `hazard-classes-addressed[]` against the plan phase's `hazard-classes[]`, check `verdict-hazard-classes-addressed`. (d) Whether a `cleared-because` statement is true, or whether `met: true` was earned; those are the reviewer's judgement and no keyword reaches them. (e) ADDED IN FIX ROUND 2, and it is INTRA-document rather than cross-document, which is why it was missed: whether `hazard-classes-addressed[].finding` names a finding this document actually declares. It is the check `verdict-finding-references-resolve`, and what it protects is rule (1) above, which reads `findings[]` alone and is therefore blind to a finding recorded one field away.",
   "description": "A clean-room review verdict: the decision, the findings behind it, and the three completeness arrays that say what the review actually walked.",
   "type": "object",
   "additionalProperties": false,
@@ -13,9 +13,7 @@
     "verdict",
     "produced-by",
     "framing",
-    "review-contract",
     "findings",
-    "criteria",
     "deviations-judged"
   ],
   "properties": {
@@ -58,7 +56,7 @@
       "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
     },
     "review-contract": {
-      "$comment": "T-007, step 6a. Which of the two review CONTRACTS produced this verdict, mirroring the field the role brief carries (M3-P6). `scripts/check-dual-review.mjs` can then check contract distinctness alongside model-family and framing distinctness, which is T-007's point: the phase that met fifteen of fifteen criteria and live-locked every supervision command was caught by a reviewer that differed in its BRIEF, not in its model.",
+      "$comment": "T-007, step 6a. Which review CONTRACT produced this verdict. OPTIONAL SINCE M6-P2: DR-0064 dropped the criteria contract, so a new verdict is a hazard verdict and need not say so; `criteria` stays in the enum only so committed history validates (DR-0054). No gate compares it any more.",
       "type": "string",
       "enum": ["criteria", "hazard"]
     },
@@ -69,7 +67,7 @@
       }
     },
     "criteria": {
-      "$comment": "R-053: each acceptance criterion quoted, with file:line evidence and a met-or-not-met verdict. One entry per criterion; that it is EVERY criterion is Kind B.",
+      "$comment": "R-053: each acceptance criterion quoted, with file:line evidence and a met-or-not-met verdict. OPTIONAL SINCE M6-P2: the criteria contract that wrote it is dropped (DR-0064); kept so committed history validates.",
       "type": "array",
       "minItems": 1,
       "items": {
@@ -84,7 +82,7 @@
       }
     },
     "hazard-classes-addressed": {
-      "$comment": "T-007, step 6a. Required exactly when `review-contract` is `hazard`, by the `oneOf` below. One entry per class declared by the referenced plan phase; that it is EVERY class is Kind B, check `verdict-hazard-classes-addressed`, which has the shape `verdict-criteria-complete` has for criteria and for the same reason.",
+      "$comment": "T-007, step 6a. Required unless `review-contract` is `criteria`, by the `oneOf` below (M6-P2: a verdict with no `review-contract` is a hazard verdict). One entry per class declared by the referenced plan phase; that it is EVERY class is Kind B, check `verdict-hazard-classes-addressed`, which has the shape `verdict-criteria-complete` has for criteria and for the same reason.",
       "type": "array",
       "minItems": 1,
       "items": {
@@ -121,7 +119,8 @@
   },
   "oneOf": [
     {
-      "$comment": "Branch A, the criteria contract. `hazard-classes-addressed` is not required, and criterion 4e asserts a `criteria` verdict is unaffected by the hazard completeness check as well, so the rule applies exactly where the contract applies and nowhere else.",
+      "$comment": "Branch A, the criteria contract, HISTORY since M6-P2 (DR-0064). `hazard-classes-addressed` is not required, and criterion 4e asserts a `criteria` verdict is unaffected by the hazard completeness check as well. `review-contract` is REQUIRED on this branch so a verdict that omits it cannot match here and is a hazard verdict (branch B).",
+      "required": ["review-contract"],
       "properties": {
         "review-contract": {
           "type": "string",
@@ -130,7 +129,7 @@
       }
     },
     {
-      "$comment": "Branch B, the hazard contract (T-007). `review-contract` and `hazard-classes-addressed` are BOTH restated in a sibling `properties` here, which is not redundancy: measured against ajv 8.20.0 under this validator's `strict: true`, a `required` naming a property not declared in `properties` at the same level fails COMPILATION under strictRequired. The two branches are discriminated by a `const` on one field, so exactly one can ever match and `oneOf` is an exclusive choice rather than an ambiguity.",
+      "$comment": "Branch B, the hazard contract (T-007), and since M6-P2 every verdict that does not say `criteria`, including one with no `review-contract` at all. `review-contract` and `hazard-classes-addressed` are BOTH restated in a sibling `properties` here, which is not redundancy: measured against ajv 8.20.0 under this validator's `strict: true`, a `required` naming a property not declared in `properties` at the same level fails COMPILATION under strictRequired. The two branches are discriminated by a `const` on one field, so exactly one can ever match and `oneOf` is an exclusive choice rather than an ambiguity.",
       "required": ["hazard-classes-addressed"],
       "properties": {
         "review-contract": {

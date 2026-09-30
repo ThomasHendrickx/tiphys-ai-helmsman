@@ -469,7 +469,10 @@ test("a verdict naming a phase the plan does not declare is rejected rather than
   try {
     writeYaml(dir, "plan.yaml", loadPlan());
     writeYaml(dir, "work-history.yaml", loadWorkHistory());
-    const instance = baselineVerdict();
+    /* A HAZARD verdict since M6-P2: the plan-phase lookup is now made by
+       verdict-hazard-classes-addressed alone, verdict-criteria-complete being
+       retired with the criteria contract (DR-0064). */
+    const instance = baselineHazardVerdict();
     instance["phase"] = "M9-P404";
     const file = writeYaml(dir, "verdict.yaml", instance);
     const run = runCli(["validate", "--type", "verdict", "--context", dir, file]);

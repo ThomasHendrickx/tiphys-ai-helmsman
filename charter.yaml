@@ -158,6 +158,18 @@ release-verification:
     a change from a declared verification to `none` is on the stop-for list
     above.
 
+# DR-0063 (M6-P2): what this repository SHIPS, for the review tier. A change
+# touching it is `pair` (two hazard reviews); anything else is `single` (one).
+# The merge gates read this block at the MERGE BASE, so a change cannot shrink
+# the set that judges it. The three manifests count only when a key other than
+# a version field changes, and the workspace's own pin on @tiphys/kernel is a
+# version field. Shipped prose (roles/, AGENTS.md, templates/, checklists/,
+# tuition/) is deliberately not listed: DR-0063 makes it `single`.
+runtime-set:
+  paths: [src/, bin/, plugin/, schemas/]
+  manifests: [package.json, package-lock.json, plugin/package.json]
+  version-pins: ["@tiphys/kernel"]
+
 retention:
   work-history: delivery/work-history/
   evidence: delivery/evidence/

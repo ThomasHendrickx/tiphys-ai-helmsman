@@ -111,7 +111,7 @@
       }
     },
     "modeReviewContractRule": {
-      "$comment": "M3-P3 criterion 4d (T-007, D-M3-32). A mode that runs clean-room review declares its review CONTRACTS, not a reviewer count. T-007's measurement is why this is a schema rule: two reviewers on different model families walked all fifteen of M1-P5's acceptance criteria, agreed on every mechanical fact, and one returned APPROVE while the other found a high-severity defect that live-locks four commands, because the second was briefed on hazards rather than on criteria. Had both been briefed on the criteria, both would have approved, on any two models. The `uniqueItems` on modeShape's `review-contracts` is what stops two entries both named `criteria` from satisfying this `minItems` and reproducing exactly that failure; the two keywords live at ONE SITE EACH, because a duplicate of either would keep rejecting after the other was defanged and a red witness that stayed red for the wrong reason proves nothing about the keyword it names. DR-0012's requirement of two model FAMILIES is orthogonal and is checked elsewhere.",
+      "$comment": "M6-P2 (DR-0064): the criteria contract is dropped and T-007's two-contract rule is superseded, so the minimum is ONE contract (hazard); how many reviews a change owes is DR-0063's tier, decided from the diff, not a count here. The text that follows is the M3-P3 account, kept. M3-P3 criterion 4d (T-007, D-M3-32). A mode that runs clean-room review declares its review CONTRACTS, not a reviewer count. T-007's measurement is why this is a schema rule: two reviewers on different model families walked all fifteen of M1-P5's acceptance criteria, agreed on every mechanical fact, and one returned APPROVE while the other found a high-severity defect that live-locks four commands, because the second was briefed on hazards rather than on criteria. Had both been briefed on the criteria, both would have approved, on any two models. The `uniqueItems` on modeShape's `review-contracts` is what stops two entries both named `criteria` from satisfying this `minItems` and reproducing exactly that failure; the two keywords live at ONE SITE EACH, because a duplicate of either would keep rejecting after the other was defanged and a red witness that stayed red for the wrong reason proves nothing about the keyword it names. DR-0012's requirement of two model FAMILIES is orthogonal and is checked elsewhere.",
       "$ref": "#/$defs/modeShape",
       "if": {
         "type": "object",
@@ -131,7 +131,7 @@
         "properties": {
           "review-contracts": {
             "type": "array",
-            "minItems": 2,
+            "minItems": 1,
             "items": {
               "type": "string",
               "minLength": 1
@@ -214,7 +214,7 @@
           "$ref": "#/$defs/decisionRecordReference"
         },
         "review-contracts": {
-          "$comment": "T-007, D-M3-32. The STARTING QUESTION each clean-room review is given, by id. Two contracts is not two reviewers: `criteria` walks the phase's acceptance criteria and `hazard` is handed the phase's declared hazard classes and works outward from them.",
+          "$comment": "T-007, D-M3-32. The STARTING QUESTION each clean-room review is given, by id. `hazard` is handed the phase's declared hazard classes and works outward from them; `criteria` was dropped by DR-0064 (M6-P2).",
           "type": "array",
           "uniqueItems": true,
           "items": {

@@ -173,14 +173,12 @@ modes:
       - merge-preconditions
       - unit-tests-for-changed-service-methods
       - fixtures-for-changed-component-states
-    # T-007, D-M3-32. Two CONTRACTS, not two reviewers. The decorrelation that
-    # mattered on M1-P5 was in the question asked: both reviews walked all
-    # fifteen acceptance criteria and agreed on every mechanical fact, and the
-    # one briefed on hazards found a high-severity live-lock the other's report
-    # does not even name. DR-0012's requirement of two model FAMILIES is a
-    # different axis; full requires both.
+    # DR-0064 (M6-P2): the criteria contract is dropped, because acceptance
+    # criteria are tests the kernel runs. The hazard contract stays: on M1-P5 it
+    # found the high-severity live-lock a criteria walk missed (T-007). How many
+    # hazard reviews a change owes is its DR-0063 tier: two for pair, one for
+    # single.
     review-contracts:
-      - criteria
       - hazard
     # BLUEPRINT SECTION 8'S TABLE SAYS `owner` FOR THIS ROW, AND THAT IS NOT
     # WHAT IS IN FORCE. The owner granted delegated authority in DR-0012 and

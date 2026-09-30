@@ -685,7 +685,7 @@
   "agents-carries-plan-assigned-duties": "each of the four plan-assigned duties is present and cites its source record inside its own clause",
   "agents-supervision-tests-freshness": "the dispatch-requires-a-guard clause names FRESHNESS and the newest mtime and does not make existence or completion the watched condition",
   "agents-carries-escalation-threshold": "the escalation-threshold clause carries both limbs, the ordering rule, and the measured cost",
-  "agents-carries-two-review-contract-duty": "the two-review-contracts clause names two CONTRACTS and says why two models are not sufficient",
+  "agents-carries-hazard-review-contract-duty": "the hazard-review-contract clause names one hazard contract, one review for single and two for pair",
   "agents-cites-decisions-behind-reversed-clauses": "every clause that encodes a reversed position cites its record by id, inside that clause",
   "agents-merge-completion-names-event-and-sha": "the merge-is-not-complete-until clause states the event, the head sha, observation to completion, and that a pull request check does not discharge it",
   "agents-merge-completion-rejects-pull-request-check": "weakening the merge-completion clause is caught, both by the vague rewrite and by the specific one that keeps the tip and drops the event",
