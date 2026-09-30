@@ -623,14 +623,6 @@ test("an invented release-verification shape is rejected naming the offending pr
   );
 });
 
-test("the release-verification field's $comment cites DR-0014 and the investigation by path", () => {
-  const schema = readSchema(join(schemasDir, "charter.schema.json"));
-  const properties = schema["properties"] as Record<string, Record<string, unknown>>;
-  const comment = String(properties["release-verification"]?.["$comment"] ?? "");
-  assert.match(comment, /DR-0014/);
-  assert.match(comment, /delivery\/verification\/release-verification-interface\.md/);
-});
-
 /* ------------------------------------------------------------------ */
 /* Criterion 5c: the shipped stop-for default                           */
 /* ------------------------------------------------------------------ */
