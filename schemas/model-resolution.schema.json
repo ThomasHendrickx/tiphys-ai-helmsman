@@ -274,7 +274,7 @@
           "$ref": "#/$defs/vocabulary"
         },
         "family": {
-          "$comment": "The vocabulary's family token, verbatim. This is the value the closeout copies into a verdict's `produced-by` byte for byte (criterion 8).",
+          "$comment": "The vocabulary's family token, verbatim. Until M6-P5 the closeout copied it into a verdict; since M6-P5 (DR-0062) the family a merge gate counts is the one the kernel records when it launches a reviewer (schemas/review-record.schema.json), and this token is not copied anywhere.",
           "type": "string",
           "minLength": 1,
           "pattern": "\\S"

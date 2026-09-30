@@ -20,7 +20,7 @@
       "pattern": "\\S"
     },
     "produced-by": {
-      "$comment": "T-001's second ask, recorded in delivery/tuition/T-001-cross-model-review-catches.md: record in the review header which family produced it. DR-0012 condition 1 then makes the two clean-room reviews of one head differ in this field, and that comparison is between two DOCUMENTS and is therefore not reachable from inside either of them. What is reachable is that the field cannot be absent, which is what this is.",
+      "$comment": "T-001's second ask, recorded in delivery/tuition/T-001-cross-model-review-catches.md: record in the review header which family produced it. What is reachable from inside one document is that the field cannot be absent, which is what this is. No gate compares it: the merge gate's family rule reads the kernel's review records since M6-P5 (DR-0062), and it never read finding sets.",
       "type": "string",
       "minLength": 1,
       "pattern": "\\S"

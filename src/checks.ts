@@ -2208,7 +2208,7 @@ export function readReviewFamilies(
     if (reading.kind !== "established") {
       return {
         kind: "error",
-        reason: `${refSha}:${relativePath} ${unestablishedReason(reading, `${REVIEW_FAMILIES_FIELD}.available[${String(index)}]`) as string}, so the declared family set cannot be compared with what the verdicts carry`,
+        reason: `${refSha}:${relativePath} ${unestablishedReason(reading, `${REVIEW_FAMILIES_FIELD}.available[${String(index)}]`) as string}, so the declared family set cannot be compared with the families the kernel's review records carry`,
       };
     }
     if (families.includes(reading.value)) {
