@@ -55,7 +55,9 @@ test (`test/schemas.test.ts`).
 | `contains` | in the vocabulary and used by no document shipped in M3-P1; its positive, negative and discriminating tests run against a fixture schema in `test/fixtures/` |
 
 Annotations that carry no constraint and are permitted anywhere: `$schema`,
-`$id`, `$comment`, `title`, `description`, `$defs`.
+`$id`, `title`, `description`, `$defs`, and JSON Schema's comment keyword. The
+shipped schemas use no comment keyword since M6-P4: each `description` is one
+line, and the reasoning lives in the decision records and work histories.
 
 Expanding this list is a deliberate act and is recorded here, per DR-0013
 clause 7. Prohibiting an otherwise-valid keyword is a POLICY LINTER, never a
@@ -71,8 +73,3 @@ another document, compute arithmetic over sibling fields or touch the
 filesystem are Kind B and live in `src/checks.ts` as named derived checks
 (kernel plan M3 section 2.3, DR-0013 clause 8). They are never encoded as Ajv
 extensions.
-
-## `$comment` carries clause ids
-
-Every requirement row an artifact discharges appears in that artifact as a
-clause id, here as a `$comment` tag or a property name.

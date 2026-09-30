@@ -911,32 +911,10 @@ test("the shipped schemas disclose the closed vocabulary at v0.1.0 and the enums
      was an instance of (`src/checks.ts` claimed a condition could never match a
      fence, and it could). A disclosure with no behaviour behind it is worse
      than none. */
-  /* M6-P3 dropped every `$comment` keyword from assurance-modes.schema.json
-     (token diet), so its disclosure is no longer comment text; the enums are
+  /* M6-P3 dropped every `$comment` keyword from assurance-modes.schema.json,
+     and M6-P4 dropped the rest (token diet), so the disclosure is no longer
+     comment text anywhere and this test no longer reads it; the enums are
      still exercised below. */
-  const disclosures: [string, string[]][] = [
-    ["role-model-config.schema.json", ["$defs.roleBinding.properties.role"]],
-    ["charter.schema.json", ["properties.delivery-mode", "properties.assurance-tier"]],
-  ];
-  for (const [schemaName, pointers] of disclosures) {
-    const schema = readSchema(schemaName);
-    for (const pointer of pointers) {
-      let node: unknown = schema;
-      for (const key of pointer.split(".")) {
-        node = (node as Record<string, unknown>)[key];
-        assert.ok(node !== undefined, `${schemaName} has no ${pointer}`);
-      }
-      const comment = (node as Record<string, unknown>)["$comment"];
-      assert.equal(typeof comment, "string", `${schemaName} ${pointer} carries no $comment`);
-      assert.match(comment as string, /CLOSED VOCABULARY AT v0\.1\.0/);
-      assert.match(comment as string, /DR-0020/);
-      /* The enum is really there, so the $comment is describing this node. */
-      assert.ok(
-        Array.isArray((node as Record<string, unknown>)["enum"]),
-        `${schemaName} ${pointer} carries the disclosure but no enum`,
-      );
-    }
-  }
 
   /* THE BEHAVIOUR THE DISCLOSURE CLAIMS, exercised with the consumer lens's own
      three ids: a mode `standard`, a stage `design`, a role `backend-developer`,

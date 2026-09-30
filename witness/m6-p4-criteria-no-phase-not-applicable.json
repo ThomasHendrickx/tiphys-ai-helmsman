@@ -1,0 +1,37 @@
+{
+  "id": "m6-p4-criteria-no-phase-not-applicable",
+  "behavior": "m6-p4-criteria-no-phase-not-applicable",
+  "tests": [
+    "a suite run given --plan and no --phase runs the suite and reports the criteria not applicable naming no phase, and --phase with no --plan proves nothing"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "      criteriaState = {\n        kind: \"not-applicable\",\n        reason: `no phase: this run names none, so no criteria of plan ${flags.plan} are proven`,\n      };",
+      "replace": "      criteriaState = { kind: \"off\" };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "    if (flags.phase === undefined) {\n      criteriaState = {",
+      "replace": "    if (flags.phase === undefined) {\n      return error(\"no phase\");\n      criteriaState = {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "  if (flags.plan !== undefined) {\n    let planRead",
+      "replace": "  if (flags.plan !== undefined || flags.phase !== undefined) {\n    let planRead"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node src/gates/suite.ts, the suite gate CLI, which spawns the configured node:test run and parses its reporter stream, and runs each criterion's check.command through src/criteria.ts",
+    "captures": [
+      "witness/captures/m6-p4-criteria-gate-cli.txt"
+    ],
+    "provenance": "Captured 2026-09-30 in the kernel container on node v26.6.0 by running the gate CLI over the two red fixtures test/criteria.test.ts builds (the command and exit are recorded above each block). test/criteria.test.ts compares two live gate runs with those blocks byte for byte, and every named test here drives a real node:test run or a real spawned command; nothing asserted is a hand-written string standing in for another program's output."
+  }
+}

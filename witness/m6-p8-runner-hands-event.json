@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/gates/schemas/gate-manifest.schema.json",
-      "find": "\"enum\": [\"base\", \"head\", \"phase\", \"event\"]",
-      "replace": "\"enum\": [\"base\", \"head\", \"phase\"]"
+      "find": "\"enum\": [\"base\", \"head\", \"phase\", \"event\", \"base?\", \"head?\", \"phase?\", \"event?\"]",
+      "replace": "\"enum\": [\"base\", \"head\", \"phase\", \"base?\", \"head?\", \"phase?\", \"event?\"]"
     }
   ],
   "deterministic": true,

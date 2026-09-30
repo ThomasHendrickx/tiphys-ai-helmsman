@@ -5,7 +5,7 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-## M6 standing at 2026-09-30, 19:15 UTC, `main` at 65d4ca5
+## M6 standing at 2026-09-30, 20:20 UTC, `main` at 3fa602c
 
 Plan: delivery/plan/m6-review-and-rule-economy.md:1.
 
@@ -14,8 +14,9 @@ Plan: delivery/plan/m6-review-and-rule-economy.md:1.
 | M6-P1, decisions and plan | #227 | cd2dafe | green |
 | M6-P2, review tier follows the diff | #228 | a726478 | green |
 | M6-P3, removal and admission, one gate list | #229 | 65d4ca5 | gates 36762915815 success |
+| M6-P8, pull-request CI runs each check once | #230 | 3fa602c | gates 36771355583 (full red-witness sweep) |
 
-Landing order next: M6-P8 (faster CI, DR-0066), M6-P4, M6-P6, M6-P5, M6-P7.
+Landing order next: M6-P4, M6-P6, M6-P5, M6-P7. PR CI for M6-P8 took 7.5 minutes (was about 45).
 
 ## M5 standing at 2026-09-24, 09:15 UTC, `main` at 2c49ab3
 

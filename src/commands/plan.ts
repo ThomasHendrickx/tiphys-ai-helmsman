@@ -16,11 +16,17 @@
  *
  * Every path this command touches is operator-supplied and is classified
  * before it is opened or written (D-M3-27).
+ *
+ * `tiphys plan count --plan <file> [--phase-id <id>]` (M6-P4, DR-0064) prints,
+ * per phase, how many acceptance criteria the plan declares and how many are
+ * `not-testable`, with their ids, computed from the plan after it validates,
+ * so what a final report states comes from the plan and not from a tally.
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { EX_USAGE } from "../cli.ts";
+import { countCriteria, findPlanPhase, planSchemaRefusal, readPlan } from "../criteria.ts";
 import { projectPhase, renderDeclaration } from "../plan.ts";
 import { refuseOpenForWrite } from "../task.ts";
 import {
@@ -28,10 +34,12 @@ import {
   decodeDocument,
   readOperatorPath,
 } from "../validate.ts";
+import { loadTypeSchema } from "./validate.ts";
 
 const USAGE =
   "usage: tiphys plan project --phase-id <id> [--plan <file>] " +
-  "[--out <dir>] [--stdout]";
+  "[--out <dir>] [--stdout]\n" +
+  "       tiphys plan count --plan <file> [--phase-id <id>]";
 
 const DEFAULT_PLAN = "templates/plan.example.yaml";
 const DEFAULT_OUT = join("delivery", "plan", "phase-declarations");
@@ -69,8 +77,58 @@ function parseArgs(argv: string[]): { args?: Args; usageError?: string } {
   return { args };
 }
 
+/** `tiphys plan count`: per phase, the criteria and the not-testable among them. */
+function cmdPlanCount(argv: string[]): number {
+  let planFile: string | undefined;
+  let phaseId: string | undefined;
+  for (let index = 0; index < argv.length; index += 2) {
+    const flag = argv[index] as string;
+    const value = argv[index + 1];
+    if (flag !== "--plan" && flag !== "--phase-id") {
+      process.stderr.write(`tiphys plan count: unknown option ${flag}\n${USAGE}\n`);
+      return EX_USAGE;
+    }
+    if (value === undefined || value.startsWith("--")) {
+      process.stderr.write(`tiphys plan count: ${flag} requires a value\n${USAGE}\n`);
+      return EX_USAGE;
+    }
+    if (flag === "--plan") planFile = value;
+    else phaseId = value;
+  }
+  if (planFile === undefined) {
+    process.stderr.write(`tiphys plan count: --plan is required\n${USAGE}\n`);
+    return EX_USAGE;
+  }
+  const read = readPlan(planFile, loadTypeSchema("plan"));
+  if (!read.ok) {
+    process.stderr.write(`tiphys plan count: ${read.reason}\n`);
+    return 1;
+  }
+  let counts = countCriteria(read.plan);
+  if (phaseId !== undefined) {
+    const lookup = findPlanPhase(read.plan, phaseId);
+    if (lookup.kind !== "found") {
+      process.stderr.write(
+        `tiphys plan count: ${planFile} declares ${lookup.kind === "absent" ? "no" : "more than one"} phase ${phaseId}\n`,
+      );
+      return 1;
+    }
+    counts = counts.filter((count) => count.phase === lookup.id);
+  }
+  for (const count of counts) {
+    const ids = count.notTestable.length === 0 ? "" : ` (${count.notTestable.join(", ")})`;
+    process.stdout.write(
+      `phase ${count.phase}: ${String(count.criteria)} criteria, ${String(count.notTestable.length)} not-testable${ids}\n`,
+    );
+  }
+  return 0;
+}
+
 export function cmdPlan(argv: string[]): number {
   const [subcommand, ...rest] = argv;
+  if (subcommand === "count") {
+    return cmdPlanCount(rest);
+  }
   if (subcommand !== "project") {
     process.stderr.write(`${USAGE}\n`);
     return EX_USAGE;
@@ -92,6 +150,19 @@ export function cmdPlan(argv: string[]): number {
   const decoded = decodeDocument(read.body, plan);
   if (!decoded.ok) {
     process.stderr.write(`tiphys plan project: ${decoded.reason}\n`);
+    return 1;
+  }
+  /* M6-P4 step 4: validated before anything is projected, through the same
+     refusal as `brief compose`, `plan count` and the suite gate. */
+  let invalidPlan: string | undefined;
+  try {
+    invalidPlan = planSchemaRefusal(decoded.value, plan, loadTypeSchema("plan"));
+  } catch (caught) {
+    process.stderr.write(`tiphys plan project: ${(caught as Error).message}\n`);
+    return 1;
+  }
+  if (invalidPlan !== undefined) {
+    process.stderr.write(`tiphys plan project: ${invalidPlan}\n`);
     return 1;
   }
 

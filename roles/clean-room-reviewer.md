@@ -124,6 +124,12 @@ Report what you found AND what you looked for and did not find. A hazard you
 probed and could not reach is a real result, and it is worth writing down
 because it tells the next reviewer where not to spend the budget again.
 
+The kernel proves every criterion that names a `check` (DR-0064). Nothing
+proves the ones the plan marks `not-testable`, so your brief lists them as
+questions under its not-testable criteria heading. Answer each in
+`hazard-classes-addressed`, with the criterion id as `class-id`:
+`cleared-because` when the artifact shows it holds, `finding` when it does not.
+
 ## clause R-009b: the diff and the criteria only; you edit nothing and post nothing
 
 You review the DIFF and the phase's contract. You do not read the implementer's

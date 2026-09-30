@@ -1,0 +1,37 @@
+{
+  "id": "m6-p4-criterion-test-not-passed-red",
+  "behavior": "m6-p4-criterion-test-not-passed-red",
+  "tests": [
+    "a criterion whose named test was skipped, is a todo, was filtered out or never ran is red naming the criterion and the title"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/criteria.ts",
+      "find": "        if (point.outcome !== \"pass\") {",
+      "replace": "        if (point.outcome === \"fail\") {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/criteria.ts",
+      "find": "      const points = reported.filter((point) => point.name === title);",
+      "replace": "      const points = reported.filter((point) => point.name.startsWith(title) || title.startsWith(point.name));"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "      findings.push(...criterionFindings);\n",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node src/gates/suite.ts, the suite gate CLI, which spawns the configured node:test run and parses its reporter stream, and runs each criterion's check.command through src/criteria.ts",
+    "captures": [
+      "witness/captures/m6-p4-criteria-gate-cli.txt"
+    ],
+    "provenance": "Captured 2026-09-30 in the kernel container on node v26.6.0 by running the gate CLI over the two red fixtures test/criteria.test.ts builds (the command and exit are recorded above each block). test/criteria.test.ts compares two live gate runs with those blocks byte for byte, and every named test here drives a real node:test run or a real spawned command; nothing asserted is a hand-written string standing in for another program's output."
+  }
+}

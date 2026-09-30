@@ -1,0 +1,49 @@
+{
+  "id": "m6-p4-runner-optional-parameter",
+  "behavior": "m6-p4-runner-optional-parameter",
+  "tests": [
+    "a gate declaring phase? is passed --phase when the run has one and runs without it when the run has none, while a gate requiring phase still errors without it"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "    if (supplied !== undefined) {\n      argv.push(`--${name}`, supplied);\n    }",
+      "replace": "    if (supplied !== undefined) {\n    }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/manifest.ts",
+      "find": "    ? { name: declared.slice(0, -1) as RunParameter, optional: true }",
+      "replace": "    ? { name: declared.slice(0, -1) as RunParameter, optional: false }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "    if (read.optional && !required.has(read.name)) {",
+      "replace": "    if (read.optional && required.has(read.name)) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/schemas/gate-manifest.schema.json",
+      "find": "\"enum\": [\"base\", \"head\", \"phase\", \"event\", \"base?\", \"head?\", \"phase?\", \"event?\"]",
+      "replace": "\"enum\": [\"base\", \"head\", \"phase\", \"event\", \"base?\", \"head?\", \"event?\"]"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/gate-registry.schema.json",
+      "find": "\"enum\": [\"base\", \"head\", \"phase\", \"event\", \"base?\", \"head?\", \"phase?\", \"event?\"]",
+      "replace": "\"enum\": [\"base\", \"head\", \"phase\", \"event\", \"base?\", \"head?\", \"event?\"]"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node bin/tiphys.ts gates run, the gate runner, which spawns each registry gate with the run parameters it declares and ingests the record the gate writes; here the gates are a fixture script and the real suite gate",
+    "captures": [
+      "witness/captures/m6-p4-criteria-by-event.txt"
+    ],
+    "provenance": "Captured 2026-09-30 in the kernel container on node v26.6.0 by running the gate runner over the fixture registries test/criteria.test.ts builds (the command and exit are recorded above each block, and the three substitutions are declared in the file's header: the random run id line dropped, the fixture base commit and the suite child's node version written as placeholders). test/criteria.test.ts compares live runner output with those blocks byte for byte after the same substitutions; nothing asserted is a hand-written string standing in for another program's output."
+  }
+}
