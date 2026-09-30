@@ -5,7 +5,6 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
-import { parse as parseYaml } from "yaml";
 import {
   boundAtMergeBase,
   describeOffHeadVerdicts,
@@ -19,7 +18,7 @@ import { loadTypeSchema } from "./commands/validate.ts";
 import { SCRUB_DIR_NAME, buildChildEnv, refuseExtraAllowlist } from "./exec/env.ts";
 import type { ChildEnvExtension } from "./exec/env.ts";
 import { singleLine } from "./task.ts";
-import { formatDiagnostics, validateInstance } from "./validate.ts";
+import { decodeDocument, formatDiagnostics, validateInstance } from "./validate.ts";
 
 /**
  * THE KERNEL LAUNCHES REVIEWERS (kernel plan M6, M6-P5; DR-0062).
@@ -72,16 +71,20 @@ export const REVIEW_EXECUTOR_FIELD = "review-executor";
  */
 export function configuredReviewExecutor(projectDirectory: string): { ok: true; specifier: string } | { ok: false; reason: string } {
   const path = join(projectDirectory, "charter.yaml");
-  let document: unknown;
+  let text: string;
   try {
     if (!lstatSync(path).isFile()) {
       return { ok: false, reason: `${path} is not a regular file` };
     }
-    document = parseYaml(readFileSync(path, "utf8"));
+    text = readFileSync(path, "utf8");
   } catch (error) {
     return { ok: false, reason: `${path} could not be read: ${describe(error)}` };
   }
-  const value = isMapping(document) ? document[REVIEW_EXECUTOR_FIELD] : undefined;
+  const decoded = decodeDocument(text, path);
+  if (!decoded.ok) {
+    return { ok: false, reason: decoded.reason };
+  }
+  const value = isMapping(decoded.value) ? decoded.value[REVIEW_EXECUTOR_FIELD] : undefined;
   if (typeof value !== "string" || value.trim() === "") {
     return { ok: false, reason: `${path} names no ${REVIEW_EXECUTOR_FIELD}` };
   }
