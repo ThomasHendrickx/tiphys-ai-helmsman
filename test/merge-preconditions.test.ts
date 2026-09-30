@@ -1867,6 +1867,88 @@ test("a project with no runtime-set declaration classifies a delivery-only diff 
   );
 });
 
+/* The charter schema's validator and the YAML parser, for the shape test. */
+const charterValidate = (await import(new URL("../src/validate.ts", import.meta.url).href)) as {
+  validateToLines: (schema: Record<string, unknown>, instance: unknown) => string[];
+};
+const charterYaml = (await import("yaml")) as unknown as { parse: (text: string) => unknown };
+
+test("a runtime-set entry that can never match a path git prints (src/**, ./src/, /src/, src/*, a .. segment, an empty segment, a manifest ./package.json) is refused by the reader and by the schema, so the change is pair", () => {
+  /* FIX ROUND 1, CR-M6P2B-02 and CR-M6P2A-02. THE MECHANISM: an entry that
+     matches no path git prints was a VALID declaration, so the declared set was
+     silently empty and every change was single. The reviewers' measured
+     shapes, plus one arm per remaining refused rule. */
+  const schema = JSON.parse(readFileSync(join(repoRoot, "schemas", "charter.schema.json"), "utf8")) as Record<
+    string,
+    unknown
+  >;
+  const repositoryCharter = charterYaml.parse(readFileSync(join(repoRoot, "charter.yaml"), "utf8")) as Record<
+    string,
+    unknown
+  >;
+  /* Reviewer B's manifest probe: package.json ADDS a dependency. */
+  const addDependency = new Map([
+    [
+      "package.json",
+      {
+        base: '{\n  "name": "probe",\n  "version": "1.0.0"\n}\n',
+        head: '{\n  "name": "probe",\n  "version": "1.0.0",\n  "dependencies": { "evil": "1.0.0" }\n}\n',
+      },
+    ],
+  ]);
+  const charterText = (set: { paths: string[]; manifests: string[] }): string =>
+    `kind: charter\nruntime-set:\n  paths: ${JSON.stringify(set.paths)}\n  manifests: ${JSON.stringify(set.manifests)}\n`;
+  const arms: [string, { paths: string[]; manifests: string[] }, string, "paths" | "manifests"][] = [
+    ["src/**", { paths: ["src/**"], manifests: [] }, "src/a.ts", "paths"],
+    ["./src/", { paths: ["./src/"], manifests: [] }, "src/a.ts", "paths"],
+    ["/src/", { paths: ["/src/"], manifests: [] }, "src/a.ts", "paths"],
+    ["src/*", { paths: ["src/*"], manifests: [] }, "src/a.ts", "paths"],
+    ["src/../src/", { paths: ["src/../src/"], manifests: [] }, "src/a.ts", "paths"],
+    ["src//", { paths: ["src//"], manifests: [] }, "src/a.ts", "paths"],
+    ["./package.json", { paths: ["src/"], manifests: ["./package.json"] }, "package.json", "manifests"],
+  ];
+  for (const [entry, set, changedPath, field] of arms) {
+    const declaration = tierModule.readRuntimeSet(charterText(set), "charter.yaml");
+    assert.equal(declaration.kind, "invalid", `${entry}: ${JSON.stringify(declaration)}`);
+    assert.ok(
+      (declaration as { reason: string }).reason.includes(`runtime-set.${field} entry ${JSON.stringify(entry)}`),
+      `${entry}: the reason does not name the entry: ${JSON.stringify(declaration)}`,
+    );
+    const classified = tierModule.classifyTier({ declaration, changed: atRoot([changedPath]), sides: addDependency });
+    assert.equal(classified.tier, "pair", `${entry}: ${JSON.stringify(classified.paths)}`);
+    assert.match((classified.paths[0] as TierPath).reason, /no usable runtime-set declaration at the merge base/, entry);
+    /* THE SCHEMA REFUSES THE SAME ENTRY, at its own pointer. */
+    const document = { ...repositoryCharter, "runtime-set": { ...set, "version-pins": [] } };
+    const index = set[field].indexOf(entry);
+    const lines = charterValidate.validateToLines(schema, document);
+    assert.ok(
+      lines.some((line) => line.startsWith(`INVALID #/runtime-set/${field}/${String(index)} `) && line.includes("pattern")),
+      `${entry}: the schema did not refuse it: ${JSON.stringify(lines)}`,
+    );
+  }
+  /* CONTROL: the same sets spelled as git prints them are declared and schema
+     valid, and they judge the same changes: src/a.ts pair by the path rule, and
+     the dependency added to the declared package.json pair by the manifest
+     rule rather than by fail closed. */
+  const control = { paths: ["src/"], manifests: ["package.json"] };
+  const declared = tierModule.readRuntimeSet(charterText(control), "charter.yaml");
+  assert.equal(declared.kind, "declared", JSON.stringify(declared));
+  assert.deepEqual(
+    charterValidate.validateToLines(schema, { ...repositoryCharter, "runtime-set": { ...control, "version-pins": [] } }),
+    [],
+  );
+  const judged = tierModule.classifyTier({
+    declaration: declared,
+    changed: atRoot(["src/a.ts", "package.json"]),
+    sides: addDependency,
+  });
+  assert.deepEqual(
+    judged.paths.map((entry) => `${entry.path}=${entry.tier}`),
+    ["src/a.ts=pair", "package.json=pair"],
+  );
+  assert.match((judged.paths[1] as TierPath).reason, /\/dependencies added/);
+});
+
 /* ------------------------------------------------------------------ */
 /* M6-P2 through git: the declaration is read at the MERGE BASE          */
 /* ------------------------------------------------------------------ */
@@ -1941,6 +2023,83 @@ test("a head that removes src/ from its runtime-set declaration while touching s
     assert.match(byPath.get("charter.yaml")?.reason ?? "", /runtime-set declaration itself changed/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/**
+ * THE DIRECTORY LOOKUP CONSUMES git's OUTPUT, so it is asserted against REAL
+ * captured output: witness/captures/m6-p2-git-runtime-set-directory.json was
+ * taken from this exact staging (fixed identity and dates), and the test
+ * re-stages it, re-runs every command and requires git's live output to equal
+ * the recorded bytes before asking the shipped classifier.
+ */
+const RUNTIME_SET_DIRECTORY_CAPTURE = join(repoRoot, "witness", "captures", "m6-p2-git-runtime-set-directory.json");
+
+/** Base declares `paths` as given with src/ a directory; the head edits src/feature.ts. */
+function stageDirectoryEntryRepo(paths: string): { dir: string; base: string; head: string } {
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-runtime-set-directory-"));
+  mkdirSync(join(dir, "src"), { recursive: true });
+  writeFileSync(join(dir, "charter.yaml"), `kind: charter\nruntime-set:\n  paths: ${paths}\n`);
+  writeFileSync(join(dir, "src", "feature.ts"), "export const feature = 1;\n");
+  shrinkGit(dir, ["init", "-q", "-b", "main", "."]);
+  shrinkGit(dir, ["add", "-A"]);
+  shrinkGit(dir, ["commit", "-q", "-m", "base"]);
+  const base = shrinkGit(dir, ["rev-parse", "HEAD"]).trim();
+  writeFileSync(join(dir, "src", "feature.ts"), "export const feature = 2;\n");
+  shrinkGit(dir, ["add", "-A"]);
+  shrinkGit(dir, ["commit", "-q", "-m", "change under the directory the entry names"]);
+  const head = shrinkGit(dir, ["rev-parse", "HEAD"]).trim();
+  return { dir, base, head };
+}
+
+test("a runtime-set paths entry without a trailing slash that names a directory at the merge base is an invalid declaration, so a change under it is pair, and an exact entry naming a file is still declared", () => {
+  /* FIX ROUND 1, CR-M6P2B-02: `paths: [src]`, the most natural YAML spelling
+     of a directory list, was a valid declaration matching nothing under src/,
+     measured single by both reviewers. */
+  const recorded = JSON.parse(readFileSync(RUNTIME_SET_DIRECTORY_CAPTURE, "utf8")) as {
+    commands: { argv: string[]; exit: number; stdout: string }[];
+  };
+  assert.ok(
+    recorded.commands.some((command) => command.stdout.startsWith("040000 tree ")),
+    "the capture holds no tree entry",
+  );
+  const staged = stageDirectoryEntryRepo("[src]");
+  try {
+    for (const command of recorded.commands) {
+      const argv = command.argv
+        .slice(1)
+        .map((arg) => arg.replace("<base>", staged.base).replace("<head>", staged.head));
+      const live = spawnSync("git", argv, { cwd: staged.dir, encoding: "utf8" });
+      assert.equal(live.status, command.exit, live.stderr);
+      assert.equal(
+        live.stdout.replaceAll(staged.base, "<base>").replaceAll(staged.head, "<head>"),
+        command.stdout,
+        `git ${argv.join(" ")} no longer prints what was captured`,
+      );
+    }
+    const classified = tierModule.classifyReviewBudget(staged.dir, staged.base, staged.head);
+    assert.ok(classified.ok, classified.ok ? "" : classified.reason);
+    assert.equal(classified.budget.tier, "pair", JSON.stringify(classified.budget.paths));
+    const reason = (classified.budget.paths[0] as TierPath).reason;
+    assert.match(reason, /no usable runtime-set declaration at the merge base/, reason);
+    assert.match(reason, /runtime-set\.paths entry "src" names a DIRECTORY/, reason);
+  } finally {
+    rmSync(staged.dir, { recursive: true, force: true });
+  }
+  /* CONTROL: an exact entry that names a FILE at the merge base is declared,
+     and the change to that file is pair by the declared set. */
+  const control = stageDirectoryEntryRepo("[src/feature.ts]");
+  try {
+    const classified = tierModule.classifyReviewBudget(control.dir, control.base, control.head);
+    assert.ok(classified.ok, classified.ok ? "" : classified.reason);
+    assert.equal(classified.budget.tier, "pair", JSON.stringify(classified.budget.paths));
+    assert.match(
+      (classified.budget.paths[0] as TierPath).reason,
+      /in the declared runtime set \(src\/feature\.ts\)/,
+      JSON.stringify(classified.budget.paths),
+    );
+  } finally {
+    rmSync(control.dir, { recursive: true, force: true });
   }
 });
 

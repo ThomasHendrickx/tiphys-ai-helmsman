@@ -893,6 +893,76 @@ function stringList(
 }
 
 /**
+ * Why one declared `paths` or `manifests` entry can never match a path git
+ * prints, or undefined when its SHAPE can (M6-P2 fix round 1, CR-M6P2B-02 and
+ * CR-M6P2A-02). THE MECHANISM: an entry that matches nothing was a valid
+ * declaration, so the set was silently empty and every change was `single`.
+ * git prints project-relative paths with no leading `./` or `/`, no `.` or
+ * `..` segment and no empty segment, and the classifier compares entries
+ * literally, so a glob character is a literal character nobody means. A
+ * manifest is one file, so it may not end in `/` either. schemas/charter.schema.json
+ * carries the same rule as a pattern; this is the reader's copy, because the
+ * gate reads a blob and never runs the schema validator.
+ */
+function entryShapeFault(entry: string, isManifest: boolean): string | undefined {
+  if (/[*?[]/.test(entry)) {
+    return "carries a glob character (*, ? or [), and entries are literal paths";
+  }
+  if (entry.startsWith("/")) {
+    return "starts with /, and entries are relative to the project";
+  }
+  if (entry.startsWith("./")) {
+    return "starts with ./, and git prints no such prefix";
+  }
+  const segments = (entry.endsWith("/") ? entry.slice(0, -1) : entry).split("/");
+  if (segments.some((segment) => segment === "")) {
+    return "has an empty segment";
+  }
+  if (segments.some((segment) => segment === "." || segment === "..")) {
+    return "has a . or .. segment";
+  }
+  if (isManifest && entry.endsWith("/")) {
+    return "ends in /, and a manifest is one file";
+  }
+  return undefined;
+}
+
+/**
+ * The first EXACT entry (a `paths` entry with no trailing `/`, or any
+ * `manifests` entry) that names a DIRECTORY at `rev`, as a sentence, or
+ * undefined. An exact entry is compared with `===`, and git never prints a
+ * directory as a changed path, so `paths: [src]` over a directory `src/`
+ * matches nothing under it (CR-M6P2B-02). A listing git could not produce is
+ * a sentence too, so the caller fails closed on it.
+ */
+function exactEntryNamingDirectory(contextDirectory: string, rev: string, set: RuntimeSet): string | undefined {
+  const exact: [string, string][] = [
+    ...set.paths.filter((entry) => !entry.endsWith("/")).map((entry): [string, string] => ["paths", entry]),
+    ...set.manifests.map((entry): [string, string] => ["manifests", entry]),
+  ];
+  for (const [field, entry] of exact) {
+    const listed = spawnSync("git", ["--literal-pathspecs", "ls-tree", "-z", rev, "--", entry], {
+      cwd: contextDirectory,
+      encoding: "utf8",
+    });
+    if (listed.error !== undefined || listed.status !== 0) {
+      return (
+        `${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} could not be looked up at ${rev} ` +
+        `(git ls-tree failed: ${singleLine(String(listed.error ?? listed.stderr ?? ""))})`
+      );
+    }
+    const first = (listed.stdout ?? "").split("\0")[0] ?? "";
+    if (/^\d{6} tree /.test(first)) {
+      return (
+        `${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} names a DIRECTORY at ${rev}, and an exact ` +
+        `entry never matches a path git prints under it (a directory entry ends in /)`
+      );
+    }
+  }
+  return undefined;
+}
+
+/**
  * Read the `runtime-set` block out of one charter's TEXT. Pure.
  *
  * `undefined` text means the charter does not exist at that revision. Every
@@ -945,6 +1015,22 @@ export function readRuntimeSet(text: string | undefined, label: string): Runtime
       : stringList(block["version-pins"], `${label} ${RUNTIME_SET_FIELD}.version-pins`);
   if (!pins.ok) {
     return { kind: "invalid", reason: pins.reason };
+  }
+  for (const [field, list] of [
+    ["paths", paths.list],
+    ["manifests", manifests.list],
+  ] as const) {
+    for (const entry of list) {
+      const fault = entryShapeFault(entry, field === "manifests");
+      if (fault !== undefined) {
+        return {
+          kind: "invalid",
+          reason:
+            `${label} ${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} ${fault}, ` +
+            "so it can never match a path git prints",
+        };
+      }
+    }
   }
   return {
     kind: "declared",
@@ -1398,10 +1484,16 @@ export function classifyReviewBudget(
 
   const charterLabel = `${mergeBase}:${prefix}${RUNTIME_SET_CHARTER}`;
   const charterBlob = blobAt(contextDirectory, mergeBase, RUNTIME_SET_CHARTER);
-  const declaration: RuntimeSetReading =
+  const charterReading: RuntimeSetReading =
     charterBlob.kind === "error"
       ? { kind: "invalid", reason: charterBlob.reason }
       : readRuntimeSet(charterBlob.kind === "read" ? charterBlob.body : undefined, charterLabel);
+  /* M6-P2 FIX ROUND 1 (CR-M6P2B-02): an exact entry that is a DIRECTORY at the
+     merge base makes the declaration invalid, so the change is pair, named. */
+  const directoryFault =
+    charterReading.kind === "declared" ? exactEntryNamingDirectory(contextDirectory, mergeBase, charterReading.set) : undefined;
+  const declaration: RuntimeSetReading =
+    directoryFault === undefined ? charterReading : { kind: "invalid", reason: `${charterLabel} ${directoryFault}` };
 
   const wanted = new Set<string>();
   for (const entry of changed) {
