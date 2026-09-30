@@ -1200,6 +1200,7 @@ export function attributionGaps(command: string[], cwd: string): string[] {
 function gitLines(
   cwd: string,
   args: string[],
+  separator = "\n",
 ): { ok: true; lines: string[] } | { ok: false; reason: string } {
   const result = spawnSync("git", args, { cwd, encoding: "utf8" });
   if (result.error !== undefined) {
@@ -1217,8 +1218,8 @@ function gitLines(
   return {
     ok: true,
     lines: (result.stdout ?? "")
-      .split("\n")
-      .map((line) => line.trim())
+      .split(separator)
+      .map((line) => (separator === "\n" ? line.trim() : line))
       .filter((line) => line !== ""),
   };
 }
@@ -1310,11 +1311,16 @@ function evaluatePrecondition(
       };
     }
     const head = options.head ?? "HEAD";
-    const changed = gitLines(cwd, [
-      "diff",
-      "--name-only",
-      `${options.base}...${head}`,
-    ]);
+    /* NUL-separated and rename-free (M6-P3 fix round 2, CR-M6P3B-03), the form
+       merge-preconditions reads: with rename detection a move out of a declared
+       path names only its destination, and without -z git C-quotes a non-ASCII
+       name so it no longer starts with the declared prefix. Either made this
+       precondition unmet and the gate not-applicable. */
+    const changed = gitLines(
+      cwd,
+      ["diff", "-z", "--no-renames", "--name-only", `${options.base}...${head}`],
+      "\0",
+    );
     if (!changed.ok) {
       return { kind: "error", reason: changed.reason };
     }
