@@ -1,14 +1,15 @@
 # THE TIPHYS KERNEL'S OWN CHARTER (M4-P15).
 #
 # WHY IT IS AT THE REPOSITORY ROOT AND NOT SOMEWHERE TIDIER. This is the
-# document `scripts/check-dual-review.mjs` resolves, and the gate registry
-# invokes that script as `node scripts/check-dual-review.mjs .` with the
-# repository root as its context directory. The script refuses, with exit 21,
-# any context whose `charter.yaml` or `assurance-modes.yaml` is absent, because
-# a merge check that cannot determine the merge-authority regime must never
-# report green. Until this file existed, that refusal was invisible: the gate is
-# conditional on at least one verdict document existing under `delivery/review/`
-# and this repository had never had one. The first phase to commit its two
+# document `scripts/check-dual-review.mjs` resolves (the `merge-preconditions`
+# gate's precondition runs it with the repository root as its context
+# directory; the `check-dual-review` gate itself was deleted by M6-P3). The
+# script refuses, with exit 21, any context whose `charter.yaml` or
+# `assurance-modes.yaml` is absent, because a merge check that cannot
+# determine the merge-authority regime must never report green. Until this
+# file existed, that refusal was invisible: the gate was conditional on at
+# least one verdict document existing under `delivery/review/` and this
+# repository had never had one. The first phase to commit its two
 # clean-room verdicts would have turned a dormant gate into a hard CI error for
 # every M4 merge. See delivery/plan/m4-charter-blocks-every-merge.md:1.
 #
@@ -32,12 +33,12 @@ identity:
   kernel-version-pin: 0.1.0
 
 # CLOSED VOCABULARY AT v0.1.0 (DR-0020). Both fields draw on the same three ids,
-# and the derived check `charter-mode-enum-matches-modes` holds the schema's
+# and the derived check `charter-mode-enum-matches-modes` (deleted by M6-P3) holds the schema's
 # enums equal to the ids declared in `assurance-modes.yaml`. `full` is the
 # honest value: it is the mode this project actually runs, and it is the mode
 # whose `merge-authority` is `delegated-under-conditions`, which is the regime
 # DR-0012 granted and DR-0015 left in place. Declaring anything else here would
-# make `check-dual-review` report that no decorrelation is required of reviews
+# make the merge check report that no decorrelation is required of reviews
 # that DR-0012 requires to be decorrelated, which is the fail-open direction.
 delivery-mode: full
 assurance-tier: full

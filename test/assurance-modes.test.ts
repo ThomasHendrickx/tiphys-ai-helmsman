@@ -135,9 +135,9 @@ function stageContext(): string {
   const dir = scratch();
   cpSync(join(repoRoot, "gate-registry.yaml"), join(dir, "gate-registry.yaml"));
   cpSync(schemasDir, join(dir, "schemas"), { recursive: true });
-  /* The decision records too, since fix round 1: `mode-conditions-quote-granted-by`
-     resolves `granted-by` against them, and a staged context without them would
-     make that check fail for the staging rather than for the document. */
+  /* The decision records too, since fix round 1: the derived check
+     `mode-conditions-quote-granted-by` (deleted by M6-P3) resolved `granted-by`
+     against them, and a context with them is the shape a project has. */
   cpSync(join(repoRoot, "delivery", "decisions"), join(dir, "delivery", "decisions"), {
     recursive: true,
   });
@@ -235,22 +235,6 @@ test("mode show prints full's twelve stage ids in order and a non-empty skips li
   assert.equal(runCli(["mode", "show"]).status, 64);
   assert.equal(modesModule.readModes().ok, true);
 });
-
-/* ------------------------------------------------------------------ */
-/* Criterion 3(a): mode-no-undeclared-downgrade, Kind B                 */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
-/* CR-002 (round 9): skips[] is checked in BOTH directions, Kind B      */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
-/* V-1 + CRB9-02 (round 10): skips[] is measured against the REFERENCE  */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
-/* Criterion 3(b): mode-stage-order, Kind B                             */
-/* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
 /* Criterion 3(c): full requires fix-round-verification, Kind A         */
@@ -687,10 +671,6 @@ test("the role-model configuration covers the six roles, puts every review role 
 });
 
 /* ------------------------------------------------------------------ */
-/* Fix round 1, mechanism 1: identity uniqueness (B-002, B-004)         */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
 /* Fix round 1, mechanism 2: the reader validates before it serves      */
 /* ------------------------------------------------------------------ */
 
@@ -727,18 +707,6 @@ test("mode show validates before it serves and refuses a document that is invali
     rmSync(dir, { recursive: true, force: true });
   }
 });
-
-/* ------------------------------------------------------------------ */
-/* Fix round 1, mechanism 3: conditions bound to their grant (B-003)    */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
-/* Fix round 1, mechanism 4: the comparison that needed a separator     */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
-/* Fix round 2: containment is not equality (the short-string class)    */
-/* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
 /* Fix round 3: the extractor reads BLOCKS, not lines (V-1, V-2)        */

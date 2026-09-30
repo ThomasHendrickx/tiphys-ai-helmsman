@@ -982,7 +982,7 @@ test("tiphys gates run with an unknown flag exits 64 with usage on stderr", () =
   assert.equal(result.stdout, "");
   assert.match(result.stderr, /^usage: tiphys gates /m);
 
-  // ISOLATED. The invocation above is missing --manifest and --evidence too,
+  // ISOLATED. The invocation above is missing --registry and --evidence too,
   // so a runner that ignored unknown flags entirely would still exit 64 by a
   // different route, and this test would guard nothing about unknown flags
   // (work history W23). Here everything required is present and the ONLY
@@ -3313,9 +3313,9 @@ test("a precondition command exiting nonzero is error, not a skip, whenever a pa
   //               closed and loudly, which M2-C-3 prefers to a silent skip.
   //
   // The fourth arm is the CONTROL, and it is the reason the scan tests for a
-  // slash rather than for absence: `credential-token`'s real precondition in
-  // gates.manifest.json is inline code that deliberately exits 1, and it must
-  // still mean unmet.
+  // slash rather than for absence: the precondition of `credential-token`
+  // (a gate M6-P3 deleted) was inline code that deliberately exits 1, a shape
+  // any project registry may still declare, and it must still mean unmet.
   //
   // The wording of these assertions is anchored by real captured output from
   // the runner's own spawns, both arms, in
@@ -3574,9 +3574,10 @@ test("the shipped registry run against a consumer package tree with no scripts d
 });
 
 test("an option's inline value is left alone when it is not path-shaped, which is what keeps a real declared precondition working, and fails closed loudly when it is", () => {
-  // `credential-token`'s precondition in gates.manifest.json is
+  // The precondition of `credential-token` (a gate M6-P3 deleted; the shape
+  // stays declarable in any project registry) was
   // ["node", "-e", "process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0)"],
-  // and it is REQUIRED to keep reporting not-applicable when the token is
+  // and it was REQUIRED to keep reporting not-applicable when the token is
   // absent: that is a legitimate skip, not a crash. This test exists because
   // a rule that swept inline code into its path set would convert every such
   // skip into an error, which is this change's own failure mode in the
@@ -3728,7 +3729,7 @@ test("an argv element that is not a path does not turn a legitimate unmet precon
   //
   //   inline-code   the value of an option that takes CODE (`-e`). The one
   //                 piece of launcher grammar this runner claims to know, and
-  //                 the shape of `credential-token`'s real declaration.
+  //                 the shape of the deleted `credential-token`'s declaration.
   //   url           a scheme-prefixed operand. Slashes, no filesystem.
   //   option-equals `--opt=/value`: an OPTION carrying a value, probed whole,
   //                 so no file could ever have that name. This member was a

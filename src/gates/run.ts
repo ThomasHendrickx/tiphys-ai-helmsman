@@ -940,7 +940,7 @@ const CODE_VALUED_OPTIONS: ReadonlySet<string> = new Set([
  * defect class this phase exists to close) is visible at all: it has no `/`,
  * so the separator test cannot see it. A closed list, deliberately, because
  * the alternative is dropping the shape test entirely and that breaks a real
- * declaration: `check-dual-review`'s precondition ends `--precondition .`, and
+ * declaration: `merge-preconditions`' precondition ends `--review-budget .`, and
  * `.` resolves to a DIRECTORY, which `probeOpenable` calls irregular, which
  * would make every run of that gate a false `error`. Measured, not assumed.
  */
@@ -1812,9 +1812,9 @@ export function decideAggregate(
 ): { exitCode: number; reason: string } {
   /* M4-P11, DR-0038. THE ONE THING A DECLARED EXCEPTION MUST NEVER BE IS
      INVISIBLE, AND THE AGGREGATE IS WHERE IT WOULD BE.
-     `scripts/check-dual-review.mjs` is a CONDITIONAL gate, so its
-     not-applicable never reaches `requiredNotApplicable` and never appears in
-     the reason line. Before this clause, a bundle carrying a gate that had
+     A CONDITIONAL gate (then `check-dual-review`, deleted by M6-P3; now
+     `merge-preconditions`) has a not-applicable that never reaches
+     `requiredNotApplicable` and never appears in the reason line. Before this clause, a bundle carrying a gate that had
      declined DR-0012's cross-family requirement by declaration printed "every
      applicable gate is green" and exited 0, and the exception appeared nowhere
      a reader of the bundle would look. That is the same substitution T-009

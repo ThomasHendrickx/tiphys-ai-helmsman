@@ -309,18 +309,6 @@ test("a mechanism with a rule and no evidence is rejected naming the field wheth
 });
 
 /* ------------------------------------------------------------------ */
-/* Criterion 3a: KIND B, an applied consequence is checked against the tree */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
-/* Criterion 3b: KIND B, a mechanism's evidence resolves               */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
-/* Criterion 4b: the machine-readable form resolves, path AND key       */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
 /* Criterion 7: list filters, and add refuses without writing           */
 /* ------------------------------------------------------------------ */
 
@@ -522,12 +510,3 @@ test("no tuition id is claimed by both the shipped feed and the delivering proje
     );
   }
 });
-
-/* ------------------------------------------------------------------ */
-/* HRB-1: the citation form this project mandates is a path reference   */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
-/* HRB-8: the shipped feed is valid in the tree a consumer actually has */
-/* ------------------------------------------------------------------ */
-

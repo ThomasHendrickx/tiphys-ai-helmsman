@@ -833,7 +833,8 @@ Each of these bit someone once. Forward them to every implementer.
     the run still exits 0.** Warning 1 says correctly that the suite needs no
     prior build to RUN; that is true and it is not the whole story. Nine tests
     exercise the built CLI and skip themselves when `dist/` is absent: five in
-    `test/gates.test.ts`, four in `test/m2-exit-test.test.ts`, each skip message
+    `test/gates.test.ts`, four in `test/m2-exit-test.test.ts` (deleted by
+    M6-P3 with the M2 harness, so today's count is lower), each skip message
     naming the dist entry it wanted. Measured 2026-08-09 on node v26.6.0, same
     head, both arms exit 0:
 

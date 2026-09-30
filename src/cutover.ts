@@ -1226,7 +1226,8 @@ export function evaluatePortRow(
   }
   /* A DESTINATION MAY NAME MORE THAN ONE ARTIFACT, and that is the inventory's
      own declared convention rather than a reading invented here: its checker
-     splits the field on commas at scripts/check-retirement-inventory.mjs:754.
+     (`scripts/check-retirement-inventory.mjs`, deleted by M6-P3) split the
+     field on commas.
      Measured 2026-09-18 against the shipped inventory: three rows
      (`next-script:gittry`, `next-script:gitcount`, `next-script:harderrors`)
      carry `roles/investigator.md, checklists/clean-room.yaml`, and treating
@@ -1316,7 +1317,8 @@ export function evaluatePortRow(
      is a guard that fails open when its own tool fails. The row's own
      `negative-witness.exit` is what it recorded when it was written, so when
      the row declares one it is REQUIRED to match. Same rule, same reason, as
-     scripts/check-retirement-inventory.mjs:628 applies to its widening grep.
+     the deleted `scripts/check-retirement-inventory.mjs` applied to its
+     widening grep.
      Measured 2026-09-18 over the shipped inventory: all 199 PORT rows record
      exit 1 and all 199 observed exit 1, so this changes no verdict today and
      is a guard against the day one of them starts erroring instead. */

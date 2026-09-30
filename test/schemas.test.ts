@@ -519,7 +519,7 @@ test("a status-line record with state done and no run is rejected naming run", (
 
 test("a step declaring a kind other than verification-first is rejected naming the pointer", () => {
   /* THE SCHEMA HALF of R-012, and it is a different claim from the derived
-     check `plan-verification-first-present`.
+     check `plan-verification-first-present` (deleted by M6-P3).
      
      The check answers "is a verification-first step PRESENT where an
      unverified claim requires one", which compares two arrays and is Kind B.

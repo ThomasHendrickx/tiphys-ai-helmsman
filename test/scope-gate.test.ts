@@ -28,7 +28,7 @@ import { createHash } from "node:crypto";
  * The scope gate is a STANDALONE script (src/gates/scope.ts), not a
  * `tiphys gates` subcommand: this phase's declaration does not include
  * src/cli.ts or src/commands/gates.ts, so it is invoked directly with
- * `node`, the same way `gates.manifest.json`'s `scope` entry invokes it.
+ * `node`, the same way `gate-registry.yaml`'s `scope` entry invokes it.
  */
 
 const repoRoot = fileURLToPath(new URL("..", import.meta.url));

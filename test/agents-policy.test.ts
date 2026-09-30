@@ -238,10 +238,6 @@ test("every AGENTS.md clause id has exactly one body anchor and every anchor is 
 });
 
 /* ------------------------------------------------------------------ */
-/* Criteria 2 and 2b: references resolve to a path AND to an anchor     */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
 /* No process-liveness vocabulary                                       */
 /* ------------------------------------------------------------------ */
 

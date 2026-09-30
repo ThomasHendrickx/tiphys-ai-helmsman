@@ -81,14 +81,6 @@ function writePlan(dir: string, plan: unknown, name = "plan.yaml"): string {
 }
 
 /* ------------------------------------------------------------------ */
-/* Criterion 4b: plan-verification-first-present, both directions       */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
-/* Criterion 4b: plan-dispatchable, both directions                     */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
 /* Criterion 4c: a check that needs a context it was not given          */
 /* ------------------------------------------------------------------ */
 
@@ -170,8 +162,3 @@ test("a derived check that requires a context it was not given is SKIPPED and th
     rmSync(dir, { recursive: true, force: true });
   }
 });
-
-/* ------------------------------------------------------------------ */
-/* Criterion 5f: addressed-by resolves, TWO structurally different arms  */
-/* ------------------------------------------------------------------ */
-

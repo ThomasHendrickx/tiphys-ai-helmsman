@@ -17,8 +17,8 @@
  *
  * THE DANGEROUS STATE IS A HAND-WRITTEN RECORD FILE, not a synthetic switch,
  * because gates are subprocesses that author their own records (M2-D-07) and
- * `scripts/m2-exit-test.sh --self-test` on `main` already uses this fixture
- * shape. The phase reuses it rather than inventing one.
+ * the M2 exit-test harness's `--self-test` used this fixture shape (that
+ * harness was deleted by M6-P3). The phase reused it rather than inventing one.
  */
 
 import { spawnSync } from "node:child_process";

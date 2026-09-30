@@ -228,14 +228,6 @@ test("a green gate result with no wrapper exit code is rejected, and is accepted
 });
 
 /* ------------------------------------------------------------------ */
-/* Criterion 2b(a): the parity arithmetic, Kind B                        */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
-/* Criterion 2b(b): the final report's cross-array parity, Kind B        */
-/* ------------------------------------------------------------------ */
-
-/* ------------------------------------------------------------------ */
 /* Criterion 2(b): an environmental claim requires evidence              */
 /* ------------------------------------------------------------------ */
 
@@ -1857,10 +1849,6 @@ test("the finding's non-universal branch is the exact complement of the shared q
   assert.equal(expression.test("There is no path that reaches it."), false);
   assert.equal(expression.test("This is guaranteed."), false);
 });
-
-/* ------------------------------------------------------------------ */
-/* The empty findings array, Kind B                                     */
-/* ------------------------------------------------------------------ */
 
 /* ------------------------------------------------------------------ */
 /* M5-P2: the delivered-outcome join from phase intent to outcome        */
