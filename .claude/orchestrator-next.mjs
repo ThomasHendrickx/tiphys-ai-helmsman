@@ -312,6 +312,27 @@ let planUnread = null;
  * numeric order and the rule it has always had. */
 let planOrdered = null;
 
+/* The milestone's markdown plan: `kernel-plan-<m>.md` when origin/main has it
+ * (M2 to M4), otherwise the ONE `delivery/plan/<m>-*.md` on origin/main with a
+ * phase heading of this milestone (M6's is m6-review-and-rule-economy.md).
+ * None or several falls back to the kernel-plan name, so the read below
+ * fails and says so exactly as before. */
+function milestonePlanPath() {
+  const named = `delivery/plan/kernel-plan-${MILESTONE}.md`;
+  if (gitTry(["cat-file", "-e", `origin/main:${named}`]).ok) return named;
+  const listed = gitTry(["ls-tree", "--name-only", "origin/main", "delivery/plan/"]);
+  if (!listed.ok) return named;
+  const heading = new RegExp(`^#{2,4} (?:[0-9.]+ )?${MILESTONE.toUpperCase()}-P[0-9]+[: ]`, "im");
+  const plans = listed.out
+    .split("\n")
+    .filter((path) => path.startsWith(`delivery/plan/${MILESTONE}-`) && path.endsWith(".md"))
+    .filter((path) => {
+      const shown = gitTry(["show", `origin/main:${path}`]);
+      return shown.ok && heading.test(shown.out);
+    });
+  return plans.length === 1 ? plans[0] : named;
+}
+
 function derivePhaseNumbers() {
   const found = new Set();
   const harvest = (text, re) => {
@@ -373,7 +394,7 @@ function derivePhaseNumbers() {
    *
    * A MISSING PLAN IS REPORTED, NEVER SILENTLY ZERO. gitTry rather than git,
    * and the reason is pushed onto hardErrors below. */
-  const planPath = `delivery/plan/kernel-plan-${MILESTONE}.md`;
+  const planPath = milestonePlanPath();
   const plan = gitTry(["show", `origin/main:${planPath}`]);
   /* THE VALUE-DELIVERY PLAN, when it names this milestone (M5-P4). Its
    * phases are harvested in PLAN ORDER and with their BRANCHES, and that
