@@ -361,47 +361,59 @@ phase that needs it.
 ## Standing environment warnings
 
 `scripts/setup-env.sh` fixes the clone depth, the Node floor and the build.
-What it cannot fix:
+What it cannot fix is below. The numbers are stable ids cited from `src/`,
+`scripts/` and `tuition/`: 1, 10 and 11 are retired and never reused (the
+toolchain is the script's job; 10 is the mechanism index row on classifying
+another program's errors).
 
-1. **A suite result names its toolchain, build state and invocation**, and
-   quotes the skipped count: "N tests, N pass, 0 fail, 0 skipped" from
-   `npm test` on node vX with `dist/` built. Tests that need `dist/` skip when
-   it is absent and the run still exits 0; bare `node --test` also picks up
-   `sandbox/test/`, which `npm test` does not.
-2. **The default toolchain can FAIL a floor-dependent test** that CI passes.
-   A red there is not proof of a red branch: establish the base's result on
-   the same interpreter before blaming your change. New floor-dependent tests
-   are floor-gated like those in `test/doctor.test.ts`.
-3. **`git checkout -- <path>` is destructive** in a tree holding uncommitted
-   work, including a single path. There is no safe narrow form: commit or copy
-   out of the tree first.
-4. **`-C` changes where git resolves, not where your shell is.** `git -C
-   <repo> worktree add <relative>` and `git remote set-url` resolve relative
-   paths against the repository. Pass absolute paths. `git worktree list`
-   finds a stray worktree; `git worktree remove --force` removes it.
-5. **`git diff main..branch` is not a merge preview**: on a branch behind
-   `main` it shows `main`'s additions as deletions. Use `git diff
-   main...branch` for the branch's own changes and `git merge-tree
-   --write-tree main <branch>` for the merge result.
-6. **`git push --dry-run` does not probe authorization**, for any ref.
-   Only `refs/heads/*` is pushable from this container. **Deleting a remote
-   branch is an OWNER action**: do not attempt it; ask for an `A-n` id.
-7. **GitHub REST reachability is probed per session**, not assumed either
-   way (the agent proxy supplies credentials; the value of `GH_TOKEN` is
-   irrelevant). The GitHub MCP tools are a working path. A CI watcher writes
-   its failure arm first: one that turns an error into silence cannot go red.
-8. **`--test-name-pattern` must precede the positional test path**, or it is
-   silently ignored.
-9. **Tests that create scratch git repositories set command-scoped
-   `GIT_AUTHOR_*` and `GIT_COMMITTER_*`**; CI runners have no identity and
-   tests never touch user or global config. `gh` is absent here and present in
-   CI, so tests use a deterministic gh-free PATH.
-10. **Import a `src` module from `test/` with the computed-URL dynamic import
-    pattern** in `test/doctor.test.ts`; a literal relative import fails the
-    build with TS2878.
-11. **`typescript` is pinned exact; keep `"types": ["node"]` in both
-    tsconfigs.** `*.tsbuildinfo` is gitignored, and `git status` is clean
-    after a build.
+**2. `typescript` is pinned exact; keep `"types": ["node"]` in both
+tsconfigs.**
+
+**3. `*.tsbuildinfo` is gitignored**, and `git status` is clean after a build.
+
+**4. Import a `src` module from `test/` with the computed-URL dynamic import
+pattern** in `test/doctor.test.ts`; a literal relative import fails the build
+with TS2878.
+
+**5. Tests that create scratch git repositories set command-scoped
+`GIT_AUTHOR_*` and `GIT_COMMITTER_*`**; CI runners have no identity and tests
+never touch user or global config.
+
+**6. `gh` is absent here and present in CI**, so tests use a deterministic
+gh-free PATH. GitHub REST reachability is probed per session, not assumed
+either way (the agent proxy supplies credentials; the value of `GH_TOKEN` is
+irrelevant). The GitHub MCP tools are a working path. A CI watcher writes its
+failure arm first: one that turns an error into silence cannot go red.
+
+**7. `--test-name-pattern` must precede the positional test path**, or it is
+silently ignored.
+
+**8. `git checkout -- <path>` is destructive** in a tree holding uncommitted
+work, including a single path. There is no safe narrow form: commit or copy
+out of the tree first.
+
+**9. `-C` changes where git resolves, not where your shell is.** `git -C
+<repo> worktree add <relative>` and `git remote set-url` resolve relative
+paths against the repository. Pass absolute paths. `git worktree list` finds
+a stray worktree; `git worktree remove --force` removes it.
+
+**12. A suite result names its toolchain, build state and invocation**, and
+quotes the skipped count: "N tests, N pass, 0 fail, 0 skipped" from `npm test`
+on node vX with `dist/` built. Tests that need `dist/` skip when it is absent
+and the run still exits 0; bare `node --test` also picks up `sandbox/test/`,
+which `npm test` does not. **The default toolchain can FAIL a floor-dependent
+test** that CI passes: a red there is not proof of a red branch, so establish
+the base's result on the same interpreter before blaming your change. New
+floor-dependent tests are floor-gated like those in `test/doctor.test.ts`.
+
+**13. `git diff main..branch` is not a merge preview**: on a branch behind
+`main` it shows `main`'s additions as deletions. Use `git diff main...branch`
+for the branch's own changes and `git merge-tree --write-tree main <branch>`
+for the merge result.
+
+**14. `git push --dry-run` does not probe authorization**, for any ref. Only
+`refs/heads/*` is pushable from this container. **Deleting a remote branch is
+an OWNER action**: do not attempt it; ask for an `A-n` id.
 
 ## The orchestrator does not decide when it is finished
 

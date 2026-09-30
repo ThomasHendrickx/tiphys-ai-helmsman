@@ -196,8 +196,7 @@ if (ref !== undefined) {
   }
 
   /* 6. THE MERGE IS CLEAN. `git diff main..branch` is not a merge preview and
-        reads as though a stale branch DELETES things (CLAUDE.md, standing
-        environment warnings). Ask
+        reads as though a stale branch DELETES things (standing warning 13). Ask
         git for the merge result instead. */
   try {
     execFileSync("git", ["merge-tree", "--write-tree", "origin/main", ref], { encoding: "utf8", stdio: "pipe" });
