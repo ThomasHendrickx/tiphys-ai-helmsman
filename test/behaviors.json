@@ -1097,5 +1097,10 @@
   "m6-p5-failed-install-refuses-cleanly": "a failing dependency install refuses before launch with exit 1 and one line naming npm ci, writes no record, and leaves no review worktree registered",
   "m6-p5-grant-refusal-leaves-nothing": "an executor that cannot map the grant refuses before anything is created: no task directory and no review worktree registered",
   "m6-p5-install-uses-kernel-npm-cache": "the install step runs npm ci with --prefer-offline and the kernel's own npm cache, npm_config_cache when set and .npm under the kernel's HOME otherwise, in the scrubbed environment with no TLS setting",
-  "m6-p5-unclaimed-refusal-red-without-base": "without --base, a head whose only committed verdict reads FIX-ROUND-NEEDED and no record names it is red at condition-2 naming the refusal, while an unclaimed APPROVE alone stays not-applicable"
+  "m6-p5-unclaimed-refusal-red-without-base": "without --base, a head whose only committed verdict reads FIX-ROUND-NEEDED and no record names it is red at condition-2 naming the refusal, while an unclaimed APPROVE alone stays not-applicable",
+  "m6-p7-codex-argv-maps-grant": "the Codex executor maps the reviewer grant to exactly its sandbox and approval settings, every flag quoted from the installed CLI's own codex exec --help; a grant it cannot map throws",
+  "m6-p7-codex-observer-reads-real-capture": "the Codex observer reads token usage from the real capture's turn.completed row and observes no served model, since no row of the real capture names one; the real failed capture reads as not observed with no usage",
+  "m6-p7-families-from-two-vocabularies": "families from two vocabularies are comparable only when both tokens are in charter.yaml review-families.available: a Claude and a Codex review both declared are green, and a token outside the list is red naming it",
+  "m6-p7-harness-environment-declared": "a dispatch through the Codex executor gives the reviewer the harness variable it declares and no pull-request credential, records no observed model from the real capture, and a declared pull-request credential refuses the dispatch before anything is created",
+  "m6-p7-review-executor-from-charter": "without --executor the dispatch loads the executor the project's charter.yaml names in review-executor, and with neither it is refused before launch naming both"
 }

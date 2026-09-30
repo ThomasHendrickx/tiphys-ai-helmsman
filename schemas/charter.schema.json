@@ -170,6 +170,11 @@
         }
       }
     },
+    "review-executor": {
+      "$comment": "M6-P7 (DR-0065): the review executor module `tiphys review dispatch` loads when no --executor is given, resolved from the project directory the way --executor is. Project configuration rather than a kernel default, so the kernel names no harness package and a project run by any harness needs no flag. OPTIONAL: with neither this nor --executor the dispatch is refused.",
+      "type": "string",
+      "minLength": 1
+    },
     "runtime-set": {
       "$comment": "M6-P2 (DR-0063): what this project SHIPS, for the review tier. A change touching the set is `pair` (two hazard reviews), anything else is `single` (one). The merge gates read it from the MERGE BASE's committed charter, so a change cannot shrink the set that judges it, and a change to this block is itself `pair`. OPTIONAL, and its absence is not `single`: a project with no declaration, or one the gates cannot read, is all `pair` (fail closed).",
       "type": "object",

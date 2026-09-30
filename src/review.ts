@@ -5,6 +5,7 @@ import { createRequire } from "node:module";
 import { homedir } from "node:os";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import { parse as parseYaml } from "yaml";
 import {
   boundAtMergeBase,
   describeOffHeadVerdicts,
@@ -15,7 +16,8 @@ import {
 } from "./checks.ts";
 import type { HeadRelation, LoadedVerdict, ReviewFamiliesReading, VerdictCorpusSource } from "./checks.ts";
 import { loadTypeSchema } from "./commands/validate.ts";
-import { SCRUB_DIR_NAME, buildChildEnv } from "./exec/env.ts";
+import { SCRUB_DIR_NAME, buildChildEnv, refuseExtraAllowlist } from "./exec/env.ts";
+import type { ChildEnvExtension } from "./exec/env.ts";
 import { singleLine } from "./task.ts";
 import { formatDiagnostics, validateInstance } from "./validate.ts";
 
@@ -56,8 +58,35 @@ const VERDICT_DIRECTORY = "delivery/review/";
 
 const VERDICT_EXTENSION = /\.(ya?ml|json)$/i;
 
-/** The executor module used when `--executor` is not given, resolved from the project. */
-export const DEFAULT_REVIEW_EXECUTOR = "@tiphys/claude-code-plugin";
+/**
+ * The charter field naming the executor module used when `--executor` is not
+ * given (M6-P7): project configuration, so a project run by any harness needs
+ * no flag and the kernel names no harness package.
+ */
+export const REVIEW_EXECUTOR_FIELD = "review-executor";
+
+/**
+ * The executor module the project's own `charter.yaml` names, or why there is
+ * none. Read from the PROJECT directory's working tree, the same root the
+ * module is resolved from, never from the review worktree.
+ */
+export function configuredReviewExecutor(projectDirectory: string): { ok: true; specifier: string } | { ok: false; reason: string } {
+  const path = join(projectDirectory, "charter.yaml");
+  let document: unknown;
+  try {
+    if (!lstatSync(path).isFile()) {
+      return { ok: false, reason: `${path} is not a regular file` };
+    }
+    document = parseYaml(readFileSync(path, "utf8"));
+  } catch (error) {
+    return { ok: false, reason: `${path} could not be read: ${describe(error)}` };
+  }
+  const value = isMapping(document) ? document[REVIEW_EXECUTOR_FIELD] : undefined;
+  if (typeof value !== "string" || value.trim() === "") {
+    return { ok: false, reason: `${path} names no ${REVIEW_EXECUTOR_FIELD}` };
+  }
+  return { ok: true, specifier: value };
+}
 
 /** What an executor read out of one captured run. */
 export interface ReviewStreamReading {
@@ -126,6 +155,14 @@ export interface ReviewExecutor {
    */
   command(model: string, prompt: string, grant: ReviewerGrant): string[];
   observe(capturePath: string): ReviewStreamReading;
+  /**
+   * The variables the harness needs beyond the kernel's scrubbed allowlist to
+   * authenticate, each with the reason (M6-P7). Copied from the kernel's own
+   * environment when set there. A name in a refused vocabulary (a pull-request
+   * credential, a code-execution variable, a proxy) or one with no reason
+   * refuses the dispatch before anything is created.
+   */
+  environment?: readonly ChildEnvExtension[];
 }
 
 export interface ReviewRecord {
@@ -201,6 +238,9 @@ export function checkReviewExecutor(value: unknown, where: string): { ok: true; 
     if (typeof value[method] !== "function") {
       return { ok: false, reason: `${where} reviewExecutor.${method} is not a function` };
     }
+  }
+  if (value["environment"] !== undefined && !Array.isArray(value["environment"])) {
+    return { ok: false, reason: `${where} reviewExecutor.environment is not a list` };
   }
   return { ok: true, executor: value as unknown as ReviewExecutor };
 }
@@ -442,6 +482,11 @@ export function dispatchReview(options: DispatchOptions): DispatchOutcome {
   if (requestedModel === undefined || requestedModel === "") {
     return { ok: false, reason: `the executor ${executor.name} names no model for tier ${options.tier}` };
   }
+  const harnessEnvironment = executor.environment ?? [];
+  const refusedEnvironment = refuseExtraAllowlist(harnessEnvironment, "reason-required");
+  if (refusedEnvironment !== undefined) {
+    return { ok: false, reason: `the executor ${executor.name} declares an environment the kernel refuses: ${refusedEnvironment}` };
+  }
 
   /* The grant is mapped BEFORE anything is created (M6-P5 fix round 3): an
      executor that cannot map it refuses with no task directory and no
@@ -488,6 +533,17 @@ export function dispatchReview(options: DispatchOptions): DispatchOutcome {
         `the reviewer's dependencies could not be installed, so nothing was launched: ${installed.reason}; ` +
         (removed.ok ? "the review worktree was removed" : `the review worktree ${worktree} could not be removed: ${removed.reason}`),
     };
+  }
+
+  /* The harness's own variables join the scrubbed environment only now, after
+     the dependency install, so no install script of the reviewed head sees
+     them; each was refused above unless it carried a reason and named nothing
+     in a refused vocabulary (M6-P7). */
+  for (const entry of harnessEnvironment) {
+    const value = parentEnv[entry.name];
+    if (value !== undefined) {
+      childEnv.env[entry.name] = value;
+    }
   }
 
   const streamPath = join(taskDirectory, "stream.jsonl");
@@ -856,6 +912,11 @@ export function countKernelReviews(input: {
  * src/model-resolution.ts makes). A committed record minted under another
  * vocabulary than the counted reviews neither supports nor contradicts the
  * declaration, and is named as not comparable.
+ *
+ * M6-P7 (DR-0065): tokens from different vocabularies ARE comparable when every
+ * one of them is a member of charter.yaml's `review-families.available`,
+ * because the project has then declared them in one list. A token outside the
+ * list keeps the refusal, and is named.
  */
 export function judgeFamilies(
   counted: readonly CountedReview[],
@@ -866,14 +927,21 @@ export function judgeFamilies(
   const named = counted.map((review) => `${review.record.taskId} ${review.record.family}`).join(", ");
   const vocabularies = [...new Set(counted.map((review) => review.record.vocabulary.id))].sort();
   if (vocabularies.length > 1) {
-    return {
-      ok: false,
-      exceptionUsed: false,
-      sentence:
-        `the counted reviews were minted under different family vocabularies, ${vocabularies.join(" and ")} ` +
-        `(${counted.map((review) => `${review.record.taskId} ${review.record.vocabulary.id}`).join(", ")}), ` +
-        "so their family tokens are not comparable and no family rule can be judged from them",
-    };
+    const listed = declaration.kind === "declared" ? declaration.families : [];
+    const outside = [...new Set(families.filter((family) => !listed.includes(family)))].sort();
+    if (outside.length > 0) {
+      return {
+        ok: false,
+        exceptionUsed: false,
+        sentence:
+          `the counted reviews were minted under different family vocabularies, ${vocabularies.join(" and ")} ` +
+          `(${counted.map((review) => `${review.record.taskId} ${review.record.vocabulary.id}`).join(", ")}), ` +
+          "so their family tokens are not comparable and no family rule can be judged from them: " +
+          (declaration.kind === "declared"
+            ? `[${outside.join(", ")}] outside charter.yaml review-families.available [${listed.join(", ")}]`
+            : `charter.yaml declares no review-families.available to compare [${outside.join(", ")}] in`),
+      };
+    }
   }
   const vocabulary = vocabularies[0];
   const known = [...new Set(families.filter((family) => family !== UNKNOWN_FAMILY))].sort();
