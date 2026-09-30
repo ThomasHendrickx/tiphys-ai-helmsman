@@ -1117,5 +1117,16 @@
   "m6-p2-single-refusal-red": "a single change whose one hazard verdict reads FIX-ROUND-NEEDED is red at condition-2 through the real gate",
   "m6-p2-pin-rewrite-pair": "a pinned name rewritten from a version to file:, a git URL or an npm: alias is not a version change, so the manifest classifies pair",
   "m6-p2-manifest-added-deleted-pair": "a declared manifest added or deleted by the change classifies pair, naming which",
-  "m6-p2-manifest-unparseable-pair": "a declared manifest that does not parse as JSON on either side classifies pair"
+  "m6-p2-manifest-unparseable-pair": "a declared manifest that does not parse as JSON on either side classifies pair",
+  "m6-p5-record": "a dispatch with a stub executor replaying a real captured stream writes a record with the head, the observed model, family anthropic, cost and token usage",
+  "m6-p5-top-level-rows-only": "the observation counts top-level assistant rows only, measured against a real stream whose subagent ran on another model",
+  "m6-p5-observation-fails": "a stream with zero or two distinct top-level assistant models yields a record with no observed model, and the merge gate does not count it",
+  "m6-p5-dispatch-refusals": "a dispatch is refused before launch for a verdict path outside delivery/review, a head that is not a commit, and a verdict already committed at the head",
+  "m6-p5-family-red": "two approving verdicts whose kernel-recorded families match, with no single-vendor exception declared, are red at condition-1",
+  "m6-p5-exception": "the same kernel-recorded pair with the single-vendor exception declared is green at condition-1 and says the exception was used, and a record on an undeclared family contradicts it",
+  "m6-p5-no-record": "a verdict with no matching kernel review record is not counted, so a verdict dropped into delivery/review by hand does not make the pair",
+  "m6-p5-sha-mismatch": "a verdict whose committed bytes do not match the recorded sha256 is not counted, so a verdict edited after the review does not count",
+  "m6-p5-phase-match": "a kernel review record for another phase at the same head is not counted toward the phase under audit",
+  "m6-p5-failed-observation-not-counted": "a kernel review record whose observation failed is not counted, and the gate says the kernel observed no served model",
+  "m6-p5-record-verdict-apart": "a verdict placed in the records directory is neither a verdict nor a record, and a record placed beside the verdicts is neither a record nor a verdict"
 }
