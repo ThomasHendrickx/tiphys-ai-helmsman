@@ -1144,5 +1144,6 @@
   "m6-p2-verdict-needs-no-contract": "a hazard verdict with no review-contract and no criteria validates, the same verdict without hazard classes is rejected, and a criteria verdict still validates",
   "gate-registry-event-selects-by-declared-events": "--event push selects only the gates whose events include push, --event pull_request only the others, and no --event selects both",
   "gates-workflow-runs-the-registry-on-both-events": "the gates workflow runs the registry runner directly on both CI events with --event, never --manifest or the M2 harness, and the step fails when the runner does",
-  "authored-bytes-registry-gate-both-events": "the authored-bytes registry gate records red naming the byte on a control character and green counting the tracked files on a clean tree, on both CI events"
+  "authored-bytes-registry-gate-both-events": "the authored-bytes registry gate records red naming the byte on a control character and green counting the tracked files on a clean tree, on both CI events",
+  "gate-schema-documents-load-closed-keyword-set": "every schema document under src/gates/schemas loads through the closed keyword set"
 }
