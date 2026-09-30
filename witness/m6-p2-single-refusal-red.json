@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "  if (faults.length > 0) {\n    return { ok: false, sentence: faults.join(\"; \") };",
-      "replace": "  if (faults.length > verdicts.length) {\n    return { ok: false, sentence: faults.join(\"; \") };"
+      "find": "    faults.push(\"no review is admitted for this head, so nothing approves it\");\n  }\n  if (faults.length > 0) {",
+      "replace": "    faults.push(\"no review is admitted for this head, so nothing approves it\");\n  }\n  if (faults.length > verdicts.length) {"
     }
   ],
   "deterministic": true,
