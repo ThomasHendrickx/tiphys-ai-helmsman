@@ -439,9 +439,15 @@ test(
       },
     });
 
+    /* M6-P5 (DR-0062): a family is the VENDOR, so two models of one vendor
+       compare as one family, and a token of another vendor differs. */
     const compared = kernel.compareResolvedFamilies(mine, sibling);
     assert.equal(compared.kind, "compared");
-    assert.equal(compared.kind === "compared" ? compared.differ : undefined, true);
+    assert.equal(compared.kind === "compared" ? compared.differ : undefined, false);
+    const otherVendor = clone(sibling);
+    (otherVendor["resolved"] as Record<string, unknown>)["family"] = "another-vendor";
+    const differs = kernel.compareResolvedFamilies(mine, otherVendor);
+    assert.equal(differs.kind === "compared" ? differs.differ : undefined, true);
 
     const same = kernel.compareResolvedFamilies(mine, clone(mine));
     assert.equal(same.kind === "compared" ? same.differ : undefined, false);
