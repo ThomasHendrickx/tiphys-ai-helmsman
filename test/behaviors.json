@@ -1394,7 +1394,7 @@
   "m6-p2-version-field-edges": "a workspace's nested node_modules/ entry, a pinned name inside a node_modules/ entry, and a pinned name in peerDependencies are not version fields, so each classifies pair",
   "m6-p2-merge-base-bounds-admission": "with --base, verdicts whose declared head the merge base already contains are excluded by name in both tiers, so an unreviewed delivery-only change on top of a reviewed phase is red",
   "m6-p2-dual-review-merge-base-bound": "check-dual-review with --base excludes by name verdicts whose declared head the merge base already contains, so an unreviewed delivery-only change on top of a reviewed pair is red",
-  "m6-p2-declaration-shape-refused": "a runtime-set entry that can never match a path git prints (src/**, ./src/, /src/, src/*, a .. segment, an empty segment, a manifest ./package.json) is refused by the reader and by the schema, so the change is pair",
+  "m6-p2-declaration-shape-refused": "a runtime-set entry with a glob character, a leading ./ or /, a .. segment or an empty segment (src/**, ./src/, /src/, src/*, src/../src/, src//, a manifest ./package.json) is refused by the reader and by the schema, so the change is pair",
   "m6-p2-directory-entry-pair": "a runtime-set paths entry without a trailing slash that names a directory at the merge base is an invalid declaration, so a change under it is pair, and an exact entry naming a file is still declared",
   "m6-p2-criteria-contract-needs-criteria": "a verdict declaring review-contract criteria without criteria[] is rejected, with or without hazard classes, and a committed criteria verdict still validates",
   "m6-p2-single-refusal-red": "a single change whose one hazard verdict reads FIX-ROUND-NEEDED is red at condition-2 through the real gate",

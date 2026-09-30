@@ -893,13 +893,13 @@ function stringList(
 }
 
 /**
- * Why one declared `paths` or `manifests` entry can never match a path git
- * prints, or undefined when its SHAPE can (M6-P2 fix round 1, CR-M6P2B-02 and
- * CR-M6P2A-02). THE MECHANISM: an entry that matches nothing was a valid
+ * Why one declared `paths` or `manifests` entry is refused for its SHAPE, or
+ * undefined (M6-P2 fix round 1, CR-M6P2B-02 and CR-M6P2A-02). THE MECHANISM: an entry that matches nothing was a valid
  * declaration, so the set was silently empty and every change was `single`.
  * git prints project-relative paths with no leading `./` or `/`, no `.` or
- * `..` segment and no empty segment, and the classifier compares entries
- * literally, so a glob character is a literal character nobody means. A
+ * `..` segment and no empty segment, so those shapes match nothing. The
+ * classifier compares entries literally, so a glob character matches only a
+ * file whose name carries that character, which is not what a glob means. A
  * manifest is one file, so it may not end in `/` either. schemas/charter.schema.json
  * carries the same rule as a pattern; this is the reader's copy, because the
  * gate reads a blob and never runs the schema validator.
@@ -955,7 +955,7 @@ function exactEntryNamingDirectory(contextDirectory: string, rev: string, set: R
     if (/^\d{6} tree /.test(first)) {
       return (
         `${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} names a DIRECTORY at ${rev}, and an exact ` +
-        `entry never matches a path git prints under it (a directory entry ends in /)`
+        `entry is compared with ===, so no path under it matches (a directory entry ends in /)`
       );
     }
   }
@@ -1027,7 +1027,7 @@ export function readRuntimeSet(text: string | undefined, label: string): Runtime
           kind: "invalid",
           reason:
             `${label} ${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} ${fault}, ` +
-            "so it can never match a path git prints",
+            "so it does not name the paths it looks like it names, and the declaration is refused (fail closed)",
         };
       }
     }

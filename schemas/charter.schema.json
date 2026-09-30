@@ -177,7 +177,7 @@
       "required": ["paths"],
       "properties": {
         "paths": {
-          "$comment": "Project-relative. An entry ending in `/` is a directory prefix; any other entry is an exact path, and an exact entry that is a DIRECTORY at the merge base makes the declaration invalid (so pair). The pattern refuses what can never match a path git prints (M6-P2 fix round 1): a glob character (* ? [), a leading ./ or /, a . or .. segment, an empty segment. The gate's reader, readRuntimeSet in src/gates/merge-preconditions.ts, refuses the same shapes.",
+          "$comment": "Project-relative. An entry ending in `/` is a directory prefix; any other entry is an exact path, and an exact entry that is a DIRECTORY at the merge base makes the declaration invalid (so pair). The pattern refuses (M6-P2 fix round 1) a leading ./ or /, a . or .. segment and an empty segment, which match no path git prints, and a glob character (* ? [), which is compared literally and so does not mean what it looks like. The gate's reader, readRuntimeSet in src/gates/merge-preconditions.ts, refuses the same shapes.",
           "type": "array",
           "minItems": 1,
           "items": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!\\./)(?!.*//)(?!(?:.*/)?\\.{1,2}(?:/|$))(?=.*\\S)[^*?\\[]+$" }

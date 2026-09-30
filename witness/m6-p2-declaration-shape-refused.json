@@ -2,7 +2,7 @@
   "id": "m6-p2-declaration-shape-refused",
   "behavior": "m6-p2-declaration-shape-refused",
   "tests": [
-    "a runtime-set entry that can never match a path git prints (src/**, ./src/, /src/, src/*, a .. segment, an empty segment, a manifest ./package.json) is refused by the reader and by the schema, so the change is pair"
+    "a runtime-set entry with a glob character, a leading ./ or /, a .. segment or an empty segment (src/**, ./src/, /src/, src/*, src/../src/, src//, a manifest ./package.json) is refused by the reader and by the schema, so the change is pair"
   ],
   "class": "classification",
   "dangerousStates": [

@@ -1932,7 +1932,7 @@ const charterValidate = (await import(new URL("../src/validate.ts", import.meta.
 };
 const charterYaml = (await import("yaml")) as unknown as { parse: (text: string) => unknown };
 
-test("a runtime-set entry that can never match a path git prints (src/**, ./src/, /src/, src/*, a .. segment, an empty segment, a manifest ./package.json) is refused by the reader and by the schema, so the change is pair", () => {
+test("a runtime-set entry with a glob character, a leading ./ or /, a .. segment or an empty segment (src/**, ./src/, /src/, src/*, src/../src/, src//, a manifest ./package.json) is refused by the reader and by the schema, so the change is pair", () => {
   /* FIX ROUND 1, CR-M6P2B-02 and CR-M6P2A-02. THE MECHANISM: an entry that
      matches no path git prints was a VALID declaration, so the declared set was
      silently empty and every change was single. The reviewers' measured
