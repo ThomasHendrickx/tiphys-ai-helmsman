@@ -1307,6 +1307,101 @@ test("restoring a retirement root removes what was added after the freeze and ve
   }
 });
 
+/* -------------------------------------------------------------------- */
+/* M6-P3 fix round 3 (CR-M6P3B-05): names git quotes                     */
+/* -------------------------------------------------------------------- */
+
+/**
+ * REAL git output for the two fixtures below, recorded once and compared with
+ * git's live output before the code under test runs (rule (f): src/cutover.ts
+ * spawns git and parses what it prints).
+ */
+const pathListingsCapturePath = fileURLToPath(
+  new URL("../witness/captures/m6-p3-git-path-listings.json", import.meta.url),
+);
+
+/**
+ * Re-run every command the capture records for one case, in `dir`, and require
+ * git's live stdout to equal the recorded stdout. `<base>` in a recorded argv
+ * is the fixture's base sha; nothing else is substituted.
+ */
+function replayPathListings(dir: string, name: string, base: string): void {
+  const capture = JSON.parse(readFileSync(pathListingsCapturePath, "utf8")) as {
+    cases: Array<{ case: string; commands: Array<{ argv: string[]; exit: number; stdout: string }> }>;
+  };
+  const recorded = capture.cases.find((entry) => entry.case === name);
+  assert.ok(recorded !== undefined, `m6-p3-git-path-listings.json records no ${name} case`);
+  for (const command of recorded.commands) {
+    const argv = command.argv.slice(1).map((arg) => arg.split("<base>").join(base));
+    const live = git(dir, argv);
+    assert.equal(live.status, command.exit, `git ${argv.join(" ")}: ${live.stderr}`);
+    assert.equal(live.stdout, command.stdout, `git ${argv.join(" ")} no longer prints what the capture recorded`);
+  }
+}
+
+test("a scoped rollback commit stages a path whose name git quotes and does not call it stray", () => {
+  /* git lists this staged path as `"caf\303\251.json"`. Read from line output
+     that quoted text was not the path the caller named, so the scope check
+     called it stray and refused a commit that staged exactly what it was
+     asked to. */
+  const scratch = scratchFleet();
+  try {
+    const name = "caf\u00e9.json";
+    writeFileSync(join(scratch.fleetRoot, name), "{}\n");
+    /* Replay the listing at the state it is taken in (the path staged), then
+       unstage, because a pre-staged index is refused before anything runs. */
+    assert.equal(git(scratch.fleetRoot, ["add", "--", name]).status, 0);
+    replayPathListings(scratch.fleetRoot, "cutover-sync", "");
+    assert.equal(git(scratch.fleetRoot, ["reset", "-q", "--", name]).status, 0);
+
+    const outcome = cutover.syncFleetState(scratch.fleetRoot, {
+      allowNoRemote: true,
+      message: "test",
+      paths: [name],
+    });
+    assert.equal(outcome.ok, true, JSON.stringify(outcome));
+    if (outcome.ok) {
+      assert.deepEqual(outcome.staged, [name]);
+    }
+    const committed = git(scratch.fleetRoot, ["show", "-z", "--name-only", "--format=", "HEAD"]).stdout;
+    assert.equal(committed, `${name}\0`, "the commit carries the named path and nothing else");
+  } finally {
+    rmSync(scratch.root, { recursive: true, force: true });
+  }
+});
+
+test("restoring a retirement root removes a post-freeze addition whose name git quotes", () => {
+  /* git lists this addition as `"retired/caf\303\251.md"`. Read from line
+     output that quoted text went to `git rm` as a pathspec, matched nothing,
+     and the restore failed AFTER its checkout had already written the tree. */
+  const root = mkdtempSync(join(tmpdir(), "tiphys-restore-quoted-"));
+  try {
+    mkdirSync(join(root, "retired"), { recursive: true });
+    writeFileSync(join(root, "retired", "rule.md"), "the original rule\n");
+    git(root, ["init", "-q", "-b", "main"]);
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-q", "-m", "pre-freeze"]);
+    const preFreeze = git(root, ["rev-parse", "HEAD"]).stdout.trim();
+    writeFileSync(join(root, "retired", "caf\u00e9.md"), "added after the freeze\n");
+    writeFileSync(join(root, "retired", "rule.md"), "the ported rule\n");
+    git(root, ["add", "-A"]);
+    git(root, ["commit", "-q", "-m", "retire"]);
+    replayPathListings(root, "cutover-restore", preFreeze);
+
+    const restored = cutover.restoreRetirementRoots(root, preFreeze, ["retired"]);
+    assert.equal(restored.ok, true, JSON.stringify(restored));
+    if (restored.ok) {
+      assert.deepEqual(restored.removed, ["retired/caf\u00e9.md"]);
+    }
+    assert.equal(existsSync(join(root, "retired", "caf\u00e9.md")), false, "the added file must be gone");
+    assert.equal(readFileSync(join(root, "retired", "rule.md"), "utf8"), "the original rule\n");
+    const residue = git(root, ["diff", "-z", "--name-only", preFreeze, "--", "retired"]).stdout;
+    assert.equal(residue, "", `the root must match ${preFreeze} exactly, and it differs in: ${residue}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 /**
  * CLASS: `ported` is reached from a positive test, never from a fallthrough.
  *
@@ -1730,13 +1825,11 @@ test("every rehearsal arm prints its own self-check before any OBSERVED line", (
 });
 
 /* ====================================================================== */
-/* M4-P25: `tiphys cutover status`, drain, the schema, the precondition   */
-/* and the retirement criteria                                            */
+/* M4-P25: `tiphys cutover status`, drain, the schema and the precondition */
 /* ====================================================================== */
 
 const cliEntry = fileURLToPath(new URL("../bin/tiphys.ts", import.meta.url));
 const schemaPath = join(repoRoot, "schemas", "cutover-state.schema.json");
-const shippedInventory = join(repoRoot, "delivery", "plan", "cutover", "retirement-inventory.json");
 
 /**
  * Drive the REAL command line rather than the exported handler.
@@ -2386,253 +2479,6 @@ test("the shipped pre-freeze capture parses, dates itself, and names what it cou
   for (const refused of notCaptured) {
     assert.notEqual(refused.status, 200, refused.endpoint);
   }
-});
-
-/* -------------------------------------------------------------------- */
-/* Criterion 6: the retirement verdict, and the vacuous one it refuses   */
-/* -------------------------------------------------------------------- */
-
-interface InventoryRowFixture {
-  id: string;
-  disposition: string;
-  destination?: string;
-  command?: string;
-  exit?: number;
-}
-
-function inventoryFixture(rows: InventoryRowFixture[]): { root: string; path: string } {
-  const root = mkdtempSync(join(tmpdir(), "tiphys-retire-"));
-  writeFileSync(join(root, "present.md"), "the rule, ported\n");
-  const document = {
-    rows: rows.map((row) => {
-      const out: Record<string, unknown> = { id: row.id, disposition: row.disposition };
-      if (row.destination !== undefined) out["destination"] = row.destination;
-      if (row.command !== undefined) {
-        out["negative-witness"] = { kind: "sibling", command: row.command, exit: row.exit ?? 1 };
-      }
-      return out;
-    }),
-  };
-  const path = join(root, "inventory.json");
-  writeFileSync(path, `${JSON.stringify(document, null, 2)}\n`);
-  return { root, path };
-}
-
-function retirementRun(fixture: { root: string; path: string }) {
-  const before = treeDigest(fixture.root);
-  const run = runCli(
-    ["cutover", "status", "--retirement", "--repo", fixture.root, "--inventory", fixture.path],
-    fixture.root,
-  );
-  assert.equal(treeDigest(fixture.root), before, "criterion 7: --retirement changed the tree");
-  return run;
-}
-
-/**
- * THE VACUOUS VERDICT, WHICH IS WHAT THIS CRITERION EXISTS AGAINST. The named
- * kernel artifact EXISTS, so a verdict derived from existence alone reports
- * `ported`. Its negative witness exits 0, which means the probe discriminates
- * nothing under the new artifact, so the real verdict is `unported`.
- */
-test("a PORT row whose destination exists but whose negative witness exits 0 is unported", () => {
-  const fixture = inventoryFixture([
-    { id: "vacuous", disposition: "PORT", destination: "present.md", command: "test -f present.md", exit: 1 },
-  ]);
-  try {
-    const run = retirementRun(fixture);
-    assert.equal(run.status, 3, run.stdout + run.stderr);
-    assert.match(run.stdout, /^PORT vacuous unported .*WEAKER/m, run.stdout);
-    assert.match(run.stdout, /^RETIREMENT 1 of 1 PORT row\(s\) unported$/m, run.stdout);
-  } finally {
-    rmSync(fixture.root, { recursive: true, force: true });
-  }
-});
-
-/**
- * THE CONTROL. The same row with a witness that is genuinely RED under the new
- * artifact is `ported` and exits 0, so the test above reddens against the
- * witness's verdict and not against the row being present.
- */
-test("a PORT row whose destination exists and whose negative witness is red is ported", () => {
-  const fixture = inventoryFixture([
-    { id: "real", disposition: "PORT", destination: "present.md", command: "grep -c absent-token present.md", exit: 1 },
-  ]);
-  try {
-    const run = retirementRun(fixture);
-    assert.equal(run.status, 0, run.stdout + run.stderr);
-    assert.match(run.stdout, /^PORT real ported /m, run.stdout);
-    assert.match(run.stdout, /^RETIREMENT complete 1 PORT row\(s\)$/m, run.stdout);
-  } finally {
-    rmSync(fixture.root, { recursive: true, force: true });
-  }
-});
-
-/**
- * MEMBER B of the same class, structurally different: the witness is red and
- * the ARTIFACT is missing. Both halves are required, so failing either is
- * `unported`, and the two members fail different halves.
- */
-test("a PORT row whose destination does not exist is unported however red its witness", () => {
-  const fixture = inventoryFixture([
-    { id: "no-artifact", disposition: "PORT", destination: "gone.md", command: "grep -c absent-token present.md", exit: 1 },
-  ]);
-  try {
-    const run = retirementRun(fixture);
-    assert.equal(run.status, 3, run.stdout + run.stderr);
-    assert.match(run.stdout, /^PORT no-artifact unported destination gone\.md does not exist as a file$/m, run.stdout);
-  } finally {
-    rmSync(fixture.root, { recursive: true, force: true });
-  }
-});
-
-/**
- * THE VACUOUS RED, one level below the vacuous green. A `grep` against a file
- * that is not there exits 2 because it could not search, not because it
- * searched and found nothing. Accepting any nonzero status reports the row as
- * ported on the strength of an error message, so the row's own recorded exit
- * is required to match.
- */
-test("a negative witness that errors instead of searching is unported even though it exits nonzero", () => {
-  const fixture = inventoryFixture([
-    { id: "errored", disposition: "PORT", destination: "present.md", command: "grep -c token absent-file.md", exit: 1 },
-  ]);
-  try {
-    const run = retirementRun(fixture);
-    assert.equal(run.status, 3, run.stdout + run.stderr);
-    assert.match(run.stdout, /^PORT errored unported negative witness exits 2 .*recorded 1/m, run.stdout);
-  } finally {
-    rmSync(fixture.root, { recursive: true, force: true });
-  }
-});
-
-/**
- * The rows are DATA FROM A FILE and the command must not run whatever they
- * say. A command whose executable position is not on the allowlist is refused
- * and NOT SPAWNED, which is asserted by the side effect the command would have
- * had if it had run.
- */
-test("a retirement row whose command is not on the allowlist is refused without being run", () => {
-  const fixture = inventoryFixture([
-    { id: "unscreened", disposition: "PORT", destination: "present.md", command: "rm -rf present.md", exit: 1 },
-  ]);
-  try {
-    const run = retirementRun(fixture);
-    assert.equal(run.status, 3, run.stdout + run.stderr);
-    assert.match(run.stdout, /^PORT unscreened unported .*not on the allowlist/m, run.stdout);
-    assert.ok(existsSync(join(fixture.root, "present.md")), "the refused command must not have run");
-  } finally {
-    rmSync(fixture.root, { recursive: true, force: true });
-  }
-});
-
-/**
- * KEEP and DELETE rows are not retirements that can be incomplete, so they
- * are not printed; a row whose disposition is OUTSIDE the closed vocabulary is
- * not silently treated as one of them.
- */
-test("retirement prints one line per PORT row and refuses a row with an unreadable disposition", () => {
-  const fixture = inventoryFixture([
-    { id: "kept", disposition: "KEEP" },
-    { id: "dropped", disposition: "DELETE" },
-    { id: "typo", disposition: "PROT" },
-    { id: "real", disposition: "PORT", destination: "present.md", command: "grep -c absent-token present.md", exit: 1 },
-  ]);
-  try {
-    const run = retirementRun(fixture);
-    const rows = linesOf(run.stdout).filter((line) => line.startsWith("PORT "));
-    assert.deepEqual(
-      rows.map((line) => line.split(" ")[1]),
-      ["typo", "real"],
-      run.stdout,
-    );
-    assert.match(run.stdout, /^PORT typo unported disposition "PROT" is not one of/m, run.stdout);
-    assert.equal(run.status, 3, run.stdout + run.stderr);
-  } finally {
-    rmSync(fixture.root, { recursive: true, force: true });
-  }
-});
-
-/**
- * An inventory with no PORT rows is not a complete retirement. `unported === 0`
- * over an empty list is the vacuous green one level up from the row verdict.
- */
-test("an inventory with no PORT rows refuses rather than reporting a complete retirement", () => {
-  const fixture = inventoryFixture([{ id: "kept", disposition: "KEEP" }]);
-  try {
-    const run = retirementRun(fixture);
-    assert.equal(run.status, 1, run.stdout + run.stderr);
-    assert.match(run.stderr, /holds no PORT rows/, run.stderr);
-  } finally {
-    rmSync(fixture.root, { recursive: true, force: true });
-  }
-});
-
-/**
- * THE ADAPTER IS LOAD-BEARING AND THIS IS WHY IT EXISTS. `RetirementRow`
- * declares `negativeWitness` as an argv array; the shipped inventory writes
- * `negative-witness` as an object carrying a shell string. Handing the shipped
- * row STRAIGHT to `evaluatePortRow` returns `unported` for a row that is in
- * fact ported, which is a finding about a key spelling wearing the costume of
- * a finding about the kernel.
- */
-test("a shipped inventory row is unported without the adapter and ported with it", () => {
-  const raw = (
-    JSON.parse(readFileSync(shippedInventory, "utf8")) as { rows: Record<string, unknown>[] }
-  ).rows.find((row) => row["disposition"] === "PORT");
-  assert.ok(raw !== undefined, "the shipped inventory must carry at least one PORT row");
-  const direct = cutover.evaluatePortRow(raw as never, repoRoot);
-  assert.equal(direct.verdict, "unported", JSON.stringify(direct));
-  assert.match(direct.reason, /carries no negative-witness command/);
-  const adapted = cutover.retirementRowFromDocument(raw);
-  assert.equal(adapted.kind, "row", JSON.stringify(adapted));
-  const viaAdapter = cutover.evaluatePortRow(
-    (adapted as { kind: "row"; row: never }).row,
-    repoRoot,
-  );
-  assert.equal(viaAdapter.verdict, "ported", JSON.stringify(viaAdapter));
-});
-
-/**
- * THE ALLOWLIST MUST NOT DRIFT from the one the inventory's own checker
- * applies to the same rows. The kernel cannot import that script (it is this
- * project's own predicate and is KEPT rather than shipped, DR-0029), so the
- * two lists are compared here instead of being assumed equal.
- */
-test("the retirement command allowlist is no wider than the inventory checker's", () => {
-  const checker = readFileSync(
-    join(repoRoot, "scripts", "check-retirement-inventory.mjs"),
-    "utf8",
-  );
-  const block = /export const ALLOWED_FIRST_TOKENS = new Set\(\[([\s\S]*?)\]\)/.exec(checker);
-  assert.ok(block !== null, "the checker's allowlist could not be located");
-  const theirs = new Set(
-    [...block[1].matchAll(/"([^"]+)"/g)].map((match) => match[1] as string),
-  );
-  const ours = [...cutover.RETIREMENT_COMMAND_TOKENS];
-  assert.deepEqual(
-    ours.filter((token) => !theirs.has(token)),
-    [],
-    "a token the kernel allows and the checker does not is a screen that drifted open",
-  );
-  assert.ok(ours.length > 0, "an empty allowlist screens nothing");
-});
-
-/**
- * THE REAL INVENTORY, not a fixture. Criterion 6 is about the M4-P23 rows, and
- * a command exercised only against fixtures is a command nobody has pointed at
- * the document it exists for.
- */
-test("the shipped retirement inventory evaluates every PORT row and reports a verdict for each", () => {
-  const rows = (
-    JSON.parse(readFileSync(shippedInventory, "utf8")) as { rows: Record<string, unknown>[] }
-  ).rows.filter((row) => row["disposition"] === "PORT");
-  const read = cutover.evaluateRetirementInventory(shippedInventory, repoRoot);
-  assert.equal(read.kind, "read", JSON.stringify(read));
-  const report = (read as { kind: "read"; report: { results: unknown[]; unported: number } }).report;
-  /* DERIVED FROM THE DOCUMENT, NEVER PINNED. The inventory is append-only and a
-     literal count here would be a claim about every later phase. */
-  assert.equal(report.results.length, rows.length, "one verdict per PORT row");
-  assert.ok(rows.length > 0, "the shipped inventory must carry PORT rows");
 });
 
 /* -------------------------------------------------------------------- */

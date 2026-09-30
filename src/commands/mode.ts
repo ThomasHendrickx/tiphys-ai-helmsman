@@ -17,12 +17,10 @@
  * rather than printing when the document fails. A partial answer from an
  * invalid document is worse than an error, because the reader cannot tell.
  *
- * THE CONTEXT IS THE DOCUMENT'S OWN DIRECTORY. The cross-document checks
- * resolve `gate-registry.yaml` and `schemas/charter.schema.json` beside the
- * document, which is where the npm package puts them and where this repository
- * keeps them. That makes the two `requiresContext` checks run here rather than
- * SKIP, which matters: a skip fails the run, and a command that always failed
- * would be a command nobody uses.
+ * THE MODE'S GATES ARE DERIVED, NOT COPIED (M6-P3). They are the gates of the
+ * `gate-registry.yaml` beside the document whose `modes` name the mode, which
+ * is where the npm package puts the registry and where this repository keeps
+ * it. A registry that cannot be read there is a refusal, not an empty list.
  *
  * Exit codes:
  *   0   the document is valid and the mode was found and printed
@@ -36,11 +34,12 @@
  * caller that cannot tell those apart cannot script this.
  */
 
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { runChecks } from "../checks.ts";
 import { formatDiagnostics, validateInstance } from "../validate.ts";
 import { loadTypeSchema } from "./validate.ts";
 import { readModes, renderMode } from "../modes.ts";
+import { readRegistryDocument } from "../gates/run.ts";
 
 /** The artifact type this command reads, and the type its checks are registered for. */
 const MODES_TYPE = "assurance-modes";
@@ -148,7 +147,19 @@ export function cmdMode(argv: string[]): number {
      the kernel's own document. CR-004 item 2 turns on that distinction, because
      "no phase has been delivered under this mode" is a claim about the kernel's
      own delivery and is not knowable for a document a consumer supplied. */
-  for (const line of renderMode(mode, { shippedDocument: parsed.options.file === undefined })) {
+  const registryPath = join(dirname(read.path), "gate-registry.yaml");
+  const registry = readRegistryDocument(registryPath);
+  if (!registry.ok) {
+    return fail(
+      `the gates of mode ${wanted} are derived from ${registryPath}, which could not be read: ` +
+        [registry.reason, ...registry.diagnostics].join("; "),
+      1,
+    );
+  }
+  const gates = registry.document.gates
+    .filter((gate) => gate.modes.includes(wanted))
+    .map((gate) => gate.id);
+  for (const line of renderMode(mode, { shippedDocument: parsed.options.file === undefined }, gates)) {
     process.stdout.write(`${line}\n`);
   }
   return 0;

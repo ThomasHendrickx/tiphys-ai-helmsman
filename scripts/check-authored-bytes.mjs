@@ -1,7 +1,16 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { realpathSync } from "node:fs";
-import { fileURLToPath } from "node:url";
+import { mkdirSync, realpathSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+/*
+ * Two ways in. Bare (`node scripts/check-authored-bytes.mjs`): exit 0 clean, 1
+ * on a forbidden byte, 2 when the check cannot run. As the `authored-bytes`
+ * registry gate (M6-P3), the runner passes `--result <file> --evidence <dir>`:
+ * the script writes one GateResult whose units are the tracked files checked,
+ * and exits with the status code (0 green, 1 red, 21 error).
+ */
 
 const EXEMPT_FILE = "delivery/intake/orchestrated-delivery-process.md";
 const EXEMPT_TREE = "test/fixtures/json-schema-test-suite/";
@@ -23,6 +32,11 @@ export function forbiddenBytes(bytes) {
 }
 
 export function checkAuthoredBytes(root = process.cwd()) {
+  return scanAuthoredBytes(root).violations;
+}
+
+/** The violations and how many tracked, non-exempt files were read. */
+export function scanAuthoredBytes(root = process.cwd()) {
   const listed = spawnSync("git", ["ls-files", "-s", "-z"], { cwd: root });
   if (listed.error !== undefined || listed.status !== 0) {
     throw new Error(`git ls-files failed with exit ${String(listed.status)}: ${String(listed.stderr)}`);
@@ -42,7 +56,7 @@ export function checkAuthoredBytes(root = process.cwd()) {
   if (worktree.status === 1) {
     throw new Error("tracked working tree differs from the index; stage or revert it before checking authored bytes");
   }
-  if (entries.length === 0) return [];
+  if (entries.length === 0) return { violations: [], checked: 0 };
   const blobs = spawnSync("git", ["cat-file", "--batch"], {
     cwd: root,
     input: entries.map((entry) => entry.oid).join("\n") + "\n",
@@ -52,6 +66,7 @@ export function checkAuthoredBytes(root = process.cwd()) {
     throw new Error(`git cat-file failed with exit ${String(blobs.status)}: ${String(blobs.stderr)}`);
   }
   const violations = [];
+  let checked = 0;
   let offset = 0;
   for (const { path, oid } of entries) {
     const headerEnd = blobs.stdout.indexOf(0x0a, offset);
@@ -72,11 +87,68 @@ export function checkAuthoredBytes(root = process.cwd()) {
     const bytes = blobs.stdout.subarray(start, end);
     offset = end + 1;
     if (isExempt(path)) continue;
+    checked += 1;
     for (const finding of forbiddenBytes(bytes)) {
       violations.push({ path, ...finding });
     }
   }
-  return violations;
+  return { violations, checked };
+}
+
+function describe(item) {
+  return `${item.path}:${String(item.offset)}: ${item.kind} byte 0x${item.byte.toString(16).padStart(2, "0")}`;
+}
+
+/** The registry-gate arm: one GateResult at --result, exit code from its status. */
+async function runAsGate(argv) {
+  const options = {};
+  for (let index = 0; index < argv.length; index += 2) {
+    const flag = argv[index];
+    const value = argv[index + 1];
+    if ((flag !== "--result" && flag !== "--evidence") || value === undefined) {
+      process.stderr.write("usage: node scripts/check-authored-bytes.mjs [--result <file> --evidence <dir>]\n");
+      return 64;
+    }
+    options[flag.slice(2)] = resolve(value);
+  }
+  if (options.result === undefined) {
+    process.stderr.write("check-authored-bytes: --result is required in gate mode\n");
+    return 64;
+  }
+  const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  const { makeGateResult, renderGateResult, exitCodeForStatus } = await import(
+    pathToFileURL(join(repoRoot, "src", "gates", "result.ts")).href
+  );
+  const startedAt = new Date().toISOString();
+  let fields;
+  try {
+    const { violations, checked } = scanAuthoredBytes();
+    const lines = violations.map(describe);
+    if (options.evidence !== undefined) {
+      mkdirSync(options.evidence, { recursive: true });
+      writeFileSync(join(options.evidence, "authored-bytes.txt"), `${lines.join("\n")}\n`);
+    }
+    fields =
+      violations.length === 0
+        ? { status: "green", units: checked, detail: `${String(checked)} tracked file(s) carry no control or non-ASCII byte` }
+        : {
+            status: "red",
+            units: checked,
+            detail: `${String(violations.length)} forbidden byte(s): ${lines.slice(0, 5).join("; ")}`,
+          };
+  } catch (error) {
+    fields = { status: "error", units: 0, detail: error instanceof Error ? error.message : String(error) };
+  }
+  const result = makeGateResult({
+    gate: "authored-bytes",
+    unitLabel: "tracked files checked",
+    startedAt,
+    endedAt: new Date().toISOString(),
+    ...fields,
+  });
+  writeFileSync(options.result, renderGateResult(result));
+  process.stdout.write(`authored-bytes: ${result.status} (${String(result.units)} ${result.unitLabel})\n${result.detail}\n`);
+  return exitCodeForStatus(result.status);
 }
 
 // IDENTITY, NOT STRING EQUALITY (M4-P2 fix round, 2026-09-16). Measured on
@@ -98,11 +170,13 @@ function invokedDirectly() {
   }
 }
 
-if (invokedDirectly()) {
+if (invokedDirectly() && process.argv.length > 2) {
+  process.exitCode = await runAsGate(process.argv.slice(2));
+} else if (invokedDirectly()) {
   try {
     const violations = checkAuthoredBytes();
     for (const item of violations) {
-      process.stderr.write(`${item.path}:${String(item.offset)}: ${item.kind} byte 0x${item.byte.toString(16).padStart(2, "0")}\n`);
+      process.stderr.write(`${describe(item)}\n`);
     }
     process.exitCode = violations.length === 0 ? 0 : 1;
   } catch (error) {

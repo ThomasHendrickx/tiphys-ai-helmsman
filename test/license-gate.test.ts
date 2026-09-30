@@ -49,7 +49,8 @@ const releaseVerify = join(repoRoot, "scripts", "release-verify.sh");
 const distEntry = join(repoRoot, "dist", "bin", "tiphys.js");
 
 /** A clean env: no NODE_OPTIONS and no NODE_TEST_*, which a nested node inherits
-    and misbehaves under (the pattern test/m2-exit-test.ts documents). */
+    and misbehaves under (the pattern the deleted M2 exit-test harness
+    documented). */
 function cleanEnv(): Record<string, string> {
   const env: Record<string, string> = {};
   for (const [key, value] of Object.entries(process.env)) {
@@ -816,7 +817,6 @@ test("the pack listing carries every declared kernel artifact, and every FILE in
     "AGENTS.md",
     "LICENSE",
     "gate-registry.yaml",
-    "gates.manifest.json",
     "assurance-modes.yaml",
     "role-model-config.yaml",
   ]) {
@@ -2006,7 +2006,7 @@ test("the publish decision script is EXECUTED against a table of inputs, and onl
      evaluated here, and the correct number of runs of this workflow during
      M3-P10 is zero, so a guard written as an expression can only ever be
      described. Written as shell it can be EXTRACTED AND RUN, which is the
-     pattern test/m2-exit-test.test.ts already uses for the exit-test guard.
+     pattern the M2 exit-test tests used for their guard (deleted by M6-P3).
 
      The old boolean input is gone with the old expression. `== false` coerces:
      GitHub casts operands of differing types to numbers and `null` and `''`

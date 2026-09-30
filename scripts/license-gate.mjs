@@ -51,12 +51,9 @@
  * costly for (delivery/plan/kernel-plan-m3.md:4862).
  *
  * IT IS A GATE SUBPROCESS UNDER M2-P1's CONTRACT (D-M3-34, section 2.2a), so
- * it emits a `GateResult` on `--result` and its exit code is the status, the
- * same as `scripts/check-agents-references.mjs`. It is declared in
- * `gate-registry.yaml` as `license`; what EXECUTES it in CI is a step in
- * `.github/workflows/gates.yml`, because `scripts/m2-exit-test.sh` invokes the
- * runner with `--manifest gates.manifest.json` and that file is on no M3
- * phase's declaration. `test/gate-registry.test.ts` records the divergence.
+ * it emits a `GateResult` on `--result` and its exit code is the status. It is
+ * declared in `gate-registry.yaml` as `license`, and CI runs it through the
+ * gate runner on both events.
  */
 
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";

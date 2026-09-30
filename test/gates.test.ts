@@ -157,6 +157,11 @@ function writeGate(dir: string, name: string, spec: GateScript): string[] {
   return ["node", path];
 }
 
+/**
+ * Write a fixture GATE REGISTRY (M6-P3: the registry is the only gate list the
+ * runner reads). Each gate is given the registry fields the M2 manifest shape
+ * lacked, so every fixture below keeps testing the runner, not the schema.
+ */
 function writeManifest(
   dir: string,
   gates: unknown[],
@@ -165,13 +170,42 @@ function writeManifest(
   const path = join(dir, name);
   writeFileSync(
     path,
-    `${JSON.stringify(
-      { version: 1, gates, destructiveCommands: ["pool destroy", "teardown"] },
-      null,
-      2,
-    )}\n`,
+    `${JSON.stringify(registryDocument(gates), null, 2)}\n`,
   );
   return path;
+}
+
+function registryDocument(gates: unknown[]): Record<string, unknown> {
+  return {
+    kind: "gate-registry",
+    version: 1,
+    preflight: [{ command: ["npm", "ci"], note: "fixture" }],
+    gates: gates.map((gate) => {
+      const entry = gate as Record<string, unknown>;
+      /* The registry schema requires a precondition on a CONDITIONAL gate. A
+         fixture that leaves it out means a gate that always runs, so it gets
+         one that is always met. */
+      const precondition =
+        entry["applicability"] === "conditional" && entry["precondition"] === undefined
+          ? {
+              precondition: {
+                id: "fixture-always-met",
+                kind: "file-absent",
+                path: "tiphys-fixture-path-that-never-exists",
+              },
+            }
+          : {};
+      return {
+        prevents: "a fixture failure",
+        "verified-by": "script",
+        modes: ["full"],
+        events: ["pull_request", "push"],
+        ...precondition,
+        ...entry,
+      };
+    }),
+    destructiveCommands: ["pool destroy", "teardown"],
+  };
 }
 
 interface Summary {
@@ -255,7 +289,7 @@ test("the runner maps four fixture gates onto green red not-applicable and error
     const result = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       evidence,
@@ -321,7 +355,7 @@ test("a manifest of only the green gate exits 0 with applicable 1 and vacuous 0"
     const result = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       evidence,
@@ -365,7 +399,7 @@ test("a gate exiting 0 with units 0 is recorded error and counted vacuous, and u
       const result = runCli([
         "gates",
         "run",
-        "--manifest",
+        "--registry",
         manifest,
         "--evidence",
         evidence,
@@ -435,7 +469,7 @@ test("a required gate with an unmet precondition is not-applicable and fails the
       const result = runCli([
         "gates",
         "run",
-        "--manifest",
+        "--registry",
         manifest,
         "--evidence",
         evidence,
@@ -481,7 +515,7 @@ test("a command-exit-zero precondition whose command does not exist is error, ne
     const result = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       evidence,
@@ -520,7 +554,7 @@ test("a gate that throws and exits 1 without a record is error, not red", () => 
     const result = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       evidence,
@@ -599,7 +633,7 @@ test("a diff-touches gate without --base is error and with --base yields its rea
     // DIRECTION 1: no --base. Not evaluable, therefore error, never
     // not-applicable and never green (M2-C-3, M2R-003).
     const without = runCli(
-      ["gates", "run", "--manifest", manifest, "--evidence", join(dir, "ev-without")],
+      ["gates", "run", "--registry", manifest, "--evidence", join(dir, "ev-without")],
       dir,
     );
     assert.notEqual(without.status, 0);
@@ -614,7 +648,7 @@ test("a diff-touches gate without --base is error and with --base yields its rea
       [
         "gates",
         "run",
-        "--manifest",
+        "--registry",
         manifest,
         "--evidence",
         join(dir, "ev-with"),
@@ -636,6 +670,117 @@ test("a diff-touches gate without --base is error and with --base yields its rea
 });
 
 /* ------------------------------------------------------------------ */
+/* M6-P3 fix round 2, CR-M6P3B-03: diff-touches reads NUL-separated,     */
+/* rename-free names                                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Real output of both git name listings over the two repositories staged
+ * below, recorded in witness/captures/m6-p3-git-diff-touches.json. Each test
+ * re-runs both commands and requires git's live stdout to equal the recorded
+ * one before it runs the gate, so the dangerous input is git's own output
+ * rather than a string written to match the precondition.
+ */
+const DIFF_TOUCHES_CAPTURE = join(repoRoot, "witness", "captures", "m6-p3-git-diff-touches.json");
+
+const DIFF_TOUCHES_NON_ASCII_NAME = "caf\u00e9.ts";
+
+function stageDiffTouchesRepo(dir: string, kind: "rename" | "non-ascii"): { base: string } {
+  const git = (args: string[]): string => {
+    const result = spawnSync("git", args, {
+      cwd: dir,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "Tiphys test",
+        GIT_AUTHOR_EMAIL: "test@tiphys.invalid",
+        GIT_COMMITTER_NAME: "Tiphys test",
+        GIT_COMMITTER_EMAIL: "test@tiphys.invalid",
+      },
+    });
+    assert.equal(result.status, 0, `git ${args.join(" ")}: ${result.stderr}`);
+    return result.stdout;
+  };
+  git(["init", "--quiet", "-b", "main"]);
+  mkdirSync(join(dir, "src"), { recursive: true });
+  const name = kind === "rename" ? "a.ts" : DIFF_TOUCHES_NON_ASCII_NAME;
+  writeFileSync(join(dir, "src", name), "export const a = 1;\n");
+  git(["add", "-A"]);
+  git(["commit", "--quiet", "-m", "base"]);
+  const base = git(["rev-parse", "HEAD"]).trim();
+  if (kind === "rename") {
+    mkdirSync(join(dir, "lib"), { recursive: true });
+    git(["mv", "src/a.ts", "lib/a.ts"]);
+  } else {
+    writeFileSync(join(dir, "src", name), "export const a = 2;\n");
+    git(["add", "-A"]);
+  }
+  git(["commit", "--quiet", "-m", "head"]);
+
+  /* THE CAPTURE, compared before anything else: both listings, live. */
+  const capture = JSON.parse(readFileSync(DIFF_TOUCHES_CAPTURE, "utf8")) as {
+    cases: { case: string; commands: { argv: string[]; exit: number; stdout: string }[] }[];
+  };
+  const recorded = capture.cases.find((entry) => entry.case === kind);
+  assert.ok(recorded !== undefined, `m6-p3-git-diff-touches.json records no ${kind} case`);
+  for (const command of recorded.commands) {
+    const argv = command.argv.slice(1).map((arg) => arg.replace("<base>", base));
+    const live = spawnSync("git", argv, { cwd: dir, encoding: "utf8" });
+    assert.equal(live.status, command.exit, `git ${argv.join(" ")}: ${live.stderr}`);
+    assert.equal(live.stdout, command.stdout, `git ${argv.join(" ")} no longer prints what the capture recorded`);
+  }
+  return { base };
+}
+
+function runDiffTouchesGate(dir: string, base: string): { status: number | null; record: { status: string }; output: string } {
+  const manifest = writeManifest(dir, [
+    {
+      id: "g-diff",
+      command: writeGate(dir, "diffgate", { record: gateRecord("g-diff", "green", 4), exit: 0 }),
+      unitLabel: "fixture units",
+      applicability: "required",
+      precondition: { id: "touches-src", kind: "diff-touches", paths: ["src/", "bin/", "plugin/"] },
+    },
+  ]);
+  const run = runCli(
+    ["gates", "run", "--registry", manifest, "--evidence", join(dir, "ev"), "--base", base, "--head", "HEAD"],
+    dir,
+  );
+  const record = JSON.parse(readFileSync(join(dir, "ev", "g-diff", "result.json"), "utf8")) as {
+    status: string;
+  };
+  return { status: run.status, record, output: run.stdout + run.stderr };
+}
+
+test("a diff-touches precondition is met by a rename out of a declared path, so the gate runs", () => {
+  const dir = scratch();
+  try {
+    const { base } = stageDiffTouchesRepo(dir, "rename");
+    const run = runDiffTouchesGate(dir, base);
+    /* With rename detection on, git names only lib/a.ts and the precondition
+       read "no changed path under src/": the gate was not-applicable. */
+    assert.equal(run.record.status, "green", run.output);
+    assert.equal(run.status, 0, run.output);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a diff-touches precondition is met by an edit to a non-ASCII path under a declared path, so the gate runs", () => {
+  const dir = scratch();
+  try {
+    const { base } = stageDiffTouchesRepo(dir, "non-ascii");
+    const run = runDiffTouchesGate(dir, base);
+    /* Without -z git C-quotes the name ("src/caf\303\251.ts"), which does
+       not start with src/, and the gate was not-applicable. */
+    assert.equal(run.record.status, "green", run.output);
+    assert.equal(run.status, 0, run.output);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
 /* Criterion 9: zero applicable gates is an error                       */
 /* ------------------------------------------------------------------ */
 
@@ -646,13 +791,17 @@ test("a manifest with no gates and a manifest of only not-applicable gates both 
     const emptyRun = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       empty,
       "--evidence",
       join(dir, "ev-empty"),
     ]);
     assert.notEqual(emptyRun.status, 0);
-    assert.equal(readSummary(join(dir, "ev-empty")).reason, "no applicable gate");
+    /* A registry with no gates declares no mode, so the runner refuses it at
+       load (fail closed) before it can reach the aggregate's own
+       no-applicable-gate verdict; the second member below reaches that one. */
+    assert.equal(emptyRun.status, 21, emptyRun.stdout + emptyRun.stderr);
+    assert.match(readSummary(join(dir, "ev-empty")).reason, /declares no gate for mode full/);
 
     const allGated = writeManifest(
       dir,
@@ -691,7 +840,7 @@ test("a manifest with no gates and a manifest of only not-applicable gates both 
     const gatedRun = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       allGated,
       "--evidence",
       join(dir, "ev-gated"),
@@ -869,7 +1018,7 @@ test("the compiled entry resolves its schema documents and behaves identically t
     const fromSource = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       join(dir, "ev-src"),
@@ -880,7 +1029,7 @@ test("the compiled entry resolves its schema documents and behaves identically t
         distEntry,
         "gates",
         "run",
-        "--manifest",
+        "--registry",
         manifest,
         "--evidence",
         join(dir, "ev-dist"),
@@ -902,24 +1051,6 @@ test("the compiled entry resolves its schema documents and behaves identically t
       readSummary(join(dir, "ev-src")).counts,
     );
 
-    // The compiled entry really is resolving schemas out of dist/, which is
-    // the half that would silently break if the build's copy step were
-    // dropped: self-check names the documents it validated.
-    const selfCheck = spawnSync(
-      process.execPath,
-      [
-        distEntry,
-        "gates",
-        "self-check",
-        "--manifest",
-        join(repoRoot, "gates.manifest.json"),
-        "--result",
-        join(dir, "self-check.json"),
-      ],
-      { encoding: "utf8", cwd: repoRoot },
-    );
-    assert.equal(selfCheck.status, 0, selfCheck.stdout + selfCheck.stderr);
-    assert.match(selfCheck.stdout, /dist[/]src[/]gates[/]schemas/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -962,7 +1093,7 @@ test("tiphys gates run with an unknown flag exits 64 with usage on stderr", () =
   assert.equal(result.stdout, "");
   assert.match(result.stderr, /^usage: tiphys gates /m);
 
-  // ISOLATED. The invocation above is missing --manifest and --evidence too,
+  // ISOLATED. The invocation above is missing --registry and --evidence too,
   // so a runner that ignored unknown flags entirely would still exit 64 by a
   // different route, and this test would guard nothing about unknown flags
   // (work history W23). Here everything required is present and the ONLY
@@ -983,7 +1114,7 @@ test("tiphys gates run with an unknown flag exits 64 with usage on stderr", () =
     const complete = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       join(dir, "ev"),
@@ -993,7 +1124,7 @@ test("tiphys gates run with an unknown flag exits 64 with usage on stderr", () =
     const withExtra = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       join(dir, "ev2"),
@@ -1007,7 +1138,7 @@ test("tiphys gates run with an unknown flag exits 64 with usage on stderr", () =
     const danglingValue = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
     ]);
@@ -1092,7 +1223,7 @@ test("a named pipe at the manifest path, a precondition target, or a record path
     const one = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       fifoManifest,
       "--evidence",
       join(dir, "ev-1"),
@@ -1128,7 +1259,7 @@ test("a named pipe at the manifest path, a precondition target, or a record path
     const two = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       gatedManifest,
       "--evidence",
       join(dir, "ev-2"),
@@ -1163,7 +1294,7 @@ test("a named pipe at the manifest path, a precondition target, or a record path
     const three = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       plainManifest,
       "--evidence",
       evidence3,
@@ -1183,7 +1314,7 @@ test("a named pipe at the manifest path, a precondition target, or a record path
     const twoAgain = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       gatedManifest,
       "--evidence",
       join(dir, "ev-2b"),
@@ -1193,7 +1324,7 @@ test("a named pipe at the manifest path, a precondition target, or a record path
     const threeAgain = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       plainManifest,
       "--evidence",
       evidence3,
@@ -1204,7 +1335,7 @@ test("a named pipe at the manifest path, a precondition target, or a record path
     const oneAgain = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       plainManifest,
       "--evidence",
       join(dir, "ev-1b"),
@@ -1213,169 +1344,6 @@ test("a named pipe at the manifest path, a precondition target, or a record path
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-});
-
-/* ------------------------------------------------------------------ */
-/* Step 9: the CI wiring, guarded BEHAVIOURALLY (rewired by M2-P9)      */
-/* ------------------------------------------------------------------ */
-
-/**
- * MECHANISMS.md, "Asserting a CI step is wired": assert BEHAVIOUR, not text.
- *
- * REWRITTEN BY M2-P9 (M2R-026, DR-0017). M2-P1's interim wiring was two
- * `node ... gates run --only manifest-self-check` steps; M2-P9 REPLACED them
- * with the exit-test harness as the SINGLE caller of the gate runner, so the
- * gate set runs once per run. The two tests below keep their exact original
- * titles, because those titles are keys in the append-only test/behaviors.json
- * and a registered behaviour may not be orphaned; their bodies now assert the
- * NEW single-caller wiring. The behavioural machinery is unchanged: a step's
- * own command is extracted and executed against a stub, so a defang that
- * preserves the text and inverts the meaning still reddens.
- *
- * The comprehensive behavioural guard of the new wiring (the self-test
- * falsifiability guard, containment, refuse-keys) lives in
- * test/m2-exit-test.test.ts, M2-P9's own file.
- */
-function harnessBundleStepCommands(): string[] {
-  const yaml = readFileSync(
-    fileURLToPath(new URL("../.github/workflows/gates.yml", import.meta.url)),
-    "utf8",
-  ).split("\n");
-  const commands: string[] = [];
-  for (let i = 0; i < yaml.length; i += 1) {
-    const line = yaml[i] as string;
-    if (!/^\s*- name: M2 exit test \(/.test(line)) {
-      continue;
-    }
-    const stepIndent = (/^(\s*)- /.exec(line)?.[1] ?? "").length;
-    let command: string | undefined;
-    for (let j = i + 1; j < yaml.length; j += 1) {
-      const inner = yaml[j] as string;
-      const indent = inner.search(/\S/);
-      if (indent !== -1 && indent <= stepIndent) {
-        break;
-      }
-      if (!/^\s*run: >\s*$/.test(inner)) {
-        continue;
-      }
-      const parts: string[] = [];
-      for (let k = j + 1; k < yaml.length; k += 1) {
-        const folded = yaml[k] as string;
-        const foldedIndent = folded.search(/\S/);
-        if (foldedIndent === -1 || foldedIndent <= stepIndent) {
-          break;
-        }
-        parts.push(folded.trim());
-      }
-      command = parts.join(" ");
-      break;
-    }
-    if (command !== undefined) {
-      commands.push(command);
-    }
-  }
-  return commands;
-}
-
-test("the workflow's gate bundle step runs the gate runner and is able to fail", {
-  skip: existsSync(distEntry)
-    ? false
-    : "dist/ is absent; run npm run build first (CI builds before it tests)",
-}, () => {
-  const commands = harnessBundleStepCommands();
-  // Dangerous state (a): a deleted step lands here.
-  assert.equal(
-    commands.length,
-    2,
-    `expected the pull-request and push harness bundle steps, found ${String(commands.length)}`,
-  );
-  // The harness is the SINGLE caller of the gate runner (M2R-026): every bundle
-  // step invokes scripts/m2-exit-test.sh, and no direct `gates run` step
-  // remains in the workflow.
-  for (const command of commands) {
-    assert.match(command, /scripts[/]m2-exit-test\.sh/);
-  }
-  const yaml = readFileSync(
-    fileURLToPath(new URL("../.github/workflows/gates.yml", import.meta.url)),
-    "utf8",
-  );
-  assert.doesNotMatch(
-    yaml,
-    /node .*gates run/,
-    "a direct `gates run` step remains in the workflow; the harness must be the single caller (M2R-026)",
-  );
-
-  // Dangerous state (b): the step's text is preserved and its meaning inverted.
-  // The push step's own command is extracted and executed against a STUB
-  // harness whose exit code is known; the step must propagate it, so a harness
-  // that exits nonzero fails the step and one that exits 0 passes it. The push
-  // step carries only the ${{ runner.temp }} expression, so it substitutes
-  // cleanly.
-  const push = commands.find((c) => c.includes("--bundle main"));
-  assert.ok(push, "no push harness bundle step (the one with --bundle main)");
-  const dir = scratch();
-  try {
-    const stub = (code: number): void => {
-      mkdirSync(join(dir, "scripts"), { recursive: true });
-      writeFileSync(
-        join(dir, "scripts", "m2-exit-test.sh"),
-        `#!/usr/bin/env bash\nexit ${String(code)}\n`,
-        { mode: 0o755 },
-      );
-    };
-    const temp = join(dir, "temp");
-    mkdirSync(temp, { recursive: true });
-    const command = (push as string).replaceAll("${{ runner.temp }}", temp);
-
-    stub(0);
-    const green = spawnSync("bash", ["-c", command], { encoding: "utf8", cwd: dir });
-    assert.equal(green.status, 0, `the bundle step failed over a passing harness: ${green.stderr}`);
-
-    stub(1);
-    const red = spawnSync("bash", ["-c", command], { encoding: "utf8", cwd: dir });
-    assert.notEqual(
-      red.status,
-      0,
-      "the bundle step exited 0 over a harness that exited nonzero; it cannot fail",
-    );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-/**
- * REWRITTEN BY M2-P9. The interim `--only manifest-self-check` shape existed
- * because M2-P1's two generic steps could not carry the parameters a required
- * parameterized gate needs (--base for a diff-touches gate, --phase for a
- * branch-matches gate), so it EXCLUDED them. The single-caller harness carries
- * those parameters instead of excluding the gates: the pull-request bundle step
- * passes --base, --head and --phase, so a required diff-touches or
- * branch-matches gate is EVALUATED rather than errored. That is how the new
- * wiring "survives a required gate its own step cannot evaluate": by supplying
- * the parameter, not by hiding the gate. The title is preserved for the
- * append-only behaviour registry.
- */
-test("both bundle steps' --only shape survives a required gate that its own step cannot evaluate", () => {
-  const commands = harnessBundleStepCommands();
-  const pr = commands.find((c) => c.includes("--bundle pr"));
-  const push = commands.find((c) => c.includes("--bundle main"));
-  assert.ok(pr, "no pull-request harness bundle step (the one with --bundle pr)");
-  assert.ok(push, "no push harness bundle step (the one with --bundle main)");
-  // The pull-request step supplies every parameter the required parameterized
-  // gates need: --base (diff-touches: red-witness, citations, suite), --head,
-  // and --phase (branch-matches: scope). The interim shape supplied none and
-  // excluded those gates via --only; this shape evaluates them.
-  assert.match(pr as string, /--base /, "the pull-request bundle step passes no --base");
-  assert.match(pr as string, /--head /, "the pull-request bundle step passes no --head");
-  assert.match(pr as string, /--phase /, "the pull-request bundle step passes no --phase");
-  // The push step runs the weaker main bundle, which excludes the diff-scoped
-  // gates by selection; it needs no --phase, and its suite --base is supplied
-  // by the harness internally (the main bundle's default base=main).
-  assert.doesNotMatch(
-    push as string,
-    /--phase /,
-    "the push bundle step passes --phase; the weaker main bundle excludes the branch-scoped gate",
-  );
 });
 
 /* ------------------------------------------------------------------ */
@@ -1456,7 +1424,7 @@ test("a gate whose exit code contradicts its own record is error naming both", (
     const result = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       evidence,
@@ -1502,7 +1470,7 @@ test("a gate declaring a run parameter it does not receive is error, and receive
     const without = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       join(dir, "ev-without"),
@@ -1518,7 +1486,7 @@ test("a gate declaring a run parameter it does not receive is error, and receive
     const withPhase = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       join(dir, "ev-with"),
@@ -1585,7 +1553,7 @@ test("a gate that declares its own not-applicable cannot make the bundle green",
       const result = runCli([
         "gates",
         "run",
-        "--manifest",
+        "--registry",
         manifest,
         "--evidence",
         join(dir, `ev-self-${applicability}`),
@@ -1620,7 +1588,7 @@ test("a gate that declares its own not-applicable cannot make the bundle green",
     const greenRun = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       greenManifest,
       "--evidence",
       join(dir, "ev-self-green"),
@@ -1656,7 +1624,7 @@ test("a gate that declares its own not-applicable cannot make the bundle green",
     const mixedRun = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       mixed,
       "--evidence",
       join(dir, "ev-mixed"),
@@ -1680,7 +1648,7 @@ test("a gate that declares its own not-applicable cannot make the bundle green",
     const onlyRun = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       mixed,
       "--evidence",
       join(dir, "ev-only"),
@@ -1771,6 +1739,9 @@ test("the runner cannot report success over an empty green bucket", () => {
 function stagedDist(dir: string): string {
   const copy = join(dir, "dist");
   cpSync(join(repoRoot, "dist"), copy, { recursive: true });
+  /* The runner validates the registry against the SHIPPED `schemas/`, which an
+     installed package carries beside `dist/`, so a staged copy carries it too. */
+  cpSync(join(repoRoot, "schemas"), join(dir, "schemas"), { recursive: true });
   return copy;
 }
 
@@ -1815,7 +1786,7 @@ test("a throw escaping the runner is error with a summary, never the red exit co
         join(dist, "bin", "tiphys.js"),
         "gates",
         "run",
-        "--manifest",
+        "--registry",
         manifest,
         "--evidence",
         join(dir, "ev-early"),
@@ -1840,7 +1811,7 @@ test("a throw escaping the runner is error with a summary, never the red exit co
         join(dist2, "bin", "tiphys.js"),
         "gates",
         "run",
-        "--manifest",
+        "--registry",
         manifest,
         "--evidence",
         join(dir, "ev-mid"),
@@ -1865,7 +1836,7 @@ test("a throw escaping the runner is error with a summary, never the red exit co
         join(dir, "dist3", "bin", "tiphys.js"),
         "gates",
         "run",
-        "--manifest",
+        "--registry",
         manifest,
         "--evidence",
         join(dir, "ev-ok2"),
@@ -1922,7 +1893,7 @@ test("one run owns its evidence directory and a second is refused loudly", async
     const refused = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       fast,
       "--evidence",
       held,
@@ -1942,7 +1913,7 @@ test("one run owns its evidence directory and a second is refused loudly", async
     const allowed = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       fast,
       "--evidence",
       held,
@@ -1975,7 +1946,7 @@ test("one run owns its evidence directory and a second is refused loudly", async
     const shared = join(dir, "ev-shared");
     const first = spawn(
       process.execPath,
-      [sourceEntry, "gates", "run", "--manifest", slow, "--evidence", shared],
+      [sourceEntry, "gates", "run", "--registry", slow, "--evidence", shared],
       { cwd: repoRoot, stdio: "ignore" },
     );
     const firstExit = new Promise<number>((resolve) => {
@@ -1997,7 +1968,7 @@ test("one run owns its evidence directory and a second is refused loudly", async
     const second = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       fast,
       "--evidence",
       shared,
@@ -2083,7 +2054,7 @@ test("a green record whose pins disagree, or whose pin measured nothing, is erro
         `m-pin-${item.name}.json`,
       );
       const evidence = join(dir, `ev-pin-${item.name}`);
-      runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+      runCli(["gates", "run", "--registry", manifest, "--evidence", evidence]);
       const written = JSON.parse(
         readFileSync(join(evidence, "g-pinned", "result.json"), "utf8"),
       ) as { status: string; detail: string };
@@ -2164,7 +2135,7 @@ test("branch-matches is anchored and treats the phase id as a literal", () => {
           sourceEntry,
           "gates",
           "run",
-          "--manifest",
+          "--registry",
           manifest,
           "--evidence",
           evidence,
@@ -2215,7 +2186,7 @@ test("a gate cannot set the vacuous flag on its own record", () => {
     const result = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       evidence,
@@ -2365,155 +2336,6 @@ test("the duplicate-id diagnostic comes from the message table", () => {
   assert.doesNotMatch(source, /is declared more than once`/);
 });
 
-/** CR-812: units counts what its label says it counts. */
-test("manifest-self-check reports one unit per schema document", () => {
-  const dir = scratch();
-  try {
-    const result = runCli([
-      "gates",
-      "self-check",
-      "--manifest",
-      join(repoRoot, "gates.manifest.json"),
-      "--result",
-      join(dir, "r.json"),
-    ]);
-    assert.equal(result.status, 0, result.stdout + result.stderr);
-    const record = JSON.parse(readFileSync(join(dir, "r.json"), "utf8")) as {
-      units: number;
-      unitLabel: string;
-      detail: string;
-    };
-    assert.equal(record.unitLabel, "schema documents validated");
-    const schemas = readdirSync(
-      fileURLToPath(new URL("../src/gates/schemas", import.meta.url)),
-    ).filter((name) => name.endsWith(".schema.json"));
-    assert.equal(record.units, schemas.length);
-    assert.ok(record.units > 0);
-    // The manifest validation is real work and is still reported.
-    assert.match(record.detail, /gates\.manifest\.json/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-/**
- * Fix round, M2-P1: schemaDocumentPaths() enumerates src/gates/schemas/
- * instead of naming two files. The DANGEROUS state this guards against is
- * not "a schema document is missing" (that was already covered); it is a
- * growing directory that the inventory function never looks at again once
- * written, so a phase (M2-P2, M2-P4, M2-P5, M2-P6, M2-P7 each add one) ships
- * a schema document that manifest-self-check silently never validates,
- * while `unitLabel` keeps claiming "schema documents validated". The two
- * cases below are structurally different members of that one class: the
- * first shows the new document is COUNTED, the second shows its CONTENT is
- * actually loaded and checked against the closed keyword set, not merely
- * tallied as a file that exists.
- *
- * node --test runs the tests inside one file sequentially by default (no
- * per-test concurrency is set anywhere in this file, and package.json's
- * "test" script passes no concurrency flag), so the temporary document
- * written here and removed in `finally` cannot be observed mid-flight by
- * the CR-812 test above or any other test in this file.
- */
-test("manifest-self-check picks up a schema document dropped into the directory after the fact", () => {
-  const schemaDir = fileURLToPath(
-    new URL("../src/gates/schemas/", import.meta.url),
-  );
-  const dir = scratch();
-  const baselineSchemas = readdirSync(schemaDir).filter((name) =>
-    name.endsWith(".schema.json"),
-  );
-  const tempName = "zz-fixture-temp.schema.json";
-  const tempPath = join(schemaDir, tempName);
-  assert.equal(
-    existsSync(tempPath),
-    false,
-    "fixture name must not collide with a real shipped schema",
-  );
-  try {
-    const before = runCli([
-      "gates",
-      "self-check",
-      "--manifest",
-      join(repoRoot, "gates.manifest.json"),
-      "--result",
-      join(dir, "before.json"),
-    ]);
-    assert.equal(before.status, 0, before.stdout + before.stderr);
-    const beforeRecord = JSON.parse(
-      readFileSync(join(dir, "before.json"), "utf8"),
-    ) as { units: number };
-    assert.equal(beforeRecord.units, baselineSchemas.length);
-
-    // A valid document, expressed entirely in the closed keyword set, so
-    // this test isolates the enumeration mechanism from the load contract.
-    writeFileSync(
-      tempPath,
-      JSON.stringify(
-        {
-          type: "object",
-          additionalProperties: false,
-          required: ["ok"],
-          properties: { ok: { type: "string" } },
-        },
-        null,
-        2,
-      ) + "\n",
-    );
-
-    const after = runCli([
-      "gates",
-      "self-check",
-      "--manifest",
-      join(repoRoot, "gates.manifest.json"),
-      "--result",
-      join(dir, "after.json"),
-    ]);
-    assert.equal(after.status, 0, after.stdout + after.stderr);
-    const afterRecord = JSON.parse(
-      readFileSync(join(dir, "after.json"), "utf8"),
-    ) as { units: number; detail: string };
-    assert.equal(afterRecord.units, baselineSchemas.length + 1);
-    assert.match(afterRecord.detail, new RegExp(tempName.replace(/\./g, "\\.")));
-  } finally {
-    rmSync(tempPath, { force: true });
-  }
-
-  // Second, structurally different member: a document that IS enumerated
-  // but carries a keyword outside the closed set must fail loudly, naming
-  // the keyword, rather than being counted as validated. This is the
-  // load-error contract of src/gates/validate.ts (loadSchema), exercised
-  // here through the CLI so the assertion is on captured self-check output
-  // and not on a hand-written string.
-  const badPath = join(schemaDir, tempName);
-  try {
-    writeFileSync(
-      badPath,
-      JSON.stringify({ type: "string", maxLength: 5 }, null, 2) + "\n",
-    );
-    const result = runCli([
-      "gates",
-      "self-check",
-      "--manifest",
-      join(repoRoot, "gates.manifest.json"),
-      "--result",
-      join(dir, "bad.json"),
-    ]);
-    // A red self-check exits non-zero (EXIT_RED); only the result FILE, not
-    // the process exit code, carries the pass/fail this test asserts on.
-    assert.equal(result.status, 1, result.stdout + result.stderr);
-    const badRecord = JSON.parse(
-      readFileSync(join(dir, "bad.json"), "utf8"),
-    ) as { status: string; detail: string };
-    assert.equal(badRecord.status, "red");
-    assert.match(badRecord.detail, /maxLength/);
-    assert.match(badRecord.detail, new RegExp(tempName.replace(/\./g, "\\.")));
-  } finally {
-    rmSync(badPath, { force: true });
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 /**
  * `file-absent` was the last precondition kind with no test, found by the
  * D-805 derivation rather than by reading. Its M2-C-6 arm matters as much as
@@ -2539,7 +2361,7 @@ test("file-absent is met only when nothing is there, and an irregular entry is e
     ]);
     const statusFor = (label: string): string => {
       const evidence = join(dir, `ev-${label}`);
-      runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+      runCli(["gates", "run", "--registry", manifest, "--evidence", evidence]);
       return (
         JSON.parse(
           readFileSync(join(evidence, "g-absent", "result.json"), "utf8"),
@@ -2616,7 +2438,7 @@ test("a run releases only the claim it holds, and writes nothing after releasing
     const refused = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       foreign,
@@ -2663,7 +2485,7 @@ test("a run releases only the claim it holds, and writes nothing after releasing
         join(dist, "bin", "tiphys.js"),
         "gates",
         "run",
-        "--manifest",
+        "--registry",
         manifest,
         "--evidence",
         join(dir, "ev-crash"),
@@ -2720,7 +2542,7 @@ test("a run releases only the claim it holds, and writes nothing after releasing
     const stolen = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       thiefManifest,
       "--evidence",
       thief,
@@ -2741,7 +2563,7 @@ test("a run releases only the claim it holds, and writes nothing after releasing
     const okRun = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       join(dir, "ev-ok"),
@@ -2786,7 +2608,7 @@ test("a refused run identifies itself and cannot be mistaken for the bundle it d
     const first = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       evidence,
@@ -2807,7 +2629,7 @@ test("a refused run identifies itself and cannot be mistaken for the bundle it d
     const second = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       evidence,
@@ -2839,7 +2661,7 @@ test("a refused run identifies itself and cannot be mistaken for the bundle it d
     const third = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       evidence,
@@ -3018,7 +2840,7 @@ test("a run that has lost the claim does not delete the holder's records", () =>
     const run = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       fixture.manifest,
       "--evidence",
       fixture.evidence,
@@ -3066,7 +2888,7 @@ test("a run that has lost the claim does not delete the holder's records", () =>
       ],
       "clean-manifest.json",
     );
-    const ok = runCli(["gates", "run", "--manifest", plain, "--evidence", clean]);
+    const ok = runCli(["gates", "run", "--registry", plain, "--evidence", clean]);
     assert.equal(ok.status, 0, ok.stdout + ok.stderr);
     assert.equal(
       (JSON.parse(readFileSync(join(clean, "g-b", "result.json"), "utf8")) as {
@@ -3086,7 +2908,7 @@ test("a run that has lost the claim does not dispatch further gates", () => {
     const run = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       fixture.manifest,
       "--evidence",
       fixture.evidence,
@@ -3125,7 +2947,7 @@ test("a run that has lost the claim does not dispatch further gates", () => {
       ],
       "control-manifest.json",
     );
-    runCli(["gates", "run", "--manifest", plain, "--evidence", clean]);
+    runCli(["gates", "run", "--registry", plain, "--evidence", clean]);
     assert.ok(
       existsSync(cleanSentinel),
       "the control gate was never dispatched either, so the witness proves nothing",
@@ -3181,7 +3003,7 @@ test("a claim stolen by a gate's own precondition command still stops that gate"
     const run = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       manifest,
       "--evidence",
       evidence,
@@ -3232,7 +3054,7 @@ test("a claim stolen by a gate's own precondition command still stops that gate"
     const ok = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       controlManifest,
       "--evidence",
       clean,
@@ -3251,7 +3073,7 @@ test("a run that has lost the claim creates no directories in the holder's tree"
     const run = runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       fixture.manifest,
       "--evidence",
       fixture.evidence,
@@ -3287,7 +3109,7 @@ test("a run that has lost the claim creates no directories in the holder's tree"
       ],
       "clean-c-manifest.json",
     );
-    const ok = runCli(["gates", "run", "--manifest", plain, "--evidence", clean]);
+    const ok = runCli(["gates", "run", "--registry", plain, "--evidence", clean]);
     assert.equal(ok.status, 0, ok.stdout + ok.stderr);
     assert.ok(existsSync(join(clean, "g-c")), "no run ever creates this directory");
   } finally {
@@ -3390,7 +3212,7 @@ test("the same gate id is not-applicable when its precondition script exists and
     // genuinely unmet precondition and it must stay not-applicable.
     const evidenceA = join(dir, "evidence-present");
     const manifestA = writeManifest(dir, manifestGates, "manifest-present.json");
-    runCli(["gates", "run", "--manifest", manifestA, "--evidence", evidenceA]);
+    runCli(["gates", "run", "--registry", manifestA, "--evidence", evidenceA]);
     const recordA = JSON.parse(
       readFileSync(join(evidenceA, "p11-same-id", "result.json"), "utf8"),
     ) as { status: string; detail: string; precondition?: { id: string; met: boolean; reason: string } };
@@ -3403,7 +3225,7 @@ test("the same gate id is not-applicable when its precondition script exists and
     rmSync(probe);
     const evidenceB = join(dir, "evidence-absent");
     const manifestB = writeManifest(dir, manifestGates, "manifest-absent.json");
-    const runB = runCli(["gates", "run", "--manifest", manifestB, "--evidence", evidenceB]);
+    const runB = runCli(["gates", "run", "--registry", manifestB, "--evidence", evidenceB]);
     assert.notEqual(runB.status, 0);
     const recordB = JSON.parse(
       readFileSync(join(evidenceB, "p11-same-id", "result.json"), "utf8"),
@@ -3467,7 +3289,7 @@ test("a precondition command whose path operand is a directory, and one whose op
         ],
         `manifest-${name}.json`,
       );
-      const run = runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+      const run = runCli(["gates", "run", "--registry", manifest, "--evidence", evidence]);
       assert.notEqual(run.status, 0, `${name}: ${run.stdout}${run.stderr}`);
       const record = JSON.parse(
         readFileSync(join(evidence, `p11-${name}`, "result.json"), "utf8"),
@@ -3602,9 +3424,9 @@ test("a precondition command exiting nonzero is error, not a skip, whenever a pa
   //               closed and loudly, which M2-C-3 prefers to a silent skip.
   //
   // The fourth arm is the CONTROL, and it is the reason the scan tests for a
-  // slash rather than for absence: `credential-token`'s real precondition in
-  // gates.manifest.json is inline code that deliberately exits 1, and it must
-  // still mean unmet.
+  // slash rather than for absence: the precondition of `credential-token`
+  // (a gate M6-P3 deleted) was inline code that deliberately exits 1, a shape
+  // any project registry may still declare, and it must still mean unmet.
   //
   // The wording of these assertions is anchored by real captured output from
   // the runner's own spawns, both arms, in
@@ -3658,7 +3480,7 @@ test("a precondition command exiting nonzero is error, not a skip, whenever a pa
         `manifest-attr-${name}.json`,
       );
       const run = runCliUnprivileged(
-        ["gates", "run", "--manifest", manifest, "--evidence", evidence],
+        ["gates", "run", "--registry", manifest, "--evidence", evidence],
         [dir],
       );
       assert.equal(
@@ -3699,7 +3521,7 @@ test("a precondition command exiting nonzero is error, not a skip, whenever a pa
       "manifest-attr-honest.json",
     );
     const honest = runCliUnprivileged(
-      ["gates", "run", "--manifest", honestManifest, "--evidence", honestEvidence],
+      ["gates", "run", "--registry", honestManifest, "--evidence", honestEvidence],
       [dir],
     );
     assert.equal(honest.error, undefined, String(honest.error));
@@ -3749,7 +3571,7 @@ test("a gate whose command names a missing path, one whose launcher is not execu
         ],
         `manifest-cmd-${name}.json`,
       );
-      const run = runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+      const run = runCli(["gates", "run", "--registry", manifest, "--evidence", evidence]);
       assert.notEqual(run.status, 0, `${name}: ${run.stdout}${run.stderr}`);
       const record = JSON.parse(
         readFileSync(join(evidence, `p11-cmd-${name}`, "result.json"), "utf8"),
@@ -3801,7 +3623,7 @@ test("the shipped registry run against a consumer package tree with no scripts d
         "--mode",
         "full",
         "--only",
-        "check-dual-review",
+        "merge-preconditions",
         "--evidence",
         evidence,
         /* `--head` BECAUSE THE REGISTRY ENTRY NOW DECLARES `parameters: [head]`
@@ -3817,12 +3639,14 @@ test("the shipped registry run against a consumer package tree with no scripts d
         "HEAD",
         "--base",
         "HEAD",
+        "--phase",
+        "m9-p9",
       ],
       dir,
     );
     assert.notEqual(run.status, 0);
     const record = JSON.parse(
-      readFileSync(join(evidence, "check-dual-review", "result.json"), "utf8"),
+      readFileSync(join(evidence, "merge-preconditions", "result.json"), "utf8"),
     ) as { status: string; detail: string };
     assert.equal(record.status, "error");
     assert.notEqual(record.status, "not-applicable");
@@ -3843,7 +3667,7 @@ test("the shipped registry run against a consumer package tree with no scripts d
         "--mode",
         "full",
         "--only",
-        "manifest-self-check",
+        "credential-scrub",
         "--evidence",
         evidenceSelfCheck,
       ],
@@ -3851,19 +3675,20 @@ test("the shipped registry run against a consumer package tree with no scripts d
     );
     assert.notEqual(selfCheck.status, 0);
     const selfCheckRecord = JSON.parse(
-      readFileSync(join(evidenceSelfCheck, "manifest-self-check", "result.json"), "utf8"),
+      readFileSync(join(evidenceSelfCheck, "credential-scrub", "result.json"), "utf8"),
     ) as { status: string; detail: string };
     assert.equal(selfCheckRecord.status, "error");
-    assert.match(selfCheckRecord.detail, /bin\/tiphys\.ts/);
+    assert.match(selfCheckRecord.detail, /src\/gates\/credentials\.ts/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
 });
 
 test("an option's inline value is left alone when it is not path-shaped, which is what keeps a real declared precondition working, and fails closed loudly when it is", () => {
-  // `credential-token`'s precondition in gates.manifest.json is
+  // The precondition of `credential-token` (a gate M6-P3 deleted; the shape
+  // stays declarable in any project registry) was
   // ["node", "-e", "process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0)"],
-  // and it is REQUIRED to keep reporting not-applicable when the token is
+  // and it was REQUIRED to keep reporting not-applicable when the token is
   // absent: that is a legitimate skip, not a crash. This test exists because
   // a rule that swept inline code into its path set would convert every such
   // skip into an error, which is this change's own failure mode in the
@@ -3925,7 +3750,7 @@ test("an option's inline value is left alone when it is not path-shaped, which i
     runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       inlineManifest(
         "manifest-inline-real.json",
         "process.exit(process.env.P11_NEVER_SET_TOKEN === undefined ? 1 : 0)",
@@ -3947,7 +3772,7 @@ test("an option's inline value is left alone when it is not path-shaped, which i
     runCli([
       "gates",
       "run",
-      "--manifest",
+      "--registry",
       inlineManifest("manifest-inline-slash.json", "process.exit('a/b'.length === 3 ? 1 : 0)"),
       "--evidence",
       slashEvidence,
@@ -4015,7 +3840,7 @@ test("an argv element that is not a path does not turn a legitimate unmet precon
   //
   //   inline-code   the value of an option that takes CODE (`-e`). The one
   //                 piece of launcher grammar this runner claims to know, and
-  //                 the shape of `credential-token`'s real declaration.
+  //                 the shape of the deleted `credential-token`'s declaration.
   //   url           a scheme-prefixed operand. Slashes, no filesystem.
   //   option-equals `--opt=/value`: an OPTION carrying a value, probed whole,
   //                 so no file could ever have that name. This member was a
@@ -4088,7 +3913,7 @@ test("an argv element that is not a path does not turn a legitimate unmet precon
         ],
         `manifest-notapath-${name}.json`,
       );
-      const run = runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+      const run = runCli(["gates", "run", "--registry", manifest, "--evidence", evidence]);
       const record = JSON.parse(
         readFileSync(join(evidence, "p11-notapath", "result.json"), "utf8"),
       ) as { status: string; detail: string; precondition?: { met: boolean } };
@@ -4184,7 +4009,7 @@ test("a precondition that removes one of its own argv paths as an ordinary last 
         `manifest-selfclean-${name}.json`,
       );
       assert.equal(existsSync(vanishes), true, `${name}: the staged path is not there to remove`);
-      const run = runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+      const run = runCli(["gates", "run", "--registry", manifest, "--evidence", evidence]);
       // THE DANGEROUS STATE IS REAL, NOT ASSUMED. The path is gone by the time
       // the runner finished, which is exactly what made the old post-spawn
       // scan report `error`; asserting it here stops this test passing for the
@@ -4262,7 +4087,7 @@ test("a directory-less script operand that is not there is error, and a bare wor
       );
       // cwd is the scratch directory, so the operand genuinely resolves to
       // nothing. Running from the repository root would prove nothing.
-      const run = runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence], dir);
+      const run = runCli(["gates", "run", "--registry", manifest, "--evidence", evidence], dir);
       const record = JSON.parse(
         readFileSync(join(evidence, "p11-bare", "result.json"), "utf8"),
       ) as { status: string; detail: string };
@@ -4309,7 +4134,7 @@ test("a directory-less script operand that is not there is error, and a bare wor
       "manifest-bare-control.json",
     );
     const control = runCli(
-      ["gates", "run", "--manifest", controlManifest, "--evidence", controlEvidence],
+      ["gates", "run", "--registry", controlManifest, "--evidence", controlEvidence],
       dir,
     );
     const controlRecord = JSON.parse(
@@ -4358,7 +4183,7 @@ test("a not-applicable gate's reason reaches stdout too, so a skip and a crash a
         },
       },
     ]);
-    const run = runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+    const run = runCli(["gates", "run", "--registry", manifest, "--evidence", evidence]);
     assert.equal(run.status, 0, run.stdout + run.stderr);
     assert.match(run.stdout, /^gates: p11-skipped: not-applicable: /m);
     assert.match(run.stdout, /p11-absent-config/);
@@ -4410,7 +4235,7 @@ test("a GREEN gate's own detail reaches stdout as well, so a disclosure a green 
         applicability: "required",
       },
     ]);
-    const run = runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+    const run = runCli(["gates", "run", "--registry", manifest, "--evidence", evidence]);
     assert.equal(run.status, 0, run.stdout + run.stderr);
     assert.match(run.stdout, /^gates: p11-discloser: green: /m);
     assert.ok(
@@ -4448,7 +4273,7 @@ test("a gate detail carrying a bare carriage return is escaped rather than allow
         applicability: "required",
       },
     ]);
-    const run = runCli(["gates", "run", "--manifest", manifest, "--evidence", evidence]);
+    const run = runCli(["gates", "run", "--registry", manifest, "--evidence", evidence]);
     assert.notEqual(run.status, 0);
     const printed = run.stdout.split("\n").filter((line) => line.startsWith("gates: p11-cr: "));
     assert.equal(printed.length, 1, `expected exactly one row line, got ${JSON.stringify(printed)}`);

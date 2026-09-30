@@ -2,9 +2,8 @@
 /**
  * Three-way UNION resolution for an append-only registry, from the git index.
  *
- * WHY. Binding convention 5: `test/behaviors.json`, `gates.manifest.json` and
- * `delivery/requirements/clause-map.json` are append-only and are resolved as a
- * UNION against the merge base; they never re-serialise phases. Measured
+ * WHY. Binding convention 5: `test/behaviors.json` is append-only and is
+ * resolved as a UNION against the merge base; it never re-serialises phases. Measured
  * 2026-09-16: once two M4 phases have merged, EVERY remaining phase conflicts
  * on `test/behaviors.json` and on nothing else. Ten hand resolutions of a
  * 775-key object is ten chances to drop a row silently.

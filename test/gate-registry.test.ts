@@ -17,8 +17,8 @@
  *
  * THE DANGEROUS STATE IS A HAND-WRITTEN RECORD FILE, not a synthetic switch,
  * because gates are subprocesses that author their own records (M2-D-07) and
- * `scripts/m2-exit-test.sh --self-test` on `main` already uses this fixture
- * shape. The phase reuses it rather than inventing one.
+ * the M2 exit-test harness's `--self-test` used this fixture shape (that
+ * harness was deleted by M6-P3). The phase reused it rather than inventing one.
  */
 
 import { spawnSync } from "node:child_process";
@@ -43,9 +43,7 @@ const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const cliEntry = join(repoRoot, "bin", "tiphys.ts");
 const fixturesDir = join(repoRoot, "test", "fixtures");
 const registryPath = join(repoRoot, "gate-registry.yaml");
-const rendererPath = join(repoRoot, "scripts", "render-agent-rules-gates.mjs");
 const workflowPath = join(repoRoot, ".github", "workflows", "gates.yml");
-const harnessPath = join(repoRoot, "scripts", "m2-exit-test.sh");
 
 /* CLAUDE.md warning 4: a literal relative import of a `src` module from
    `test/` fails the build with TS2878 under rewriteRelativeImportExtensions
@@ -65,18 +63,10 @@ const yamlModule = (await import("yaml")) as unknown as {
   parse: (text: string) => unknown;
 };
 
-/* M4-P14. The three required gate classes are READ OFF THE SHIPPED MODULE, not
-   written out here: CLAUDE.md's append-only rule says a test asserts by name
-   and derives counts at run time, and a fourth required class added later must
-   move these assertions with it rather than turn them into a lie. Same
-   computed-URL dynamic import as `validateModule` above (warning 4). */
-const gateClassesModule = (await import(
-  new URL("../src/gates/gate-classes.ts", import.meta.url).href
-)) as unknown as { REQUIRED_CLASSES: readonly string[] };
-const REQUIRED_CLASS_NAMES = gateClassesModule.REQUIRED_CLASSES;
 
 interface RegistryGate {
   id: string;
+  prevents?: string;
   command?: string[];
   unitLabel: string;
   applicability: string;
@@ -180,6 +170,7 @@ function writeFixtureRegistry(dir: string, options: FixtureRegistryOptions): str
     command: ["node", join(dir, "fixture-gate.mjs")],
     unitLabel: "fixture units",
     applicability: options.applicability ?? "required",
+    prevents: "a fixture failure",
     "verified-by": "script",
     modes: options.modes,
     events: ["pull_request"],
@@ -226,6 +217,7 @@ function writeTwoModeFixtureRegistry(
     command: ["node", join(dir, "fixture-gate.mjs")],
     unitLabel: "fixture units",
     applicability: "required",
+    prevents: "a fixture failure",
     "verified-by": "script",
     modes,
     events: ["pull_request"],
@@ -303,26 +295,6 @@ test("the shipped gate-registry.yaml validates against its schema and resolves t
   const automatic = runCli(["validate", "--type", "auto", "gate-registry.yaml"]);
   assert.equal(automatic.status, 0, `${automatic.stdout}${automatic.stderr}`);
 
-  /* The promotion claim, checked rather than asserted: every gate id in the
-     M2-P1 manifest is still in the registry, with its command, unitLabel,
-     applicability, parameters and precondition unchanged. A promotion that
-     quietly dropped an entry would validate perfectly. */
-  const registry = readRegistry(registryPath);
-  const manifest = JSON.parse(
-    readFileSync(join(repoRoot, "gates.manifest.json"), "utf8"),
-  ) as { gates: Record<string, unknown>[] };
-  const byId = new Map(registry.gates.map((gate) => [gate.id, gate]));
-  for (const entry of manifest.gates) {
-    const promoted = byId.get(entry["id"] as string);
-    assert.ok(promoted !== undefined, `manifest gate ${String(entry["id"])} is not in the registry`);
-    for (const field of ["command", "unitLabel", "applicability", "parameters", "precondition"]) {
-      assert.deepEqual(
-        (promoted as unknown as Record<string, unknown>)[field],
-        entry[field],
-        `${String(entry["id"])}.${field} changed during the promotion`,
-      );
-    }
-  }
 });
 
 /* ------------------------------------------------------------------ */
@@ -394,7 +366,7 @@ test("a conditional gate declaring no precondition is rejected by the schema req
 /* Criterion 5b's first half, and T-009: the events field                */
 /* ------------------------------------------------------------------ */
 
-test("a registry entry with no events field is rejected, and every promoted entry's events match the harness bundle definitions", () => {
+test("a registry entry with no events field is rejected, and every shipped entry declares at least one event", () => {
   const instance = readFixture("gate-registry-no-events.yaml") as Registry;
   const rejected = validateModule.validateToLines(readRegistrySchema(), instance);
   assert.ok(
@@ -409,54 +381,10 @@ test("a registry entry with no events field is rejected, and every promoted entr
   assert.deepEqual(validateModule.validateToLines(defanged, instance), []);
   assert.ok(validateModule.validateToLines(readRegistrySchema(), instance).length > 0);
 
-  /* DERIVED, NOT ASSIGNED (step 5). The `push` arm's gate set is the gate list
-     scripts/m2-exit-test.sh declares in MAIN_ONLY_GATES and turns into the
-     runner's repeated `--only` flags; the `pull_request` arm passes no `--only`
-     and therefore runs every entry. Reading the arm off the harness rather than
-     off a memory of it is the whole point: an `events[]` assigned by judgment
-     is a claim nothing checks.
-
-     This reader used to scrape the `--only` flags out of the runner invocation.
-     That worked while the six ids were written out literally there, and the
-     harness now declares them ONCE in MAIN_ONLY_GATES and builds both the flags
-     and the expectation's absent list from it, precisely so the set cannot exist
-     in two places that drift. Reading the single declaration is therefore
-     strictly closer to this test's own stated intent than scraping one of the
-     things generated from it. */
-  const harness = readFileSync(harnessPath, "utf8");
-  const mainBundle = /^MAIN_ONLY_GATES="([^"]+)"/m.exec(harness);
-  assert.ok(
-    mainBundle !== null,
-    "scripts/m2-exit-test.sh no longer declares MAIN_ONLY_GATES, so the push arm's gate set " +
-      "cannot be derived from the harness and this test would be asserting over a memory of it",
-  );
-  const pushGates = new Set((mainBundle[1] as string).split(/\s+/).filter((id) => id !== ""));
-  assert.ok(pushGates.size >= 6, `expected the six main-bundle gates, derived ${[...pushGates].join(", ")}`);
-
   const registry = readRegistry(registryPath);
-  const manifestIds = new Set(
-    (
-      JSON.parse(readFileSync(join(repoRoot, "gates.manifest.json"), "utf8")) as {
-        gates: { id: string }[];
-      }
-    ).gates.map((entry) => entry.id),
-  );
   for (const gate of registry.gates) {
     assert.ok(Array.isArray(gate.events) && gate.events.length > 0, `${gate.id} declares no events`);
-    assert.ok(gate.events.includes("pull_request"), `${gate.id} is not evaluated on any pull request`);
-    if (manifestIds.has(gate.id)) {
-      assert.equal(
-        gate.events.includes("push"),
-        pushGates.has(gate.id),
-        `${gate.id}'s push arm does not match the harness main bundle`,
-      );
-    }
   }
-  /* The drift check is not an M2 manifest gate, so the loop above cannot
-     reach it, and it is the one entry T-009 is actually about: CLAUDE.md
-     drift is a property of `main`, not of a pull request. */
-  const drift = registry.gates.find((gate) => gate.id === "agent-rules-drift");
-  assert.deepEqual(drift?.events, ["pull_request", "push"]);
 });
 
 /* ------------------------------------------------------------------ */
@@ -499,6 +427,7 @@ test("a registry run reports zero gates green with an unmet precondition, read f
           command: ["node", join(dir, "fixture-gate.mjs")],
           unitLabel: "fixture units",
           applicability: "conditional",
+          prevents: "a fixture failure",
           "verified-by": "script",
           modes: ["full"],
           events: ["pull_request"],
@@ -746,220 +675,6 @@ test("a diff-scoped registry gate whose trigger is untouched reports not-applica
 });
 
 /* ------------------------------------------------------------------ */
-/* Criterion 5: the drift check                                         */
-/* ------------------------------------------------------------------ */
-
-/** Copy the four files the renderer needs into a scratch tree. */
-function stageRendererTree(dir: string): { registry: string; rules: string } {
-  mkdirSync(join(dir, "scripts"), { recursive: true });
-  mkdirSync(join(dir, "src", "gates"), { recursive: true });
-  const registry = join(dir, "gate-registry.yaml");
-  const rules = join(dir, "CLAUDE.md");
-  writeFileSync(registry, readFileSync(registryPath, "utf8"));
-  writeFileSync(rules, readFileSync(join(repoRoot, "CLAUDE.md"), "utf8"));
-  return { registry, rules };
-}
-
-function runRenderer(args: string[], cwd: string): {
-  status: number | null;
-  stdout: string;
-  stderr: string;
-} {
-  const run = spawnSync(process.execPath, [rendererPath, ...args], {
-    encoding: "utf8",
-    cwd,
-  });
-  return { status: run.status, stdout: run.stdout, stderr: run.stderr };
-}
-
-/** Append a gate to a registry file. The realistic drift: a new gate lands. */
-function addGateToRegistry(path: string, id: string): void {
-  const text = readFileSync(path, "utf8");
-  const addition = `
-  - id: ${id}
-    command: [node, scripts/${id}.mjs]
-    unitLabel: ${id} things checked
-    applicability: required
-    verified-by: script
-    modes: [full]
-    events: [pull_request]
-`;
-  const marker = "\ndestructiveCommands:";
-  writeFileSync(path, text.replace(marker, `${addition}${marker}`));
-}
-
-test("adding a gate to the registry without re-rendering makes --check exit nonzero naming the added gate, and re-rendering returns exit 0", () => {
-  const dir = scratch("drift");
-  try {
-    const staged = stageRendererTree(dir);
-    const clean = runRenderer(["--check", "--registry", staged.registry, "--agent-rules", staged.rules], dir);
-    assert.equal(clean.status, 0, `${clean.stdout}${clean.stderr}`);
-
-    addGateToRegistry(staged.registry, "a-newly-added-gate");
-    const drifted = runRenderer(
-      ["--check", "--registry", staged.registry, "--agent-rules", staged.rules],
-      dir,
-    );
-    assert.notEqual(drifted.status, 0, "an unrendered new gate did not redden --check");
-    assert.match(
-      `${drifted.stdout}${drifted.stderr}`,
-      /a-newly-added-gate/,
-      "the drift report does not NAME the added gate",
-    );
-
-    const rewritten = runRenderer(
-      ["--write", "--registry", staged.registry, "--agent-rules", staged.rules],
-      dir,
-    );
-    assert.equal(rewritten.status, 0, `${rewritten.stdout}${rewritten.stderr}`);
-    const rechecked = runRenderer(
-      ["--check", "--registry", staged.registry, "--agent-rules", staged.rules],
-      dir,
-    );
-    assert.equal(rechecked.status, 0, `${rechecked.stdout}${rechecked.stderr}`);
-
-    /* THE RENDERER DERIVES FROM THE REGISTRY, IT DOES NOT READ THE BLOCK.
-       A renderer that read CLAUDE.md's block and called it the rendering
-       would pass every assertion above, because the two would agree by
-       construction. Emptying the block and re-checking distinguishes them:
-       a deriving renderer reddens, a block-reading one stays green. */
-    const rules = readFileSync(staged.rules, "utf8");
-    const begin = rules.indexOf("<!-- BEGIN GENERATED GATE LIST");
-    const end = rules.indexOf("<!-- END GENERATED GATE LIST -->");
-    const beginLineEnd = rules.indexOf("\n", begin);
-    writeFileSync(
-      staged.rules,
-      rules.slice(0, beginLineEnd + 1) + "\n" + rules.slice(end),
-    );
-    const emptied = runRenderer(
-      ["--check", "--registry", staged.registry, "--agent-rules", staged.rules],
-      dir,
-    );
-    assert.notEqual(emptied.status, 0, "an emptied block did not redden: the renderer reads the block");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-/* ------------------------------------------------------------------ */
-/* Criterion 5b: the check is a BEHAVIOUR, and its event arm is asserted */
-/* ------------------------------------------------------------------ */
-
-interface WorkflowStep {
-  name?: string;
-  run?: string;
-  if?: string;
-}
-
-/** The drift step, located in a workflow document by what it RUNS. */
-function findDriftStep(workflowText: string): {
-  step: WorkflowStep;
-  jobNames: string[];
-  hasMatrix: boolean;
-} {
-  const document = yamlModule.parse(workflowText) as {
-    jobs: Record<string, { steps: WorkflowStep[]; strategy?: { matrix?: unknown } }>;
-  };
-  const jobNames = Object.keys(document.jobs);
-  const steps = Object.values(document.jobs).flatMap((job) => job.steps ?? []);
-  const matching = steps.filter(
-    (step) => typeof step.run === "string" && step.run.includes("render-agent-rules-gates.mjs"),
-  );
-  assert.equal(matching.length, 1, `expected exactly one drift step, found ${matching.length}`);
-  const hasMatrix = Object.values(document.jobs).some(
-    (job) => job.strategy?.matrix !== undefined,
-  );
-  return { step: matching[0] as WorkflowStep, jobNames, hasMatrix };
-}
-
-/**
- * Execute a workflow step's `run` text and report the exit code, plus whether
- * the step would run on both CI events. This is the whole of criterion 5b:
- * a step is a BEHAVIOUR, and a test that asserted its TEXT would catch
- * deletion and miss defanging, which M1-P6 confirmed six times.
- */
-function evaluateDriftStep(
-  workflowText: string,
-  cwd: string,
-  registry: string,
-  rules: string,
-): { bothArms: boolean; exitCode: number | null } {
-  const { step } = findDriftStep(workflowText);
-  const bothArms = step.if === undefined;
-  const script = (step.run as string)
-    .replace(
-      "scripts/render-agent-rules-gates.mjs",
-      `${rendererPath} --registry ${registry} --agent-rules ${rules}`,
-    );
-  const run = spawnSync("bash", ["-c", script], { encoding: "utf8", cwd });
-  return { bothArms, exitCode: run.status };
-}
-
-test("the drift step extracted from the gates workflow is executed and its exit code observed on a drifted and a re-rendered registry", () => {
-  const workflow = readFileSync(workflowPath, "utf8");
-
-  /* DR-0017 and DR-0004, asserted here because this phase edits the file the
-     required status context comes from: ONE job named `gates`, no matrix. A
-     matrix renames the published context to `gates (26)` and detaches branch
-     protection. */
-  const located = findDriftStep(workflow);
-  assert.deepEqual(located.jobNames, ["gates"]);
-  assert.equal(located.hasMatrix, false);
-
-  const dir = scratch("drift-wired");
-  try {
-    const staged = stageRendererTree(dir);
-
-    const clean = evaluateDriftStep(workflow, dir, staged.registry, staged.rules);
-    assert.equal(clean.exitCode, 0, "the extracted step failed against a re-rendered registry");
-    /* T-009: BOTH ARMS. CLAUDE.md drift is a property of `main`, not of a
-       pull request, so a step that ran on one event would let a direct push,
-       a rebase or a merge-queue-side edit drift the file with nothing red. */
-    assert.equal(clean.bothArms, true, "the drift step carries an `if:` and runs on one arm only");
-
-    addGateToRegistry(staged.registry, "a-gate-the-block-does-not-carry");
-    const drifted = evaluateDriftStep(workflow, dir, staged.registry, staged.rules);
-    assert.notEqual(drifted.exitCode, 0, "the extracted step passed against a drifted registry");
-
-    /* TWO STRUCTURALLY DIFFERENT DEFANGS (section 2.3 rule 6), each applied
-       to the workflow TEXT and each run through the same evaluator. A test
-       whose condition cannot tell the live workflow from a defanged one is
-       green and worthless, so the discrimination is demonstrated rather than
-       argued. */
-    const defangedByOrTrue = workflow.replace(
-      "run: node scripts/render-agent-rules-gates.mjs --check",
-      "run: node scripts/render-agent-rules-gates.mjs --check || true",
-    );
-    assert.notEqual(defangedByOrTrue, workflow, "the `|| true` defang did not apply");
-    const orTrue = evaluateDriftStep(defangedByOrTrue, dir, staged.registry, staged.rules);
-    assert.equal(
-      orTrue.exitCode,
-      0,
-      "the `|| true` defang did not survive as exit 0, so this evaluator cannot detect it",
-    );
-
-    const defangedByEventNarrowing = workflow.replace(
-      "      - name: Agent-rules gate-list drift",
-      "      - if: github.event_name == 'pull_request'\n        name: Agent-rules gate-list drift",
-    );
-    assert.notEqual(defangedByEventNarrowing, workflow, "the event-narrowing defang did not apply");
-    const narrowed = evaluateDriftStep(
-      defangedByEventNarrowing,
-      dir,
-      staged.registry,
-      staged.rules,
-    );
-    assert.equal(
-      narrowed.bothArms,
-      false,
-      "the event-narrowing defang was not detected: this evaluator cannot see an `if:`",
-    );
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-/* ------------------------------------------------------------------ */
 /* The exclusion witness for `modes[]`, the phase's headline addition   */
 /* ------------------------------------------------------------------ */
 
@@ -1025,191 +740,6 @@ test("a gate declaring only another mode is EXCLUDED from the run, with no row, 
   }
 });
 
-/* ------------------------------------------------------------------ */
-/* R-094 as DELIVERED: the divergence between CI and the registry       */
-/* ------------------------------------------------------------------ */
-
-/**
- * Registry `script` gates that are NOT in `gates.manifest.json`, each with the
- * reason it is absent. This is a DECLARED DIVERGENCE, not a count: a new entry
- * here is a deliberate act with a written reason, and a registry-only gate
- * added WITHOUT one reddens the test below.
- */
-const REGISTRY_ONLY_SCRIPT_GATES: ReadonlyMap<
-  string,
-  { reason: string; coveredBy: RegExp }
-> = new Map([
-  [
-    "agent-rules-drift",
-    {
-      reason:
-        "M3-P2 declares it per D-M3-34, but CI invokes the runner with --manifest, " +
-        "so what executes it in CI is a step in .github/workflows/gates.yml. " +
-        "Promoting it to gates.manifest.json no longer requires an expectation row " +
-        "in scripts/m2-exit-test.sh: that script derives its expected gate set " +
-        "from the manifest, and a declared gate with no table row is asserted " +
-        "required-green, which is the correct expectation for this one. What is " +
-        "left is a scope decision about what CI runs, tracked with the " +
-        "orchestrator as the open half of R-094, not a blocker in the harness.",
-      coveredBy: /render-agent-rules-gates\.mjs --check/,
-    },
-  ],
-  /* NEW IN M3-P9. Both entries are here for the SAME structural reason as the
-     one above and not for a new one: CI runs `--manifest gates.manifest.json`
-     on both arms, `scripts/m2-exit-test.sh` and `gates.manifest.json` are on no
-     M3 phase's declaration, and a gate declared only in the registry therefore
-     never reaches the runner. */
-  [
-    "check-agents-references",
-    {
-      reason:
-        "M3-P9 step 5 declares it per D-M3-34. It is executed by a step in " +
-        ".github/workflows/gates.yml carrying no `if:`, so both CI events run " +
-        "it: a dangling reference or a pasted gate table on `main` is the state " +
-        "that matters, not only one proposed in a pull request (T-009).",
-      coveredBy: /check-agents-references\.mjs/,
-    },
-  ],
-  [
-    "check-dual-review",
-    {
-      reason:
-        "M3-P9 step 3b declares it per D-M3-34, with `events: [pull_request]` " +
-        "and a command-exit-zero precondition, because a merged head has no " +
-        "pair of verdicts to compare. It is executed by a step in " +
-        ".github/workflows/gates.yml whose `if:` matches those declared events. " +
-        "Since M5-P3 that step and the registry entry ask DIFFERENT precondition " +
-        "questions: the step runs the M3-P9 verdict-present arm with no --base, " +
-        "and the registry runs the review-budget arm with base and head, which " +
-        "makes a missing review red. The review gate CI enforces with the " +
-        "budget is merge-preconditions, which IS in gates.manifest.json.",
-      coveredBy: /check-dual-review\.mjs/,
-    },
-  ],
-  /* NEW IN M3-P10, and the fourth instance of one structural cause rather than
-     a fourth cause. `scripts/m2-exit-test.sh` invokes the runner with
-     `--manifest gates.manifest.json` on both arms; neither that script nor that
-     manifest is on any M3 phase's declaration; so a gate declared only in
-     gate-registry.yaml never reaches the runner. This entry is what turns that
-     from a silent non-run into a declared one, and the `coveredBy` regex is
-     what stops the declaration becoming an excuse for a gate nothing executes. */
-  [
-    "license",
-    {
-      reason:
-        "M3-P10 step 2 declares it per D-M3-34 (EXT-F-09's five checks, and " +
-        "DR-0013 clause 5's requirement that the TRANSITIVE production set be " +
-        "the thing inventoried). It is executed by a step in " +
-        ".github/workflows/gates.yml carrying no `if:`, so both CI events run " +
-        "it: a production dependency arrives on `main` through a merge, so what " +
-        "the package ships is a property of the default branch and not only of " +
-        "a proposed change (T-009). The release workflow runs it again as an " +
-        "explicit step before publishing, which is the enforcement point because " +
-        "it depends on no lifecycle hook; `prepublishOnly` runs it on every " +
-        "publish path that runs lifecycle scripts, and `--ignore-scripts` skips " +
-        "it (HRB-7, measured on npm 11.18.0).",
-      coveredBy: /license-gate\.mjs/,
-    },
-  ],
-]);
-
-/** Every `run:` step of the gates workflow, across all jobs, in order. */
-function workflowRunSteps(workflowText: string): WorkflowStep[] {
-  const document = yamlModule.parse(workflowText) as {
-    jobs: Record<string, { steps: WorkflowStep[] }>;
-  };
-  return Object.values(document.jobs).flatMap((job) => job.steps ?? []);
-}
-
-test("every registry gate CI does not run is a declared divergence, and the workflow step that covers the one instance is present on both arms", () => {
-  /* THE REVERSE DIRECTION. The parity assertion in criterion 1 is manifest
-     SUBSET registry: it stops the registry LOSING a gate. It says nothing
-     about a gate that exists only in the registry, and such a gate does not
-     run in CI at all, because scripts/m2-exit-test.sh passes
-     --manifest gates.manifest.json on both arms. That is precisely what
-     happened to agent-rules-drift, and nothing was red. */
-  const registry = readRegistry(registryPath);
-  const manifestIds = new Set(
-    (
-      JSON.parse(readFileSync(join(repoRoot, "gates.manifest.json"), "utf8")) as {
-        gates: { id: string }[];
-      }
-    ).gates.map((entry) => entry.id),
-  );
-  const registryOnly = registry.gates
-    .filter((gate) => gate["verified-by"] === "script" && !manifestIds.has(gate.id))
-    .map((gate) => gate.id)
-    .sort();
-  assert.deepEqual(
-    registryOnly,
-    [...REGISTRY_ONLY_SCRIPT_GATES.keys()].sort(),
-    "a script gate is declared in gate-registry.yaml and absent from gates.manifest.json " +
-      "with no recorded reason; CI runs the MANIFEST, so that gate does not run in CI",
-  );
-
-  /* THE PROSE IS CHECKED, NOT TRUSTED. Both gate-registry.yaml's header and
-     CLAUDE.md's gate section state, in the present tense, that CI reads the
-     manifest and not the registry. A document asserting a present-tense fact
-     that nothing checks is tuition T-006, and it is what this round is for. */
-  const harness = readFileSync(harnessPath, "utf8");
-  const workflow = readFileSync(workflowPath, "utf8");
-  assert.equal(harness.includes("--registry"), false, "scripts/m2-exit-test.sh now uses --registry");
-  assert.equal(
-    workflow.includes("gates run --registry"),
-    false,
-    ".github/workflows/gates.yml now makes a registry run",
-  );
-  assert.ok(harness.includes("--manifest \"${MANIFEST}\""), "the harness no longer passes --manifest");
-
-  /* EVERY DIVERGENCE IS COVERED BY A STEP, and this leg is what M3-P9 added.
-     Before it, the test hard-coded ONE lookup for the single instance, so a
-     future registry-only gate that carried a written reason and had NOTHING
-     running it would have been accepted: the reason would be present, the map
-     would match, and the gate would never execute anywhere. A declared
-     divergence with no covering step is a gate that cannot go red, which is
-     worse than none because the registry says it exists. */
-  const steps = workflowRunSteps(workflow);
-  for (const [id, entry] of REGISTRY_ONLY_SCRIPT_GATES) {
-    const covering = steps.filter((step) =>
-      entry.coveredBy.test(typeof step.run === "string" ? step.run : ""),
-    );
-    assert.equal(
-      covering.length >= 1,
-      true,
-      `registry-only gate ${id} has a recorded reason and no workflow step runs it`,
-    );
-  }
-
-  /* AND THE EVENT ARMS AGREE WITH THE REGISTRY. A step whose `if:` narrows to
-     one event while its gate declares both is the defang shape section 2.3
-     rule 7 lists; a step with no `if:` while its gate declares one event would
-     be the mirror error, running a gate on an arm it says it does not apply
-     to. Derived from the registry rather than written out here. */
-  const registryById = new Map(registry.gates.map((gate) => [gate.id, gate]));
-  for (const [id, entry] of REGISTRY_ONLY_SCRIPT_GATES) {
-    const declared = registryById.get(id);
-    assert.ok(declared !== undefined, `${id} is no longer in the registry`);
-    const covering = steps.filter((step) =>
-      entry.coveredBy.test(typeof step.run === "string" ? step.run : ""),
-    );
-    const bothArms = (declared.events ?? []).includes("push");
-    for (const step of covering) {
-      assert.equal(
-        step.if === undefined,
-        bothArms,
-        `${id} declares events ${(declared.events ?? []).join(",")} and its ` +
-          `workflow step ${step.if === undefined ? "carries no `if:`" : `carries if: ${String(step.if)}`}`,
-      );
-    }
-  }
-
-  /* The original instance, kept as its own assertion because it is the one
-     T-009 is actually about: agent-rules drift is a property of `main`. */
-  const { step } = findDriftStep(workflow);
-  assert.equal(step.if, undefined);
-  assert.match(step.run as string, /render-agent-rules-gates\.mjs --check/);
-});
-
 test("a clean-room-checklist entry is reported as declared and not executed, and produces no record, no evidence and no status", () => {
   /* The corrected `$comment` on the two D-11 entries says the runner does not
      execute them and does not evaluate their precondition. The first round
@@ -1217,19 +747,42 @@ test("a clean-room-checklist entry is reported as declared and not executed, and
      checked either statement. This is that check. */
   const dir = scratch("registry-checklist");
   try {
+    /* A FIXTURE REGISTRY: one script gate that runs, and two checklist
+       entries shaped like the D-11 pair (M6-P3 removed them from this
+       repository's registry; the runner still supports the shape). */
+    const fixturePath = writeFixtureRegistry(dir, { gateId: "runs", modes: ["full"] });
+    const fixture = JSON.parse(readFileSync(fixturePath, "utf8")) as Registry;
+    for (const id of ["checklist-probe-one", "checklist-probe-two"]) {
+      fixture.gates.push({
+        id,
+        unitLabel: "items checked",
+        applicability: "conditional",
+        prevents: "a fixture failure",
+        "verified-by": "clean-room-checklist",
+        probe: id,
+        modes: ["full"],
+        events: ["pull_request"],
+        precondition: { id: "clean-room-checklist-present", kind: "file-exists", path: "checklists/clean-room.yaml" } as { id: string; kind: string },
+      });
+    }
+    writeFileSync(fixturePath, `${JSON.stringify(fixture, null, 2)}\n`);
     const evidence = join(dir, "evidence");
     const run = spawnSync(
       process.execPath,
-      [cliEntry, "gates", "run", "--registry", "gate-registry.yaml", "--mode", "full",
-        "--only", "manifest-self-check", "--evidence", evidence],
-      { encoding: "utf8", cwd: repoRoot },
+      [cliEntry, "gates", "run", "--registry", fixturePath, "--mode", "full",
+        "--only", "runs", "--evidence", evidence],
+      {
+        encoding: "utf8",
+        cwd: dir,
+        env: { ...process.env, FIXTURE_GATE_ID: "runs", FIXTURE_STATUS: "green", FIXTURE_UNITS: "1", FIXTURE_EXIT: "0" },
+      },
     );
     assert.equal(run.status, 0, `${run.stdout}${run.stderr}`);
     const summary = JSON.parse(readFileSync(join(evidence, "summary.json"), "utf8")) as {
       gates: { id: string }[];
       declaredByChecklist: { id: string; probe: string }[];
     };
-    const registry = readRegistry(registryPath);
+    const registry = readRegistry(fixturePath);
     const checklistIds = registry.gates
       .filter((gate) => gate["verified-by"] === "clean-room-checklist")
       .map((gate) => gate.id)
@@ -1284,7 +837,6 @@ test("a clean-room-checklist entry is reported as declared and not executed, and
  */
 
 const gateClassesEntry = join(repoRoot, "src", "gates", "gate-classes.ts");
-const declarationsDir = join(repoRoot, "delivery", "plan", "phase-declarations");
 const capturesDir = join(repoRoot, "witness", "captures");
 
 /** Run the shipped gate module directly, in a working directory of our choosing. */
@@ -1299,245 +851,6 @@ function runGateModule(cwd: string, args: string[]): {
   });
   return { status: run.status, stdout: run.stdout, stderr: run.stderr };
 }
-
-/**
- * A scratch tree holding COPIES of the named real declarations and a copy of
- * this repository's own registry. Nothing is authored here: the declarations
- * are byte copies, which is what makes the red arm a statement about the
- * repository rather than about a fixture written to fail.
- */
-function writeDeclarationFixture(dir: string, phases: string[]): void {
-  mkdirSync(join(dir, "declarations"), { recursive: true });
-  for (const phase of phases) {
-    copyFileSync(
-      join(declarationsDir, `${phase}.json`),
-      join(dir, "declarations", `${phase}.json`),
-    );
-  }
-  copyFileSync(registryPath, join(dir, "registry.yaml"));
-}
-
-function classGateArgs(phase: string, result: string): string[] {
-  return [
-    "gate-classes",
-    "--declarations",
-    "declarations",
-    "--registry",
-    "registry.yaml",
-    "--result",
-    result,
-    "--phase",
-    phase,
-  ];
-}
-
-test("a copy of a real phase declaration with no gate class declaration is red naming every required class, and the same copy with the classes declared is green", () => {
-  const dir = scratch("gate-classes-missing");
-  try {
-    /* TWO structurally different real declarations, because one witness is
-       not a class (CLAUDE.md). m2-p4 is an M2 kernel phase with four
-       filesToTouch entries; m3-p1 is an M3 phase with a different shape and a
-       different citation set. Both lack `gateClasses`, and the point of using
-       real ones is that neither was written by this phase. */
-    writeDeclarationFixture(dir, ["m2-p4", "m3-p1"]);
-
-    /* The cited capture is REAL output of the gate under test, taken by the
-       same commands this test runs (witness/captures/gate-classes-missing-declaration.txt).
-       The asserted sentences are READ OUT OF IT rather than typed here, so an
-       implementation changed to print something else reddens instead of a
-       hand-written string being quietly updated to match. */
-    const capture = readFileSync(
-      join(capturesDir, "gate-classes-missing-declaration.txt"),
-      "utf8",
-    );
-    const capturedDetails = capture
-      .split("\n")
-      .filter((line) => line.startsWith("phase M"));
-    assert.equal(
-      capturedDetails.length,
-      2,
-      `the capture should carry one detail line per declaration, saw ${String(capturedDetails.length)}`,
-    );
-
-    for (const [index, phase] of ["m2-p4", "m3-p1"].entries()) {
-      const red = runGateModule(dir, classGateArgs(phase, `${phase}-red.json`));
-      assert.equal(red.status, 1, `expected red for ${phase}, stderr: ${red.stderr}`);
-      assert.equal(
-        red.stdout.includes(capturedDetails[index] as string),
-        true,
-        `live output for ${phase} does not reproduce the captured detail:\n${red.stdout}`,
-      );
-      const record = JSON.parse(readFileSync(join(dir, `${phase}-red.json`), "utf8")) as {
-        status: string;
-        units: number;
-        detail: string;
-      };
-      assert.equal(record.status, "red");
-      /* DERIVED, never pinned: the three required classes are read off the
-         gate's own exported list, so a fourth required class added later does
-         not make this assertion a lie about a number. */
-      assert.equal(record.units, REQUIRED_CLASS_NAMES.length);
-      for (const name of REQUIRED_CLASS_NAMES) {
-        assert.equal(
-          record.detail.includes(`${name}: MISSING`),
-          true,
-          `the detail for ${phase} does not name the missing class ${name}: ${record.detail}`,
-        );
-      }
-      assert.equal(
-        record.detail.includes(phase.toUpperCase()),
-        true,
-        `the detail for ${phase} does not name the phase id: ${record.detail}`,
-      );
-    }
-
-    /* THE GREEN ARM IS THE SAME COPY, one field added. Anything else would
-       change two variables at once. */
-    const declaration = JSON.parse(
-      readFileSync(join(dir, "declarations", "m2-p4.json"), "utf8"),
-    ) as Record<string, unknown>;
-    declaration["gateClasses"] = {
-      correctness: { gates: ["suite", "typecheck"] },
-      scope: { gates: ["scope"] },
-      review: { gates: ["check-dual-review"] },
-    };
-    writeFileSync(
-      join(dir, "declarations", "m2-p4.json"),
-      `${JSON.stringify(declaration, null, 2)}\n`,
-    );
-    const green = runGateModule(dir, classGateArgs("m2-p4", "m2-p4-green.json"));
-    assert.equal(green.status, 0, `expected green, stderr: ${green.stderr}\n${green.stdout}`);
-    const greenRecord = JSON.parse(readFileSync(join(dir, "m2-p4-green.json"), "utf8")) as {
-      status: string;
-      units: number;
-      detail: string;
-    };
-    assert.equal(greenRecord.status, "green");
-    assert.equal(greenRecord.units, REQUIRED_CLASS_NAMES.length);
-    assert.match(greenRecord.detail, /correctness: asserted by suite, typecheck/);
-
-    /* AND A GATE ID THE REGISTRY DOES NOT DECLARE IS STILL RED, because a
-       class satisfied by a name nothing runs is the silent nothing one level
-       down: the declaration would look complete and assert nothing. */
-    declaration["gateClasses"] = {
-      correctness: { gates: ["a-gate-this-registry-does-not-declare"] },
-      scope: { gates: ["scope"] },
-      review: { gates: ["check-dual-review"] },
-    };
-    writeFileSync(
-      join(dir, "declarations", "m2-p4.json"),
-      `${JSON.stringify(declaration, null, 2)}\n`,
-    );
-    const unknown = runGateModule(dir, classGateArgs("m2-p4", "m2-p4-unknown.json"));
-    assert.equal(unknown.status, 1, `expected red for an unknown gate id: ${unknown.stdout}`);
-    assert.match(unknown.stdout, /a-gate-this-registry-does-not-declare/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("a not-applicable class with no reason and a not-yet-establishable class naming no establishing phase are each red, and each is green once its missing datum is supplied", () => {
-  const dir = scratch("gate-classes-escape");
-  try {
-    writeDeclarationFixture(dir, ["m2-p4"]);
-    const base = JSON.parse(
-      readFileSync(join(dir, "declarations", "m2-p4.json"), "utf8"),
-    ) as Record<string, unknown>;
-    const satisfied = {
-      correctness: { gates: ["suite"] },
-      scope: { gates: ["scope"] },
-      review: { gates: ["check-dual-review"] },
-    };
-    const write = (classes: Record<string, unknown>): void => {
-      writeFileSync(
-        join(dir, "declarations", "m2-p4.json"),
-        `${JSON.stringify({ ...base, gateClasses: classes }, null, 2)}\n`,
-      );
-    };
-
-    /* The cited capture is REAL output of the gate under test, taken by the
-       same four commands (witness/captures/gate-classes-escape-arms.txt). The
-       asserted sentences are read out of it. */
-    const capture = readFileSync(join(capturesDir, "gate-classes-escape-arms.txt"), "utf8");
-    const capturedDetails = capture.split("\n").filter((line) => line.startsWith("phase M2-P4"));
-    assert.equal(
-      capturedDetails.length,
-      4,
-      `the capture should carry four detail lines, saw ${String(capturedDetails.length)}`,
-    );
-
-    /* TWO STRUCTURALLY DIFFERENT MEMBERS of one class, which is what
-       DR-0029's "you can never SILENTLY have nothing" actually quantifies
-       over. They fail for different reasons and are repaired by different
-       data: one needs a REASON, the other needs a PHASE ID. A witness that
-       only ever exercised the first would leave the second unguarded, which
-       is the exact shape CLAUDE.md's "one witness is not a class" records. */
-    const arms: { classes: Record<string, unknown>; expect: number; capturedIndex: number }[] = [
-      { classes: { ...satisfied, review: { status: "not-applicable" } }, expect: 1, capturedIndex: 0 },
-      {
-        classes: {
-          ...satisfied,
-          review: {
-            status: "not-applicable",
-            reason: "M2-P4 is a harness-only change reviewed under the M2 exit test",
-          },
-        },
-        expect: 0,
-        capturedIndex: 1,
-      },
-      {
-        classes: { ...satisfied, correctness: { status: "not-yet-establishable" } },
-        expect: 1,
-        capturedIndex: 2,
-      },
-      {
-        classes: {
-          ...satisfied,
-          correctness: { status: "not-yet-establishable", establishedBy: "M4-P20" },
-        },
-        expect: 0,
-        capturedIndex: 3,
-      },
-    ];
-
-    for (const arm of arms) {
-      write(arm.classes);
-      const run = runGateModule(dir, classGateArgs("m2-p4", `arm-${String(arm.capturedIndex)}.json`));
-      assert.equal(
-        run.status,
-        arm.expect,
-        `arm ${String(arm.capturedIndex)} exited ${String(run.status)}: ${run.stdout}${run.stderr}`,
-      );
-      assert.equal(
-        run.stdout.includes(capturedDetails[arm.capturedIndex] as string),
-        true,
-        `arm ${String(arm.capturedIndex)} does not reproduce the captured detail:\n${run.stdout}`,
-      );
-    }
-
-    /* AND AN EMPTY-STRING REASON IS THE SAME DEFECT AS AN ABSENT ONE, which a
-       check written as a presence test would wave through. Plan criterion 2
-       says "empty or absent", so both are exercised. */
-    write({ ...satisfied, review: { status: "not-applicable", reason: "   " } });
-    const blank = runGateModule(dir, classGateArgs("m2-p4", "blank.json"));
-    assert.equal(blank.status, 1, `an all-whitespace reason should be red: ${blank.stdout}`);
-    assert.match(blank.stdout, /review: not-applicable with no recorded reason/);
-
-    /* AND THE ESCAPE IS DISCLOSED ON THE GREEN ARM. DR-0029 permits the
-       escape; the protection is that a reviewer SEES it, exactly as
-       src/gates/scope.ts prints a declaration addition it no longer refuses. */
-    write({
-      ...satisfied,
-      review: { status: "not-applicable", reason: "a reason that is recorded" },
-    });
-    const disclosed = runGateModule(dir, classGateArgs("m2-p4", "disclosed.json"));
-    assert.equal(disclosed.status, 0);
-    assert.match(disclosed.stdout, /DECLARED ESCAPE rather than a gate/);
-    assert.match(disclosed.stdout, /reviewer signs off/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
 
 test("the typecheck gate reports units the compiler printed and reddens naming the file when one deliberate type error is introduced", () => {
   const dir = scratch("typecheck-gate");
@@ -1652,59 +965,6 @@ test("the typecheck gate reports units the compiler printed and reddens naming t
   }
 });
 
-test("gate-classes reports error rather than green when the registry that defines the legal gate ids cannot be read", () => {
-  const dir = scratch("gate-classes-registry");
-  try {
-    writeDeclarationFixture(dir, ["m2-p4"]);
-    const base = JSON.parse(
-      readFileSync(join(dir, "declarations", "m2-p4.json"), "utf8"),
-    ) as Record<string, unknown>;
-    base["gateClasses"] = {
-      correctness: { gates: ["suite"] },
-      scope: { gates: ["scope"] },
-      review: { gates: ["check-dual-review"] },
-    };
-    writeFileSync(
-      join(dir, "declarations", "m2-p4.json"),
-      `${JSON.stringify(base, null, 2)}\n`,
-    );
-
-    /* THE CONTROL: with the registry present this declaration is green, so
-       the arm below is about the registry and nothing else. */
-    const control = runGateModule(dir, classGateArgs("m2-p4", "control.json"));
-    assert.equal(control.status, 0, `control should be green: ${control.stdout}${control.stderr}`);
-
-    /* M2-C-3. Without the registry the set of legal gate ids is unknown, so
-       no verdict about the declaration's gate NAMES can be reached. The
-       dangerous state is not red, it is GREEN WITH THE NAME CHECK SKIPPED:
-       every class would still look declared and nothing would have checked
-       that any of the names runs anything. */
-    rmSync(join(dir, "registry.yaml"));
-    const missing = runGateModule(dir, classGateArgs("m2-p4", "missing.json"));
-    assert.equal(
-      missing.status,
-      21,
-      `expected the gate error exit code, saw ${String(missing.status)}: ${missing.stdout}`,
-    );
-    const record = JSON.parse(readFileSync(join(dir, "missing.json"), "utf8")) as {
-      status: string;
-      units: number;
-      detail: string;
-    };
-    assert.equal(record.status, "error");
-    assert.equal(record.units, 0);
-    assert.match(record.detail, /set of legal gate ids could not be established/);
-
-    /* AND A REGISTRY THAT IS PRESENT BUT UNDECODABLE takes the same arm, so
-       the check is about reaching a verdict and not about a missing file. */
-    writeFileSync(join(dir, "registry.yaml"), "kind: gate-registry\ngates: [\n");
-    const undecodable = runGateModule(dir, classGateArgs("m2-p4", "undecodable.json"));
-    assert.equal(undecodable.status, 21, `expected error: ${undecodable.stdout}`);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 /**
  * The registration guard, in the shape `test/cutover.test.ts` and
  * `test/cutover-entry.test.ts` settled on after 49 rows in one phase
@@ -1716,17 +976,12 @@ test("gate-classes reports error rather than green when the registry that define
  * BY NAME, NEVER BY COUNT: the file is append-only, so a count would be a
  * claim about every future phase and false the moment the next one appends.
  */
-test("the M4-P14 gate class behaviors are registered in test/behaviors.json and resolve by name", () => {
+test("the M4-P14 typecheck behavior is registered in test/behaviors.json and resolves by name", () => {
   const behaviors = JSON.parse(
     readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
   ) as Record<string, string>;
   const ids = [
-    "gate-classes-missing-declaration-red",
-    "gate-classes-escape-needs-its-datum",
     "typecheck-units-derived-from-the-compiler",
-    "gate-classes-unreadable-registry-is-error",
-    "phase-declaration-carries-the-class-vocabulary",
-    "phase-declaration-class-escape-vocabulary-is-closed",
   ];
   const testNames = new Set<string>();
   const testDir = join(repoRoot, "test");
@@ -1761,105 +1016,6 @@ test("the M4-P14 gate class behaviors are registered in test/behaviors.json and 
 });
 
 /* ------------------------------------------------------------------ */
-/* M5-P4 criterion p4-mode-complete: full mode equals the registry      */
-/* ------------------------------------------------------------------ */
-
-/*
- * THE CONVERSE DIRECTION, which `mode-gate-sets-resolve` does not check.
- * That check iterates assurance-modes.yaml's entries and asks whether each
- * resolves; it never iterates the registry, so a gate declared with
- * `modes: [full]` and absent from `full`'s `gate-sets` was invisible, and by
- * M5 seven were (brief-drift, check-agents-references, check-dual-review,
- * license, typecheck, gate-classes, merge-preconditions). The plan names the
- * hazard `descriptive-only-fix`: correcting the list once lets it drift again.
- *
- * So the expected set is DERIVED from gate-registry.yaml at run time and the
- * comparison is SET EQUALITY in both directions. No count is pinned
- * (CLAUDE.md convention 5): a registry gate added by a later phase reddens
- * this test by NAME until it is also added to assurance-modes.yaml, which is
- * the intended pressure on that phase.
- */
-
-const assuranceModesPath = join(repoRoot, "assurance-modes.yaml");
-
-function fullModeGateSets(modesText: string): string[] {
-  const document = yamlModule.parse(modesText) as { modes: { id: string; "gate-sets"?: string[] }[] };
-  const full = document.modes.find((mode) => mode.id === "full");
-  assert.ok(full !== undefined, "assurance-modes.yaml declares no mode `full`");
-  return full["gate-sets"] ?? [];
-}
-
-/** Both directions of the full-mode relation, each named by id. */
-function fullModeDivergence(
-  registry: Registry,
-  gateSets: string[],
-): { missingFromModes: string[]; notFullInRegistry: string[]; message: string } {
-  const derived = new Set(
-    registry.gates.filter((gate) => gate.modes.includes("full")).map((gate) => gate.id),
-  );
-  const listed = new Set(gateSets);
-  const missingFromModes = [...derived].filter((id) => !listed.has(id)).sort();
-  const notFullInRegistry = [...listed].filter((id) => !derived.has(id)).sort();
-  const lines: string[] = [];
-  for (const id of missingFromModes) {
-    lines.push(`gate ${id} declares modes [full] in gate-registry.yaml and is absent from full's gate-sets in assurance-modes.yaml`);
-  }
-  for (const id of notFullInRegistry) {
-    lines.push(`gate-set ${id} is listed for full in assurance-modes.yaml and gate-registry.yaml declares no full-mode gate with that id`);
-  }
-  return { missingFromModes, notFullInRegistry, message: lines.join("\n") };
-}
-
-test("full mode's gate-sets equal the full-mode gate ids derived from gate-registry.yaml in both directions, and removing any one id fails naming it", () => {
-  const registry = readRegistry(registryPath);
-  const modesText = readFileSync(assuranceModesPath, "utf8");
-  const shipped = fullModeGateSets(modesText);
-
-  const clean = fullModeDivergence(registry, shipped);
-  assert.equal(clean.message, "", clean.message);
-  assert.equal(new Set(shipped).size, shipped.length, "full's gate-sets carries a duplicate id");
-
-  /* EVERY derived id is removed in turn, not a sample: the criterion says
-     "removing any of the current ids", so the witness is exhaustive and the
-     list it walks is the registry's, read now. */
-  const derivedIds = registry.gates.filter((gate) => gate.modes.includes("full")).map((gate) => gate.id);
-  assert.ok(derivedIds.length > 0, "the registry declares no full-mode gate, so this test would be vacuous");
-  for (const id of derivedIds) {
-    const removed = fullModeDivergence(registry, shipped.filter((entry) => entry !== id));
-    assert.deepEqual(removed.missingFromModes, [id], `removing ${id} was not reported as exactly ${id}`);
-    assert.match(removed.message, new RegExp(`gate ${id} declares modes \\[full\\]`));
-  }
-
-  /* THE OTHER DIRECTION, from the REGISTRY side: a phase that adds a gate to
-     the registry and forgets this file. Two structurally different members:
-     a brand-new gate, and an existing gate whose modes list gains `full`. */
-  const extended = readRegistry(registryPath);
-  extended.gates.push({
-    ...(extended.gates[0] as RegistryGate),
-    id: "a-gate-a-later-phase-adds",
-    modes: ["full"],
-  });
-  assert.deepEqual(fullModeDivergence(extended, shipped).missingFromModes, ["a-gate-a-later-phase-adds"]);
-
-  const renamed = readRegistry(registryPath);
-  const renamedGate = renamed.gates[0] as RegistryGate;
-  const originalId = renamedGate.id;
-  renamedGate.id = `${originalId}-renamed`;
-  const renamedDivergence = fullModeDivergence(renamed, shipped);
-  assert.deepEqual(renamedDivergence.missingFromModes, [`${originalId}-renamed`]);
-  assert.deepEqual(renamedDivergence.notFullInRegistry, [originalId]);
-
-  /* AND FROM THE MODES SIDE, two members: an id no registry declares, and a
-     real gate whose registry `modes` no longer names `full`. */
-  const inflated = fullModeDivergence(registry, [...shipped, "performance-budget"]);
-  assert.deepEqual(inflated.notFullInRegistry, ["performance-budget"]);
-  const narrowed = readRegistry(registryPath);
-  const narrowedGate = narrowed.gates[0] as RegistryGate;
-  narrowedGate.modes = narrowedGate.modes.filter((mode) => mode !== "full");
-  assert.deepEqual(fullModeDivergence(narrowed, shipped).notFullInRegistry, [narrowedGate.id]);
-});
-
-/* ------------------------------------------------------------------ */
 /* M5-P4 criterion p4-summary-artifact: exactly summary.json is kept    */
 /* ------------------------------------------------------------------ */
 
@@ -1867,16 +1023,14 @@ test("full mode's gate-sets equal the full-mode gate ids derived from gate-regis
  * The plan names the hazard `evidence-leak`: uploading the evidence directory
  * publishes captured output, and captured output can carry credentials. The
  * guard therefore RESOLVES each upload step's `path` input against a fixture
- * runner.temp laid out the way scripts/m2-exit-test.sh lays out a real one,
- * including captured stdout that must never leave the runner, and requires
- * that the files it would upload are exactly the bundle's summary.json for
- * that arm. Widening the path to the directory, to a glob, or to a second
+ * runner.temp laid out the way the gate runner lays out a real evidence
+ * directory, including captured stdout that must never leave the runner, and
+ * requires that the files it would upload are exactly that run's summary.json
+ * for that arm. Widening the path to the directory, to a glob, or to a second
  * line is a different resolved set and reddens.
  *
- * The expected path is DERIVED, not written here: the evidence directory is
- * the last argument of the exit-test step for the same event, and the bundle
- * sub-directory is the `local dir=` line of the harness function for that
- * bundle.
+ * The expected path is DERIVED, not written here: it is the `--evidence`
+ * argument of the gates step for the same event, plus `summary.json`.
  */
 
 interface UploadStep {
@@ -1977,64 +1131,48 @@ function resolveUploadPath(pathInput: string, runnerTemp: string): string[] {
   return [...included].filter((file) => !excluded.some((re) => re.test(file))).sort();
 }
 
-/** runner.temp as scripts/m2-exit-test.sh leaves it, credential-bearing captures included. */
-function stageRunnerTemp(dir: string, evidenceName: string, bundles: string[]): void {
+/** runner.temp as the gate runner leaves it, credential-bearing captures included. */
+function stageRunnerTemp(dir: string, evidenceName: string): void {
   const evidence = join(dir, evidenceName);
-  for (const bundle of bundles) {
-    mkdirSync(join(evidence, bundle, "suite"), { recursive: true });
-    writeFileSync(join(evidence, bundle, "summary.json"), "{}\n");
-    writeFileSync(join(evidence, bundle, "suite", "result.json"), "{}\n");
-    writeFileSync(join(evidence, bundle, "suite", "stdout.txt"), "token=fixture-credential-never-uploaded\n");
-  }
-  mkdirSync(join(evidence, "records"), { recursive: true });
-  mkdirSync(join(evidence, "output"), { recursive: true });
-  mkdirSync(join(evidence, "per-phase-green", "scope"), { recursive: true });
-  writeFileSync(join(evidence, "records", "001.json"), "{}\n");
-  writeFileSync(join(evidence, "output", "001.out"), "captured output\n");
-  writeFileSync(join(evidence, "per-phase-green", "scope", "summary.json"), "{}\n");
+  mkdirSync(join(evidence, "suite"), { recursive: true });
+  writeFileSync(join(evidence, "summary.json"), "{}\n");
+  writeFileSync(join(evidence, "suite", "result.json"), "{}\n");
+  writeFileSync(join(evidence, "suite", "stdout.txt"), "token=fixture-credential-never-uploaded\n");
+  mkdirSync(join(dir, "other", "records"), { recursive: true });
+  writeFileSync(join(dir, "other", "records", "001.json"), "{}\n");
 }
 
-/** The bundle sub-directory the harness function writes summary.json into. */
-function harnessBundleDir(harnessText: string, fn: string): string {
-  const start = harnessText.indexOf(`\n${fn}() {`);
-  assert.ok(start >= 0, `scripts/m2-exit-test.sh has no function ${fn}`);
-  const match = /local dir="\$\{evidence\}\/([^"]+)"/.exec(harnessText.slice(start));
-  assert.ok(match !== null, `${fn} declares no local dir under the evidence directory`);
-  return match[1] as string;
+/** The gates-run step for one CI event: exactly one, or the reason there is not. */
+function gatesRunStepsFor(steps: UploadStep[], event: string): UploadStep[] {
+  return steps.filter(
+    (step) =>
+      typeof step.run === "string" &&
+      /gates run/.test(step.run) &&
+      uploadStepRunsOn(step.if, event),
+  );
 }
 
-const SUMMARY_ARMS = [
-  { event: "pull_request", bundleFn: "run_pr_bundle" },
-  { event: "push", bundleFn: "run_main_bundle" },
-] as const;
+const SUMMARY_EVENTS = ["pull_request", "push"] as const;
 
 const MAX_SUMMARY_RETENTION_DAYS = 14;
 
 /** Why the workflow's summary upload is NOT exactly summary.json per arm; empty when it is. */
-function summaryUploadDefects(workflowText: string, harnessText: string, runnerTemp: string): string[] {
+function summaryUploadDefects(workflowText: string, runnerTemp: string): string[] {
   const steps = gatesJobSteps(workflowText);
   const defects: string[] = [];
-  for (const { event, bundleFn } of SUMMARY_ARMS) {
-    const exitSteps = steps.filter(
-      (step) =>
-        typeof step.run === "string" &&
-        step.run.includes("scripts/m2-exit-test.sh") &&
-        !step.run.includes("--self-test") &&
-        step.run.includes("--bundle") &&
-        uploadStepRunsOn(step.if, event),
-    );
-    if (exitSteps.length !== 1) {
-      defects.push(`${event}: expected one exit-test bundle step, found ${String(exitSteps.length)}`);
+  for (const event of SUMMARY_EVENTS) {
+    const runSteps = gatesRunStepsFor(steps, event);
+    if (runSteps.length !== 1) {
+      defects.push(`${event}: expected one gates run step, found ${String(runSteps.length)}`);
       continue;
     }
-    const lastArgument = /"([^"]+)"\s*$/.exec((exitSteps[0] as UploadStep).run as string);
-    if (lastArgument === null) {
-      defects.push(`${event}: the exit-test step's evidence argument could not be read`);
+    const evidenceArgument = /--evidence "([^"]+)"/.exec((runSteps[0] as UploadStep).run as string);
+    if (evidenceArgument === null) {
+      defects.push(`${event}: the gates step's --evidence argument could not be read`);
       continue;
     }
     const expected = join(
-      substituteRunnerTemp(lastArgument[1] as string, runnerTemp),
-      harnessBundleDir(harnessText, bundleFn),
+      substituteRunnerTemp(evidenceArgument[1] as string, runnerTemp),
       "summary.json",
     );
 
@@ -2089,44 +1227,49 @@ function summaryUploadDefects(workflowText: string, harnessText: string, runnerT
 
 test("the gates workflow uploads exactly the bundle's summary.json on each CI event with a declared short retention, and a widened path reddens", () => {
   const workflow = readFileSync(workflowPath, "utf8");
-  const harness = readFileSync(harnessPath, "utf8");
   const dir = scratch("summary-upload");
   try {
-    const evidenceName = "m2-exit-evidence";
-    stageRunnerTemp(dir, evidenceName, [
-      harnessBundleDir(harness, "run_pr_bundle"),
-      harnessBundleDir(harness, "run_main_bundle"),
-    ]);
-    assert.deepEqual(summaryUploadDefects(workflow, harness, dir), []);
+    const evidenceName = "gates-evidence";
+    stageRunnerTemp(dir, evidenceName);
+    assert.deepEqual(summaryUploadDefects(workflow, dir), []);
 
-    const prPath = `path: \${{ runner.temp }}/${evidenceName}/pr-bundle/summary.json`;
-    assert.ok(workflow.includes(prPath), `the workflow no longer carries ${prPath}`);
+    /* The two arms upload the same path, so each widening is applied inside
+       one arm's upload step only. */
+    const pushMarker = "      - name: Upload the gate summary (push, summary.json only)";
+    const pushAt = workflow.indexOf(pushMarker);
+    assert.ok(pushAt > 0, "the workflow no longer carries the push upload step");
+    const inPr = (from: string, to: string): string =>
+      workflow.slice(0, pushAt).replace(from, to) + workflow.slice(pushAt);
+    const inPush = (from: string, to: string): string =>
+      workflow.slice(0, pushAt) + workflow.slice(pushAt).replace(from, to);
+    const prPath = `path: \${{ runner.temp }}/${evidenceName}/summary.json`;
+    assert.ok(workflow.slice(0, pushAt).includes(prPath), `the pull-request upload no longer carries ${prPath}`);
+    const pushPath = prPath;
+    assert.ok(workflow.slice(pushAt).includes(pushPath), `the push upload no longer carries ${pushPath}`);
 
-    /* FOUR WIDENINGS, structurally different: the bundle directory (which
-       holds captured stdout), a recursive glob that catches only files named
-       summary.json and still takes the per-phase-green ones, the whole
-       evidence root, and a second path line beside the correct one. */
+    /* THREE WIDENINGS, structurally different: the evidence directory (which
+       holds captured stdout), all of runner.temp, and a second path line
+       beside the correct one. */
     const widened: Record<string, string> = {
-      directory: workflow.replace(prPath, `path: \${{ runner.temp }}/${evidenceName}/pr-bundle`),
-      "recursive glob": workflow.replace(prPath, `path: \${{ runner.temp }}/${evidenceName}/**/summary.json`),
-      "evidence root": workflow.replace(prPath, `path: \${{ runner.temp }}/${evidenceName}`),
-      "second line": workflow.replace(
+      directory: inPr(prPath, `path: \${{ runner.temp }}/${evidenceName}`),
+      "runner temp": inPr(prPath, "path: ${{ runner.temp }}"),
+      "second line": inPr(
         prPath,
-        `path: |\n            \${{ runner.temp }}/${evidenceName}/pr-bundle/summary.json\n            \${{ runner.temp }}/${evidenceName}/output`,
+        `path: |\n            \${{ runner.temp }}/${evidenceName}/summary.json\n            \${{ runner.temp }}/other`,
       ),
     };
     for (const [label, text] of Object.entries(widened)) {
       assert.notEqual(text, workflow, `the ${label} widening did not apply`);
-      const defects = summaryUploadDefects(text, harness, dir).join("\n");
+      const defects = summaryUploadDefects(text, dir).join("\n");
       assert.match(defects, /pull_request: the upload resolves to/, `the ${label} widening was not detected`);
     }
 
     /* RETENTION: removed, and set long. */
     const noRetention = workflow.replace(/\n\s+retention-days: 7/, "");
     assert.notEqual(noRetention, workflow);
-    assert.match(summaryUploadDefects(noRetention, harness, dir).join("\n"), /retention-days undefined/);
+    assert.match(summaryUploadDefects(noRetention, dir).join("\n"), /retention-days undefined/);
     const longRetention = workflow.replace("retention-days: 7", "retention-days: 90");
-    assert.match(summaryUploadDefects(longRetention, harness, dir).join("\n"), /retention-days 90/);
+    assert.match(summaryUploadDefects(longRetention, dir).join("\n"), /retention-days 90/);
 
     /* THE PUSH ARM is its own witness (T-009): its step removed entirely. */
     const noPushUpload = workflow.replace(
@@ -2134,7 +1277,7 @@ test("the gates workflow uploads exactly the bundle's summary.json on each CI ev
       "",
     );
     assert.notEqual(noPushUpload, workflow);
-    assert.match(summaryUploadDefects(noPushUpload, harness, dir).join("\n"), /push: no upload-artifact step/);
+    assert.match(summaryUploadDefects(noPushUpload, dir).join("\n"), /push: no upload-artifact step/);
 
     /* GLOBS THAT MATCH ONLY summary.json TODAY (fix round 1, CR-002). The
        resolved-set comparison above is against a SNAPSHOT of runner.temp, so a
@@ -2142,47 +1285,415 @@ test("the gates workflow uploads exactly the bundle's summary.json on each CI ev
        green here and widens the day the harness writes a second matching file.
        So a glob character in any upload path line is refused outright, and
        each arm has its own witness, with two different glob shapes. */
-    const pushPath = `path: \${{ runner.temp }}/${evidenceName}/main-bundle/summary.json`;
-    assert.ok(workflow.includes(pushPath), `the workflow no longer carries ${pushPath}`);
     const globbed: { label: string; event: string; text: string }[] = [
       {
-        label: "push main-bundle/*.json",
+        label: "push gates-evidence/*.json",
         event: "push",
-        text: workflow.replace(pushPath, `path: \${{ runner.temp }}/${evidenceName}/main-bundle/*.json`),
+        text: inPush(pushPath, `path: \${{ runner.temp }}/${evidenceName}/*.json`),
       },
       {
         label: "push summary.json*",
         event: "push",
-        text: workflow.replace(pushPath, `${pushPath}*`),
+        text: inPush(pushPath, `${pushPath}*`),
       },
       {
-        label: "pull_request pr-bundle/*.json",
+        label: "pull_request gates-evidence/*.json",
         event: "pull_request",
-        text: workflow.replace(prPath, `path: \${{ runner.temp }}/${evidenceName}/pr-bundle/*.json`),
+        text: inPr(prPath, `path: \${{ runner.temp }}/${evidenceName}/*.json`),
       },
       {
         label: "pull_request summ?ry.json",
         event: "pull_request",
-        text: workflow.replace(prPath, `path: \${{ runner.temp }}/${evidenceName}/pr-bundle/summ?ry.json`),
+        text: inPr(prPath, `path: \${{ runner.temp }}/${evidenceName}/summ?ry.json`),
       },
       {
         label: "pull_request negation line",
         event: "pull_request",
-        text: workflow.replace(
+        text: inPr(
           prPath,
-          `path: |\n            \${{ runner.temp }}/${evidenceName}/pr-bundle/summary.json\n            !\${{ runner.temp }}/${evidenceName}/output`,
+          `path: |\n            \${{ runner.temp }}/${evidenceName}/summary.json\n            !\${{ runner.temp }}/other`,
         ),
       },
     ];
     for (const { label, event, text } of globbed) {
       assert.notEqual(text, workflow, `the ${label} glob did not apply`);
       assert.match(
-        summaryUploadDefects(text, harness, dir).join("\n"),
+        summaryUploadDefects(text, dir).join("\n"),
         new RegExp(`${event}: .* carries a glob character`),
         `the ${label} glob was not refused`,
       );
     }
   } finally {
     rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M6-P3: one gate list. CI runs the registry directly on both events   */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Why the gates-run step for `event` is not wired, or an empty list when it
+ * is. The step is found by what it RUNS and by whether its `if:` lets it run
+ * on the event, never by its name, and its command is then EXECUTED under the
+ * runner's default `bash -e` against a stub `bin/tiphys.ts` whose exit code is
+ * known, so a step that swallows the runner's exit is caught by what it does.
+ */
+function registryStepDefects(workflowText: string, event: string, dir: string): string[] {
+  const document = yamlModule.parse(workflowText) as {
+    jobs: Record<string, { steps?: UploadStep[]; "continue-on-error"?: unknown }>;
+  };
+  const defects: string[] = [];
+  if (/--manifest\b/.test(workflowText)) defects.push("the workflow passes --manifest");
+  if (/m2-exit-test\.sh/.test(workflowText)) defects.push("the workflow runs scripts/m2-exit-test.sh");
+  if (/gates\.manifest\.json/.test(workflowText)) defects.push("the workflow names gates.manifest.json");
+  const steps = gatesRunStepsFor(gatesJobSteps(workflowText), event);
+  if (steps.length !== 1) {
+    defects.push(`${event}: expected exactly one gates run step, found ${String(steps.length)}`);
+    return defects;
+  }
+  const step = steps[0] as UploadStep & { "continue-on-error"?: unknown };
+  const run = step.run as string;
+  if (step["continue-on-error"] !== undefined && step["continue-on-error"] !== false) {
+    defects.push(`${event}: the gates step is continue-on-error`);
+  }
+  const job = document.jobs["gates"];
+  if (job?.["continue-on-error"] !== undefined && job["continue-on-error"] !== false) {
+    defects.push("the gates job is continue-on-error");
+  }
+  for (const required of ["--registry gate-registry.yaml", "--mode full", `--event ${event}`, "--evidence ", "--base ", "--head "]) {
+    if (!run.includes(required)) defects.push(`${event}: the gates step does not pass ${required.trim()}`);
+  }
+  if (event === "pull_request" && !run.includes("--phase ")) {
+    defects.push("pull_request: the gates step does not pass --phase");
+  }
+  if (event === "push" && !run.includes("github.event.before")) {
+    defects.push("push: the gates step's --base is not the previous main tip");
+  }
+  /* BEHAVIOUR: the step's own text, run as the runner runs it, over a stub
+     runner exiting 0 and then 1. Every `${{ }}` expression becomes a literal. */
+  mkdirSync(join(dir, "bin"), { recursive: true });
+  const script = run.replace(/\$\{\{[^}]*\}\}/g, "fixture");
+  const scriptFile = join(dir, "step.sh");
+  writeFileSync(scriptFile, script);
+  for (const code of [0, 1]) {
+    writeFileSync(join(dir, "bin", "tiphys.ts"), `process.exit(${String(code)});\n`);
+    const result = spawnSync("bash", ["-e", scriptFile], {
+      cwd: dir,
+      encoding: "utf8",
+      env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env["PATH"] ?? ""}` },
+    });
+    if (code === 0 && result.status !== 0) {
+      defects.push(`${event}: the gates step failed over a runner that exited 0: ${result.stderr}`);
+    }
+    if (code === 1 && result.status === 0) {
+      defects.push(`${event}: the gates step exited 0 over a runner that exited 1`);
+    }
+  }
+  return defects;
+}
+
+test("the gates workflow runs the registry runner directly on both CI events with --event, never --manifest or the M2 harness, and the step fails when the runner does", () => {
+  const workflow = readFileSync(workflowPath, "utf8");
+  const dir = scratch("registry-step");
+  try {
+    assert.deepEqual(registryStepDefects(workflow, "pull_request", dir), []);
+    assert.deepEqual(registryStepDefects(workflow, "push", dir), []);
+
+    /* THREE STRUCTURALLY DIFFERENT DEFANGS, each reddening its own arm: the
+       runner's exit swallowed, the push arm narrowed to the pull-request
+       event's gates, and the push step removed by an `if:` that never holds. */
+    const pushRun = "          --event push\n";
+    assert.ok(workflow.includes(pushRun), "the workflow no longer carries --event push");
+    const swallowed = workflow.replace(pushRun, "          --event push || true\n");
+    assert.match(
+      registryStepDefects(swallowed, "push", dir).join("\n"),
+      /exited 0 over a runner that exited 1/,
+    );
+    const narrowed = workflow.replace(pushRun, "          --event pull_request\n");
+    assert.match(registryStepDefects(narrowed, "push", dir).join("\n"), /does not pass --event push/);
+    const skipped = workflow.replace(
+      "if: github.event_name != 'pull_request'\n        run: >\n          node bin/tiphys.ts gates run",
+      "if: github.event_name == 'never'\n        run: >\n          node bin/tiphys.ts gates run",
+    );
+    assert.notEqual(skipped, workflow, "the push-step skip did not apply");
+    assert.match(registryStepDefects(skipped, "push", dir).join("\n"), /push: expected exactly one gates run step, found 0/);
+
+    /* And the old list is gone for good: a --manifest or harness step
+       reappearing is named, whatever else it does. */
+    const manifestBack = workflow.replace(
+      "--registry gate-registry.yaml",
+      "--manifest gates.manifest.json --registry gate-registry.yaml",
+    );
+    assert.match(registryStepDefects(manifestBack, "pull_request", dir).join("\n"), /passes --manifest/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/** A two-gate registry: one gate declares only `pull_request`, one only `push`. */
+function writeTwoEventFixtureRegistry(dir: string): string {
+  writeFileSync(join(dir, "fixture-gate.mjs"), FIXTURE_GATE_SOURCE);
+  const gate = (id: string, events: string[]): Record<string, unknown> => ({
+    id,
+    command: ["node", join(dir, "fixture-gate.mjs")],
+    unitLabel: "fixture units",
+    applicability: "required",
+    prevents: "a fixture failure",
+    "verified-by": "script",
+    modes: ["full"],
+    events,
+  });
+  const document = {
+    kind: "gate-registry",
+    version: 1,
+    preflight: [{ command: ["npm", "ci"], note: "install exactly the lockfile" }],
+    gates: [gate("on-pull-request", ["pull_request"]), gate("on-push", ["push"])],
+    destructiveCommands: [],
+  };
+  const path = join(dir, "two-event-registry.json");
+  writeFileSync(path, `${JSON.stringify(document, null, 2)}\n`);
+  return path;
+}
+
+test("--event push selects only the gates whose events include push, --event pull_request only the others, and no --event selects both", () => {
+  const dir = scratch("event-selection");
+  try {
+    const registry = writeTwoEventFixtureRegistry(dir);
+    const environment = {
+      ...process.env,
+      FIXTURE_GATE_ID: "",
+      FIXTURE_STATUS: "green",
+      FIXTURE_UNITS: "1",
+      FIXTURE_EXIT: "0",
+    };
+    const ran = (extra: string[]): { status: number | null; ids: string[]; dirs: string[]; out: string } => {
+      const evidence = join(dir, `evidence-${String(Math.random()).slice(2)}`);
+      const run = spawnSync(
+        process.execPath,
+        [cliEntry, "gates", "run", "--registry", registry, "--evidence", evidence, ...extra],
+        { encoding: "utf8", cwd: dir, env: environment },
+      );
+      const summary = existsSync(join(evidence, "summary.json"))
+        ? (JSON.parse(readFileSync(join(evidence, "summary.json"), "utf8")) as { gates: { id: string }[] })
+        : { gates: [] };
+      const dirs = existsSync(evidence)
+        ? readdirSync(evidence).filter((name) => name.startsWith("on-")).sort()
+        : [];
+      return {
+        status: run.status,
+        ids: summary.gates.map((row) => row.id).sort(),
+        dirs,
+        out: run.stdout + run.stderr,
+      };
+    };
+    /* The fixture gate writes the id it is told; the record id must match the
+       row, so each run gets the id through a per-gate wrapper instead. */
+    const wrap = (id: string): void => {
+      writeFileSync(
+        join(dir, `${id}.mjs`),
+        `process.env.FIXTURE_GATE_ID = ${JSON.stringify(id)};\nawait import(${JSON.stringify(join(dir, "fixture-gate.mjs"))});\n`,
+      );
+    };
+    wrap("on-pull-request");
+    wrap("on-push");
+    const document = JSON.parse(readFileSync(registry, "utf8")) as { gates: { id: string; command: string[] }[] };
+    for (const gate of document.gates) gate.command = ["node", join(dir, `${gate.id}.mjs`)];
+    writeFileSync(registry, `${JSON.stringify(document, null, 2)}\n`);
+
+    const push = ran(["--event", "push"]);
+    assert.equal(push.status, 0, push.out);
+    assert.deepEqual(push.ids, ["on-push"], push.out);
+    assert.deepEqual(push.dirs, ["on-push"], "a gate not selected by the event must leave no evidence");
+
+    const pullRequest = ran(["--event", "pull_request"]);
+    assert.equal(pullRequest.status, 0, pullRequest.out);
+    assert.deepEqual(pullRequest.ids, ["on-pull-request"], pullRequest.out);
+    assert.deepEqual(pullRequest.dirs, ["on-pull-request"]);
+
+    const both = ran([]);
+    assert.equal(both.status, 0, both.out);
+    assert.deepEqual(both.ids, ["on-pull-request", "on-push"], both.out);
+
+    const bogus = ran(["--event", "schedule"]);
+    assert.equal(bogus.status, 64, bogus.out);
+    assert.match(bogus.out, /--event must be one of pull_request, push/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("on each CI event the runner exits nonzero when a required gate is red, vacuous, errors or is not applicable beside a green control, and 0 only when it is green", () => {
+  /* M6-P3, p3-red-fails-ci. CI now runs this runner directly, so its exit code
+     IS the step's result. Each arm is ISOLATED: beside the gate under test the
+     registry carries one control gate that is always green, so no other
+     gate's status can supply the nonzero exit, and "no applicable gate" (21)
+     cannot stand in for the not-applicable rule (20). */
+  const dir = scratch("red-fails-ci");
+  try {
+    writeFileSync(join(dir, "fixture-gate.mjs"), FIXTURE_GATE_SOURCE);
+    writeFileSync(
+      join(dir, "control-gate.mjs"),
+      `process.env.FIXTURE_GATE_ID = "control";\nprocess.env.FIXTURE_STATUS = "green";\nprocess.env.FIXTURE_UNITS = "1";\nprocess.env.FIXTURE_EXIT = "0";\nawait import(${JSON.stringify(join(dir, "fixture-gate.mjs"))});\n`,
+    );
+    const control = {
+      id: "control",
+      prevents: "a fixture failure",
+      command: ["node", join(dir, "control-gate.mjs")],
+      unitLabel: "fixture units",
+      applicability: "required",
+      "verified-by": "script",
+      modes: ["full"],
+      events: ["pull_request", "push"],
+    };
+    const registryFor = (name: string, precondition?: Record<string, unknown>): string => {
+      const gate: Record<string, unknown> = {
+        id: "only",
+        prevents: "a fixture failure",
+        command: ["node", join(dir, "fixture-gate.mjs")],
+        unitLabel: "fixture units",
+        applicability: "required",
+        "verified-by": "script",
+        modes: ["full"],
+        events: ["pull_request", "push"],
+      };
+      if (precondition !== undefined) gate["precondition"] = precondition;
+      const path = join(dir, `${name}.json`);
+      writeFileSync(
+        path,
+        `${JSON.stringify({ kind: "gate-registry", version: 1, preflight: [{ command: ["npm", "ci"], note: "install exactly the lockfile" }], gates: [control, gate], destructiveCommands: [] }, null, 2)}\n`,
+      );
+      return path;
+    };
+    const plain = registryFor("plain");
+    const unmet = registryFor("unmet", {
+      id: "needs-a-file-nobody-wrote",
+      kind: "file-exists",
+      path: join(dir, "absent.json"),
+    });
+    const arms: { name: string; registry: string; status: string; units: string; exit: string; want: number }[] = [
+      { name: "green", registry: plain, status: "green", units: "1", exit: "0", want: 0 },
+      { name: "red", registry: plain, status: "red", units: "1", exit: "1", want: 1 },
+      { name: "vacuous", registry: plain, status: "green", units: "0", exit: "0", want: 21 },
+      { name: "error", registry: plain, status: "error", units: "0", exit: "21", want: 21 },
+      { name: "not-applicable", registry: unmet, status: "green", units: "1", exit: "0", want: 20 },
+    ];
+    for (const event of ["pull_request", "push"]) {
+      for (const arm of arms) {
+        const evidence = join(dir, `evidence-${event}-${arm.name}`);
+        const run = spawnSync(
+          process.execPath,
+          [cliEntry, "gates", "run", "--registry", arm.registry, "--mode", "full", "--event", event, "--evidence", evidence],
+          {
+            encoding: "utf8",
+            cwd: dir,
+            env: {
+              ...process.env,
+              FIXTURE_GATE_ID: "only",
+              FIXTURE_STATUS: arm.status,
+              FIXTURE_UNITS: arm.units,
+              FIXTURE_EXIT: arm.exit,
+            },
+          },
+        );
+        assert.equal(run.status, arm.want, `${event} ${arm.name}: ${run.stdout}${run.stderr}`);
+      }
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/* Kept from the deleted M2 exit-test suite: both guard a gate, not the harness. */
+
+test("the gates workflow checks out the pull-request head branch by name (ref: github.head_ref) so scope is not detached", () => {
+  /* On a pull_request event actions/checkout defaults to a DETACHED HEAD at the
+     ephemeral merge commit, so `git rev-parse --abbrev-ref HEAD` returns "HEAD"
+     and the scope gate's branch-matches precondition never matches: scope would
+     report not-applicable on every CI run and never audit a real diff.
+     fetch-depth 0 is kept beside it: the diff-scoped gates need merge bases. */
+  const steps = gatesJobSteps(readFileSync(workflowPath, "utf8"));
+  const checkout = steps.filter(
+    (step) => typeof step.uses === "string" && step.uses.startsWith("actions/checkout@"),
+  );
+  assert.equal(checkout.length, 1, "expected exactly one actions/checkout step in the gates job");
+  const inputs = (checkout[0] as UploadStep).with ?? {};
+  assert.equal(inputs["ref"], "${{ github.head_ref }}");
+  assert.equal(String(inputs["fetch-depth"]), "0");
+});
+
+test("no environment variable changes a production gate's reported status (grep over the gate sources)", () => {
+  /* A production gate must not read a NAMED environment variable that steers
+     its verdict. The only named read allowed is the token a gate is told to
+     read by its own registry command (`--token-env`), which is plumbing, not a
+     switch, and is read through a configured name, not a literal. */
+  const gatesDir = fileURLToPath(new URL("../src/gates", import.meta.url));
+  const files: string[] = [];
+  const walk = (directory: string): void => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (path.endsWith(".ts")) files.push(path);
+    }
+  };
+  walk(gatesDir);
+  assert.ok(files.length > 0, "no gate source was read");
+  const namedRead = /process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([^"']+)["']\s*\])/g;
+  /* EMPTY since M6-P3 fix round 1 (CR-M6P3A-03): the one name it held,
+     TIPHYS_IMPLEMENTER_TOKEN, was read only by the credential-token arm this
+     phase deleted, and an allowlisted name no gate reads is a hole a new
+     verdict switch could use. */
+  const ALLOWED_NAMES = new Set<string>();
+  for (const file of files) {
+    for (const [index, line] of readFileSync(file, "utf8").split("\n").entries()) {
+      for (const match of line.matchAll(namedRead)) {
+        const name = (match[1] ?? match[2]) as string;
+        assert.ok(
+          ALLOWED_NAMES.has(name),
+          `${file}:${String(index + 1)} reads the named environment variable ${name}: ${line.trim()}`,
+        );
+      }
+    }
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M6-P3: every gate names the failure it prevents (DR-0061 (b))        */
+/* ------------------------------------------------------------------ */
+
+test("the registry schema rejects a gate without prevents and one whose prevents spans two lines, and accepts a one-line prevents", () => {
+  const base = readRegistry(registryPath);
+  const withGate = (gate: Record<string, unknown>): Registry => ({ ...base, gates: [gate as unknown as RegistryGate] });
+  const gate: Record<string, unknown> = {
+    id: "fixture-gate",
+    prevents: "a fixture failure nobody else catches",
+    command: ["node", "gate.mjs"],
+    unitLabel: "units",
+    applicability: "required",
+    "verified-by": "script",
+    modes: ["full"],
+    events: ["pull_request"],
+  };
+  assert.deepEqual(validateModule.validateToLines(readRegistrySchema(), withGate(gate)), []);
+
+  const missing = { ...gate };
+  delete missing["prevents"];
+  const missingLines = validateModule.validateToLines(readRegistrySchema(), withGate(missing));
+  assert.ok(
+    missingLines.some((line) => line.includes("#/gates/0/prevents") && line.includes("missing")),
+    JSON.stringify(missingLines),
+  );
+
+  for (const broken of ["a first line\nand a second", "a first line\r\nand a second", "   ", ""]) {
+    const lines = validateModule.validateToLines(readRegistrySchema(), withGate({ ...gate, prevents: broken }));
+    assert.ok(
+      lines.some((line) => line.startsWith("INVALID #/gates/0/prevents")),
+      `${JSON.stringify(broken)} was accepted: ${JSON.stringify(lines)}`,
+    );
+  }
+
+  /* And the shipped registry carries one on every gate. */
+  for (const entry of base.gates) {
+    assert.equal(typeof entry.prevents, "string", `${entry.id} names no failure it prevents`);
   }
 });

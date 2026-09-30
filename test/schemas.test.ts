@@ -519,7 +519,7 @@ test("a status-line record with state done and no run is rejected naming run", (
 
 test("a step declaring a kind other than verification-first is rejected naming the pointer", () => {
   /* THE SCHEMA HALF of R-012, and it is a different claim from the derived
-     check `plan-verification-first-present`.
+     check `plan-verification-first-present` (deleted by M6-P3).
      
      The check answers "is a verification-first step PRESENT where an
      unverified claim requires one", which compares two arrays and is Kind B.
@@ -934,3 +934,27 @@ test(
     assert.deepEqual([...prefixed].sort(), [...VENDOR_BRANCH_PREFIX_FILES].sort());
   },
 );
+
+/* M6-P3: the property the deleted `manifest-self-check` gate asserted, kept as
+   a test. Every schema document under src/gates/schemas/ is loaded through the
+   closed keyword set, ENUMERATED from the directory, so a document that grows
+   a keyword the validator does not implement is red here and not only in the
+   tests of whichever consumer happens to load it. */
+const gateSchemaLoader = (await import(
+  new URL("../src/gates/validate.ts", import.meta.url).href
+)) as unknown as {
+  loadSchema: (document: unknown, name: string) => { ok: true } | { ok: false; reason: string };
+};
+
+test("every schema document under src/gates/schemas loads through the closed keyword set", () => {
+  const directory = join(repoRoot, "src", "gates", "schemas");
+  const documents = readdirSync(directory).filter((name) => name.endsWith(".schema.json"));
+  assert.ok(documents.length > 0, "no schema document was found to load");
+  for (const name of documents) {
+    const loaded = gateSchemaLoader.loadSchema(
+      JSON.parse(readFileSync(join(directory, name), "utf8")),
+      name,
+    );
+    assert.ok(loaded.ok, loaded.ok ? name : `${name}: ${loaded.reason}`);
+  }
+});

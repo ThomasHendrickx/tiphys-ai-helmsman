@@ -36,7 +36,6 @@ import test from "node:test";
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const cliEntry = join(repoRoot, "bin", "tiphys.ts");
 const briefPath = join(repoRoot, "roles", "implementer.md");
-const workflowPath = join(repoRoot, ".github", "workflows", "gates.yml");
 const PLAN = "templates/plan.example.yaml";
 const PHASE_ID = "M9-P1";
 const BOUNDED_MS = 60_000;
@@ -242,17 +241,17 @@ test("the composed brief's gate-list block is byte-identical to the block gate-r
   assert.ok(rendered.units > 0, "the rendering compared zero rows");
 });
 
-test("adding a gate to the registry without re-rendering makes check-brief-drift --check exit nonzero naming the gate, and --write returns it to 0", () => {
-  const dir = stageKernel("tiphys-impl-drift-");
+test("adding a gate to the project's gate-registry.yaml adds its row to the composed brief, and a registry selecting no gate for the brief's mode refuses to compose", () => {
+  const dir = stageKernel("tiphys-impl-gate-list-");
   try {
     const registryPath = join(dir, "gate-registry.yaml");
     const original = readFileSync(registryPath, "utf8");
-    const green = run(join(dir, "scripts", "check-brief-drift.mjs"), ["--check"], dir);
-    assert.equal(green.status, 0, `${green.stdout}${green.stderr}`);
+    const before = composeIn(dir);
+    assert.equal(before.status, 0, before.stderr);
+    assert.doesNotMatch(before.stdout, /invented-probe/);
 
-    /* MEMBER ONE: a gate ADDED to the registry. This is the direction a
-       compare-the-block-to-itself check cannot detect, which is exactly why
-       criterion 3 names it. */
+    /* MEMBER ONE: a gate ADDED to the project's registry reaches the composed
+       brief with no edit to the brief, because the brief carries no copy. */
     writeFileSync(
       registryPath,
       original.replace(
@@ -261,31 +260,59 @@ test("adding a gate to the registry without re-rendering makes check-brief-drift
           "    command: [node, scripts/invented.mjs]\n" +
           "    unitLabel: inventions counted\n" +
           "    applicability: required\n" +
+          "    prevents: a fixture failure nobody else catches\n" +
           "    verified-by: script\n" +
           "    modes: [full]\n" +
           "    events: [pull_request]\n" +
           "\ndestructiveCommands:",
       ),
     );
-    const red = run(join(dir, "scripts", "check-brief-drift.mjs"), ["--check"], dir);
-    assert.notEqual(red.status, 0, "a gate was added to the registry and the drift check stayed green");
-    assert.match(red.stdout, /invented-probe/);
+    const after = composeIn(dir);
+    assert.equal(after.status, 0, after.stderr);
+    assert.match(after.stdout, /^\| `invented-probe` \| script \| required \| inventions counted \|$/m);
 
-    const written = run(join(dir, "scripts", "check-brief-drift.mjs"), ["--write"], dir);
-    assert.equal(written.status, 0, `${written.stdout}${written.stderr}`);
-    const after = run(join(dir, "scripts", "check-brief-drift.mjs"), ["--check"], dir);
-    assert.equal(after.status, 0, `${after.stdout}${after.stderr}`);
-    assert.match(readFileSync(briefAt(dir), "utf8"), /invented-probe/);
+    /* MEMBER TWO, STRUCTURALLY DIFFERENT: a registry whose gates declare no
+       mode the brief lists. Compose refuses rather than emitting a gate-list
+       section that lists no gate. */
+    writeFileSync(registryPath, original.replace(/modes: \[[^\]]*\]/g, "modes: [local-only]"));
+    const empty = composeIn(dir);
+    assert.notEqual(empty.status, 0, "a registry selecting no gate for the brief's mode composed");
+    assert.match(empty.stderr, /declares no gate for mode full/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
 
-    /* MEMBER TWO, STRUCTURALLY DIFFERENT: the registry is untouched and the
-       BRIEF's block is edited instead. Both directions of one drift, and a
-       check that only re-rendered on registry change would be green here. */
-    writeFileSync(registryPath, original);
-    const briefText = readFileSync(briefAt(dir), "utf8");
-    writeFileSync(briefAt(dir), briefText.replace("| `suite` |", "| `suite-renamed` |"));
-    const other = run(join(dir, "scripts", "check-brief-drift.mjs"), ["--check"], dir);
-    assert.notEqual(other.status, 0, "the brief's block was edited by hand and the check stayed green");
-    assert.match(other.stdout, /suite-renamed/);
+test("a registry whose preflight command contains $' and $$ composes a brief whose gate block is byte-identical to renderBriefGateBlock's output", () => {
+  /* M6-P3 FIX ROUND 2, CR-M6P3B-01. The block was spliced in with
+     String.prototype.replace and a replacement STRING, so `$'` pasted the rest
+     of the brief into the gate list and `$$` became `$`. Measured by hazard
+     review B at 89260f4: a shell one-liner in a preflight command added 161
+     lines and nothing failed. All four special patterns are planted, in the
+     command and in the note. */
+  const dir = stageKernel("tiphys-impl-dollar-");
+  try {
+    const registryPath = join(dir, "gate-registry.yaml");
+    const registry = yamlModule.parse(readFileSync(registryPath, "utf8")) as {
+      preflight: { command: string[]; note: string }[];
+    };
+    registry.preflight.push({
+      command: ["bash", "-c", "grep -rn $'\\t' src/ ; echo pid $$ ; echo $& $`"],
+      note: "a shell one-liner carrying $$, $&, $` and $'",
+    });
+    writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
+
+    const composed = composeIn(dir);
+    assert.equal(composed.status, 0, composed.stderr);
+    const rendered = rolesModule.renderBriefGateBlock(registry, rolesModule.BRIEF_GATE_BLOCK_MODE);
+    assert.ok(rendered.text.includes("echo pid $$"), "the renderer itself lost the planted text");
+    const located = rolesModule.locateGateBlock(composed.stdout, "the composed brief");
+    assert.ok(located.ok, located.ok ? "" : located.reason);
+    assert.equal(located.block, rendered.text);
+    assert.ok(
+      composed.stdout.includes(rendered.text),
+      "the renderer's block is not in the composed brief byte for byte",
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -311,17 +338,19 @@ test("adding a gate to the registry without re-rendering makes check-brief-drift
  * that looks like a mode assertion.
  */
 
-test("the shipped brief's gate-list block declares the mode the kernel pins, and that mode selects every gate any mode in the registry selects", () => {
+test("the composed brief's gate-list block declares the mode the kernel pins, and that mode selects every gate any mode in the registry selects", () => {
   const registry = yamlModule.parse(
     readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8"),
   ) as { gates: { id: string; modes: string[] }[] };
 
-  const located = rolesModule.locateGateBlock(readFileSync(briefPath, "utf8"), briefPath);
+  const composed = compose();
+  assert.equal(composed.status, 0, composed.stderr);
+  const located = rolesModule.locateGateBlock(composed.stdout, "the composed brief");
   assert.ok(located.ok, located.ok ? "" : located.reason);
   assert.equal(
     located.mode,
     rolesModule.BRIEF_GATE_BLOCK_MODE,
-    "the shipped brief's begin marker declares a mode the kernel does not pin",
+    "the composed brief's begin marker declares a mode the kernel does not pin",
   );
 
   /* WHY THAT MODE IS THE RIGHT ONE, DERIVED FROM THE REGISTRY rather than
@@ -373,7 +402,7 @@ test("the shipped brief's gate-list block declares the mode the kernel pins, and
  * set identical, all fifteen ids present, and is invisible to set equality. Both
  * are exercised below against the real script.
  */
-test("the shipped brief's gate rows are exactly the gates the pinned mode selects, each carrying its registry fields, derived without the renderer", () => {
+test("the composed brief's gate rows are exactly the gates the pinned mode selects, each carrying its registry fields, derived without the renderer", () => {
   const registry = yamlModule.parse(
     readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8"),
   ) as {
@@ -390,7 +419,9 @@ test("the shipped brief's gate rows are exactly the gates the pinned mode select
   /* THE BLOCK IS SLICED HERE, not located by the kernel's locator, so this test
      depends on no `src` function at all. The markers are matched by their
      literal opening text; a change to their shape should redden this. */
-  const brief = readFileSync(briefPath, "utf8");
+  const composed = compose();
+  assert.equal(composed.status, 0, composed.stderr);
+  const brief = composed.stdout;
   const begin = brief.indexOf("<!-- BEGIN GENERATED GATE LIST");
   const end = brief.indexOf("<!-- END GENERATED GATE LIST -->");
   assert.ok(begin !== -1, "the shipped brief carries no generated gate-list begin marker");
@@ -441,323 +472,6 @@ test("the shipped brief's gate rows are exactly the gates the pinned mode select
         `${gate.id}'s row in the shipped brief carries no cell holding its registry ${field} "${value}"`,
       );
     }
-  }
-});
-
-test("a narrowing inside the renderer is caught by the drift check in --check and refused in --write, under both a dropped row set and a dropped column", () => {
-  const dir = stageKernel("tiphys-impl-renderer-");
-  try {
-    const rolesPath = join(dir, "src", "roles.ts");
-    const script = join(dir, "scripts", "check-brief-drift.mjs");
-    const pristine = readFileSync(rolesPath, "utf8");
-
-    const green = run(script, ["--check"], dir);
-    assert.equal(green.status, 0, `${green.stdout}${green.stderr}`);
-
-    /* MEMBER 1: the ROW SET narrowed, by a strict-subset filter on the
-       selection. This is DV-1's own defang. */
-    const rowNarrowed = pristine.replace(
-      "const selected = registry.gates.filter((gate) => (gate.modes ?? []).includes(mode));",
-      "const selected = registry.gates.filter((gate) => (gate.modes ?? []).includes(mode))" +
-        '.filter((gate) => gate["verified-by"] === "script");',
-    );
-    assert.notEqual(rowNarrowed, pristine, "the row-narrowing defang did not apply");
-    writeFileSync(rolesPath, rowNarrowed);
-
-    const rowWrite = run(script, ["--write"], dir);
-    assert.notEqual(
-      rowWrite.status,
-      0,
-      `--write laundered a row-narrowed renderer into the brief: ${rowWrite.stdout}`,
-    );
-    const rowCheck = run(script, ["--check"], dir);
-    assert.notEqual(rowCheck.status, 0, `--check missed the row narrowing: ${rowCheck.stdout}`);
-    assert.match(
-      `${rowCheck.stdout}${rowCheck.stderr}`,
-      /carries no row for it/,
-      "the row narrowing was caught but not named as a missing row",
-    );
-
-    /* MEMBER 2: the ROW SET UNTOUCHED and a COLUMN dropped. Every id still
-       appears, so anything built only from set membership is green here. */
-    writeFileSync(rolesPath, pristine);
-    const backToGreen = run(script, ["--check"], dir);
-    assert.equal(backToGreen.status, 0, `${backToGreen.stdout}${backToGreen.stderr}`);
-
-    const columnDropped = pristine.replace(
-      " | ${gate.applicability} | ${gate.unitLabel} |`,",
-      " | ${gate.applicability} |`,",
-    );
-    assert.notEqual(columnDropped, pristine, "the column-dropping defang did not apply");
-    writeFileSync(rolesPath, columnDropped);
-
-    const colWrite = run(script, ["--write"], dir);
-    assert.notEqual(
-      colWrite.status,
-      0,
-      `--write laundered a column-dropped renderer into the brief: ${colWrite.stdout}`,
-    );
-    const colCheck = run(script, ["--check"], dir);
-    assert.notEqual(colCheck.status, 0, `--check missed the dropped column: ${colCheck.stdout}`);
-    assert.match(
-      `${colCheck.stdout}${colCheck.stderr}`,
-      /carries no cell holding its registry unitLabel/,
-      "the dropped column was caught but not named as a missing field",
-    );
-
-    /* AND THE TWO ARE CAUGHT FOR DIFFERENT REASONS rather than by one path: the
-       row narrowing never reports a missing field, and the column drop never
-       reports a missing row. */
-    assert.doesNotMatch(
-      `${rowCheck.stdout}${rowCheck.stderr}`,
-      /carries no cell holding its registry/,
-      "the row narrowing was caught by the field assertion, so the two members share a path",
-    );
-    assert.doesNotMatch(
-      `${colCheck.stdout}${colCheck.stderr}`,
-      /carries no row for it/,
-      "the column drop was caught by the row assertion, so the two members share a path",
-    );
-
-    writeFileSync(rolesPath, pristine);
-    const restored = run(script, ["--check"], dir);
-    assert.equal(restored.status, 0, `${restored.stdout}${restored.stderr}`);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-/**
- * THE ARM THE ROW-AND-FIELD CHECK CANNOT SEE, AND WHY THIS TEST EXISTS AT ALL
- * (M3-P6 fix round 2, second half).
- *
- * `describeDrift` compares the WHOLE block, and `gateBlockFindings` compares
- * only the GATE ROWS against the registry. So the block's other lines, the
- * preflight steps, the mode sentence and the table header, are covered by
- * `describeDrift` ALONE.
- *
- * That distinction became load-bearing when this round added the row-and-field
- * check AHEAD of `describeDrift` in `--check`. The pre-existing named test
- * ("adding a gate to the registry without re-rendering ...") reddens on a
- * registry/brief row disagreement, and the new check now catches that scenario
- * FIRST. So mutating `describeDrift` stopped changing anything that test could
- * observe, the test stayed green, and the registered witness
- * `implementer-brief-gate-list-drift` went red with "no named test reaches this
- * arm". A guard that was covering a real arm before this round was made vacuous
- * BY this round, which is the same shape the round was closing one level up.
- *
- * This test reaches that arm on purpose, through drift the row-and-field check
- * is blind to by construction. It asserts the DETAIL TEXT, not just a nonzero
- * exit, because the two checks both exit nonzero and only the message
- * distinguishes which one fired; asserting the exit code alone would pass even
- * if the row check had caught it, and would not reach the arm at all.
- *
- * TWO STRUCTURALLY DIFFERENT MEMBERS, both invisible to `gateBlockFindings`
- * for the same structural reason (its row regex requires a backticked gate id
- * in the first cell) but different in what they corrupt: a PREFLIGHT STEP,
- * which is content above the table, and the TABLE HEADER, which is the row that
- * gives every cell below it its meaning.
- */
-test("drift in the block's non-row lines is caught and named, under both a preflight step and the table header, which the row-and-field check cannot see", () => {
-  const dir = stageKernel("tiphys-impl-prose-");
-  try {
-    const path = briefAt(dir);
-    const script = join(dir, "scripts", "check-brief-drift.mjs");
-    const pristine = readFileSync(path, "utf8");
-
-    const green = run(script, ["--check"], dir);
-    assert.equal(green.status, 0, `${green.stdout}${green.stderr}`);
-
-    const members: [string, string, string][] = [
-      [
-        "a preflight step",
-        "1. `npm ci` (install exactly the lockfile, npm only, never pnpm or yarn)",
-        "1. `npm ci` (install the dependencies)",
-      ],
-      [
-        "the table header",
-        "| Gate | Verified by | Applicability | One unit is |",
-        "| Gate | Verified by | Applicability |",
-      ],
-    ];
-
-    for (const [label, find, replace] of members) {
-      assert.ok(pristine.includes(find), `the shipped block has no ${label} line to corrupt`);
-      writeFileSync(path, pristine.replace(find, replace));
-
-      const drifted = run(script, ["--check"], dir);
-      assert.notEqual(
-        drifted.status,
-        0,
-        `--check missed drift in ${label}: ${drifted.stdout}${drifted.stderr}`,
-      );
-      const said = `${drifted.stdout}${drifted.stderr}`;
-
-      /* IT MUST BE `describeDrift` THAT FIRED, not the row-and-field check.
-         The two carry different sentences, and this is the assertion that makes
-         the test reach the arm rather than merely exit nonzero. */
-      assert.match(
-        said,
-        /gate block has drifted from/,
-        `drift in ${label} was caught by the row-and-field check, not by the whole-block compare, so this test does not reach that arm`,
-      );
-      assert.doesNotMatch(
-        said,
-        /gate block does not match/,
-        `drift in ${label} reddened the row-and-field check, so it is not a member the whole-block compare alone covers`,
-      );
-
-      writeFileSync(path, pristine);
-      const restored = run(script, ["--check"], dir);
-      assert.equal(restored.status, 0, `${restored.stdout}${restored.stderr}`);
-    }
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("narrowing the brief's declared gate-list mode makes the drift check refuse in both --write and --check, rather than re-rendering a smaller table and calling it green", () => {
-  const dir = stageKernel("tiphys-impl-mode-");
-  try {
-    const path = briefAt(dir);
-    const original = readFileSync(path, "utf8");
-    const located = rolesModule.locateGateBlock(original, path);
-    assert.ok(located.ok, located.ok ? "" : located.reason);
-    const pinnedMarker = rolesModule.briefGateBlockBeginMarker(located.mode);
-    assert.ok(original.includes(pinnedMarker), "the begin marker was not reproduced by the renderer");
-    assert.equal(run(join(dir, "scripts", "check-brief-drift.mjs"), ["--check"], dir).status, 0);
-
-    /* TWO STRUCTURALLY DIFFERENT MEMBERS OF ONE CLASS, because one witness is
-       not a class. They differ in what the narrowed mode is: the first is a
-       mode the registry really declares, which renders a SMALLER but non-empty
-       and self-consistent table (the shape that was green before this round);
-       the second is a mode no gate declares, which renders an EMPTY table and
-       is the shape a vacuity guard is supposed to catch. */
-    for (const narrowed of ["local-only", "no-such-mode"]) {
-      const narrowedText = original.replace(
-        pinnedMarker,
-        rolesModule.briefGateBlockBeginMarker(narrowed),
-      );
-      assert.notEqual(narrowedText, original, `the marker could not be narrowed to ${narrowed}`);
-      writeFileSync(path, narrowedText);
-      const written = run(join(dir, "scripts", "check-brief-drift.mjs"), ["--write"], dir);
-      assert.notEqual(
-        written.status,
-        0,
-        `--write re-rendered the block for narrowed mode ${narrowed} instead of refusing`,
-      );
-      assert.match(written.stdout, new RegExp(narrowed));
-      /* AND THE REFUSAL LEFT THE FILE ALONE. `--write` is the command that
-         turns a narrowed marker into a self-consistent smaller table, so a
-         refusal that had already written would close nothing. */
-      assert.equal(
-        readFileSync(path, "utf8"),
-        narrowedText,
-        `--write rewrote the gate table for narrowed mode ${narrowed}`,
-      );
-      const checked = run(join(dir, "scripts", "check-brief-drift.mjs"), ["--check"], dir);
-      assert.notEqual(
-        checked.status,
-        0,
-        `--check reported no drift for narrowed mode ${narrowed}`,
-      );
-      assert.match(checked.stdout, new RegExp(narrowed));
-      assert.match(checked.stdout, new RegExp(rolesModule.BRIEF_GATE_BLOCK_MODE));
-    }
-
-    writeFileSync(path, original);
-    assert.equal(run(join(dir, "scripts", "check-brief-drift.mjs"), ["--check"], dir).status, 0);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("the rendering counts the gate rows it produced, so a registry declaring no gate for the brief's mode makes the drift check a vacuous error and never a green over an empty table", () => {
-  /* ARM ONE, DIRECT: the number the gate reports must measure the thing its
-     unitLabel names ("generated brief gate rows compared"). Derived by counting
-     the rows in the rendered text, never pinned to a literal. */
-  const registryText = readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8");
-  const registry = yamlModule.parse(registryText);
-  const rendered = rolesModule.renderBriefGateBlock(
-    registry,
-    rolesModule.BRIEF_GATE_BLOCK_MODE,
-  );
-  const rows = rendered.text.split("\n").filter((line) => /^\| `/.test(line));
-  assert.ok(rows.length > 0, "the rendering produced no gate rows at all");
-  assert.equal(
-    rendered.units,
-    rows.length,
-    "the unit count does not equal the number of gate rows rendered, so it cannot make M2-C-2 fire",
-  );
-
-  /* ARM TWO, END TO END THROUGH THE GATE: strip the pinned mode from every
-     `modes` list in the registry, DERIVED by rewriting each list rather than
-     by naming the lists, so the brief's mode selects nothing. `--write` then
-     produces a table with a header, a separator and no rows, and `--check`
-     finds the brief in perfect agreement with the registry. Before this round
-     that was `green (3 generated brief gate rows compared)`: the three
-     preflight steps are mode-independent, so units had a floor of three and
-     M2-C-2, which rewrites green-with-zero-units and nothing else, could not
-     fire over an empty subject. */
-  const dir = stageKernel("tiphys-impl-vacuous-");
-  try {
-    const registryPath = join(dir, "gate-registry.yaml");
-    const stripped = registryText.replace(
-      /modes: \[([^\]]*)\]/g,
-      (_match: string, inner: string) => {
-        const kept = inner
-          .split(",")
-          .map((entry) => entry.trim())
-          .filter((entry) => entry !== rolesModule.BRIEF_GATE_BLOCK_MODE);
-        return `modes: [${kept.join(", ")}]`;
-      },
-    );
-    assert.notEqual(stripped, registryText, "no modes list mentioned the pinned mode");
-    writeFileSync(registryPath, stripped);
-
-    const written = run(join(dir, "scripts", "check-brief-drift.mjs"), ["--write"], dir);
-    assert.equal(written.status, 0, `${written.stdout}${written.stderr}`);
-    const table = rolesModule.locateGateBlock(readFileSync(briefAt(dir), "utf8"), briefAt(dir));
-    assert.ok(table.ok, table.ok ? "" : table.reason);
-    assert.equal(
-      table.block.split("\n").filter((line) => /^\| `/.test(line)).length,
-      0,
-      "stripping the pinned mode from every gate left rows in the rendered table",
-    );
-
-    const resultPath = join(dir, "brief-drift.json");
-    const checked = run(
-      join(dir, "scripts", "check-brief-drift.mjs"),
-      ["--check", "--result", resultPath],
-      dir,
-    );
-    assert.notEqual(checked.status, 0, "the check reported success over an empty gate table");
-    const record = JSON.parse(readFileSync(resultPath, "utf8")) as {
-      status: string;
-      units: number;
-      vacuous?: boolean;
-    };
-    assert.equal(record.units, 0, "an empty gate table was counted as a non-zero number of rows");
-    assert.equal(record.status, "error", "an empty gate table did not become an error");
-    assert.equal(record.vacuous, true, "M2-C-2 did not mark the empty run vacuous");
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("the drift check refuses a brief carrying no generated block, rather than reporting no drift", () => {
-  const dir = stageKernel("tiphys-impl-nomarker-");
-  try {
-    const path = briefAt(dir);
-    const original = readFileSync(path, "utf8");
-    const located = rolesModule.locateGateBlock(original, path);
-    assert.ok(located.ok, located.ok ? "" : located.reason);
-    writeFileSync(path, original.replace(located.block, "(the gate list used to be here)"));
-    const refused = run(join(dir, "scripts", "check-brief-drift.mjs"), ["--check"], dir);
-    assert.notEqual(refused.status, 0, "a brief with no block reported no drift");
-    assert.match(refused.stdout, /begin marker/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
   }
 });
 
@@ -860,11 +574,11 @@ test("deleting the seed mechanism index makes brief compose exit nonzero naming 
   }
 });
 
-test("the destructive-authority clause names all three conjuncts and the manifest path, and a moved manifest makes compose exit nonzero", () => {
+test("the destructive-authority clause names all three conjuncts and the registry path, and a moved registry makes compose exit nonzero", () => {
   const clause = flatten(clauseSection(readFileSync(briefPath, "utf8"), "destructive-authority"));
   assert.ok(
-    clause.includes("gates.manifest.json"),
-    "the destructive-authority clause does not name the manifest by path",
+    clause.includes("gate-registry.yaml"),
+    "the destructive-authority clause does not name the registry by path",
   );
   assert.ok(clause.includes("destructiveCommands"), "the clause does not name the list");
   /* THE THREE CONJUNCTS, each asserted by the thing that makes it a rule rather
@@ -885,12 +599,12 @@ test("the destructive-authority clause names all three conjuncts and the manifes
   const dir = stageKernel("tiphys-impl-manifest-");
   try {
     assert.equal(composeIn(dir).status, 0);
-    const manifest = join(dir, "gates.manifest.json");
+    const manifest = join(dir, "gate-registry.yaml");
     const original = readFileSync(manifest, "utf8");
     rmSync(manifest);
     const red = composeIn(dir);
-    assert.notEqual(red.status, 0, "the manifest was moved and compose still exited 0");
-    assert.match(red.stderr, /gates\.manifest\.json/);
+    assert.notEqual(red.status, 0, "the registry was moved and compose still exited 0");
+    assert.match(red.stderr, /gate-registry\.yaml/);
     writeFileSync(manifest, original);
     assert.equal(composeIn(dir).status, 0);
   } finally {
@@ -899,9 +613,9 @@ test("the destructive-authority clause names all three conjuncts and the manifes
 });
 
 test("the seed mechanism index validates, and its mechanism keys are a superset of the interim index's, naming any that is missing", () => {
-  /* `--context` ADDED BY M3-P8, which registers a derived check for this type
-     (`mechanism-rule-evidence-resolves`) that resolves each rule's citations
-     against the tree. A context-requiring check with no context is reported
+  /* `--context` ADDED BY M3-P8, which registered a derived check for this type
+     (`mechanism-rule-evidence-resolves`, deleted by M6-P3) that resolved each
+     rule's citations against the tree. A context-requiring check with no context is reported
      SKIPPED rather than passing silently (M3-P1's rule; since kernel 0.2.1 a
      skipped-only run exits 0). The subject of this test, that the index
      validates and its keys are a superset of the interim file's, is
@@ -1140,172 +854,4 @@ test("the fix-round-mechanism clause names all three items and cites the M1 meas
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
-});
-
-/* ------------------------------------------------------------------ */
-/* Criterion 11: the CI wiring is EXECUTED, not asserted about           */
-/* ------------------------------------------------------------------ */
-
-/**
- * THE STEP IS EXTRACTED AND RUN. A text assertion over the workflow catches a
- * DELETED step and misses a DEFANGED one, which is the mechanism the interim
- * index records under "asserting a CI step is wired" and which cost four fix
- * rounds in M1-P6. So the `run:` script is lifted out of the workflow and
- * executed against a staged tree, and its EXIT CODE is what is asserted.
- */
-function briefDriftStep(): { name: string; run: string; if?: string } {
-  const workflow = yamlModule.parse(readFileSync(workflowPath, "utf8")) as {
-    jobs: { gates: { steps: { name?: string; run?: string; if?: string }[] } };
-  };
-  const steps = workflow.jobs.gates.steps;
-  const found = steps.filter((step) => (step.run ?? "").includes("check-brief-drift.mjs"));
-  assert.equal(
-    found.length,
-    1,
-    `expected exactly one brief-drift step in the gates job, found ${String(found.length)}`,
-  );
-  const step = found[0] as { name?: string; run?: string; if?: string };
-  assert.ok(step.run !== undefined, "the brief-drift step has no run script");
-  return { name: step.name ?? "", run: step.run, ...(step.if === undefined ? {} : { if: step.if }) };
-}
-
-test("the brief-drift step wired into the gates workflow is executed against stubs and reddens under two structurally different defangs", () => {
-  const step = briefDriftStep();
-  /* NO `if:`. Brief drift is a property of the default branch and not only of a
-     pull request (T-009), and an added `if:` is the defang shape section 2.3
-     rule 7 lists. Asserted because the executions below cannot see it: a step
-     that never runs on an arm has no exit code on that arm. */
-  assert.equal(step.if, undefined, "the brief-drift step carries an if:, so one CI arm never runs it");
-
-  const dir = stageKernel("tiphys-impl-wired-");
-  try {
-    const execute = (): Run => {
-      const result = spawnSync("bash", ["-c", step.run], {
-        encoding: "utf8",
-        cwd: dir,
-        timeout: BOUNDED_MS,
-        env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env["PATH"] ?? ""}` },
-      });
-      return { status: result.status, stdout: result.stdout, stderr: result.stderr };
-    };
-
-    const green = execute();
-    assert.equal(green.status, 0, `the wired step failed on a clean tree: ${green.stdout}${green.stderr}`);
-
-    /* DEFANG ONE: the REGISTRY gains a gate and the brief is not re-rendered.
-       This is the drift the step exists to catch. */
-    const registryPath = join(dir, "gate-registry.yaml");
-    const registry = readFileSync(registryPath, "utf8");
-    writeFileSync(
-      registryPath,
-      registry.replace(
-        "\ndestructiveCommands:",
-        "\n  - id: smuggled-gate\n" +
-          "    command: [node, scripts/smuggled.mjs]\n" +
-          "    unitLabel: smugglings counted\n" +
-          "    applicability: required\n" +
-          "    verified-by: script\n" +
-          "    modes: [full]\n" +
-          "    events: [pull_request]\n" +
-          "\ndestructiveCommands:",
-      ),
-    );
-    const drifted = execute();
-    assert.notEqual(drifted.status, 0, "the wired step exited 0 with the registry ahead of the brief");
-    assert.match(drifted.stdout, /smuggled-gate/);
-    writeFileSync(registryPath, registry);
-    assert.equal(execute().status, 0);
-
-    /* DEFANG TWO, STRUCTURALLY DIFFERENT: the registry and the brief agree, and
-       the BRIEF'S GENERATED BLOCK IS GONE. A check that compared whatever it
-       found against whatever it found would report clean here while being red
-       on defang one, so one member does not make a class. The failure this
-       member is about is a check that cannot find its subject and calls that
-       success, which is the guard-condition shape recorded twice in this
-       repository. */
-    const path = briefAt(dir);
-    const brief = readFileSync(path, "utf8");
-    const located = rolesModule.locateGateBlock(brief, path);
-    assert.ok(located.ok, located.ok ? "" : located.reason);
-    writeFileSync(path, brief.replace(located.block, ""));
-    const blind = execute();
-    assert.notEqual(blind.status, 0, "the wired step reported success with nothing to compare");
-    assert.match(blind.stdout, /begin marker/);
-    writeFileSync(path, brief);
-    assert.equal(execute().status, 0);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("brief-drift is declared in the gate registry and in the gate manifest, and the registry entry says which CI arm the runner reaches", () => {
-  const registry = yamlModule.parse(
-    readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8"),
-  ) as { gates: { id: string; events: string[]; "verified-by": string }[] };
-  const declared = registry.gates.find((gate) => gate.id === "brief-drift");
-  assert.ok(declared !== undefined, "brief-drift is not declared in gate-registry.yaml");
-  assert.equal(declared["verified-by"], "script");
-
-  const manifest = JSON.parse(
-    readFileSync(join(repoRoot, "gates.manifest.json"), "utf8"),
-  ) as { gates: { id: string; command: string[] }[] };
-  const entry = manifest.gates.find((gate) => gate.id === "brief-drift");
-  assert.ok(entry !== undefined, "brief-drift is not an entry in gates.manifest.json");
-  assert.ok(
-    entry.command.includes("scripts/check-brief-drift.mjs"),
-    "the manifest entry does not run the drift script",
-  );
-
-  /* THE `events` VALUE IS DERIVED FROM THE HARNESS, not asserted from a memory
-     of it, which is the rule test/gate-registry.test.ts:400 already applies to
-     every promoted entry. A gate the main bundle does not run cannot run on
-     push, whatever the registry claims.
-
-     THE DERIVATION ASKS THE HARNESS, IT NO LONGER READS ITS SHAPE. The previous
-     version scraped `--only <id>` arguments out of the script's text with a
-     regex anchored on the first id. That pinned a SPELLING rather than a fact:
-     the harness now declares the set once, in MAIN_ONLY_GATES, and builds the
-     repeated flags in a loop from it, so the regex matched nothing and this
-     test failed on its own guard rather than on anything about brief-drift.
-     Re-anchoring the regex would only move the breakage to the next edit.
-
-     `--print-expect main` is the harness's own resolved answer to what the main
-     bundle asserts. Its `absent` list is derived INSIDE the harness from the
-     manifest and MAIN_ONLY_GATES (scripts/m2-exit-test.sh:234), which is the
-     same one declaration the runner's --only flags are built from
-     (scripts/m2-exit-test.sh:1134), so the push arm is the manifest minus that
-     list however the flags are spelled. The hook runs before argument parsing,
-     needs no dist and does no gate work. */
-  const printed = spawnSync(
-    "bash",
-    [join(repoRoot, "scripts", "m2-exit-test.sh"), "--print-expect", "main"],
-    { cwd: repoRoot, encoding: "utf8", timeout: BOUNDED_MS },
-  );
-  assert.equal(
-    printed.status,
-    0,
-    "the harness could not print its main-bundle expectations: " +
-      `${String(printed.stdout)}${String(printed.stderr)}`,
-  );
-  const mainTable = JSON.parse(printed.stdout) as { gates: { id: string }[]; absent: string[] };
-  const manifestIds = manifest.gates.map((gate) => gate.id);
-  const pushGates = new Set(manifestIds.filter((id) => !mainTable.absent.includes(id)));
-  /* NON-VACUITY, because the equality below is satisfied by two degenerate
-     answers as readily as by the true one. An empty `absent` makes every
-     manifest gate look reachable on push; an `absent` naming everything makes
-     none of them reachable. Both would be a silent derivation failure wearing
-     the shape of a result, which is the guard-condition failure this repository
-     keeps paying for, so the derived set is required to be a PROPER, NON-EMPTY
-     subset of what the manifest declares. */
-  assert.ok(
-    pushGates.size > 0 && pushGates.size < manifestIds.length,
-    "the derived push-arm set must be a proper non-empty subset of the manifest's gates, or " +
-      `this test asserts nothing; derived ${JSON.stringify([...pushGates])} from ` +
-      `${String(manifestIds.length)} declared gates`,
-  );
-  assert.equal(
-    declared.events.includes("push"),
-    pushGates.has("brief-drift"),
-    "brief-drift's declared push arm does not match the harness main bundle",
-  );
 });

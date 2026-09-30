@@ -1,45 +1,23 @@
 import { resolve } from "node:path";
 import { EX_USAGE } from "../cli.ts";
-import {
-  loadManifest,
-  schemaDocumentPaths,
-} from "../gates/manifest.ts";
-import {
-  EXIT_GATE_ERROR,
-  exitCodeForStatus,
-  makeGateResult,
-  renderGateResult,
-} from "../gates/result.ts";
-import { runGates } from "../gates/run.ts";
-import { loadSchema } from "../gates/validate.ts";
-import {
-  readRegularFileIfPresent,
-  refuseOpenForWrite,
-  runStep,
-  singleLine,
-} from "../task.ts";
-import { writeFileSync } from "node:fs";
-import type { GateResultFields, GateStatus } from "../gates/result.ts";
+import { EXIT_GATE_ERROR } from "../gates/result.ts";
+import { GATE_EVENTS, runGates } from "../gates/run.ts";
+import { singleLine } from "../task.ts";
 
 /**
- * tiphys gates (kernel plan M2, M2-P1 step 7).
+ * tiphys gates run: run the gates a registry selects and write an evidence
+ * bundle.
  *
- *   gates run        run a manifest's gates and write an evidence bundle
- *   gates self-check the `manifest-self-check` gate itself
- *
- * `self-check` lives here rather than in a script because it is the ONE gate
- * the initial manifest carries, and M2R-012's point is that the first CI run
- * must measure something real rather than report a green bundle over an
- * empty gate set. It validates both shipped schema documents against the
- * closed keyword set and the manifest against its own schema, so a schema
- * document that grows an unimplemented keyword, or a manifest that drifts
- * from its shape, turns the bundle red on the run that introduced it.
+ * `--registry <file>` names the gate registry (gate-registry.yaml), which is
+ * the only gate list (DR-0061, M6-P3). `--mode <mode>` selects the entries
+ * whose `modes[]` contains it, and `--event <event>` further selects the
+ * entries whose `events[]` contains it, so CI runs exactly the gates the
+ * registry declares for its event.
  */
 
 const USAGE =
-  "usage: tiphys gates <run (--manifest <file> | --registry <file> [--mode <mode>]) " +
-  "--evidence <dir> [--base <ref>] [--head <ref>] [--phase <id>] [--only <id>] | " +
-  "self-check --manifest <file> --result <file> --evidence <dir>>";
+  "usage: tiphys gates run --registry <file> [--mode <mode>] [--event <pull_request|push>] " +
+  "--evidence <dir> [--base <ref>] [--head <ref>] [--phase <id>] [--only <id>]";
 
 function usageError(message?: string): number {
   if (message !== undefined) {
@@ -50,17 +28,10 @@ function usageError(message?: string): number {
 }
 
 interface Flags {
-  manifest?: string;
-  /* M3-P2 step 4. `--registry <file>` names a canonical gate registry
-     (gate-registry.yaml) instead of an M2 gate manifest, and `--mode <mode>`
-     selects the entries whose `modes[]` contains it. They are separate flags
-     rather than a `--manifest` that guesses at its argument's shape, because
-     deciding what a document is by pattern-matching it is the mechanism
-     MECHANISMS.md forbids and the runner's own header already refuses. */
   registry?: string;
   mode?: string;
+  event?: string;
   evidence?: string;
-  result?: string;
   base?: string;
   head?: string;
   phase?: string;
@@ -68,11 +39,10 @@ interface Flags {
 }
 
 const VALUE_FLAGS = [
-  "--manifest",
   "--registry",
   "--mode",
+  "--event",
   "--evidence",
-  "--result",
   "--base",
   "--head",
   "--phase",
@@ -97,16 +67,14 @@ function parseFlags(args: string[]): Flags | undefined {
     if (value === undefined || value.startsWith("--")) {
       return undefined;
     }
-    if (flag === "--manifest") {
-      flags.manifest = value;
-    } else if (flag === "--registry") {
+    if (flag === "--registry") {
       flags.registry = value;
     } else if (flag === "--mode") {
       flags.mode = value;
+    } else if (flag === "--event") {
+      flags.event = value;
     } else if (flag === "--evidence") {
       flags.evidence = value;
-    } else if (flag === "--result") {
-      flags.result = value;
     } else if (flag === "--base") {
       flags.base = value;
     } else if (flag === "--head") {
@@ -153,29 +121,18 @@ function cmdRun(args: string[]): number {
   if (flags === undefined) {
     return usageError();
   }
-  if (flags.manifest !== undefined && flags.registry !== undefined) {
-    // Two source documents is not a stronger run, it is an ambiguous one, and
-    // an ambiguous run's summary would name a document that governed half of
-    // it. Refuse rather than pick (M2-C-3, fail closed).
-    return usageError("--manifest and --registry are mutually exclusive; pass one");
+  if (flags.registry === undefined || flags.evidence === undefined) {
+    return usageError("run requires --registry and --evidence");
   }
-  if (flags.mode !== undefined && flags.registry === undefined) {
-    // A mode with nothing to select from is silently ignored otherwise, and a
-    // caller who believed the run was mode-scoped would read a wider bundle as
-    // a narrower one.
-    return usageError("--mode selects registry entries and requires --registry");
-  }
-  const source = flags.manifest ?? flags.registry;
-  if (source === undefined || flags.evidence === undefined) {
-    return usageError("run requires --manifest or --registry, and --evidence");
-  }
-  if (flags.result !== undefined) {
-    return usageError("--result is a gate flag, not a runner flag");
+  if (flags.event !== undefined && !GATE_EVENTS.includes(flags.event)) {
+    // An event no registry can declare selects nothing; refuse it here, where
+    // the caller's typo is still a usage error and not an empty bundle.
+    return usageError(`--event must be one of ${GATE_EVENTS.join(", ")}`);
   }
   const outcome = runGates({
-    manifestPath: source,
-    registry: flags.registry !== undefined,
+    manifestPath: flags.registry,
     mode: flags.mode,
+    event: flags.event,
     evidenceDir: resolve(flags.evidence),
     base: flags.base,
     head: flags.head,
@@ -208,11 +165,10 @@ function cmdRun(args: string[]): number {
         `${declared.map((entry) => `${entry.id} (probe ${entry.probe})`).join(", ")}\n`,
     );
   }
-  if (outcome.summary.registry === true) {
-    process.stdout.write(
-      `gates: registry ${outcome.summary.manifest} mode ${String(outcome.summary.mode)}\n`,
-    );
-  }
+  process.stdout.write(
+    `gates: registry ${outcome.summary.manifest} mode ${String(outcome.summary.mode)}` +
+      `${outcome.summary.event === undefined ? "" : ` event ${outcome.summary.event}`}\n`,
+  );
   process.stdout.write(
     `gates: declared ${String(counts.declared)} applicable ${String(counts.applicable)} ` +
       `verdict ${String(counts.verdict)} ` +
@@ -226,7 +182,7 @@ function cmdRun(args: string[]): number {
   // is unmet" and puts the reason in each gate's `detail`, but until this
   // change `detail` never left the evidence directory: this function printed
   // bundle counts and one aggregate reason naming gate IDS, so an operator
-  // reading the terminal saw `1 gate(s) reported error: manifest-self-check`
+  // reading the terminal saw `1 gate(s) reported error: <gate id>`
   // and had to open `summary.json` to learn that the cause was a missing
   // `bin/tiphys.ts`. A verdict a reader has to go and look up is one step
   // better than the skip-that-was-a-crash, not two.
@@ -270,135 +226,16 @@ function cmdRun(args: string[]): number {
   return outcome.exitCode;
 }
 
-/** Write a gate's own record, then exit with the code its status maps to. */
-function emit(path: string, fields: GateResultFields): number {
-  const result = makeGateResult(fields);
-  const refusal = refuseOpenForWrite(path);
-  if (refusal !== undefined) {
-    process.stderr.write(`tiphys gates self-check: ${refusal}\n`);
-    return EXIT_GATE_ERROR;
-  }
-  const written = runStep(`writing ${path}`, () =>
-    writeFileSync(path, renderGateResult(result)),
-  );
-  if (!written.ok) {
-    process.stderr.write(`tiphys gates self-check: ${written.reason}\n`);
-    return EXIT_GATE_ERROR;
-  }
-  const status: GateStatus = result.status;
-  process.stdout.write(`${result.gate}: ${status} (${String(result.units)} ${result.unitLabel})\n`);
-  if (result.detail !== "") {
-    process.stdout.write(`${result.detail}\n`);
-  }
-  return exitCodeForStatus(status);
-}
-
-function cmdSelfCheck(args: string[]): number {
-  const flags = parseFlags(args);
-  if (flags === undefined) {
-    return usageError();
-  }
-  if (flags.manifest === undefined || flags.result === undefined) {
-    return usageError("self-check requires --manifest and --result");
-  }
-  const startedAt = new Date().toISOString();
-  const base = {
-    gate: "manifest-self-check",
-    unitLabel: "schema documents validated",
-    startedAt,
-    evidence: [] as string[],
-  };
-
-  // Every shipped schema document, loaded through the closed keyword check.
-  // A keyword this validator does not implement is a LOAD failure, which is
-  // this gate's red: the document would otherwise be validating less than it
-  // appears to.
-  let validated = 0;
-  for (const path of schemaDocumentPaths()) {
-    const read = readRegularFileIfPresent(path);
-    if (read.kind !== "read") {
-      return emit(flags.result, {
-        ...base,
-        status: "error",
-        units: validated,
-        endedAt: new Date().toISOString(),
-        detail:
-          read.kind === "absent"
-            ? `schema document ${path} is missing from this installation`
-            : read.reason,
-      });
-    }
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(read.body);
-    } catch (error) {
-      return emit(flags.result, {
-        ...base,
-        status: "red",
-        units: validated,
-        endedAt: new Date().toISOString(),
-        detail: `${path} does not parse as JSON: ${(error as Error).message}`,
-      });
-    }
-    const loaded = loadSchema(parsed, path);
-    if (!loaded.ok) {
-      return emit(flags.result, {
-        ...base,
-        status: "red",
-        units: validated,
-        endedAt: new Date().toISOString(),
-        detail: loaded.reason,
-      });
-    }
-    validated += 1;
-  }
-
-  const manifest = loadManifest(flags.manifest);
-  if (!manifest.ok) {
-    // Diagnostics mean the document WAS validated and found wanting: red.
-    // No diagnostics means validation could not happen at all (absent, not a
-    // regular file, unparseable): error, fail closed (M2-C-3).
-    const invalid = manifest.diagnostics.length > 0;
-    return emit(flags.result, {
-      ...base,
-      status: invalid ? "red" : "error",
-      units: validated,
-      endedAt: new Date().toISOString(),
-      detail: [manifest.reason, ...manifest.diagnostics].join("; "),
-    });
-  }
-  // CR-812. `units` used to be 3, counting the manifest as a "schema document
-  // validated". Section 1.4 fixes the unitLabel, `units` is the entire
-  // anti-vacuity device of M2-C-2, and the one gate this milestone ships was
-  // reporting a count that did not match its own declared unit. The manifest
-  // validation is real work and is reported in `detail`, where it belongs.
-  return emit(flags.result, {
-    ...base,
-    status: "green",
-    units: validated,
-    endedAt: new Date().toISOString(),
-    detail:
-      `validated ${String(validated)} schema document(s) against the closed keyword set ` +
-      `(${schemaDocumentPaths().join(", ")}), and ${flags.manifest} against gate-manifest.schema.json`,
-  });
-}
-
 /**
  * The outer backstop for CR-801. Node's uncaught-exception exit code is 1,
- * which is this phase's own EXIT_RED, so a throw escaping anywhere under
- * `gates` used to be indistinguishable to a consumer from a gate reporting
- * red. `runGates` folds its own throws; this catches everything else the
- * subcommand can reach, including the schema loads that `self-check`
- * performs outside the runner.
+ * which is the RED exit code, so a throw escaping anywhere under `gates` would
+ * be indistinguishable to a consumer from a gate reporting red.
  */
 export function cmdGates(args: string[]): number {
   try {
     const [subcommand, ...rest] = args;
     if (subcommand === "run") {
       return cmdRun(rest);
-    }
-    if (subcommand === "self-check") {
-      return cmdSelfCheck(rest);
     }
     return usageError();
   } catch (error) {

@@ -1120,13 +1120,19 @@ async function resolveDestroy(
   }
 
   let branchCheckedOutAt: string | undefined;
-  const listed = runGit(contextDir, ["worktree", "list", "--porcelain"]);
+  /* -z (M6-P3 fix round 3, the CR-M6P3B-05 mechanism). Without it a worktree
+     path holding a newline is split across two records, measured on git
+     2.43.0: `worktree <dir>/t-1` then `x` for a worktree at `<dir>/t-1<LF>x`.
+     A foreign worktree there that holds the task branch was then read as the
+     task's OWN worktree, and destroy deleted a branch another worktree had
+     checked out. With -z every attribute ends in NUL and nothing is trimmed. */
+  const listed = runGit(contextDir, ["worktree", "list", "--porcelain", "-z"]);
   if (listed.status === 0) {
     let currentPath: string | undefined;
-    for (const line of listed.stdout.split("\n")) {
+    for (const line of listed.stdout.split("\0")) {
       if (line.startsWith("worktree ")) {
-        currentPath = line.slice("worktree ".length).trim();
-      } else if (line.trim() === `branch refs/heads/${branchName}`) {
+        currentPath = line.slice("worktree ".length);
+      } else if (line === `branch refs/heads/${branchName}`) {
         // IDENTITY, NOT STRING EQUALITY, and the difference is a shipped
         // defect this comparison had until 2026-09-16 (macOS smoke job of
         // pull request #155). `currentPath` is GIT'S spelling and `worktree`

@@ -1,0 +1,31 @@
+{
+  "id": "pool-destroy-newline-worktree-path",
+  "behavior": "pool-destroy-newline-worktree-path",
+  "tests": [
+    "pool destroy refuses while a foreign worktree at the task's own path plus a newline holds the task branch"
+  ],
+  "class": "destructive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "  const listed = runGit(contextDir, [\"worktree\", \"list\", \"--porcelain\", \"-z\"]);\n  if (listed.status === 0) {\n    let currentPath: string | undefined;\n    for (const line of listed.stdout.split(\"\\0\")) {\n      if (line.startsWith(\"worktree \")) {\n        currentPath = line.slice(\"worktree \".length);\n      } else if (line === `branch refs/heads/${branchName}`) {",
+      "replace": "  const listed = runGit(contextDir, [\"worktree\", \"list\", \"--porcelain\"]);\n  if (listed.status === 0) {\n    let currentPath: string | undefined;\n    for (const line of listed.stdout.split(\"\\n\")) {\n      if (line.startsWith(\"worktree \")) {\n        currentPath = line.slice(\"worktree \".length).trim();\n      } else if (line.trim() === `branch refs/heads/${branchName}`) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/pool.ts",
+      "find": "[\"worktree\", \"list\", \"--porcelain\", \"-z\"]",
+      "replace": "[\"worktree\", \"list\", \"--porcelain\"]"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p3-git-path-listings.json"
+    ],
+    "provenance": "Real git 2.43.0 output of the path listings src/pool.ts reads, in the line form it read before M6-P3 fix round 3 and the -z form it reads now, recorded 2026-09-30 inside the named tests against the fixtures they stage (the capture's own provenance says how). Required by rule (f) because every member mutates a file the spawn/parse derivation matches. The named tests re-run each recorded command and require git's live stdout to equal the recorded stdout before the code under test runs."
+  },
+  "deterministic": true,
+  "repeats": 2
+}

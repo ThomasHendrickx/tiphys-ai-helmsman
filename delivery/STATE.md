@@ -5,6 +5,14 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
+## M6 standing at 2026-09-30
+
+M6 runs from the plan delivery/plan/m6-review-and-rule-economy.md:1. M6-P1
+(the four decision records and the plan) is merged as #227 at cd2dafe. M6-P2
+(the review tier follows the diff) is in review and in a fix round. M6-P3
+(deletion, admission and one gate list) is being implemented on top of M6-P2's
+head. Nothing later has started.
+
 ## M5 standing at 2026-09-24, 09:15 UTC, `main` at 2c49ab3
 
 M5 runs in waves under DR-0050 (delivery/plan/m5-conflict-pre-pass.md:1). The

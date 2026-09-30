@@ -1,0 +1,31 @@
+{
+  "id": "gate-registry-event-selects",
+  "behavior": "gate-registry-event-selects-by-declared-events",
+  "tests": [
+    "--event push selects only the gates whose events include push, --event pull_request only the others, and no --event selects both"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "  const selected = inMode.filter((entry) => selectsEvent(entry, event));",
+      "replace": "  const selected = inMode;"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/run.ts",
+      "find": "  return event === undefined || entry.events.includes(event);",
+      "replace": "  return event === undefined || entry.events.length > 0;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "the gate subprocess the runner spawns, and the runner's own summary.json",
+    "captures": [
+      "witness/captures/gate-registry-vacuous-ingest.json"
+    ],
+    "provenance": "src/gates/run.ts spawns every selected gate with spawnSync, so red-witness rule (f) binds every witness whose dangerous state touches it. Event selection is a statement about that spawn: the property under test is that a gate the event does not select is never spawned, which the named test asserts by the absence of its row and its evidence directory. The cited capture is verbatim output of a real registry run and is the record shape whose absence is asserted. The first member deletes the filter; the second keeps a filter whose condition does not test membership."
+  }
+}

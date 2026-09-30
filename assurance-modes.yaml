@@ -1,129 +1,26 @@
-# THE ASSURANCE MODE DEFINITIONS (kernel plan M3, M3-P3; R-024, R-096).
+# The assurance modes (blueprint section 8; R-024, R-096). "The current proven
+# process is the definition of `full`. Downgrades are declared, never
+# improvised": `skips` names every stage of `full`'s pipeline a mode omits.
 #
-# Blueprint section 8 declares three modes and their merge authority, and adds
-# the sentence this whole document exists to make checkable: "The current
-# proven process is the definition of `full`. Downgrades are declared, never
-# improvised."
+# A mode's gates are the gate-registry.yaml gates whose `modes` name it;
+# `tiphys mode show` derives the list, so this file carries no copy (M6-P3).
 #
-# WHAT IS DERIVED AND FROM WHERE, so no value here is a matter of taste:
-#
-#   full.pipeline    the process document's own sequence, enumerated (process
-#                    doc section 9 item 3, R-096), with `fix-round-verification`
-#                    present because T-003 made a delta review of every fix
-#                    round structural rather than discretionary.
-#   direct-pr        blueprint section 8 row 2, "implement + gates, no
-#                    adversarial layers".
-#   local-only       blueprint section 8 row 3, "implement, orchestrator diff
-#                    review, local fast-forward".
-#   gate-sets        derived from gate-registry.yaml: each mode selects the
-#                    gates whose own `modes` list names it.
-#                    `mode-gate-sets-resolve` checks that derivation in ONE
-#                    DIRECTION ONLY, and this comment used to claim it "keeps
-#                    the two files from drifting apart", which is FALSE and is
-#                    corrected here rather than left standing.
-#                    CHECKED: every entry listed here names a gate the registry
-#                      declares, and that gate's `modes` list names this mode.
-#                      So an entry that resolves to a gate which never runs in
-#                      this mode is a violation.
-#                    NOT CHECKED, and this is the open hole: the CONVERSE. A
-#                      gate the registry declares with `modes` naming this mode,
-#                      but which is ABSENT from the list below, is invisible.
-#                      The check iterates the entries present here and never
-#                      iterates the registry, so there is no code path that
-#                      could see the omission (src/checks.ts:626).
-#                      Measured: dropping `deploy` from `full` while the
-#                      registry still declares `modes: [full]` for it validates
-#                      at exit 0 with no diagnostic, and so does adding a mode
-#                      to a registry gate without adding the gate here.
-#                    CLOSED FOR `full` ONLY, by M5-P4: the converse is now a
-#                      test, not a check. test/gate-registry.test.ts derives
-#                      full's id set from the registry and asserts set equality
-#                      with `full`'s list below, so the omission reddens `npm
-#                      test` naming the id. `mode-gate-sets-resolve` itself is
-#                      unchanged and still checks one direction. `direct-pr` and
-#                      `local-only` are NOT covered by that test and their lists
-#                      below still under-report (the M3 and M4 additions were
-#                      copied into neither); M5-P4's plan entry names `full`
-#                      only, so this is carried as an open item rather than
-#                      fixed outside the plan's letter.
-#                    CONSEQUENCE, stated so nobody has to re-derive it: this
-#                      document can UNDER-report which gates a mode runs. That
-#                      is a false description rather than a false assurance
-#                      claim, which is why it is tracked as a low rather than
-#                      fixed in place, but "one direction" and "no drift" are
-#                      not the same sentence and this file may not say the
-#                      second while meaning the first.
-#                    This is the third occurrence in one phase of a check that
-#                      constrains a relation in one direction while its own
-#                      documentation claims both. Three is a mechanism, not
-#                      three anecdotes; it is tracked in delivery/STATE.md:775.
-#   skips            derived: every stage in `full`'s pipeline that this mode's
-#                    pipeline omits, AND NOTHING ELSE.
-#                    `mode-no-undeclared-downgrade` recomputes it rather than
-#                    trusting it, and the recomputation has THREE parts because
-#                    "AND NOTHING ELSE" is measured against `full`, not against
-#                    this mode:
-#                      completeness: a stage `full` runs that this mode's
-#                        pipeline omits, and that is not declared here, is a
-#                        violation.
-#                      soundness A: a stage declared here that this mode's OWN
-#                        pipeline still runs is a violation.
-#                      soundness B: a stage declared here that `full` does not
-#                        run either is a violation, because nothing omits it
-#                        relative to the reference and it is no downgrade.
-#                    Soundness A was added after a review measured that without
-#                    it one bogus entry on `full` made `tiphys mode show` state
-#                    the opposite of the truth about this project's own
-#                    delivery, at exit 0
-#                    (delivery/review/clean-room-m3-p3-r8-criteria.md:217).
-#                    Soundness B was added a round later, after that round's
-#                    own documentation claimed the check was complete: the
-#                    stage vocabulary has thirteen ids and `full`'s pipeline
-#                    has twelve, so `direct-pr` naming `orchestrator-diff-review`
-#                    here validated at exit 0 and inflated the skipped-stage
-#                    count `tiphys mode show` prints. Shrinking `full`'s own
-#                    pipeline reaches the same violation from the other side,
-#                    editing no `skips` list at all.
-#                    ON `full` THE THREE PARTS TOGETHER MEAN ITS `skips` MUST BE
-#                    EMPTY, since an entry is either inside its own pipeline
-#                    (soundness A) or outside it (soundness B). That is not
-#                    incidental: `tiphys mode show` calls `full` the
-#                    un-downgraded process by NAME, so a `full` that quietly
-#                    became a downgrade must be refused rather than described.
-#
-# WHAT M3 NEVER RUNS, said plainly. The kernel runs `full` and only `full`; the
-# milestone exit test is a full-mode run. `direct-pr` and `local-only` are
-# witnessed here by validation and by `tiphys mode show`, never by execution.
-# Building an enforcement engine for a mode this milestone never enters is the
-# M1-P3 failure the plan is trying not to repeat.
-#
-# CONSTRAINTS C-2 AND C-3. No stage in this file is completed, detected or
-# excluded by process liveness, by a signal, or by a detached long-running
-# process. A registered test scans this file and its schema for the four
-# tokens C-2 and C-3 are written in and requires ZERO hits, which is why those
-# four tokens do not appear here even as a disclaimer. It is a fixed-token
-# presence check and nothing more: a stage whose completion were
-# liveness-detected without using any of the four words would pass it, and the
-# plan's hazard map names that residue in the open rather than papering over
-# it. The second line is the hazard review contract, which reads prose.
+# The kernel runs `full` only. `direct-pr` and `local-only` are declared and
+# validated, never exercised.
 
 kind: assurance-modes
 version: 1
 
 modes:
-  # ------------------------------------------------------------------
-  # full: the current proven process, which is what the word means here.
-  # ------------------------------------------------------------------
   - id: full
     declared-by: >-
       blueprint section 8 (the mode and its pipeline); process doc section 9
       item 3 enumerated (R-096); T-003 for the fix-round-verification stage;
       DR-0012 and DR-0015 for the merge authority actually in force; DR-0016
-      for the escalation response; DR-0035 for the fix-round ceiling; T-007 and
-      D-M3-32 for the review contracts.
-    # ORDER IS LOAD-BEARING. R-024: an adversarial plan review happens before
-    # anyone builds, which is a property of this sequence and not of its set,
-    # and `mode-stage-order` is the check that says so.
+      for the escalation response; DR-0035 for the fix-round ceiling; DR-0063
+      and DR-0064 for the review contract.
+    # Order is load-bearing (R-024): the adversarial plan review comes before
+    # anyone builds.
     pipeline:
       - intake
       - verification-pass
@@ -132,66 +29,23 @@ modes:
       - implement
       - clean-room-review
       - fix-round
-      # T-003's structural consequence, applied rather than asserted as new
-      # policy: full mode REQUIRES a delta review or verification of every fix
-      # round instead of leaving it to orchestrator discretion. The evidence is
-      # delivery/review/verification-m1-p3-fix-round.md.
       - fix-round-verification
       - merge-on-green
       - deploy-verify
       - migration-verify
       - final-report
     skips: []
-    # Every gate in gate-registry.yaml whose `modes` list contains `full`,
-    # which today is all of them, in registry order. This list said the same
-    # thing while it carried 14 of the registry's 21 full-mode ids (M5-P4):
-    # seven gates added by M3 and M4 were never copied here. Since M5-P4 the
-    # relation is checked in BOTH directions for `full` by
-    # test/gate-registry.test.ts, which derives the full-mode id set from the
-    # registry at run time and requires set equality with this list, so a
-    # registry addition that is not copied here reddens the suite naming the
-    # missing id.
-    gate-sets:
-      - manifest-self-check
-      - coverage
-      - credential-scrub
-      - credential-token
-      - suite
-      - citations
-      - scope
-      - deploy
-      - migrations
-      - clause-map
-      - red-witness
-      - agent-rules-drift
-      - brief-drift
-      - check-agents-references
-      - check-dual-review
-      - license
-      - typecheck
-      - gate-classes
-      - merge-preconditions
-      - unit-tests-for-changed-service-methods
-      - fixtures-for-changed-component-states
-    # DR-0064 (M6-P2): the criteria contract is dropped, because acceptance
-    # criteria are tests the kernel runs. The hazard contract stays: on M1-P5 it
-    # found the high-severity live-lock a criteria walk missed (T-007). How many
-    # hazard reviews a change owes is its DR-0063 tier: two for pair, one for
-    # single.
+    # DR-0064: the criteria contract is dropped (acceptance criteria are tests
+    # the kernel runs). A change owes the hazard reviews of its DR-0063 tier:
+    # two for pair, one for single.
     review-contracts:
       - hazard
-    # BLUEPRINT SECTION 8'S TABLE SAYS `owner` FOR THIS ROW, AND THAT IS NOT
-    # WHAT IS IN FORCE. The owner granted delegated authority in DR-0012 and
-    # then removed themselves from the merge path entirely in DR-0015,
-    # milestone boundaries included. Declaring `owner` here would record a
-    # regime this project has left, which is precisely the drift the checks in
-    # this phase exist to prevent, and it would sit incoherently beside the
-    # escalation bounds below, which are DR-0012's own. A project that wants
-    # the blueprint's default declares `owner`; the value stays representable.
+    # Not the blueprint's `owner`: DR-0012 delegated merge authority and
+    # DR-0015 took the owner off the merge path.
     merge-authority: delegated-under-conditions
     granted-by: DR-0012
-    # DR-0012, "What 'clean' means, defined here so it cannot be softened
-    # later". All six, in the record's order, not summarized.
+    # DR-0012's conditions in the record's words, less condition 3 (both
+    # reviewers walked the acceptance criteria), which DR-0064 supersedes.
     conditions:
       - >-
         Two independent clean-room reviews exist for the current head, produced
@@ -202,10 +56,6 @@ modes:
         severity. Low findings may be merged with, provided each is either
         fixed or explicitly recorded as a tracked item with a reason.
       - >-
-        Both reviewers were given the phase's acceptance criteria as their
-        contract, and both walked or executed them. A review that only read is
-        not sufficient for a code phase.
-      - >-
         CI is green on the exact head being merged, not on an earlier one.
       - >-
         The scope audit passes: changed files are on the phase's files-to-touch
@@ -215,36 +65,13 @@ modes:
         and records the arbitration in the merge commit or in the review file.
         A disagreement is never resolved by preferring the more convenient
         verdict.
-    # DR-0012's two limits with DR-0016's response. DATA THE ORCHESTRATOR BRIEF
-    # CITES, NOT AN ENFORCEMENT ENGINE: nothing in M3 counts fix rounds.
-    #
-    # THE FIX-ROUND NUMBER IS DR-0035'S CEILING OF 3, NOT DR-0012'S 2 (M4-P30).
-    # DR-0035 replaced the single bound with a table: the dial is the number of
-    # rounds between the clean-room reviewer and the implementer, and it runs
-    # from one round (a zero or small subject) to three (a large subject at
-    # high impact). A single integer cannot carry a table, so what this field
-    # records is the CEILING, which is the only reading under which the value
-    # is true of every phase rather than wrong for some of them. Writing 2 here
-    # made this file state a bound DR-0035 had already lifted, and the kernel's
-    # own charter had to go out of its way to avoid repeating it: charter.yaml
-    # names the BUDGET rather than a number precisely because the two documents
-    # disagreed. They no longer do.
-    #
-    # NOTHING READS THIS VALUE, and the derivation is published rather than
-    # asserted: `grep -rn 'max-fix-rounds-after-review' --include='*.ts'
-    # --include='*.mjs' src/ bin/ scripts/` returns zero hits, so no code path
-    # branches on it. The readers are this file's schema, the test that pins
-    # the shipped values, and `tiphys mode show`, which prints whatever is
-    # here. See delivery/work-history/m4-p30.md:1 for the full output and for
-    # the regions that derivation did NOT cover.
+    # Data the orchestrator brief cites; nothing counts fix rounds. The number
+    # is DR-0035's ceiling of 3, not DR-0012's 2.
     escalation-bounds:
       max-fix-rounds-after-review: 3
       recurrence-of-high-in-one-component: 1
       on-exceeded: fresh-implementer-and-third-contract
 
-  # ------------------------------------------------------------------
-  # direct-pr: implement plus gates, no adversarial layers.
-  # ------------------------------------------------------------------
   - id: direct-pr
     declared-by: >-
       blueprint section 8 row 2, "implement + gates, no adversarial layers",
@@ -255,10 +82,6 @@ modes:
       - implement
       - merge-on-green
       - final-report
-    # DECLARED, NOT IMPROVISED. Seven stages of `full` are dropped and every
-    # one of them is named here; `mode-no-undeclared-downgrade` recomputes this
-    # list from `full`'s pipeline and reddens on any omission that is not on it,
-    # and on any entry here that this mode's own pipeline still runs.
     skips:
       - verification-pass
       - adversarial-plan-review
@@ -267,27 +90,8 @@ modes:
       - fix-round-verification
       - deploy-verify
       - migration-verify
-    # INTENDED to be every gate whose `modes` list contains `direct-pr`: all
-    # of them except `deploy` and `migrations`, the two full-only entries. It
-    # is NOT that today; it under-reports, see the header's gate-sets note.
-    gate-sets:
-      - manifest-self-check
-      - coverage
-      - credential-scrub
-      - credential-token
-      - suite
-      - citations
-      - scope
-      - clause-map
-      - red-witness
-      - agent-rules-drift
-      - unit-tests-for-changed-service-methods
-      - fixtures-for-changed-component-states
     merge-authority: owner
 
-  # ------------------------------------------------------------------
-  # local-only: implement, orchestrator diff review, local fast-forward.
-  # ------------------------------------------------------------------
   - id: local-only
     declared-by: >-
       blueprint section 8 row 3, "implement, orchestrator diff review, local
@@ -309,16 +113,6 @@ modes:
       - deploy-verify
       - migration-verify
       - final-report
-    # INTENDED to be every gate whose `modes` list contains `local-only`. It
-    # under-reports today; see the header's gate-sets note.
-    gate-sets:
-      - manifest-self-check
-      - credential-scrub
-      - suite
-      - agent-rules-drift
-    # SEE THE $comment ON THIS FIELD IN THE SCHEMA. This value describes a
-    # regime the Tiphys kernel itself has left (DR-0015): for this project the
-    # owner is not an approval step anywhere in execution. It is kept because
-    # blueprint section 8 assigns it to this row and another project may want
-    # it, not because anything here runs under it.
+    # A regime the kernel itself has left (DR-0015); kept because blueprint
+    # section 8 assigns it to this row and another project may want it.
     merge-authority: owner-approves-orchestrator-merges

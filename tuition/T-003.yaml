@@ -61,7 +61,7 @@ mechanisms:
       - src/pool.ts
       - src/teardown.ts
     machine-readable-form:
-      path: gates.manifest.json
+      path: gate-registry.yaml
       key: destructiveCommands
     evidence:
       - delivery/review/verification-m1-p3-fix-round.md V-1 and V-3
@@ -88,7 +88,7 @@ structural-consequence:
       The shared claims[] contract makes a universal claim carry the executed
       construction that could have falsified it, or be restated as an open
       question.
-  - target: gates.manifest.json
+  - target: gate-registry.yaml
     status: applied
     change: >-
       The destructiveCommands list names every command that can destroy work,

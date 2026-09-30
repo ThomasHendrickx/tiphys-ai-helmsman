@@ -34,6 +34,13 @@ thing is not written here, it is not being made.
   The "one gate list" cleanup moves into P3, because deleting gates while the
   M2 exit-test harness still pins them would mean editing its tables only to
   delete it one phase later.
+- **Landing order after P3: P4, then P6, then P5.** P5 reads the
+  single-vendor exception (`review-families` in `charter.yaml`) at the merge
+  base, so the declaration must be on `main` before P5 merges. P6 is
+  `single` tier and carries it; measured under the pre-P5 merge gate, a
+  single-tier change adding the declaration passes the review rows, while a
+  pair change after it would not, so P6 lands after P4. P5 also waits on
+  delivery/decisions/DR-0065-what-a-kernel-launched-reviewer-may-do.md:1.
 
 ## Acceptance criteria are tests, here too
 
@@ -224,8 +231,10 @@ command with its expected exit. `not-testable` criteria carry a reason.
 - tier: `pair`.
 - files-to-touch: `src/`, `bin/`, `plugin/`, `schemas/`, `scripts/`,
   `test/`, `witness/`, `charter.yaml`, `gate-registry.yaml`,
-  `role-model-config.yaml`, `roles/`, `AGENTS.md`, `checklists/`,
-  `.github/`, `.claude/`, `delivery/`.
+  `assurance-modes.yaml`, `role-model-config.yaml`, `roles/`, `AGENTS.md`,
+  `checklists/`, `.github/`, `.claude/`, `delivery/`. P5 also does the
+  comment diet of `gate-registry.yaml`, `assurance-modes.yaml` and
+  `role-model-config.yaml`, because it edits them and runs alongside P6.
 - steps:
   1. `tiphys review dispatch --role clean-room-reviewer --tier <t> --head
      <sha> --phase <id>` launches the reviewer through the executor and
@@ -271,8 +280,13 @@ command with its expected exit. `not-testable` criteria carry a reason.
      Keep in prose only what a script cannot fix.
   2. Rewrite `CLAUDE.md` down to current rules; history lives in git and the
      decision records.
-  3. Comments only where a field's meaning is not obvious, in the registry,
-     the modes file, the role config, the role briefs and the mechanism index.
+  3. Comments only where a field's meaning is not obvious, in the
+     implementer brief, the shared dispatch contract and the mechanism index.
+     The registry, the modes file and the role config are P5's (see there).
+  4. P6 does not edit `AGENTS.md`, `roles/clean-room-reviewer.md`,
+     `gate-registry.yaml`, `assurance-modes.yaml` or `role-model-config.yaml`,
+     so it can run alongside P5. The setup script also runs from a
+     `.claude/settings.json` SessionStart hook in cloud sessions only.
 - acceptance:
   - p6-claude: `CLAUDE.md` at most 25,000 bytes. check: `wc -c`.
   - p6-reading: the implementer brief plus its mandated reading at most

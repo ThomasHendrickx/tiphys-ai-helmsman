@@ -119,7 +119,7 @@ claims:
   - id: C-3
     kind: coverage
     statement: >-
-      The derived check report-parity-arithmetic reddens on a gate result
+      The derived check report-parity-arithmetic (deleted by M6-P3) reddens on a gate result
       whose sum exceeds discovered, and not only on one where discovered
       exceeds the sum.
     settled-by:

@@ -1,0 +1,18 @@
+{
+  "id": "brief-compose-gate-block-dollar-patterns",
+  "behavior": "brief-compose-gate-block-dollar-patterns",
+  "tests": [
+    "a registry whose preflight command contains $' and $$ composes a brief whose gate block is byte-identical to renderBriefGateBlock's output"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/brief.ts",
+      "find": "    body = body.replace(BRIEF_GATE_LIST_PLACEHOLDER, () => gateList.text);",
+      "replace": "    body = body.replace(BRIEF_GATE_LIST_PLACEHOLDER, gateList.text);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

@@ -15,8 +15,8 @@
     {
       "kind": "mutation",
       "file": "src/commands/gates.ts",
-      "find": "    registry: flags.registry !== undefined,",
-      "replace": "    registry: false,"
+      "find": "    manifestPath: flags.registry,",
+      "replace": "    manifestPath: \"gate-registry.yaml\","
     }
   ],
   "deterministic": true,

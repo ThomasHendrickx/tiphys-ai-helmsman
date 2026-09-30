@@ -2,14 +2,13 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tiphys.dev/schemas/gate-registry.schema.json",
   "title": "Tiphys canonical gate registry",
-  "$comment": "R-094: the canonical list of gates per assurance mode, intended as the single source consumed by CI and by the role briefs. As delivered by M3-P2 the BRIEFS half is real (CLAUDE.md's gate section is rendered from the registry) and the CI half is not (CI invokes the runner with --manifest gates.manifest.json); gate-registry.yaml's own header states the divergence and test/gate-registry.test.ts asserts it in both directions. Kernel plan M3, M3-P2 step 2. A SUPERSET of the M2-P1 gate manifest (src/gates/schemas/gate-manifest.schema.json): every field that schema defines is defined here with the same meaning, and this document adds four, `modes` (made live from the field M2 reserved), `events`, `verified-by` and `probe`, plus the top-level `preflight` list. SC-011 is carried over unchanged: a gate whose precondition is unmet reports not-applicable and NEVER green.",
-  "description": "One registry per repository. Which gates exist, how each is invoked, which assurance modes select it, which CI events evaluate it, whether a script or a clean-room checklist probe verifies it, and which commands can destroy work.",
+  "description": "One registry per repository: which gates exist, how each is invoked and verified, which modes and CI events select it, and which commands can destroy work.",
   "type": "object",
   "additionalProperties": false,
   "required": ["kind", "version", "preflight", "gates", "destructiveCommands"],
   "properties": {
     "kind": {
-      "description": "The artifact type, so `tiphys validate --type auto` resolves this document without being told. Every M3-P1 artifact type carries one and this mirrors them.",
+      "description": "The artifact type, so `tiphys validate --type auto` resolves this document without being told.",
       "type": "string",
       "const": "gate-registry"
     },
@@ -18,12 +17,10 @@
       "type": "string"
     },
     "version": {
-      "$comment": "A closed set rather than a minimum, because the authoring vocabulary of schemas/README.md has no `minimum` keyword and a bare `type: integer` would admit 0 and negatives.",
       "type": "integer",
       "enum": [1]
     },
     "preflight": {
-      "$comment": "R-094. The ordered local commands every change must pass before any registry gate means anything. They live IN the registry rather than beside it because CLAUDE.md's gate section is rendered from this document IN FULL (M3-P2 criterion 6, scripts/render-agent-rules-gates.mjs), and a step left outside the registry would be exactly the hand-maintained gate list criterion 6 forbids.",
       "type": "array",
       "minItems": 1,
       "items": {
@@ -31,14 +28,14 @@
       }
     },
     "gates": {
-      "description": "Append-only registry keyed by id. No minItems, matching the M2 manifest: a registry with zero gates must reach the runner and be reported as no applicable gate, not rejected at load.",
+      "description": "Keyed by id; no minItems, and the runner refuses a registry that declares no gate for the requested mode and event.",
       "type": "array",
       "items": {
         "$ref": "#/$defs/gate"
       }
     },
     "destructiveCommands": {
-      "description": "CLI commands and module paths whose operations can destroy work. Carried over from the M2 manifest unchanged; M2-P2 rule (e) DERIVES a witness class from it rather than trusting an implementer's declaration.",
+      "description": "CLI commands and module paths whose operations can destroy work; the red-witness gate derives a witness class from this list.",
       "type": "array",
       "items": {
         "type": "string"
@@ -47,7 +44,7 @@
   },
   "$defs": {
     "commandArray": {
-      "description": "argv array. The runner appends --result and --evidence, plus one flag per declared parameter. Defined once in $defs because strict mode requires every `required` name to be declared in `properties` at the SAME level, so the conditional rules below must restate it and a second copy of the constraint would be a second thing to keep in sync.",
+      "description": "argv array; the runner appends --result and --evidence, plus one flag per declared parameter.",
       "type": "array",
       "minItems": 1,
       "items": {
@@ -79,7 +76,6 @@
       }
     },
     "gate": {
-      "$comment": "THREE conditional rules, chained through $ref rather than stacked in one object, because JSON Schema allows one `if`/`then` pair per schema object and `allOf` is outside the authoring vocabulary of schemas/README.md. Each link adds exactly one rule and each rule has its own acceptance criterion. This link: M3-P2 criterion 4. A gate declared `conditional` is one that MAY report not-applicable, and SC-011 says not-applicable ASSERTS an evaluated, unmet precondition; a conditional gate with no precondition can therefore report not-applicable with nothing evaluated, which is the vacuous pass this registry exists to make impossible. `deploy` and `migrations` are the two conditional entries this rule binds.",
       "$ref": "#/$defs/gateProbeRule",
       "if": {
         "type": "object",
@@ -101,7 +97,6 @@
       }
     },
     "gateProbeRule": {
-      "$comment": "M3-P2 criterion 2. A clean-room-checklist entry with no probe names no question, so nothing can ever verify it and the entry is a gate id with nothing behind it. D-11 settles that R-043 and R-044 are verified this way.",
       "$ref": "#/$defs/gateCommandRule",
       "if": {
         "type": "object",
@@ -123,7 +118,6 @@
       }
     },
     "gateCommandRule": {
-      "$comment": "A `script` gate is verified by running a process, so it must say which one. A `clean-room-checklist` gate has no process and carries no command, which is why `command` is not in the base required list.",
       "$ref": "#/$defs/gateShape",
       "if": {
         "type": "object",
@@ -147,7 +141,7 @@
     "gateShape": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "unitLabel", "applicability", "verified-by", "modes", "events"],
+      "required": ["id", "prevents", "unitLabel", "applicability", "verified-by", "modes", "events"],
       "properties": {
         "$comment": {
           "description": "Clause ids this entry discharges, per schemas/README.md.",
@@ -156,6 +150,12 @@
         "id": {
           "type": "string",
           "pattern": "^[a-z0-9][a-z0-9-]*$"
+        },
+        "prevents": {
+          "description": "DR-0061 (b): the concrete failure this gate prevents, in one line. No line break.",
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[^\\n\\r]*\\S[^\\n\\r]*$"
         },
         "command": {
           "$ref": "#/$defs/commandArray"
@@ -170,7 +170,6 @@
           "enum": ["required", "conditional"]
         },
         "verified-by": {
-          "$comment": "D-11. R-043 and R-044 are not reliably computable from a diff, so their gate is a clean-room checklist probe rather than a script, and the registry SAYS which of the two a reader is looking at instead of leaving it to be inferred from whether a command happens to be present.",
           "type": "string",
           "enum": ["script", "clean-room-checklist"]
         },
@@ -178,7 +177,7 @@
           "$ref": "#/$defs/probeId"
         },
         "modes": {
-          "$comment": "The field the M2 manifest schema RESERVED (src/gates/schemas/gate-manifest.schema.json line 70, validated if present and ignored by the M2 runner), made LIVE here. Blueprint section 5: the canonical list of gates PER ASSURANCE MODE. The item enum is the three mode ids M3-P3 defines.",
+          "description": "The assurance modes that select this gate; tiphys mode show derives a mode's gates from this list.",
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
@@ -188,7 +187,7 @@
           }
         },
         "events": {
-          "$comment": "T-009, D-M3-34. A gate result is evidence only for the configuration that produced it, and this repository's workflow runs DIFFERENT bundles on `pull_request` and on `push` to `main`. An entry that does not say which events evaluate it carries a claim nobody can check. For every entry PROMOTED from gates.manifest.json the value is derived from the two bundle definitions in scripts/m2-exit-test.sh and never assigned by judgment; for an entry that is not in that manifest it is derived from whatever mechanism does evaluate it, which for agent-rules-drift is a workflow step carrying no `if:`. Both derivations are asserted in test/gate-registry.test.ts.",
+          "description": "The CI events whose run evaluates this gate; tiphys gates run --event selects the gates whose list names it.",
           "type": "array",
           "minItems": 1,
           "uniqueItems": true,
@@ -198,7 +197,7 @@
           }
         },
         "parameters": {
-          "description": "Run parameters this gate's command REQUIRES. Declared rather than inferred. An absent declared parameter makes the gate error, never not-applicable (M2-C-3).",
+          "description": "Run parameters this gate's command requires; an absent declared parameter makes the gate error, never not-applicable (M2-C-3).",
           "type": "array",
           "items": {
             "type": "string",
@@ -211,7 +210,6 @@
       }
     },
     "precondition": {
-      "$comment": "SC-011, carried over from the M2-P1 manifest schema UNCHANGED, field for field. A gate whose precondition is unmet reports not-applicable and never green; not-applicable ASSERTS that a precondition was evaluated and found unmet.",
       "type": "object",
       "additionalProperties": false,
       "required": ["id", "kind"],
@@ -235,7 +233,7 @@
           "type": "string"
         },
         "pattern": {
-          "description": "branch-matches. A JavaScript regular expression source that is ANCHORED: it is compiled as ^(?:<pattern>)$ and must match the WHOLE branch name. The token {phase} is replaced by the --phase value, REGEX-ESCAPED.",
+          "description": "branch-matches: a JavaScript regular expression compiled as ^(?:<pattern>)$ against the whole branch name, with {phase} replaced by the regex-escaped --phase value.",
           "type": "string"
         },
         "paths": {

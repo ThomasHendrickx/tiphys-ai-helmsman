@@ -25,6 +25,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -38,6 +39,7 @@ import test from "node:test";
 import { realpathSync as ceilingRealpath } from "node:fs";
 import { tmpdir as ceilingTmpdir } from "node:os";
 import { delimiter as ceilingDelimiter } from "node:path";
+import { withDualReviewGate } from "./support/dual-review-registry.ts";
 
 /*
  * NO REPOSITORY ABOVE THE SCRATCH ROOT (kernel 0.2.1 fix round 3). Tests in
@@ -105,6 +107,7 @@ const scriptModule = (await import(
 
 const yamlModule = (await import("yaml")) as unknown as {
   parse: (text: string) => unknown;
+  stringify: (value: unknown) => string;
 };
 
 /**
@@ -684,6 +687,57 @@ test("a mode that states no merge-authority is refused rather than reported as n
   });
 });
 
+test("the merge checks refuse a modes document declaring the charter's mode twice with the weaker row first, rather than reporting that row's regime", () => {
+  /* M6-P3 FIX ROUND 1, CR-M6P3A-01. The regime reader took the FIRST mode row
+     whose id matched the charter, so a second `full` row declaring
+     merge-authority `owner`, placed ahead of the real one, turned this
+     shared-family pair from red into a REPORT ("not a delegated grant") and
+     exit 0. Measured by hazard review A at d584639. THE PAIR IS THE
+     SHARED-FAMILY ONE, so a green here is a wrong merge authorisation. */
+  withContext("full", SHARED_FAMILY, (dir) => {
+    const path = join(dir, "assurance-modes.yaml");
+    const document = yamlModule.parse(readFileSync(path, "utf8")) as {
+      modes: Record<string, unknown>[];
+    };
+    const real = document.modes.find((mode) => mode["id"] === "full");
+    assert.ok(real !== undefined, "the shipped document declares no full mode");
+    const weaker = structuredClone(real);
+    weaker["merge-authority"] = "owner";
+    delete weaker["granted-by"];
+    delete weaker["conditions"];
+    document.modes.unshift(weaker);
+    writeFileSync(path, yamlModule.stringify(document));
+    const run = runScript(dir);
+    assert.equal(run.status, 1, run.output);
+    assert.match(run.output, /declares mode full 2 times \(entries 0, 1\)/);
+    assert.doesNotMatch(run.output, /which is not a delegated grant/);
+
+    /* AGAINST THE REAL CAPTURE (rule (f): the witness members mutate
+       src/checks.ts, which spawns). Every INVALID line the script printed over
+       the same construction, with the scratch path written <dir> as the
+       capture declares, must be printed again now. */
+    const capture = readFileSync(
+      join(repoRoot, "witness", "captures", "m6-p3-duplicate-mode-id.txt"),
+      "utf8",
+    );
+    const section = capture.split("\ncase: ").find((part) => part.startsWith("merge-checks\n"));
+    const captured = (section ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("INVALID #/produced-by"));
+    assert.ok(captured.length > 0, "m6-p3-duplicate-mode-id.txt carries no merge-checks INVALID line");
+    const live = run.output
+      .split(realpathSync(dir))
+      .join("<dir>")
+      .split(dir)
+      .join("<dir>")
+      .split("\n");
+    for (const line of captured) {
+      assert.ok(live.includes(line), `the live output no longer prints the captured line:\n${line}`);
+    }
+  });
+});
+
 /* ------------------------------------------------------------------ */
 /* The vacuity arms: a check that cannot reach its subject              */
 /* ------------------------------------------------------------------ */
@@ -861,43 +915,6 @@ test("a verdict that is not among the committed reviews cannot be cleared by the
 /* The gate wiring                                                      */
 /* ------------------------------------------------------------------ */
 
-test("check-dual-review is declared on the pull request arm with a precondition the runner can evaluate", () => {
-  const registry = yamlModule.parse(
-    readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8"),
-  ) as {
-    gates: {
-      id: string;
-      events?: string[];
-      applicability?: string;
-      precondition?: { kind: string; command?: string[] };
-    }[];
-  };
-  const entry = registry.gates.find((gate) => gate.id === "check-dual-review");
-  assert.ok(entry !== undefined, "the gate is not declared in gate-registry.yaml");
-  assert.deepEqual(entry.events, ["pull_request"]);
-  assert.equal(entry.applicability, "conditional");
-  assert.equal(entry.precondition?.kind, "command-exit-zero");
-  /* THE PRECONDITION COMMAND IS THIS SCRIPT'S OWN ARM, so what the runner
-     evaluates and what the workflow evaluates are the same question. */
-  assert.ok(
-    (entry.precondition?.command ?? []).includes("--precondition"),
-    "the precondition does not use the script's precondition arm",
-  );
-
-  const workflow = yamlModule.parse(
-    readFileSync(join(repoRoot, ".github", "workflows", "gates.yml"), "utf8"),
-  ) as { jobs: Record<string, { steps: { run?: string; if?: string }[] }> };
-  const step = (workflow.jobs["gates"]?.steps ?? []).find((candidate) =>
-    (candidate.run ?? "").includes("check-dual-review.mjs"),
-  );
-  assert.ok(step !== undefined, "no workflow step runs the dual-review check");
-  /* THE STEP'S EVENT NARROWING MATCHES THE GATE'S DECLARED EVENTS. An `if:`
-     that CONTRADICTED the registry would be the defang; one that agrees with it
-     is the wiring. */
-  assert.equal(step.if, "github.event_name == 'pull_request'");
-  assert.match(step.run as string, /--precondition/);
-});
-
 test("the check's declared dimension is produced-by alone, read from the shipped module", () => {
   /* M6-P2: DR-0064 dropped the criteria contract, so framing and
      review-contract distinctness are no longer compared; DR-0063's pair is two
@@ -1035,7 +1052,10 @@ function stageBudgetRepo(
     join(repoRoot, "src", "gates", "merge-preconditions.ts"),
     join(dir, "src", "gates", "merge-preconditions.ts"),
   );
-  copyFileSync(join(repoRoot, "gate-registry.yaml"), join(dir, "gate-registry.yaml"));
+  writeFileSync(
+    join(dir, "gate-registry.yaml"),
+    withDualReviewGate(readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8")),
+  );
   return { dir, base, reviewed, head };
 }
 

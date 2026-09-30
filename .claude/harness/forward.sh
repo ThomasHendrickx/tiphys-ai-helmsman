@@ -123,8 +123,8 @@ resolve_expected_conflicts() {
     # --first-parent --no-merges walks the branch's OWN line of development:
     # commits made on the branch, excluding merge commits and excluding the
     # history they carry in. On the same case it returns 0 for both inherited
-    # files and 1 for delivery/plan/cutover/retirement-inventory.json, which the
-    # branch really did author, so it discriminates rather than always saying no.
+    # files and 1 for a file the branch really did author, so it discriminates
+    # rather than always saying no.
     if [ -n "$FORK" ] && [ -z "$(git -C "$R" log --first-parent --no-merges --format= --name-only "$FORK..$PREMERGE" -- "$f")" ]; then
       INHERITED="$INHERITED $f"
     else

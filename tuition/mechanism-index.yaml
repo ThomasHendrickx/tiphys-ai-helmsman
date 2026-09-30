@@ -57,7 +57,7 @@ mechanisms:
       a class must redden under at least two structurally different members.
     siblings:
       - test/exit-test-local.test.ts
-      - test/m2-exit-test.test.ts
+      - test/gate-registry.test.ts
       - test/implementer-brief.test.ts
     evidence:
       - CR-640, CR-661, CR-681
@@ -103,14 +103,12 @@ mechanisms:
       independently, and derive per item at run time rather than pinning a
       count, because these registries are append-only.
     siblings:
-      - scripts/check-brief-drift.mjs
-      - scripts/render-agent-rules-gates.mjs
       - src/roles.ts
       - test/implementer-brief.test.ts
     evidence:
       - CV-1 and contract A finding 3 in delivery/review/clean-room-m3-p6-criteria.md, two clean-room contracts reaching the mode seat from different directions on one head
       - DV-1 in delivery/review/verification-m3-p6-fix-round.md, the selection seat, silent to the whole suite and to every gate in the PR bundle
-      - "M3-P6 fix round 2 measured `scripts/render-agent-rules-gates.mjs` carrying the same defect UNFIXED: its rowCount is registry-derived, so the check reports 15 gates over a CLAUDE.md block holding 13, with the suite green"
+      - "M3-P6 fix round 2 measured the CLAUDE.md gate-block renderer (deleted in M6-P3) carrying the same defect UNFIXED: its rowCount is registry-derived, so the check reports 15 gates over a CLAUDE.md block holding 13, with the suite green"
 
   - key: claim-file-mutual-exclusion-by-o-excl
     name: Claim file (mutual exclusion by O_EXCL)
@@ -155,7 +153,7 @@ mechanisms:
       publishing the walk. Name what remains unguarded rather than chasing it.
     siblings:
       - test/exit-test-local.test.ts
-      - test/m2-exit-test.test.ts
+      - test/gate-registry.test.ts
     evidence:
       - Four M1-P6 rounds, CR-640, CR-661, CR-681, CR-720 to CR-725
       - the derived walk found two members no reviewer had named (`working-directory`, a custom `shell` template)
@@ -250,7 +248,7 @@ mechanisms:
       - src/pool.ts
       - src/teardown.ts
     machine-readable-form:
-      path: gates.manifest.json
+      path: gate-registry.yaml
       key: destructiveCommands
     evidence:
       - delivery/review/verification-m1-p3-fix-round.md V-1 and V-3

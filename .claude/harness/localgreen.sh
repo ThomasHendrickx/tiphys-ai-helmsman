@@ -58,12 +58,13 @@ node scripts/check-authored-bytes.mjs >/tmp/claude-0/$L.bytes.log 2>&1; echo "au
 # a pull request too.
 BASE="${TP_BASE:-origin/main}"
 PHASE_ARG=$(printf '%s' "$(git rev-parse --abbrev-ref HEAD)" | sed -E 's#^(claude/)?(m[0-9]+-p[0-9]+).*#\2#')
-echo "-- m2 exit test (pr bundle) --"
-rm -rf "/tmp/claude-0/$L-m2ev"
-scripts/m2-exit-test.sh --no-build --bundle pr \
+echo "-- gates (the pull-request command the workflow runs) --"
+rm -rf "/tmp/claude-0/$L-gatesev"
+node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --event pull_request \
+  --evidence "/tmp/claude-0/$L-gatesev" \
   --base "$(git rev-parse "$BASE")" --head "$(git rev-parse HEAD)" --phase "$PHASE_ARG" \
-  "/tmp/claude-0/$L-m2ev" >/tmp/claude-0/$L.m2.log 2>&1; echo "m2-exit-test exit=$?"
-tail -3 /tmp/claude-0/$L.m2.log
+  >/tmp/claude-0/$L.gates.log 2>&1; echo "gates exit=$?"
+tail -3 /tmp/claude-0/$L.gates.log
 echo "-- m1 exit test (local mode) --"
 rm -rf "/tmp/claude-0/$L-m1ev"
 scripts/m1-exit-test.sh --mode local "/tmp/claude-0/$L-m1ev" >/tmp/claude-0/$L.m1.log 2>&1; echo "m1-exit-test exit=$?"

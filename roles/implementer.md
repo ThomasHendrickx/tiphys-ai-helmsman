@@ -15,7 +15,6 @@ mandated-reading:
   - schemas/work-history.schema.json
   - tuition/mechanism-index.yaml
   - gate-registry.yaml
-  - gates.manifest.json
 verifiers:
   - scope
   - suite
@@ -72,13 +71,9 @@ warnings, and the reporting contract. `tiphys brief compose --role implementer`
 refuses to emit a brief that has lost one of them, naming the section, because a
 brief silently missing its gate list is worse than no brief: it reads complete.
 
-The gate list is GENERATED from `gate-registry.yaml` and not transcribed. A
-transcribed list is a second source, and this project has recorded three times
-that a convention between two sources does not survive. `node
-scripts/check-brief-drift.mjs --check` fails when the committed block and the
-registry disagree, and it runs in CI on both events, so a gate added to the
-registry without re-rendering this brief is a red build rather than a stale
-instruction.
+The gate list is rendered from the project's `gate-registry.yaml` when the
+brief is composed, and this file carries no copy of it, so there is no second
+source to drift.
 
 ## section mandated-reading: what you read, in this order, before you write anything
 
@@ -92,10 +87,9 @@ the first entry is read first.
 3. `tuition/mechanism-index.yaml`, the mechanism index. See the
    `mechanism-lookup` clause below: this is not background reading, it is a
    lookup you owe at a specific moment.
-4. `gate-registry.yaml`, the canonical declaration of every gate your change
-   must pass, and the source the gate-list section below is rendered from.
-5. `gates.manifest.json`, which carries the `destructiveCommands` list the
-   `destructive-authority` clause below requires you to extend.
+4. `gate-registry.yaml`, the only gate list: every gate your change must pass,
+   and the `destructiveCommands` list the `destructive-authority` clause below
+   requires you to extend.
 
 Then, outside this list because they are per-project rather than per-kernel:
 your phase's section of the plan, your phase declaration, and the project's
@@ -212,7 +206,7 @@ the third is the one that keeps this rule from rotting.
 2. Never inherit force semantics from a caller. A command that is destructive
    only because something upstream passed a flag has no contract of its own, and
    the caller's guarantee is not a property of your command.
-3. Add the command to the `destructiveCommands` list in `gates.manifest.json`.
+3. Add the command to the `destructiveCommands` list in `gate-registry.yaml`.
    That file is on your mandated reading, so `tiphys brief compose` fails loudly
    if it has moved rather than instructing you to edit a file that is not there.
 
@@ -360,47 +354,12 @@ carrying nothing, or a concurrency path where no contention can occur, is green,
 registered, and worthless. A witness for a CLASS must redden under at least TWO
 structurally different members of it.
 
-## section gate-list: everything your change must pass, generated from the registry
+## section gate-list: everything your change must pass, rendered from the registry
 
-Everything below is rendered from `gate-registry.yaml`. Do not edit it by hand:
-run `node scripts/check-brief-drift.mjs --write` after changing the registry,
-and `--check` in between to see whether it has drifted.
+`tiphys brief compose` renders the gate list below from the project's
+`gate-registry.yaml`, the only gate list, so this brief carries no copy of it.
 
-<!-- BEGIN GENERATED GATE LIST (mode: full): rendered from gate-registry.yaml by scripts/check-brief-drift.mjs. Do not edit by hand; edit the registry. -->
-
-Every change must pass these, in order:
-
-1. `npm ci` (install exactly the lockfile, npm only, never pnpm or yarn)
-2. `npm run build` (the type gate (tsc -b); emits dist/, which is never committed, and git status must be clean afterwards)
-3. `node --test` (sources are TypeScript run natively via Node type stripping, so the suite needs no prior build)
-
-Then the gates `full` mode selects, run by `tiphys gates run --registry gate-registry.yaml --mode full`:
-
-| Gate | Verified by | Applicability | One unit is |
-|---|---|---|---|
-| `manifest-self-check` | script | required | schema documents validated |
-| `coverage` | script | required | finding ids checked |
-| `credential-scrub` | script | required | credential sources probed |
-| `credential-token` | script | conditional | tokens probed |
-| `suite` | script | required | tests reported |
-| `citations` | script | required | citations resolved |
-| `scope` | script | required | changed paths audited |
-| `deploy` | script | conditional | release verifications satisfied |
-| `migrations` | script | conditional | migrations compared |
-| `clause-map` | script | required | clause-map rows checked |
-| `red-witness` | script | required | witnesses evaluated |
-| `agent-rules-drift` | script | required | rendered gate rows compared |
-| `brief-drift` | script | required | generated brief gate rows compared |
-| `check-agents-references` | script | required | references resolved |
-| `check-dual-review` | script | conditional | review verdicts examined for decorrelation |
-| `license` | script | required | production packages licensed |
-| `typecheck` | script | required | source files type-checked |
-| `gate-classes` | script | required | declared gate classes checked |
-| `merge-preconditions` | script | conditional | merge preconditions evaluated |
-| `unit-tests-for-changed-service-methods` | clean-room-checklist (probe `unit-tests-for-changed-service-methods`) | conditional | changed service methods checked |
-| `fixtures-for-changed-component-states` | clean-room-checklist (probe `fixtures-for-changed-component-states`) | conditional | changed component states checked |
-
-<!-- END GENERATED GATE LIST -->
+<!-- GATE LIST: tiphys brief compose renders it here from gate-registry.yaml -->
 
 A green gate is evidence for the configuration that produced it and for nothing
 else. "CI is green" is never a complete sentence: the complete one names the
