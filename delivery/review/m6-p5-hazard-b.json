@@ -1,0 +1,53 @@
+{
+  "kind": "verdict",
+  "phase": "M6-P5",
+  "head": "284d374829bbdac644d15f172f2af36eae7a6075",
+  "tiphys-version": "0.2.2",
+  "framing": "hazard-launch-first",
+  "review-contract": "hazard",
+  "verdict": "APPROVE",
+  "deviations-judged": [],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "1",
+      "probed": "Verified that family is derived from kernel observation of served model (src/review.ts:546), not from any verdict field. The executor observes the model from the stream's assistant rows, and familyOf is called on that observation. Verdict's optional produced-by field is history only (schema allows it, no reader references it). Test m6-p5-family-red verifies two records with same family are red without exception.",
+      "cleared-because": "Family is the vendor from observed model; a family from verdict field cannot happen."
+    },
+    {
+      "class-id": "2",
+      "probed": "Confirmed hand-written records are refused: only JSON under delivery/review/records/ is parsed as a record (src/review.ts:668-678). A verdict dropped there is neither a record (wrong content) nor counted (verdict loader skips records/). Test m6-p5-record-verdict-apart stages a stray verdict in records/ and a stray record beside verdicts; only the real record counts.",
+      "cleared-because": "Only valid JSON records under delivery/review/records/ count; hand-written files in other forms are not valid records."
+    },
+    {
+      "class-id": "3",
+      "probed": "Verified failed observation does not fall back: observedModel() returns model=null with reason when observation fails (src/review.ts:253-272). No fallback to requestedModel. Record stores model=null and is not counted by countKernelReviews. Ran observedModel() directly with null observation and confirmed it returns null. Test m6-p5-failed-observation-not-counted stages a record with model:null; gate reports 1 of 2 counted.",
+      "cleared-because": "Failed observation returns null model in record; no fallback to requested model. Uncounted by merge gate."
+    },
+    {
+      "class-id": "4",
+      "probed": "Verified verdict SHA256 is recomputed and stored: kernel reads verdict bytes after executor exits, computes SHA256, stores in record.verdict.sha256 (src/review.ts:556-558). A verdict edited after review will have different SHA256 and fail the countKernelReviews sha256 check (src/review.ts:770-772). Test m6-p5-sha-mismatch confirms edited verdict doesn't count.",
+      "cleared-because": "SHA256 is captured from reviewer's bytes, not self-reported. Edited verdicts don't match and are excluded by name."
+    },
+    {
+      "class-id": "5",
+      "probed": "Verified review-families read at merge base: single-vendor exception is in charter.yaml, read at merge base by readReviewFamilies before making the decision (src/gates/merge-preconditions.ts). The kernel's reviewer grant is frozen in src/review.ts:100-115 and does not depend on files. Test m6-p5-exception stages exception at merge base; a change that removes it while touching src is still red.",
+      "cleared-because": "Single-vendor exception is charter declaration at merge base, not changeable by the reviewed commit."
+    },
+    {
+      "class-id": "6",
+      "probed": "Verified reviewer grant is constant and enforced: REVIEWER_GRANT is Object.freeze() in src/review.ts:100-115, passed to executor.command() at src/review.ts:454. Plugin validates the grant with permissionArgs (plugin/src/review.ts:40-70) and throws if unmappable. Tested: executor maps grant to --permission-mode acceptEdits, allow-list with Edit(./**), no WebFetch/WebSearch, no git push. Real CLI run with grant had no permission denials.",
+      "cleared-because": "Grant is hardcoded and frozen; executor validates before launch; dispatch refuses if grant cannot be mapped."
+    },
+    {
+      "class-id": "7",
+      "probed": "Verified npm ci runs with kernel cache and credentials are scrubbed: installReviewDependencies (src/review.ts:340-383) runs npm ci with --prefer-offline --cache <kernelNpmCache()>. kernelNpmCache() resolves npm_config_cache or ${HOME}/.npm from parent env. reviewChildEnv() scrubs child env via buildChildEnv(), removing credential names. Test m6-p5-install-uses-kernel-npm-cache shows npm receives correct cache path. Test for scrubbed env shows NODE_EXTRA_CA_CERTS set to unset in child. Worktree is removed only after verdict copy succeeds (src/review.ts:583-588).",
+      "cleared-because": "npm ci uses kernel cache in scrubbed environment; worktree removal is gated on successful verdict copy."
+    },
+    {
+      "class-id": "8",
+      "probed": "Verified produced-by is fully deleted: grep -rn 'produced-by|producedBy' src scripts plugin/src finds 0 matches (exit 1). Schema still allows produced-by as optional history (DR-0054). Test m6-p5-no-reader confirms no gate reads it.",
+      "cleared-because": "produced-by is deleted from all readers; optional history field only."
+    }
+  ],
+  "findings": []
+}

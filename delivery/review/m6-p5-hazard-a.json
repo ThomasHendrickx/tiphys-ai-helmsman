@@ -1,0 +1,203 @@
+{
+  "kind": "verdict",
+  "phase": "M6-P5",
+  "head": "284d374829bbdac644d15f172f2af36eae7a6075",
+  "tiphys-version": "0.2.2",
+  "framing": "hazard-trust-first",
+  "review-contract": "hazard",
+  "verdict": "FIX-ROUND-NEEDED",
+  "findings": [
+    {
+      "id": "CR-M6P5A-10",
+      "severity": "medium",
+      "evidence": [
+        "src/gates/merge-preconditions.ts:2031 takes the not-applicable arm on `review.forHead.length === 0` and never consults `review.count.refusing`, which src/review.ts:823-840 computed.",
+        "MEASURED. Probe appended to test/merge-preconditions.test.ts (then reverted with `git checkout --`): stageTierBranch('src', {one FIX-ROUND-NEEDED verdict naming the head}, DECLARED_RUNTIME_SET, false) i.e. no kernel records, run against a GREEN fixture API. Output: `PROBE-NOBASE status=not-applicable exit=20`, detail `no committed kernel review record counts a verdict for phase m3-p9 at head cfea7b41343cf2534cf6aae5bfa9cb3427f22ccd, so no merge is being proposed at this head and DR-0012's conditions have no subject`. Same staged repository WITH --base: `PROBE-WITHBASE status=red exit=1`.",
+        "THE SENTENCE THE PRECONDITION ASSERTS IS FALSE. SC-011 makes not-applicable an ASSERTION that a precondition was evaluated; PRECONDITION_ID's reason states that no merge is being proposed at this head, while a committed verdict reading FIX-ROUND-NEEDED and declaring that exact head is sitting in delivery/review/. The refusal appears only as a `NOT COUNTED` evidence line (src/gates/merge-preconditions.ts:1744).",
+        "REGRESSION FROM THE BASE, not a pre-existing gap. At aa20be3, src/gates/merge-preconditions.ts:1762-1787 put every verdict whose declared head relates `same` or `evidence-only-ancestor` into `forHead` regardless of any record, so the same input gave `forHead.length === 1`, skipped the not-applicable arm, and reached `reviewRows` -> condition-2 red. Verified by reading `git show aa20be3:src/gates/merge-preconditions.ts` lines 1755-1792 and 2052-2075.",
+        "DISCLOSED, THEN OVER-CLAIMED IN THE SAME DOCUMENT. delivery/work-history/m6-p5.md:598-601 states it under `Not covered`: 'Without `--base`, a head with no counted review still takes the not-applicable arm (line 2031). A refusal there is printed in its evidence as NOT COUNTED and does not turn the gate red.' Then delivery/work-history/m6-p5.md:693-694 states 'Question 2 (`readReviewFamilies` at HEAD) and question 3 (an unclaimed refusal) are resolved above.' A later reader who reads only the reconciliation is told the item is closed.",
+        "REACHABILITY, stated rather than inflated. gate-registry.yaml:111 declares `parameters: [base, head, phase]` and `events: [pull_request]`, so CI always supplies --base; .claude/skills/phase-delivery/SKILL.md:184 supplies it in the documented orchestrator pre-merge run. The arm is reachable only by an invocation that omits the flag the USAGE line at src/gates/merge-preconditions.ts:121 advertises as optional (`[--base <ref>]`), which a kernel consumer running the gate directly can do.",
+        "WHY IT IS GRADED MEDIUM RATHER THAN LOW: T-041 counted sixteen phases merged because both review gates were conditional on whether any verdict document existed at all, so an unreviewed change read not-applicable. This is that shape with an actively REFUSED change instead of an unreviewed one, on a supported arm of the same gate."
+      ],
+      "concrete-fix": "In src/gates/merge-preconditions.ts, before the `review.forHead.length === 0` not-applicable arm at line 2031, return red when `review.count.refusing.length > 0`, using the sentences `unclaimedRefusalFaults(review, head)` already produces. One line plus the row. Then either delete the `Not covered` bullet at delivery/work-history/m6-p5.md:598-601 or scope the claim at line 693 to the --base arm, so the two statements agree. Register the behaviour (for example `m6-p5-unclaimed-refusal-red-without-base`) with a stored witness whose dangerous state is the arm as it stands today; the probe above is the red witness and the mutation `return [].map(` on `unclaimedRefusalFaults` already reddens the --base arm with the gate fully green (5 merge preconditions evaluated), so the class has two structurally different members.",
+      "analysis": "The trust rebuild is otherwise sound: the count, head, phase and family all come from the kernel's record and never from the verdict, and I could not find a way to make a verdict count without a record whose sha256 matches its committed bytes. What survives is the one arm where the gate answers a question it was not asked: with no --base it decides whether a merge is being PROPOSED, and it answers that from the counted set alone, which the record requirement just made much smaller. The refusing set was computed for exactly this purpose one function away."
+    },
+    {
+      "id": "CR-M6P5A-11",
+      "severity": "low",
+      "evidence": [
+        "src/review.ts:57 `const VERDICT_EXTENSION = /\\.(ya?ml|json)$/i` is case-INSENSITIVE; schemas/review-record.schema.json's `verdict.path` pattern `^delivery/review/[^\\\\]+[.](ya?ml|json)$` is case-SENSITIVE. The dispatch vets the path BEFORE launch (src/review.ts:412-415); the schema vets the record AFTER the run (src/review.ts:616-619).",
+        "MEASURED with a probe that builds the exact record shape `dispatchReview` writes and validates it through `loadTypeSchema('review-record')` and `validateInstance`: `delivery/review/x.json` dispatch accepts: true | record validates: true. `delivery/review/x.JSON`, `delivery/review/x.YAML`, `delivery/review/x.Yml` and `delivery/review/.json` each give dispatch accepts: true | record validates: false, with `INVALID #/verdict/path value ... does not match the required pattern`.",
+        "CONSEQUENCE: `--verdict delivery/review/x.JSON` passes pre-flight, the reviewer is launched and the run is paid for (DR-0065 records M6-P5 review A at $10.57), and only then does src/review.ts:617 push `the record does not validate against schemas/review-record.schema.json`. The record is still WRITTEN at src/review.ts:622, so an invalid record lands on disk; `loadReviewRecords` later classifies it `invalid` and it can never be counted.",
+        "This fails CLOSED (the review never counts), so it admits nothing. It costs one whole review and reports the cause after the money is spent.",
+        "`verdictPathFault` is stricter than the schema in the other direction too, which is fine: it refuses `delivery/review/records/x.json`, `delivery/review/../../etc/passwd.json` and `delivery/review//x.json`, all of which the schema pattern accepts. Also measured: `delivery/review/\\u0000x.json` is ACCEPTED by `verdictPathFault` (no control-character check), and then fails at `lstatSync` inside the dispatch, so it too fails closed."
+      ],
+      "concrete-fix": "Make src/review.ts:57 case-sensitive (`/\\.(ya?ml|json)$/`) and require a non-empty stem, so `verdictPathFault` refuses every path the record schema would refuse. The cheapest durable form is to derive the one rule from the schema, or to add a test that asserts, over a list of paths, that `verdictPathFault(p) === undefined` implies the record schema accepts a record carrying `p`. Add a control-character refusal to `verdictPathFault` while there, since CLAUDE.md's authored-bytes rule forbids one in a path the kernel writes into a committed record."
+    },
+    {
+      "id": "CR-M6P5A-12",
+      "severity": "low",
+      "evidence": [
+        "src/review.ts:860-943 `judgeFamilies` over an EMPTY counted set returns `{ok: true, exceptionUsed: true}`. Measured directly: `judgeFamilies([], {kind:'declared', families:['anthropic'], ...}, [])` -> `{\"ok\":true,\"exceptionUsed\":true,\"sentence\":\"SINGLE-FAMILY EXCEPTION USED (DR-0038): the counted reviews were observed on one family (), the one family charter.yaml declares available ...\"}`.",
+        "The mechanism: `known.length >= 2` is false, the declaration has exactly one family, and `off = families.filter(f => f !== declared)` is empty because `families` is empty, so the final green is reached with nothing observed. The row then prints that the exception WAS USED when no review was observed at all.",
+        "NOT EXPLOITABLE TODAY, and I checked rather than assumed: src/gates/merge-preconditions.ts:1833 makes condition-2 red on `review.count.counted.length === 0`, so the pair tier's gate is still red. The defect is confined to condition-1's row reading green and its sentence asserting an exception nobody used.",
+        "Same function, one counted review: `judgeFamilies([one anthropic record], declared, [])` also returns ok:true with exceptionUsed:true. The pair tier's count is enforced by the selection row (src/gates/merge-preconditions.ts:1773), not here, so this is a guard whose green does not depend on there being a pair to judge."
+      ],
+      "concrete-fix": "In src/review.ts `judgeFamilies`, return `{ok: false}` when `counted.length < 2`, with the sentence naming how many reviews were counted: the pair tier's family rule has no subject below two. Keep the count check in the selection row as well; two rows refusing the same thing for different reasons is the direction this gate already prefers (error dominates red). Add a named test asserting condition-1 is red, not green, when zero reviews are counted."
+    },
+    {
+      "id": "CR-M6P5A-13",
+      "severity": "low",
+      "evidence": [
+        "The shipped reviewer brief roles/clean-room-reviewer.md gained the paragraph 'The kernel launched you (`tiphys review dispatch`, DR-0062) ...' (git diff aa20be3 284d374 -- roles/clean-room-reviewer.md) and names no command the reviewer may run. REVIEWER_GRANT (src/review.ts:100-115) allows exactly `node`, `npm run build`, `git diff|log|show|grep|status|checkout --`.",
+        "MEASURED IN THIS REVIEW, which was itself dispatched through this grant (my prompt is verbatim src/review.ts:450, 'Review according to the brief on standard input. Write your verdict to delivery/review/m6-p5-hazard-a.json, relative to the current directory.'). Allowed: `node -e ...` -> ran, printed v26.6.0. Refused: `PATH=/usr/bin:/bin node -e ...` -> 'This command requires approval'; `/home/user/.toolchains/node-v26.6.0-linux-x64/bin/node --version` -> 'This command requires approval'; `export PATH=\"/home/user/.toolchains/node-v26.6.0-linux-x64/bin:${PATH}\"` -> refused by an expansion classifier; `npm test` -> 'This command requires approval'.",
+        "WHY THAT MATTERS RATHER THAN BEING A DETAIL: the brief this review was handed opens with 'In every shell: export PATH=/home/user/.toolchains/node-v26.6.0-linux-x64/bin:$PATH (`node --version` must print v26.6.0)', and that instruction is NOT EXECUTABLE under the grant. CLAUDE.md standing warning 1 tells every agent to 'prefer an absolute path or an explicit PATH prefix over trusting the ambient one', and both forms are refused. This review only proceeded because the ambient `node` in the kernel-made worktree already resolved v26.6.0; standing warning 1 records that a stripped environment resolves v20.20.2 instead, where the same reviewer would have had no way to reach a floor-satisfying toolchain and no way to know why.",
+        "`npm test` not being granted is FAITHFUL to DR-0065 option 1, which lists `node`, `npm run build` and read-only git, so it is not a departure. Its cost is that a reviewer must use `node --test`, and CLAUDE.md standing warning 12 records that the bare invocation reports a DIFFERENT count from `npm test` (508 against 506, the two extra being sandbox/test/greet.test.js), which this repository has paid for three times.",
+        "ONE REAL DEPARTURE FROM THE RECORD, and it is benign: DR-0065 option 1 names 'Read, Glob, Grep, Write, Edit' in the allow-list, and plugin/src/review.ts:50-53 emits only `Read(./**)` and `Edit(./**)`, relying on `--permission-mode acceptEdits` for Write. Measured to work: I created this verdict file with the Write tool. The anchoring is real too: `Read` of /etc/hostname was refused, so `Read(./**)` does bound the tool as the grant says."
+      ],
+      "concrete-fix": "In roles/clean-room-reviewer.md, state the grant the reviewer is running under: the commands it may run (derive the list from REVIEWER_GRANT rather than restating it, so the two cannot drift), that it may write only inside its worktree, and that it has no network tools. Separately, either add a granted form that lets a reviewer select an interpreter (for example allow `env` with a PATH assignment, or have the dispatch put the floor-satisfying toolchain first on the child's PATH, which src/exec/env.ts already passes through), or record in the brief that the ambient `node` is the toolchain and a PATH prefix is not available, so a reviewer on a below-floor container fails loudly instead of silently measuring the wrong interpreter."
+    },
+    {
+      "id": "CR-M6P5A-14",
+      "severity": "low",
+      "evidence": [
+        "THE SUITE IS RED FOR A KERNEL-LAUNCHED REVIEWER, AND THE BRANCH IS NOT. Ran the same command package.json's `test` script runs (`node --test \"test/**/*.test.ts\"`, because `npm test` is not in the grant): 1182 tests, 1180 pass, 2 fail, 0 skipped, exit 1.",
+        "BOTH FAILURES ARE ONE CAUSE, and it is TLS to the public registry. test/license-gate.test.ts:907 'a template copied out of an installed package validates against a schema from the same install, and removing that schema reddens' failed with `npm install failed: npm error code SELF_SIGNED_CERT_IN_CHAIN ... request to https://registry.npmjs.org/ajv failed, reason: self-signed certificate in certificate chain`. test/license-gate.test.ts:1168 'release-verify from a clean directory passes and records a resolved path inside the install prefix' failed with `step install exited 1` and four downstream steps, so no kernel code was reached.",
+        "ATTRIBUTED, NOT ASSUMED. `git diff --stat aa20be3 284d374 -- test/license-gate.test.ts scripts/license-gate.mjs src/gates/release.ts` prints NOTHING: the failing path contains no byte this phase changed, and the failure occurs inside `npm install` before the packed kernel is imported.",
+        "THE CAUSE IS THIS PHASE'S OWN SCRUBBED ENVIRONMENT. Measured from inside this review: `HOME=/home/user/.orch/.../scrub-env/home`, `NODE_EXTRA_CA_CERTS=undefined`, `HTTPS_PROXY=undefined`. Neither name is in DEFAULT_CHILD_ENV_ALLOWLIST (src/exec/env.ts:71-96), so a kernel-launched reviewer has no CA for the container's agent proxy and cannot reach the registry over TLS. This is the same limit fix round 4 documented for the kernel's own install step at src/review.ts:334-338 ('Where the registry cannot be reached from the scrubbed environment (a proxy whose CA only the kernel's environment names)'), reaching the SUITE rather than `npm ci`.",
+        "THE TWO TESTS GATE ON dist/ AND NOT ON THE REGISTRY. test/license-gate.test.ts:909 and :1168 both carry `{ skip: existsSync(distEntry) ? false : 'dist/ is absent ...' }` and nothing else, while test/license-gate.test.ts:993-995 shows the file already knows the registry may be unreachable ('rather than spending the 900s default if the registry happens to be unreachable from the runner') and applies that only to a wait bound.",
+        "WHY IT IS WORTH A ROW: CLAUDE.md standing warning 12 records that a red which is not about the branch 'is a worse position than skipping, because it trains a reader to wave a failure through'. From this phase on, every kernel-launched review of this repository sees exit 1 on a green branch, and the phase's own p5-build criterion cannot be discharged by the reviewers the phase creates. It also cost this review 284 seconds twice while npm retried."
+      ],
+      "concrete-fix": "Gate the two tests on registry reachability the way the file already gates them on `dist/`: probe once (a HEAD to the registry, or reuse the `RELEASE_VERIFY_WAIT_SECONDS` path) and `skip` with a message naming the registry and the TLS failure, so an unreachable registry is a NAMED SKIP and not a red. Keep the skip message specific enough that a CI runner with a reachable registry can never take it silently, and quote the skipped count in any suite result, as standing warning 12 requires. Do NOT fix this by adding `NODE_EXTRA_CA_CERTS` to DEFAULT_CHILD_ENV_ALLOWLIST: that widens every dispatched child's environment to fix two tests, and src/exec/env.ts's allowlist comment is explicit that an entry needs a recorded reason. If the suite must genuinely pass for a reviewer, the alternative is a per-invocation `ChildEnvExtension` with its reason, scoped to the review dispatch only."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "p5-family-red",
+      "quote": "two verdicts whose kernel-recorded families match, with no single-vendor exception, are red. check: named test.",
+      "evidence": [
+        "Named test 'two approving verdicts whose kernel-recorded families match, with no single-vendor exception declared, are red at condition-1' passes in test/merge-preconditions.test.ts (57 tests, 57 pass, 0 fail).",
+        "The rule is src/review.ts:887-895: with fewer than two distinct known families and `declaration.kind !== 'declared'`, `judgeFamilies` returns ok:false naming DR-0038, and src/gates/merge-preconditions.ts:1819 turns that into condition-1 red.",
+        "The complement is also witnessed: 'the same kernel-recorded pair with the single-vendor exception declared is green at condition-1 and says the exception was used, and a record on an undeclared family contradicts it' passes."
+      ],
+      "met": true
+    },
+    {
+      "id": "p5-no-record",
+      "quote": "a verdict with no kernel review record is not counted. check: named test.",
+      "evidence": [
+        "Named test 'a verdict with no matching kernel review record is not counted, so a verdict dropped into delivery/review by hand does not make the pair' passes.",
+        "MUTATED the neighbouring anchors myself to confirm the counting path is load-bearing rather than incidental: `if (false && sha256 !== record.verdict.sha256)` reddened the sha256 test; `if (false && record.phase !== phase)` reddened the phase test; `if (false && record.observation.model === null)` reddened the observation test and reported the gate GREEN under the mutant. All restored with `git checkout -- src/review.ts`.",
+        "Counting is exhaustive in the other direction too: src/review.ts:822 makes every committed verdict no record claims `unclaimed`, and src/gates/merge-preconditions.ts:1744 prints each with its reason."
+      ],
+      "met": true
+    },
+    {
+      "id": "p5-no-reader",
+      "quote": "no gate reads `produced-by`. check: `grep -rn \"produced-by\\|producedBy\" src scripts plugin/src` finds no reader.",
+      "evidence": [
+        "Ran the criterion's own command, plus `bin`: `grep -rn 'produced-by\\|producedBy' src scripts plugin/src bin` prints nothing.",
+        "Widened it to every .ts/.mjs/.json/.yaml/.yml/.sh/.md outside node_modules, dist/ and delivery/: the only hits are schemas/verdict.schema.json (the property, now optional, and its comment saying nothing reads it) and schemas/finding.schema.json (a different document type this phase does not touch).",
+        "The deletions leave nothing dangling: no live path resolves `check-dual-review`, `dual-review-decorrelation`, `DECORRELATION_CHECK_ID`, `producedByFromRecord` or `producedByCaveat`; gate-registry.yaml:115 points the precondition at `src/gates/merge-preconditions.ts --precondition`, whose two arms a named test exercises."
+      ],
+      "met": true
+    },
+    {
+      "id": "p5-record",
+      "quote": "a dispatched review writes a record with head, observed model, family and cost. check: named test with a stub executor.",
+      "evidence": [
+        "test/review-dispatch.test.ts: 13 tests, 13 pass, 0 fail, 0 skipped. The stub executor replays a real captured harness stream (test/fixtures/review-dispatch/stub-executor.mjs and replay.mjs).",
+        "VERIFIED THE CAPTURES ARE REAL rather than trusting the README: recomputed both sha256 values and row counts. haiku-with-sonnet-subagent.stream.jsonl is 66 rows, sha256 7d53a0fb23f3199fef409c46f1a2907024f140073f5b338d8f77f3b99d72faa3; grant-smoke.stream.jsonl is 20 rows, sha256 d601c5fb7ffe172e3f2c2350c1ac80ad1c95d8fd7ab4ce2a6dc6d495506a02ca. Both match test/fixtures/review-dispatch/README.md exactly, and the README declares each transliteration with its codepoint and count as CLAUDE.md requires.",
+        "PARSED the grant smoke capture and checked its claims against the bytes: `permissionMode: acceptEdits`, `WebFetch` absent and `WebSearch` absent from the init row's tools list, `permission_denials: []`, `is_error: false`, and exactly one top-level assistant model (claude-haiku-4-5-20251001).",
+        "The record's shape is enforced at write time: src/review.ts:616-619 validates it against schemas/review-record.schema.json, whose `required` names head, observation, family and totalCostUsd, and whose `if`/`then` forces `family: unknown` when no model was observed."
+      ],
+      "met": true
+    },
+    {
+      "id": "p5-build",
+      "quote": "`npm run build` exits 0, `npm test` exits 0 with 0 fail.",
+      "evidence": [
+        "`npm run build` exits 0, and `git status --porcelain` afterwards shows only my own untracked files, so the build leaves the tree clean.",
+        "`npm test` COULD NOT BE RUN: it is not in the reviewer grant ('This command requires approval'). Ran its exact script body instead, `node --test \"test/**/*.test.ts\"`, so the count below is the `npm test` count and not the bare-invocation count standing warning 12 distinguishes.",
+        "Result, node v26.6.0, dist/ built: 1182 tests, 1180 pass, 2 fail, 0 skipped, exit 1. Quoting the skipped count as standing warning 12 requires: zero.",
+        "The 2 failures are both registry TLS in test/license-gate.test.ts, a file this phase does not change, and they are caused by the reviewer's own scrubbed environment. Recorded as CR-M6P5A-14 with the attribution evidence.",
+        "So the criterion as WRITTEN was not observed to hold: I did not see exit 0 with 0 fail. I am not recording it as met on the strength of an environment argument, because that is the shape CLAUDE.md standing warning 12 says trains a reader to wave a failure through. What I can say positively: no failure I saw is attributable to a byte this phase changed."
+      ],
+      "met": false
+    }
+  ],
+  "deviations-judged": [
+    {
+      "deviation": "Records are unsigned. A record written by hand with a real sha256 counts. The kernel launches reviewers; it does not yet prove that a committed record came from a launch.",
+      "serves-plan-intent": true,
+      "reasoning": "DR-0062's step 3 asks the merge gate to read the count, head and family from kernel records; it does not ask for a record whose provenance is cryptographic. The record is committed in the reviewed pull request, so a forged one is in the diff two independent reviews and the scope audit read. What it costs is stated plainly in the work history rather than hidden, which is the condition on accepting it. It is strictly stronger than what it replaced: the deleted comparison read a family the REVIEWER wrote, which needed no forgery at all."
+    },
+    {
+      "deviation": "A committed verdict that no record names neither counts nor refuses, so an unclaimed FIX-ROUND-NEEDED verdict no longer turns the gate red. It is printed as NOT COUNTED.",
+      "serves-plan-intent": false,
+      "reasoning": "Fix round 1 (CR-M6P5A-04) closed this on the --base arm and the work history's own `Not covered` bullet says the no---base arm was left open, while its reconciliation twelve lines later calls the question resolved. Taking a refusal out of the gate's reach is not what DR-0062 asked for: DR-0062 removes an unlaunched review from the COUNT, and a recorded refusal is a different question from a counted approval. Recorded as CR-M6P5A-10."
+    },
+    {
+      "deviation": "schemas/finding.schema.json still requires `produced-by` for a finding set. Nothing reads it; only its comment changed, because the brief names the verdict schema.",
+      "serves-plan-intent": true,
+      "reasoning": "Verified: `grep -rn 'produced-by\\|producedBy' src scripts plugin/src bin` prints nothing, so no gate reads either document's field, and step 4 asked for `produced-by` to be deleted from the verdict contract specifically. Leaving the finding schema's requirement alone keeps a shipped schema stable for a document type this phase does not touch, and the field's comment was corrected so it no longer claims a comparison that exists."
+    },
+    {
+      "deviation": "`CheckRunOptions.base` in src/checks.ts has no caller after the removal; its base-provenance arm is dead code, left for a later phase.",
+      "serves-plan-intent": true,
+      "reasoning": "A deletion that leaves an unused optional field is inert, and DR-0061 asks a removal to be one commit rather than to grow into a refactor of everything the removed caller touched. It is declared, so a later phase can find it."
+    },
+    {
+      "deviation": "Out of scope, still naming the deleted script or `produced-by`: `.claude/skills/phase-delivery/references/clean-room-brief.md`, `.claude/merge-ready.mjs`, `.claude/harness/forward.sh`, and `lab/`.",
+      "serves-plan-intent": true,
+      "reasoning": "`.claude/` is harness configuration for the current process and CLAUDE.md states explicitly that it is not a kernel deliverable, so a stale reference there cannot reach a consumer. I checked the shipped surface instead and it is clean: every remaining mention of `check-dual-review` or `dual-review-decorrelation` under src/ is a historical comment that says the thing was deleted, and no code path resolves either name."
+    }
+  ],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "hazard-1-family-head-phase-from-a-reviewer-written-field",
+      "probed": "Traced every field the merge gate trusts back to its source. `countKernelReviews` (src/review.ts:728-842) reads `record.phase`, `record.observation.model`, `record.verdict.sha256`, `record.executorExitCode` and `record.head`; the only thing taken from the verdict document is `verdict.record` passed on for the APPROVE word and findings. `verdictApprovalFaults` (src/checks.ts:2448-2472) reads only `verdict` and `findings`; its `phase` and `headKey` arguments reach message text only, which I confirmed by reading every use. `reviewRows` passes `entry.record.head`, the RECORD's head, at src/gates/merge-preconditions.ts:1824. MUTATED three of these and ran the named tests: `if (false && record.phase !== phase)` reddened 'a kernel review record for another phase at the same head is not counted toward the phase under audit'; `if (false && record.observation.model === null)` reddened 'a kernel review record whose observation failed is not counted' and the mutant reported the gate GREEN, which is the dangerous state; `if (false && sha256 !== record.verdict.sha256)` reddened 'a verdict whose committed bytes do not match the recorded sha256 is not counted'. Each file restored with `git checkout -- src/review.ts`. Named test 'a verdict's own head line is never read' passes on the shipped tree.",
+      "cleared-because": "No field the reviewer writes decides identity, head, phase or family, and each guard that enforces that has a red witness I produced myself."
+    },
+    {
+      "class-id": "hazard-2-a-review-the-kernel-did-not-launch-counted-toward-the-pair",
+      "probed": "Ran the named tests 'a verdict with no matching kernel review record is not counted, so a verdict dropped into delivery/review by hand does not make the pair' and 'a verdict placed in the records directory is neither a verdict nor a record, and a record placed beside the verdicts is neither a record nor a verdict' (both pass). Confirmed the two loaders cannot overlap: `loadCommittedVerdicts` filters the records prefix out of its listing (src/checks.ts:455-461) and `loadReviewRecords` lists only that directory and names anything there that is not a valid record as `invalid`, never counted (src/review.ts:647-681). Checked the forgery cost rather than the mechanism: a hand-written record needs a correct sha256 of the committed verdict bytes, correct phase, a head that relates `same` or `evidence-only-ancestor`, `executorExitCode: 0`, a non-null observed model, and a family the charter declares; nothing else. Also checked the duplicate paths: `taskIds` and `verdictPaths` are both deduplicated (src/review.ts:810-819), so one record cannot be counted twice and two records cannot both claim one verdict.",
+      "cleared-because": "A hand-dropped verdict cannot count, which is the half the kernel can enforce. A hand-written record with a correct hash does count, and that is the recorded consequence of DR-0062's unsigned, in-the-pull-request record rather than a departure from it; its cost is stated in the work history and judged under deviations-judged."
+    },
+    {
+      "class-id": "hazard-3-a-failed-observation-falls-back-to-the-requested-model",
+      "probed": "Read the whole observation path. `observeServedModel` (plugin/src/model-resolution.ts:386-423) returns `unresolved` with a named reason for an unreadable stream, zero models and more than one model, and never returns the request. `observedModel` (src/review.ts:253-272) passes null through and additionally refuses an executor whose claim disagrees with its own row list. `family` is `UNKNOWN_FAMILY` whenever the model is null (src/review.ts:546), and schemas/review-record.schema.json's `if`/`then` makes `family: unknown` mandatory in that case. The subagent half is real: `assistantModelsIn` splits on `parent_tool_use_id` and the fixture test/fixtures/review-dispatch/haiku-with-sonnet-subagent.stream.jsonl is a declared real capture of claude-haiku-4-5-20251001 with a subagent forced onto claude-sonnet-5-5, replayed through the plugin's own executor. The stored witness witness/m6-p5-observation-fails.json mutates exactly the dangerous state (`const observation = observed.model === null ? {model: requestedModel, ...} : observed`), which is the fallback this class names. MUTATED the kernel's cross-check (`if (false && (top.length !== 1 || top[0] !== reading.observed.model))`) and the named test stayed GREEN: that branch is unreachable for the shipped executor, because `observeServedModel` derives its answer from the same top-level list, so it is defence for a third-party executor only and is not a guard over live behaviour.",
+      "cleared-because": "No arm falls back to the requested model, `unknown` is never distinct from anything, and a record that observed nothing is excluded from the count with its reason printed. The one unwitnessed branch is redundant for the only shipped executor and fails in the safe direction."
+    },
+    {
+      "class-id": "hazard-4-a-verdict-edited-after-the-review-a-record-mistaken-for-a-verdict-an-unclaimed-refusal-that-does-not-redden",
+      "probed": "Three sub-questions, separately. EDITED AFTER: the named test passes and the sha256 comparison has the red witness recorded under hazard 1. RECORD/VERDICT CONFUSION: the named test passes and the two loaders' scopes are disjoint by construction (see hazard 2). UNCLAIMED REFUSAL: mutated `unclaimedRefusalFaults` to `return [].map(...)` and the named test 'a single change with one counted approving review and one committed FIX-ROUND-NEEDED verdict no record names is red at condition-2 naming it, and so is a pair change' failed with `merge-preconditions: green (5 merge preconditions evaluated)`, so the --base arm's guard is real and reddens against the dangerous state. Then probed the arm the mutation does not reach, by appending a temporary test that runs the gate with NO --base over a staged repository holding one FIX-ROUND-NEEDED verdict naming the head and no records: `status=not-applicable exit=20`, with the precondition asserting that no merge is being proposed at that head. Compared against `git show aa20be3:src/gates/merge-preconditions.ts` to establish that the same input was condition-2 red before this change.",
+      "finding": "CR-M6P5A-10"
+    },
+    {
+      "class-id": "hazard-5-review-families-read-at-the-merge-base-and-families-from-two-vocabularies",
+      "probed": "MERGE BASE: `readReviewCorpus` reads the declaration at `budget.mergeBase` when --base is given (src/gates/merge-preconditions.ts:1681). Mutated it two ways. `readReviewFamilies(contextDirectory)` (the pre-fix HEAD read) reddened the named test 'a head that adds the single-vendor exception while touching the runtime set is still red at condition-1'. The sharper mutant `readReviewFamilies(contextDirectory, head)`, which reads the declaration at the audited head, also reddened it: condition-1 became green so the run fell through to the deliberately closed fixture port and reported `error`, which is not `red`. So a change cannot declare the exception for itself, and the guard has a witness, though the witness detects the mutant through a later assertion rather than by observing condition-1 green. TWO VOCABULARIES: mutated `if (false && vocabularies.length > 1)` and the named test 'two counted reviews on different families minted under different vocabulary ids are red at condition-1' reddened. Confirmed plugin/src/vocabulary.ts changed VOCABULARY_ID from `claude-code-model-families` to `claude-code-model-vendors` when the token's meaning changed from model line to vendor, so old records are not comparable with new ones. Then probed `judgeFamilies` directly with empty, one-element and mixed-family counted sets.",
+      "finding": "CR-M6P5A-12"
+    },
+    {
+      "class-id": "hazard-6-the-reviewer-grant-gives-more-than-the-record-says-or-less-than-it-needs",
+      "probed": "Read DR-0065 out of `git show ac68ff1:delivery/decisions/DR-0065-what-a-kernel-launched-reviewer-may-do.md` (it is NOT an ancestor of this head; see the note in this entry) and compared option 1 clause by clause against REVIEWER_GRANT (src/review.ts:100-115) and `permissionArgs` (plugin/src/review.ts:40-70). Mutated the deny list away and the named test 'the Claude Code executor maps the reviewer grant to exactly its permission flags' reddened with the exact argv diff. Then probed the live grant, which this review runs under: `node -e` allowed; `PATH=... node`, an absolute-path node, an `export PATH` with expansion, and `npm test` all refused; `Read` of /etc/hostname refused, so `Read(./**)` bounds the tool; Write worked for this verdict file despite no `Write` rule, which is `acceptEdits` doing what the comment says. MORE THAN THE RECORD: I found nothing wider than option 1. `push` and `networkTools` are hard-refused by `permissionArgs` before any argv is built, and the grant is mapped BEFORE the task directory or worktree exist (src/review.ts:446-460), witnessed by 'an executor that cannot map the grant refuses before anything is created'. I did not probe whether `node -e` can in fact push, because DR-0065's `Known limit` already records that it can and that the grant is not a security boundary.",
+      "finding": "CR-M6P5A-13"
+    },
+    {
+      "class-id": "hazard-7-the-launch-path-credentials-writes-outside-the-worktree-and-leftovers-on-refusal",
+      "probed": "CREDENTIALS: `reviewChildEnv` calls `buildChildEnv` with NO allowlist extension (src/review.ts:297-302), so the child gets only DEFAULT_CHILD_ENV_ALLOWLIST (src/exec/env.ts:71-96: PATH, TMPDIR, locale, the three exit-test names, GIT_AUTHOR_*/GIT_COMMITTER_*) plus HOME and the credential-store pointers redirected into the task's scrub directory. No GH_TOKEN, no proxy variable. The same env is handed to `npm ci`. Named test 'the reviewer runs in the kernel's scrubbed environment ... and its HOME is the task's empty scrub directory' passes. WRITES OUTSIDE: the install writes `npm-ci.txt` into the task directory and populates the KERNEL's npm cache, resolved from the kernel's own `npm_config_cache` or `$HOME/.npm` (src/review.ts:312-322) and never from the child's empty HOME; both are outside the worktree, both are intended and commented, and the named test 'the install step runs npm ci with --prefer-offline and the kernel's own npm cache ... with no TLS setting' passes. Noted and not graded: `npm ci` executes the reviewed head's dependency lifecycle scripts before the reviewer is launched, which is code from the head under review running outside any grant; package.json declares no `prepare`/`postinstall`, and a reviewer would run `npm run build` under the grant anyway, so this is not a new class. LEFTOVERS: mutated nothing here, ran the two named tests instead ('a failing dependency install refuses before launch with exit 1 ... and leaves no review worktree registered' and 'an executor that cannot map the grant refuses before anything is created: no task directory and no review worktree registered'), both pass. Read the remaining refusal paths: a `reviewChildEnv` failure (src/review.ts:474) and a `git worktree add` failure (src/review.ts:477) each leave the task directory behind with no worktree, and an install failure leaves it deliberately because its reason names the log inside it. Also probed the pre-flight path vetting with eighteen dangerous verdict paths.",
+      "finding": "CR-M6P5A-11"
+    },
+    {
+      "class-id": "hazard-7b-the-scrubbed-environment-reaches-the-suite",
+      "probed": "Ran the phase's own p5-build criterion as a kernel-launched reviewer, with the exact glob package.json's `test` script uses: 1182 tests, 1180 pass, 2 fail, 0 skipped, exit 1. Read both failures rather than averaging them away: one cause, `SELF_SIGNED_CERT_IN_CHAIN` on `https://registry.npmjs.org/ajv`. Measured my own environment (`HOME` is the task scrub directory, `NODE_EXTRA_CA_CERTS` and `HTTPS_PROXY` unset) against DEFAULT_CHILD_ENV_ALLOWLIST in src/exec/env.ts:71-96 and confirmed neither TLS name crosses. Attributed the failure with `git diff --stat aa20be3 284d374 -- test/license-gate.test.ts scripts/license-gate.mjs src/gates/release.ts`, which prints nothing. Checked the two tests' skip conditions at test/license-gate.test.ts:909 and :1168: both gate on `dist/` only, so an unreachable registry is a red rather than a named skip.",
+      "finding": "CR-M6P5A-14"
+    },
+    {
+      "class-id": "hazard-8-the-deletions-produced-by-the-decorrelation-check-and-check-dual-review",
+      "probed": "Criterion p5-no-reader run as written: `grep -rn 'produced-by\\|producedBy' src scripts plugin/src bin` prints nothing. Widened the sweep to `check-dual-review`, `dual-review-decorrelation`, `DECORRELATION_CHECK_ID`, `producedByFromRecord`, `producedByCaveat` and `modelsInTranscript` across every .ts/.mjs/.json/.yaml/.yml/.sh/.md outside node_modules, dist/ and delivery/: every hit under src/ is a historical comment that says the thing was deleted, and no code path resolves any of the names. `scripts/check-dual-review.mjs` is gone and gate-registry.yaml:115 now points the merge-preconditions precondition at `src/gates/merge-preconditions.ts --precondition`, whose two arms the named test exercises. DR-0054 COMPATIBILITY, measured rather than assumed: validated all 21 documents under delivery/review/ through `bin/tiphys.ts validate --type auto`; INVALID count 0, and fifteen of them carry `produced-by`. Ran test/history-compat.test.ts, test/verdict-schema.test.ts, test/verdict-head.test.ts, test/model-resolution.test.ts, test/kernel-charter.test.ts, test/assurance-modes.test.ts and test/git-ceiling.test.ts together: 101 tests, 101 pass, 0 fail, 0 skipped. Asked whether the deleted thing guarded a real product failure: `dual-review-decorrelation` compared a family the REVIEWER wrote, so it guarded against a reviewer who mistyped its own family and not against one that lied; the kernel-observed family strictly dominates it. src/stamp.ts's RULES_SINCE needed no new row because `produced-by` moved from required to optional, which cannot invalidate a historical document.",
+      "cleared-because": "Nothing live reads a deleted path or id, every committed verdict still validates, and the replaced guard was weaker than what replaced it."
+    }
+  ]
+}
