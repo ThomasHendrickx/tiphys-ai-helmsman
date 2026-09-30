@@ -421,6 +421,9 @@ for the merge result.
 `refs/heads/*` is pushable from this container. **Deleting a remote branch is
 an OWNER action**: do not attempt it; ask for an `A-n` id.
 
+**15. A toolchain must sit where an unprivileged uid can traverse it**; some
+tests run `process.execPath` as one. A private `$HOME` is not such a place.
+
 ## The orchestrator does not decide when it is finished
 
 A stop is computed, never judged. `.claude/orchestrator-next.mjs` derives the
