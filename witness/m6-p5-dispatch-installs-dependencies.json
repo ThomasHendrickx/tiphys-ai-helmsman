@@ -9,7 +9,7 @@
     {
       "kind": "mutation",
       "file": "src/review.ts",
-      "find": "  const installed = installReviewDependencies(reviewDirectory, taskDirectory, childEnv.env);",
+      "find": "  const installed = installReviewDependencies(reviewDirectory, taskDirectory, childEnv.env, kernelNpmCache(parentEnv));",
       "replace": "  const installed: { ok: true } | { ok: false; reason: string } = { ok: true };"
     },
     {
