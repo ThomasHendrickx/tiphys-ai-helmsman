@@ -1,0 +1,25 @@
+{
+  "id": "m6-p8-pr-evaluates-test-file-changed",
+  "behavior": "red-witness-pr-evaluates-test-file-changed",
+  "tests": [
+    "on pull_request a stored witness is evaluated because the diff changes, moves or renames inside a test file it runs"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/red-witness.ts",
+      "find": "    facts.changedTestFiles.length > 0\n",
+      "replace": "    false\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git diff --name-status --no-renames",
+    "captures": [
+      "witness/captures/m6-p8-git-diff-test-file-move.txt"
+    ],
+    "provenance": "The pull-request selection reads the phase diff git prints (src/witness/run.ts computePhaseDiff, --no-renames) to decide whether a test file a stored witness runs changed. The capture is real git output for a moved test file, a D of the old path and an A of the new one, and the named test compares the fixture's own name-status to it. The member drops the test-file arm."
+  }
+}
