@@ -9,12 +9,6 @@
     {
       "kind": "mutation",
       "file": "schemas/assurance-modes.schema.json",
-      "find": " CLOSED VOCABULARY AT v0.1.0 (DR-0020): these three are the tiphys kernel's OWN mode ids.",
-      "replace": ""
-    },
-    {
-      "kind": "mutation",
-      "file": "schemas/assurance-modes.schema.json",
       "find": "\"enum\": [\"full\", \"direct-pr\", \"local-only\"]",
       "replace": "\"enum\": [\"full\", \"direct-pr\", \"local-only\", \"standard\"]"
     },
