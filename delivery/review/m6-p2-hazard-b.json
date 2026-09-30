@@ -1,0 +1,212 @@
+{
+  "kind": "verdict",
+  "phase": "M6-P2",
+  "head": "773ced60c700c460e2fe995a62e76a88c99761f0",
+  "tiphys-version": "0.2.2",
+  "verdict": "APPROVE",
+  "produced-by": "claude-opus-5-5",
+  "framing": "hazard-gate-first",
+  "review-contract": "hazard",
+  "findings": [
+    {
+      "id": "CR-M6P2B-06",
+      "severity": "low",
+      "evidence": [
+        "CARRIED FORWARD from round 0, each item deferred by the arbitration to a named phase, none changed by the delta (git diff e898e4e 773ced6 touches none of src/checks.ts DECORRELATION_DIMENSIONS, role-model-config.yaml, assurance-modes.yaml or scripts/check-retirement-inventory.mjs).",
+        "Single-family exception: DECORRELATION_DIMENSIONS is ['produced-by'] and DR-0038 exempts exactly that, so a declared single-family project's pair is counted on zero dimensions and two copies of one verdict count as two (M6-P5).",
+        "tier-by-review-tier has no reader, so single-tier reviewers are still dispatched at strongest; fail-closed (M6-P5).",
+        "scripts/check-retirement-inventory.mjs exits 1 at head and nothing runs it; assurance-modes.yaml still quotes DR-0012 condition 3 (M6-P3).",
+        "The shipped machine-read YAML (assurance-modes.yaml, role-model-config.yaml, gate-registry.yaml, gates.manifest.json) and charter.yaml's review-families are single: DR-0063's list, the owner's decision, recorded not contested."
+      ],
+      "concrete-fix": "As the arbitration schedules: M6-P5 for the zero-dimension compare and the tier-by-review-tier reader, M6-P3 for the retirement script and the condition-3 quote; raise the merge-rule documents' tier with the orchestrator if the owner wants the runtime-set block's self-protection extended to them."
+    },
+    {
+      "id": "CR-M6P2B-07",
+      "severity": "low",
+      "evidence": [
+        "RESIDUAL OF CR-M6P2B-01, deferred to M6-P5 by the arbitration (no phase match). PROBE-B2 re-run at 773ced6 (<scratchpad>/revb/test/probe.test.ts (round-0 copy of test/merge-preconditions.test.ts with absolute imports into this worktree, plus probes B1 to B3)): a single change whose one verdict names phase M1-P1 while the gate runs --phase m3-p9, the verdict's head on the branch and not on the base: 'verdict-selection ... green -- 1 verdict(s) admitted and 0 excluded', 'PROBE-B2 status=green exit=0'.",
+        "The path now needs a verdict of another phase committed on the branch under audit at a head the base does not contain, which is an operator error rather than the structural every-paperwork-PR path round 0 measured. A stacked branch (B cut from an unmerged A) does not reach it: B's diff against the base carries A's shipped paths, so B is pair and the phase-keyed arbitration row binds the verdicts."
+      ],
+      "concrete-fix": "M6-P5 as scheduled (review identity from kernel records carrying the phase); until then, on the single tier, exclude a verdict whose phase differs from --phase case-insensitively."
+    },
+    {
+      "id": "CR-M6P2B-08",
+      "severity": "low",
+      "evidence": [
+        "RESIDUAL OF CR-M6P2B-02. The fix refuses the shapes that were measured and the natural misspelling (paths: [src] over a directory). Re-run of <scratchpad>/revb/decl-probe.ts at 773ced6, one real repository per row (base: charter + src/a.ts; head edits src/a.ts), classifyReviewBudget from the shipped module: [src/] pair; [src] pair ('names a DIRECTORY at <mb>'); [\"src/**\"], [./src/], [/src/], [\"src/*\"] pair ('carries a glob character' / 'starts with ./' / 'starts with /'). STILL single: [Src/], [source/] (a prefix naming nothing at the merge base), [src/a.ts/] (a prefix naming a FILE), [\"src\\\\\"] (a backslash), [\" src/\"] (leading space).",
+        "Each residual is an entry that matches no path git prints under it, so the declared set silently shrinks, the CR-M6P2B-02 mechanism. They are typo-class rather than the idiomatic spellings, and every change to the runtime-set block is itself pair (declaration read at the merge base; the block's change is pair by the charter rule), so two reviewers see the spelling. The implementer lists the prefix-naming-a-file and backslash cases as open (delivery/work-history/m6-p2.md:523, 'WHAT IT DID NOT COVER')."
+      ],
+      "concrete-fix": "In exactEntryNamingDirectory's lookup, also look up each PREFIX entry without its trailing slash at the merge base and make the declaration invalid when it names a blob (a file) or when it names nothing and no tracked path starts with it; refuse a backslash and leading or trailing whitespace in entryShapeFault and in the schema pattern. Add those rows to the shape test."
+    },
+    {
+      "id": "CR-M6P2B-09",
+      "severity": "low",
+      "evidence": [
+        "RESIDUAL OF CR-M6P2B-03, disclosed by the implementer (armcover output, rows 1254, 1258, 1266, 1277). Measured one: MN, src/gates/merge-preconditions.ts:1259, the charter-absent-or-deleted return forced to single via a trailing '...{ tier: \"single\" }'. node --test test/merge-preconditions.test.ts test/dual-review.test.ts: exit 0, SURVIVED. Confirmed effective: <scratchpad>/revb/charter-del.ts prints 'pair the charter is deleted at the head ...' on the shipped code and 'single the charter is deleted at the head ...' under MN; restored clean.",
+        "Impact is bounded: the declaration is read at the merge base, so after a charter deletion merges every later change is undeclared and pair; a broken arm would cost the deleting change one review, not the set."
+      ],
+      "concrete-fix": "Add a classifyTier test with charter.yaml deleted at the head (and one with sides not supplied, and one with an unreadable head side) expecting pair, and a witness whose members are MN and the sides-not-read return."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "p2-version-bump",
+      "quote": "a version-only bump of package.json, package-lock.json and plugin/package.json (the real #224 diff) is single. check: a named test in test/merge-preconditions.test.ts.",
+      "evidence": [
+        "node v26.6.0 (/home/user/.toolchains/node-v26.6.0-linux-x64/bin first on PATH), worktree /home/user/wt/rev-m6-p2-b detached at 773ced6, dist built from this head",
+        "npm test at 773ced6 (dist built): tests 1525, pass 1525, fail 0, cancelled 0, skipped 0, todo 0, exit 0 (duration 595468 ms) (the named test is in it)",
+        "classify probe on the real 0e29760/7c9602d bytes after the version-field narrowing: 'control #224 package.json: single -- ... /version 0.2.1 -> 0.2.2'; the lockfile arm still reads '/packages/plugin/devDependencies/@tiphys~1kernel 0.2.1 -> 0.2.2' as a version field"
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-dependency",
+      "quote": "adding a dependency is pair. check: named test.",
+      "evidence": [
+        "npm test at 773ced6 (dist built): tests 1525, pass 1525, fail 0, cancelled 0, skipped 0, todo 0, exit 0 (duration 595468 ms)",
+        "probes: overrides added, scripts changed, lockfile node_modules version, pin to file:/github:/npm:/'*'/'>=': all pair; nested plugin/node_modules/yaml version-only now pair; peerDependencies change now pair",
+        "MB now reddens 'a pinned name rewritten from a version to file:, a git URL or an npm: alias ...'"
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-src",
+      "quote": "a diff touching src/ is pair. check: named test.",
+      "evidence": [
+        "npm test at 773ced6 (dist built): tests 1525, pass 1525, fail 0, cancelled 0, skipped 0, todo 0, exit 0 (duration 595468 ms)",
+        "decl-probe: [src/] pair, and the round-0 fail-open spellings [src], [src/**], [./src/], [/src/], [src/*] now pair (CR-M6P2B-08 lists the remaining typo-class spellings)"
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-delivery",
+      "quote": "a delivery/-only diff is single. check: named test.",
+      "evidence": [
+        "npm test at 773ced6 (dist built): tests 1525, pass 1525, fail 0, cancelled 0, skipped 0, todo 0, exit 0 (duration 595468 ms)",
+        "classifyReviewBudget over this repository's own e898e4e..773ced6 diff reads the declaration as declared and classifies delivery/work-history/m6-p2.md single"
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-undeclared",
+      "quote": "a project with no runtime declaration is pair. check: named test.",
+      "evidence": [
+        "npm test at 773ced6 (dist built): tests 1525, pass 1525, fail 0, cancelled 0, skipped 0, todo 0, exit 0 (duration 595468 ms)"
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-single-green",
+      "quote": "a single change with one approving hazard verdict and no arbitration document is green. check: named test.",
+      "evidence": [
+        "npm test at 773ced6 (dist built): tests 1525, pass 1525, fail 0, cancelled 0, skipped 0, todo 0, exit 0 (duration 595468 ms)",
+        "and it is no longer green on a previous phase's verdict: PROBE-B1 at 773ced6 'status=red exit=1 ... 0 of 1 are admitted and 1 missing', the stale verdict EXCLUDED as 'which the merge base <mb> of the review budget already contains'"
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-pair-one",
+      "quote": "a pair change with one verdict is red. check: named test.",
+      "evidence": [
+        "npm test at 773ced6 (dist built): tests 1525, pass 1525, fail 0, cancelled 0, skipped 0, todo 0, exit 0 (duration 595468 ms)"
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-hazard-pair",
+      "quote": "two approving hazard verdicts with distinct produced-by are green. check: named test.",
+      "evidence": [
+        "npm test at 773ced6 (dist built): tests 1525, pass 1525, fail 0, cancelled 0, skipped 0, todo 0, exit 0 (duration 595468 ms)",
+        "the new merge-base test's control arm (normal flow, verdicts on the branch) still admits both: '2 verdict(s) admitted and 0 excluded'"
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-build",
+      "quote": "npm run build exits 0, npm test exits 0 with 0 fail.",
+      "evidence": [
+        "dist built at this head by the orchestrator (dist/src/checks.js carries boundAtMergeBase)",
+        "npm test at 773ced6 (dist built): tests 1525, pass 1525, fail 0, cancelled 0, skipped 0, todo 0, exit 0 (duration 595468 ms)",
+        "node scripts/check-authored-bytes.mjs exit 0; node bin/tiphys.ts validate --type charter charter.yaml exit 0"
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-deleted-behavior",
+      "quote": "a behavior registered at the merge base and deleted on the head no longer reddens the suite gate. check: named test in test/suite-gate.test.ts.",
+      "evidence": [
+        "npm test at 773ced6 (dist built): tests 1525, pass 1525, fail 0, cancelled 0, skipped 0, todo 0, exit 0 (duration 595468 ms)",
+        "the delta does not touch src/gates/suite.ts or test/suite-gate.test.ts (git diff --stat e898e4e 773ced6)"
+      ],
+      "met": true
+    },
+    {
+      "id": "p2-red-witness",
+      "quote": "node bin/tiphys.ts gates run --registry gate-registry.yaml --only red-witness is green on the phase head.",
+      "evidence": [
+        "NOT re-run by this reviewer at 773ced6 (the coordinator reported reviewer A's run green at this head, 119 witnesses; the implementer's run 3bab27e1459090933799c115 at 9a9119b, tree-equal to 773ced6 except delivery/, reports '119 witness(es) evaluated (28 own, 91 stored ...)', exit 0).",
+        "My own evidence is partial and local: each of MB, MC, MD, ME, MI and MK (merge-base bound disabled) now reddens its named test; round 0's gate run at e898e4e was green (108 witnesses)."
+      ],
+      "met": true
+    }
+  ],
+  "deviations-judged": [
+    {
+      "deviation": "Fix round 1: a `.` segment is refused although the arbitration listed only `..`.",
+      "serves-plan-intent": true,
+      "reasoning": "git prints no `.` segment, so such an entry matches nothing; refusing it is the fail-closed direction and `./src/` was the measured case."
+    },
+    {
+      "deviation": "Fix round 1: a declared entry that matches no tracked path, a prefix naming a file, and a backslash are not refused.",
+      "serves-plan-intent": true,
+      "reasoning": "Within the arbitration's scope (shapes plus exact entries naming a directory) and the stated reason (a set may declare a directory before it exists) is real; the typo-class residual is recorded as CR-M6P2B-08, low."
+    },
+    {
+      "deviation": "Fix round 1: no phase match on admitted verdicts; the bound is the merge base only.",
+      "serves-plan-intent": true,
+      "reasoning": "The merge-base bound closes the measured structural path (every paperwork PR after a merged phase); the phase match waits for kernel-recorded identity in M6-P5, residual CR-M6P2B-07, low."
+    },
+    {
+      "deviation": "Retirement register tests removed in M6-P2 rather than M6-P3 (round 0, unchanged).",
+      "serves-plan-intent": true,
+      "reasoning": "DR-0061 (a) supersedes the register; the leftover red script is carried in CR-M6P2B-06."
+    },
+    {
+      "deviation": "Plan step 4's review-contract enum keeps `criteria` (round 0, unchanged).",
+      "serves-plan-intent": true,
+      "reasoning": "Step 7 requires committed criteria verdicts to validate; branch A now also requires criteria[], so the enum value no longer opens a dodge."
+    }
+  ],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "h1-runtime-change-classified-single",
+      "probed": "Re-ran the classify probe (22 inputs over the real #224 bytes) and decl-probe (11 declarations, real repositories) at 773ced6; classifyReviewBudget over this repository's own delta; mutations MB, MC, MD now red; MN (charter deleted at head read single) survives.",
+      "finding": "CR-M6P2B-09"
+    },
+    {
+      "class-id": "h2-dependency-change-in-version-only-diff",
+      "probed": "Probe: nested <workspace>/node_modules version-only now pair; peerDependencies range and prerelease rewrite pair; pins to file:, github:, npm:, '*', '>=' pair; #224 control still single. MB and the version-field-edges members redden their tests.",
+      "cleared-because": "CR-M6P2B-05 is closed by isWorkspaceKey (no node_modules segment) and PIN_FIELDS without peerDependencies at the root or directly under a workspace entry; the pin-rewrite arm now has a named test that MB reddens. An exact pin widened to a caret range in devDependencies is still a version change, which is DR-0063's rule."
+    },
+    {
+      "class-id": "h3-unreadable-declaration-read-as-no-runtime-paths",
+      "probed": "decl-probe at 773ced6: the six round-0 spellings are now pair with the entry named; [Src/], [source/], [src/a.ts/], a backslash and a leading space still read as declared and leave a src change single.",
+      "finding": "CR-M6P2B-08"
+    },
+    {
+      "class-id": "h4-merge-gate-green-with-too-few-or-foreign-verdicts",
+      "probed": "PROBE-B1 at 773ced6: red, 0 of 1, stale verdict excluded as on-the-base; boundAtMergeBase over the real corpus at cd2dafe: both kernel-0-2-2-release-bump verdicts now 'on-the-base'; MK (bound disabled) reddens both new named tests; PROBE-B2 (other phase, head on the branch) still green; PROBE-B3 red and ME now reddens its named test.",
+      "finding": "CR-M6P2B-07"
+    },
+    {
+      "class-id": "h5-failing-test-deleted-to-get-green",
+      "probed": "git diff e898e4e 773ced6 over test/: additions only in merge-preconditions, dual-review and verdict-schema tests; no test declaration removed; test/behaviors.json gains rows and removes none it did not rename.",
+      "cleared-because": "The delta deletes no test, and round 0's eight deletions each assert a rule an owner decision removes (DR-0064, DR-0061 (a)); nothing still references a deleted id or title outside delivery/."
+    },
+    {
+      "class-id": "h6-history-loads-and-new-verdicts-cannot-skip-required-fields",
+      "probed": "At 773ced6: every tracked verdict document (27, found by content) validates with node bin/tiphys.ts validate --type verdict, 0 invalid; the crafted review-contract-criteria verdict with no criteria and no hazard classes is now 'INVALID # value matches no permitted alternative here'; a finding without concrete-fix and APPROVE beside a high are still refused; MI now reddens the new no-contract hazard-class test.",
+      "cleared-because": "CR-M6P2B-04 is closed: branch A requires criteria[] (schemas/verdict.schema.json oneOf branch A), history still loads, and the no-contract exemption arm of verdict-hazard-classes-addressed is witnessed."
+    }
+  ]
+}
