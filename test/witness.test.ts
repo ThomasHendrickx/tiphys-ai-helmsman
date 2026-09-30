@@ -2644,7 +2644,7 @@ test("an unwitnessed source file whose name git quotes is red naming the file, b
      plainly, which was red before this round too. The accented name is the
      reviewer's case: git lists it as "src/caf\303\251.ts", and read from line
      output that key failed the src/ prefix test, so the gate went green. */
-  for (const name of ["cafe.ts", "café.ts"]) {
+  for (const name of ["cafe.ts", "caf\u00e9.ts"]) {
     const fixture = unwitnessedNameFixture(name);
     if (name !== "cafe.ts") {
       replayPathListings(fixture.dir, "witness-coverage", fixture.base);
@@ -2662,8 +2662,8 @@ test("an unwitnessed source file whose name git quotes is red naming the file, b
 /** Source and test files whose names git decorates, with an honest witness. */
 function decoratedNamesFixture(): Fixture {
   const spaced = "src/a b.ts";
-  const accented = "src/café.ts";
-  const testFile = "test/décor.test.ts";
+  const accented = "src/caf\u00e9.ts";
+  const testFile = "test/d\u00e9cor.test.ts";
   const baseFiles: Record<string, string> = {
     "gate-registry.yaml": fixtureManifest([]),
     "test/behaviors.json": fixtureBehaviors({
@@ -2678,7 +2678,7 @@ function decoratedNamesFixture(): Fixture {
       'import test from "node:test";',
       'import assert from "node:assert/strict";',
       'import { spaced } from "../src/a b.ts";',
-      'import { accented } from "../src/café.ts";',
+      'import { accented } from "../src/caf\u00e9.ts";',
       "",
       'test("decorated names add and multiply", () => {',
       "  assert.equal(spaced(2, 3), 5);",

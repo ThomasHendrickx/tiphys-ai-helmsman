@@ -1346,7 +1346,7 @@ test("a scoped rollback commit stages a path whose name git quotes and does not 
      asked to. */
   const scratch = scratchFleet();
   try {
-    const name = "café.json";
+    const name = "caf\u00e9.json";
     writeFileSync(join(scratch.fleetRoot, name), "{}\n");
     /* Replay the listing at the state it is taken in (the path staged), then
        unstage, because a pre-staged index is refused before anything runs. */
@@ -1382,7 +1382,7 @@ test("restoring a retirement root removes a post-freeze addition whose name git 
     git(root, ["add", "-A"]);
     git(root, ["commit", "-q", "-m", "pre-freeze"]);
     const preFreeze = git(root, ["rev-parse", "HEAD"]).stdout.trim();
-    writeFileSync(join(root, "retired", "café.md"), "added after the freeze\n");
+    writeFileSync(join(root, "retired", "caf\u00e9.md"), "added after the freeze\n");
     writeFileSync(join(root, "retired", "rule.md"), "the ported rule\n");
     git(root, ["add", "-A"]);
     git(root, ["commit", "-q", "-m", "retire"]);
@@ -1391,9 +1391,9 @@ test("restoring a retirement root removes a post-freeze addition whose name git 
     const restored = cutover.restoreRetirementRoots(root, preFreeze, ["retired"]);
     assert.equal(restored.ok, true, JSON.stringify(restored));
     if (restored.ok) {
-      assert.deepEqual(restored.removed, ["retired/café.md"]);
+      assert.deepEqual(restored.removed, ["retired/caf\u00e9.md"]);
     }
-    assert.equal(existsSync(join(root, "retired", "café.md")), false, "the added file must be gone");
+    assert.equal(existsSync(join(root, "retired", "caf\u00e9.md")), false, "the added file must be gone");
     assert.equal(readFileSync(join(root, "retired", "rule.md"), "utf8"), "the original rule\n");
     const residue = git(root, ["diff", "-z", "--name-only", preFreeze, "--", "retired"]).stdout;
     assert.equal(residue, "", `the root must match ${preFreeze} exactly, and it differs in: ${residue}`);

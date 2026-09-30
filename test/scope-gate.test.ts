@@ -410,8 +410,8 @@ test("a declared file whose name git quotes is audited by its own name: editing 
     const declDir = join(dir, "delivery/plan/phase-declarations");
     mkdirSync(join(dir, "src"), { recursive: true });
     const body = Array.from({ length: 10 }, (_, index) => `export const line${String(index)} = ${String(index)};`);
-    writeFileSync(join(dir, "src", "café.ts"), `${body.join("\n")}\n`);
-    writeDeclaration(declDir, "m2-p4", { filesToTouch: ["src/café.ts"] });
+    writeFileSync(join(dir, "src", "caf\u00e9.ts"), `${body.join("\n")}\n`);
+    writeDeclaration(declDir, "m2-p4", { filesToTouch: ["src/caf\u00e9.ts"] });
     git(dir, ["add", "-A"]);
     git(dir, ["commit", "-q", "-m", "base"]);
     const base = git(dir, ["rev-parse", "HEAD"]);
@@ -419,24 +419,24 @@ test("a declared file whose name git quotes is audited by its own name: editing 
 
     // DIRECTION 1: edit the declared file.
     body[0] = "export const line0 = 100;";
-    writeFileSync(join(dir, "src", "café.ts"), `${body.join("\n")}\n`);
+    writeFileSync(join(dir, "src", "caf\u00e9.ts"), `${body.join("\n")}\n`);
     git(dir, ["commit", "-q", "-am", "edit the declared file"]);
     const head1 = git(dir, ["rev-parse", "HEAD"]);
     replayPathListings(dir, "scope-edit", base);
     const r1 = runScope(dir, outside, ["--base", base, "--head", head1, "--phase", "m2-p4"]);
     assert.equal(r1.run.status, 0, r1.run.stdout + r1.run.stderr);
-    assert.equal(r1.record?.status, "green", r1.record?.detail);
+    assert.equal(r1.record?.status, "green", r1.record?.detail ?? "");
     assert.equal(r1.record?.units, 1);
 
     // DIRECTION 2: rename it to an undeclared name git also quotes.
-    git(dir, ["mv", join("src", "café.ts"), join("src", "naïve.ts")]);
+    git(dir, ["mv", join("src", "caf\u00e9.ts"), join("src", "na\u00efve.ts")]);
     git(dir, ["commit", "-q", "-m", "rename to undeclared"]);
     const head2 = git(dir, ["rev-parse", "HEAD"]);
     replayPathListings(dir, "scope-rename", base);
     const r2 = runScope(dir, outside, ["--base", base, "--head", head2, "--phase", "m2-p4"]);
     assert.notEqual(r2.run.status, 0);
-    assert.equal(r2.record?.status, "red", r2.record?.detail);
-    assert.ok((r2.record?.detail ?? "").includes("src/naïve.ts"), r2.record?.detail);
+    assert.equal(r2.record?.status, "red", r2.record?.detail ?? "");
+    assert.ok((r2.record?.detail ?? "").includes("src/na\u00efve.ts"), r2.record?.detail);
     assert.ok(!(r2.record?.detail ?? "").includes('"src/'), `no quoted path in: ${r2.record?.detail ?? ""}`);
     assert.equal(r2.record?.units, 2);
   } finally {
