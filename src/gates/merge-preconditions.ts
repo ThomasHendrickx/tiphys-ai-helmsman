@@ -2171,7 +2171,30 @@ export async function runGate(flags: Flags): Promise<number> {
   );
 }
 
+/**
+ * `--precondition [--context <dir>]`: the registry's `command-exit-zero`
+ * precondition for this gate (M6-P5). Exit 0 when the context resolves a commit,
+ * because then the gate, given `--base` and `--head`, decides from the diff what
+ * review is owed; exit 1 when there is no commit to audit.
+ */
+export function preconditionMain(argv: string[]): number {
+  const context = argv.length === 2 && argv[0] === "--context" ? argv[1] : argv.length === 0 ? "." : undefined;
+  if (context === undefined) {
+    return usageError("--precondition takes only an optional --context <dir>");
+  }
+  const source = resolveCorpusSource(context);
+  if (source.kind !== "commit") {
+    process.stdout.write(`${GATE_ID}: no commit resolves in ${context}, so there is no change to audit: ${source.reason}\n`);
+    return 1;
+  }
+  process.stdout.write(`${GATE_ID}: ${context} resolves ${source.ref} to ${source.refSha}\n`);
+  return 0;
+}
+
 export async function main(argv: string[]): Promise<number> {
+  if (argv[0] === "--precondition") {
+    return preconditionMain(argv.slice(1));
+  }
   const flags = parseFlags(argv);
   if (flags === undefined) {
     return usageError();

@@ -1,0 +1,31 @@
+{
+  "id": "m6-p5-precondition-resolves-a-commit",
+  "behavior": "m6-p5-precondition-resolves-a-commit",
+  "tests": [
+    "the registry precondition of merge-preconditions exits 0 in a directory that resolves a commit and 1 in one that does not, naming why"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  if (source.kind !== \"commit\") {\n    process.stdout.write(`${GATE_ID}: no commit resolves in",
+      "replace": "  if (source.kind === \"worktree\" && false) {\n    process.stdout.write(`${GATE_ID}: no commit resolves in"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  if (argv[0] === \"--precondition\") {",
+      "replace": "  if (argv[0] === \"--no-precondition\") {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set.json"
+    ],
+    "provenance": "Real output of the git commands the merge gate runs (the prefix, the NUL-separated name list, the merge base and the ls-tree presence probe), captured 2026-09-29 by the M6-P2 implementer against the repository test/merge-preconditions.test.ts stages in stageShrinkRepo, which re-runs every command and compares git's live output with the recorded stdout. The named tests here read git through the same resolveCorpusSource and relateDeclaredHead calls on repositories they stage and commit themselves."
+  }
+}

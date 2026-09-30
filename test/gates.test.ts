@@ -3539,7 +3539,7 @@ test("the shipped registry run against a consumer package tree with no scripts d
     ) as { status: string; detail: string };
     assert.equal(record.status, "error");
     assert.notEqual(record.status, "not-applicable");
-    assert.match(record.detail, /scripts\/check-dual-review\.mjs/);
+    assert.match(record.detail, /src\/gates\/merge-preconditions\.ts/);
     assert.match(record.detail, /could not be run/);
     assert.equal(readSummary(evidence).counts["not-applicable"], 0);
 
@@ -3932,7 +3932,7 @@ test("a directory-less script operand that is not there is error, and a bare wor
   // ROUND 1 SAID IT COULD NOT BE CLOSED, AND THE REASON WAS SOUND AS FAR AS IT
   // WENT: both rules test for a slash, and they must, because `.` and `src`
   // are real non-path elements and probing them produces a false error on a
-  // real declaration (`check-dual-review`'s precondition ends
+  // real declaration (the deleted `check-dual-review` precondition ended
   // `--precondition .`, and `.` is a DIRECTORY). What round 1 did not try is
   // a second, narrower way for an element to be path-shaped. A closed list of
   // script suffixes is that: `check.mjs` is in, `.` and `src` are out, and the
@@ -3989,7 +3989,7 @@ test("a directory-less script operand that is not there is error, and a bare wor
 
     // THE CONTROL, and it is the arm that stops this closure being bought by
     // widening the false-error class item 1 exists to narrow. `.` is the
-    // element in `check-dual-review`'s REAL precondition, and `src` is the
+    // element the deleted `check-dual-review` precondition carried, and `src` is the
     // shape round 1 named. Both are bare words with no script suffix; both
     // must stay unscanned, so this command's deliberate exit 1 still means
     // unmet. Without this arm the two above would be satisfied by a change

@@ -114,7 +114,7 @@ gates:
     precondition:
       id: merge-preconditions-review-budget-decidable
       kind: command-exit-zero
-      command: [node, scripts/check-dual-review.mjs, --precondition, --review-budget, .]
+      command: [node, src/gates/merge-preconditions.ts, --precondition]
 
 # Commands and modules whose operations can destroy work. The red-witness gate
 # derives a witness class from this list.

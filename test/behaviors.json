@@ -1128,5 +1128,7 @@
   "m6-p5-sha-mismatch": "a verdict whose committed bytes do not match the recorded sha256 is not counted, so a verdict edited after the review does not count",
   "m6-p5-phase-match": "a kernel review record for another phase at the same head is not counted toward the phase under audit",
   "m6-p5-failed-observation-not-counted": "a kernel review record whose observation failed is not counted, and the gate says the kernel observed no served model",
-  "m6-p5-record-verdict-apart": "a verdict placed in the records directory is neither a verdict nor a record, and a record placed beside the verdicts is neither a record nor a verdict"
+  "m6-p5-record-verdict-apart": "a verdict placed in the records directory is neither a verdict nor a record, and a record placed beside the verdicts is neither a record nor a verdict",
+  "m6-p5-head-from-record": "a verdict's own head line is never read: a verdict naming another commit, or none, counts through the head its kernel record names",
+  "m6-p5-precondition-resolves-a-commit": "the registry precondition of merge-preconditions exits 0 in a directory that resolves a commit and 1 in one that does not, naming why"
 }

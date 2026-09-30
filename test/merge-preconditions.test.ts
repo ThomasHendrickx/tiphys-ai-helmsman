@@ -2526,3 +2526,54 @@ test("a verdict placed in the records directory is neither a verdict nor a recor
     cleanup(staged);
   }
 });
+
+test("a verdict's own head line is never read: a verdict naming another commit, or none, counts through the head its kernel record names", async () => {
+  /* THE HAZARD "a head read from a field the reviewer wrote". The records name
+     the reviewed commit; the verdicts say something else or nothing. */
+  const { staged, base, head } = stageTierBranch("src", APPROVING_PAIR());
+  try {
+    const reviewed = git(staged.dir, ["rev-parse", `${head}~1`]);
+    const review = join(staged.dir, "delivery", "review");
+    const pathA = join(review, "m3-p9-hazard-a.yaml");
+    const pathB = join(review, "m3-p9-hazard-b.yaml");
+    const elsewhere = readFileSync(pathA, "utf8").replace(/^head: .*$/m, `head: ${"b".repeat(40)}`);
+    const headless = readFileSync(pathB, "utf8").replace(/^head: .*\n/m, "");
+    assert.doesNotMatch(elsewhere, new RegExp(`^head: ${reviewed}$`, "m"));
+    assert.doesNotMatch(headless, /^head:/m);
+    writeFileSync(pathA, elsewhere);
+    writeFileSync(pathB, headless);
+    recordVerdicts(staged.dir, "m3-p9", {
+      overrides: { "m3-p9-hazard-a.yaml": { head: reviewed }, "m3-p9-hazard-b.yaml": { head: reviewed } },
+    });
+    git(staged.dir, ["add", "delivery"]);
+    git(staged.dir, ["commit", "-q", "-m", "verdicts whose own head lines say something else"]);
+    const audited = git(staged.dir, ["rev-parse", "HEAD"]);
+    const run = await withApi(greenApi(audited), (apiBase) => runGate(gateSource, staged, apiBase, ["--base", base], audited));
+    const selection = rows(run.stdout).get("verdict-selection") ?? "";
+    assert.equal(status(selection), "green", run.stdout);
+    assert.match(selection, /2 review\(s\) counted from 2 record\(s\)/, selection);
+  } finally {
+    cleanup(staged);
+  }
+});
+
+test("the registry precondition of merge-preconditions exits 0 in a directory that resolves a commit and 1 in one that does not, naming why", () => {
+  const dir = mkdtempSync(join(tmpdir(), "tiphys-merge-precondition-"));
+  try {
+    const bare = spawnSync(process.execPath, [gateSource, "--precondition", "--context", dir], { encoding: "utf8" });
+    assert.equal(bare.status, 1, `${bare.stdout}${bare.stderr}`);
+    assert.match(bare.stdout, /no commit resolves in .*, so there is no change to audit/);
+    git(dir, ["init", "-q", "."]);
+    writeFileSync(join(dir, "a.txt"), "a\n");
+    git(dir, ["add", "a.txt"]);
+    git(dir, ["commit", "-q", "-m", "one commit"]);
+    const sha = git(dir, ["rev-parse", "HEAD"]);
+    const resolved = spawnSync(process.execPath, [gateSource, "--precondition", "--context", dir], { encoding: "utf8" });
+    assert.equal(resolved.status, 0, `${resolved.stdout}${resolved.stderr}`);
+    assert.match(resolved.stdout, new RegExp(`resolves HEAD to ${sha}`));
+    const registry = readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8");
+    assert.match(registry, /command: \[node, src\/gates\/merge-preconditions\.ts, --precondition\]/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
