@@ -58,9 +58,8 @@ roles:
     tier: strongest
     charter-override: allowed
     rationale: >-
-      R-075 puts all reviews at the strongest tier; DR-0063 narrows that to the
-      pair tier, whose reviews are the signature on a runtime change, and puts
-      a single-tier review (no runtime path touched) on the cheaper tier. The
-      orchestrator passes the tier to `tiphys review dispatch --tier`. The
-      family rule is the charter's `review-families` over the kernel's review
-      records (DR-0062).
+      R-075 puts all reviews at the strongest tier. The orchestrator chooses
+      each review's model tier and passes it to `tiphys review dispatch --tier`
+      (strongest or cheaper); nothing in this document maps a DR-0063 review
+      tier to a model tier. The family rule is the charter's `review-families`
+      over the kernel's review records (DR-0062).
