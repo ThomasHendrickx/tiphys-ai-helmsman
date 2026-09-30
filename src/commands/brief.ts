@@ -400,7 +400,10 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
     if (!gateList.ok) {
       return { ok: false, reason: gateList.reason };
     }
-    body = body.replace(BRIEF_GATE_LIST_PLACEHOLDER, gateList.text);
+    /* A FUNCTION, not a replacement string (M6-P3 fix round 2, CR-M6P3B-01):
+       a string would have the replacement patterns $' $& $` and $$ in the
+       project's registry text interpreted rather than copied. */
+    body = body.replace(BRIEF_GATE_LIST_PLACEHOLDER, () => gateList.text);
   } else if (options.roleId === "implementer") {
     return {
       ok: false,
