@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "src/review.ts",
-      "find": "    const removed = git(project, [\"worktree\", \"remove\", \"--force\", worktree]);",
-      "replace": "    const removed = { ok: true, reason: \"\" };"
+      "find": "  if (verdictBytes === undefined || verdictCopyPath !== undefined) {\n    const removed = git(project, [\"worktree\", \"remove\", \"--force\", worktree]);",
+      "replace": "  if (verdictBytes === undefined || verdictCopyPath !== undefined) {\n    const removed = { ok: true, reason: \"\" };"
     },
     {
       "kind": "mutation",
