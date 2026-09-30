@@ -441,13 +441,13 @@ test("a mechanism whose evidence names a file that does not exist is rejected na
 /* Criterion 4b: the machine-readable form resolves, path AND key       */
 /* ------------------------------------------------------------------ */
 
-test("a machine-readable form naming a renamed key is rejected naming the key, and restoring the key returns exit 0", () => {
+test("a machine-readable form naming a renamed key is rejected naming the key, and restoring the key returns exit 0", async () => {
   const dir = scratch();
   try {
-    /* A FIXTURE MANIFEST, so the real gates.manifest.json is never touched.
-       The rename is what M2 renaming the list would look like from here. */
-    const manifest = JSON.parse(
-      readFileSync(join(repoRoot, "gates.manifest.json"), "utf8"),
+    /* A FIXTURE REGISTRY, so the real gate-registry.yaml is never touched.
+       The rename is what renaming the list would look like from here. */
+    const manifest = (await import("yaml")).parse(
+      readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8"),
     ) as Record<string, unknown>;
     assert.ok(
       Array.isArray(manifest["destructiveCommands"]),
@@ -457,7 +457,7 @@ test("a machine-readable form naming a renamed key is rejected naming the key, a
     delete renamed["destructiveCommands"];
     renamed["destructiveCommandsRenamed"] = manifest["destructiveCommands"];
     writeFileSync(
-      join(dir, "gates.manifest.json"),
+      join(dir, "gate-registry.yaml"),
       `${JSON.stringify(renamed, null, 2)}\n`,
     );
 
@@ -480,7 +480,7 @@ test("a machine-readable form naming a renamed key is rejected naming the key, a
     /* THE OTHER DIRECTION: restore the key in the fixture and the same check
        is green about it. */
     writeFileSync(
-      join(dir, "gates.manifest.json"),
+      join(dir, "gate-registry.yaml"),
       `${JSON.stringify(manifest, null, 2)}\n`,
     );
     const green = checksModule.runChecks("tuition", entry, dir);

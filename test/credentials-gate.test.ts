@@ -883,10 +883,10 @@ test("credential-token with a token present fails closed until the capture-deriv
 // Registration and usage
 // ---------------------------------------------------------------------------
 
-test("the gate manifest registers credential-scrub and credential-token per the section 1.4 table", () => {
-  const manifest = JSON.parse(
+test("the gate registry registers credential-scrub and credential-token per the section 1.4 table", async () => {
+  const manifest = (await import("yaml")).parse(
     readFileSync(
-      fileURLToPath(new URL("../gates.manifest.json", import.meta.url)),
+      fileURLToPath(new URL("../gate-registry.yaml", import.meta.url)),
       "utf8",
     ),
   ) as {

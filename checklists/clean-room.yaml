@@ -129,8 +129,8 @@ probes:
       authority, in its own documentation rather than in a caller's; (2) are
       its force semantics INHERITED from a caller rather than declared here,
       which is how a command becomes destructive without any document saying
-      so; and (3) does the command appear in `gates.manifest.json`'s
-      `destructiveCommands` list? Open the manifest and quote the list. No
+      so; and (3) does the command appear in `gate-registry.yaml`'s
+      `destructiveCommands` list? Open the registry and quote the list. No
       script can judge (1) or (2); (3) is M2's computable list and this probe
       is you reading it rather than re-deriving it.
     applies-to: destructive-command

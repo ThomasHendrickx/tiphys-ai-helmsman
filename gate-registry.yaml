@@ -1,45 +1,6 @@
-# THE CANONICAL GATE REGISTRY (kernel plan M3, M3-P2; R-094).
-#
-# This file is the canonical DECLARATION of this repository's gates, and R-094
-# asks for one source that CI and the briefs both read. HOW FAR THAT IS TRUE
-# TODAY, stated in the present tense only where it is:
-#
-#   BRIEFS: delivered. The agent-rules gate section in CLAUDE.md is GENERATED
-#   from this file by `scripts/render-agent-rules-gates.mjs`. Editing that
-#   block by hand makes `node scripts/render-agent-rules-gates.mjs --check`
-#   exit nonzero, and the `gates` workflow runs that command as a step on both
-#   CI events, so a hand edit fails the build. Edit this file instead.
-#
-#   CI: NOT YET. The `gates` workflow calls `scripts/m2-exit-test.sh`, which
-#   invokes the runner with `--manifest gates.manifest.json` on both arms.
-#   `--registry` occurs nowhere in either file. So a gate declared ONLY here
-#   does not run in CI, and `agent-rules-drift` is exactly that case: it runs
-#   because the workflow also carries a direct step for it. Closing this needs
-#   an edit to `scripts/m2-exit-test.sh`, which is not on M3-P2's declaration
-#   and is tracked with the orchestrator. The divergence is not left to be
-#   noticed: `test/gate-registry.test.ts` asserts it in BOTH directions, so a
-#   NEW script gate declared only here reddens rather than silently not
-#   running.
-#
-# PROMOTED, NOT INVENTED. Every `script` entry below is the M2-P1
-# `gates.manifest.json` entry of the same id, carried across with its
-# `command`, `unitLabel`, `applicability`, `parameters` and `precondition`
-# byte-for-byte, plus the three fields this registry adds (`verified-by`,
-# `modes`, `events`). SC-011's precondition semantics travel with the
-# precondition blocks unchanged: a gate whose precondition is unmet reports
-# not-applicable and NEVER green.
-#
-# WHAT IS NOT HERE, stated rather than left to be noticed. Kernel plan M3
-# step 3 names project-specific gates `i18n`, `analytics`, `manifest regen`,
-# `e2e` and `docs grep` as things to keep "declared-but-not-applicable on the
-# kernel exactly as M2-P1 left them". M2-P1 left them NOWHERE: the delivered
-# `gates.manifest.json` on main at 40427b6 declares eleven gates and none of
-# those five is among them. Promoting a gate M2 never shipped would be
-# inventing it, not promoting it, so the two entries that ARE structurally
-# not-applicable on the kernel (`deploy`, `migrations`) are carried across and
-# the other five are recorded as absent here and in
-# delivery/work-history/m3-p2.md rather than fabricated.
-
+# The gate registry: the only gate list (DR-0061, M6-P3). CI runs
+# `tiphys gates run --registry gate-registry.yaml --mode full --event <event>`
+# on both events, and `--event` selects the entries whose `events` name it.
 kind: gate-registry
 version: 1
 
@@ -55,14 +16,6 @@ preflight:
     note: sources are TypeScript run natively via Node type stripping, so the suite needs no prior build
 
 gates:
-  - id: manifest-self-check
-    command: [node, bin/tiphys.ts, gates, self-check, --manifest, gates.manifest.json]
-    unitLabel: schema documents validated
-    applicability: required
-    verified-by: script
-    modes: [full, direct-pr, local-only]
-    events: [pull_request, push]
-
   - id: coverage
     command: [node, src/gates/coverage.ts]
     unitLabel: finding ids checked

@@ -679,22 +679,22 @@ test("the R-055 correctness probes are separate entries naming negative, zero, e
   );
 });
 
-test("the destructive-authority probe names all three of its questions and cites destructiveCommands by name", () => {
+test("the destructive-authority probe names all three of its questions and cites destructiveCommands by name", async () => {
   assertProbeTextSpecific(
     "clean-room",
     "destructive-authority-declared",
-    ["(1)", "(2)", "(3)", "destructiveCommands", "gates.manifest.json"],
+    ["(1)", "(2)", "(3)", "destructiveCommands", "gate-registry.yaml"],
     "Check whether any destructive command in the diff declares its authority.",
   );
   /* AND THE NAMED LIST IS REAL. A probe telling a reviewer to open a list
      that does not exist is worse than a generic one, because it reads as
      precise. */
-  const manifest = JSON.parse(
-    readFileSync(join(repoRoot, "gates.manifest.json"), "utf8"),
+  const registry = (await import("yaml")).parse(
+    readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8"),
   ) as Record<string, unknown>;
   assert.ok(
-    Array.isArray(manifest["destructiveCommands"]),
-    "gates.manifest.json declares no destructiveCommands array for the probe to cite",
+    Array.isArray(registry["destructiveCommands"]),
+    "gate-registry.yaml declares no destructiveCommands array for the probe to cite",
   );
 });
 

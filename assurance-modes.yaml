@@ -152,7 +152,6 @@ modes:
     # registry addition that is not copied here reddens the suite naming the
     # missing id.
     gate-sets:
-      - manifest-self-check
       - coverage
       - credential-scrub
       - credential-token
@@ -271,7 +270,6 @@ modes:
     # of them except `deploy` and `migrations`, the two full-only entries. It
     # is NOT that today; it under-reports, see the header's gate-sets note.
     gate-sets:
-      - manifest-self-check
       - coverage
       - credential-scrub
       - credential-token
@@ -312,7 +310,6 @@ modes:
     # INTENDED to be every gate whose `modes` list contains `local-only`. It
     # under-reports today; see the header's gate-sets note.
     gate-sets:
-      - manifest-self-check
       - credential-scrub
       - suite
       - agent-rules-drift

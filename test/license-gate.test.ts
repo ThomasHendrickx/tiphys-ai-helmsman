@@ -816,7 +816,6 @@ test("the pack listing carries every declared kernel artifact, and every FILE in
     "AGENTS.md",
     "LICENSE",
     "gate-registry.yaml",
-    "gates.manifest.json",
     "assurance-modes.yaml",
     "role-model-config.yaml",
   ]) {

@@ -16,8 +16,8 @@
  * contains the other.
  *
  * APPEND-ONLY REGISTRIES ARE NOT OVERLAPS, AND THAT RULE IS PRINTED, NEVER
- * SILENT. CLAUDE.md binding convention 5: `test/behaviors.json`,
- * `gates.manifest.json` and `delivery/requirements/clause-map.json` are
+ * SILENT. CLAUDE.md binding convention 5: `test/behaviors.json` and
+ * `delivery/requirements/clause-map.json` are
  * append-only and resolved as a union against the merge base; they never
  * re-serialise phases. A shared entry on that list is reported on its own
  * `APPEND-ONLY` line, so a reader sees that it was shared and why it did not
@@ -65,7 +65,6 @@ export const EXIT_INPUT = 2;
 /** CLAUDE.md binding convention 5: append-only, union-resolved registries. */
 export const DEFAULT_APPEND_ONLY: readonly string[] = [
   "test/behaviors.json",
-  "gates.manifest.json",
   "delivery/requirements/clause-map.json",
 ];
 

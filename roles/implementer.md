@@ -15,7 +15,6 @@ mandated-reading:
   - schemas/work-history.schema.json
   - tuition/mechanism-index.yaml
   - gate-registry.yaml
-  - gates.manifest.json
 verifiers:
   - scope
   - suite
@@ -92,10 +91,9 @@ the first entry is read first.
 3. `tuition/mechanism-index.yaml`, the mechanism index. See the
    `mechanism-lookup` clause below: this is not background reading, it is a
    lookup you owe at a specific moment.
-4. `gate-registry.yaml`, the canonical declaration of every gate your change
-   must pass, and the source the gate-list section below is rendered from.
-5. `gates.manifest.json`, which carries the `destructiveCommands` list the
-   `destructive-authority` clause below requires you to extend.
+4. `gate-registry.yaml`, the only gate list: every gate your change must pass,
+   and the `destructiveCommands` list the `destructive-authority` clause below
+   requires you to extend.
 
 Then, outside this list because they are per-project rather than per-kernel:
 your phase's section of the plan, your phase declaration, and the project's
@@ -212,7 +210,7 @@ the third is the one that keeps this rule from rotting.
 2. Never inherit force semantics from a caller. A command that is destructive
    only because something upstream passed a flag has no contract of its own, and
    the caller's guarantee is not a property of your command.
-3. Add the command to the `destructiveCommands` list in `gates.manifest.json`.
+3. Add the command to the `destructiveCommands` list in `gate-registry.yaml`.
    That file is on your mandated reading, so `tiphys brief compose` fails loudly
    if it has moved rather than instructing you to edit a file that is not there.
 

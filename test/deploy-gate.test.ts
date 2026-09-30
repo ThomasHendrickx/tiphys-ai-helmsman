@@ -78,6 +78,22 @@ const HTTP_JSON = join(REPO_ROOT, "src", "gates", "adapters", "http-json.ts");
 const DEPLOY_GATE = join(REPO_ROOT, "src", "gates", "deploy.ts");
 const MIGRATIONS_GATE = join(REPO_ROOT, "src", "gates", "migrations.ts");
 const TIPHYS = join(REPO_ROOT, "bin", "tiphys.ts");
+
+/** A gate registry around the given entries, the only gate list the runner reads (M6-P3). */
+function releaseRegistry(gates: Record<string, unknown>[]): Record<string, unknown> {
+  return {
+    kind: "gate-registry",
+    version: 1,
+    preflight: [{ command: ["npm", "ci"], note: "fixture" }],
+    gates: gates.map((gate) => ({
+      "verified-by": "script",
+      modes: ["full"],
+      events: ["pull_request", "push"],
+      ...gate,
+    })),
+    destructiveCommands: [],
+  };
+}
 const FIXTURES = join(REPO_ROOT, "test", "fixtures", "release");
 
 const IN_PROGRESS = readFileSync(join(FIXTURES, "github-actions-run-in-progress.json"), "utf8");
@@ -646,15 +662,47 @@ test("the runner reports both release gates not-applicable on this repository na
   // machine-visible: on THIS repository, with no declaration, both entries
   // are not-applicable via the manifest's file-exists precondition, and the
   // record itself states that a pre-merge not-applicable is STRUCTURAL.
+  //
+  // M6-P3: the two entries left THIS repository's registry (they can never be
+  // applicable here) and their code ships for projects, so the entries a
+  // project declares are written to a scratch registry and run in this tree.
   const evidence = scratch();
+  const structural = (gate: string): string =>
+    `${gate}-release-verification-declared (an unmet result here is STRUCTURAL in any pre-merge ` +
+    "bundle, not local to this repository: release verification runs post-merge against a commit " +
+    "that exists only once the merge has happened; kernel plan M2 section 1.4, investigation observation O-3)";
+  const registryPath = join(scratch(), "release-registry.json");
+  writeFileSync(
+    registryPath,
+    JSON.stringify(
+      releaseRegistry([
+        {
+          id: "deploy",
+          command: ["node", "src/gates/deploy.ts"],
+          unitLabel: "release verifications satisfied",
+          applicability: "conditional",
+          precondition: { id: structural("deploy"), kind: "file-exists", path: "release-verification.json" },
+        },
+        {
+          id: "migrations",
+          command: ["node", "src/gates/migrations.ts"],
+          unitLabel: "migrations compared",
+          applicability: "conditional",
+          precondition: { id: structural("migrations"), kind: "file-exists", path: "release-verification.json" },
+        },
+      ]),
+      null,
+      2,
+    ),
+  );
   const child = spawnSync(
     NODE,
     [
       TIPHYS,
       "gates",
       "run",
-      "--manifest",
-      join(REPO_ROOT, "gates.manifest.json"),
+      "--registry",
+      registryPath,
       "--evidence",
       evidence,
       "--only",
@@ -727,9 +775,7 @@ process.stdout.write(readFileSync(${JSON.stringify(appliedSource)}, "utf8"));
       },
     },
   });
-  const manifest = {
-    version: 1,
-    gates: [
+  const manifest = releaseRegistry([
       {
         id: "deploy",
         command: [NODE, DEPLOY_GATE],
@@ -752,15 +798,13 @@ process.stdout.write(readFileSync(${JSON.stringify(appliedSource)}, "utf8"));
           path: "release-verification.json",
         },
       },
-    ],
-    destructiveCommands: [],
-  };
+  ]);
   const manifestPath = join(dir, "scratch-manifest.json");
   writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
   const evidence = scratch();
   const child = spawnSync(
     NODE,
-    [TIPHYS, "gates", "run", "--manifest", manifestPath, "--evidence", evidence],
+    [TIPHYS, "gates", "run", "--registry", manifestPath, "--evidence", evidence],
     { cwd: dir, encoding: "utf8" },
   );
   assert.notEqual(child.status, 0, "a red bundle exits nonzero");

@@ -860,11 +860,11 @@ test("deleting the seed mechanism index makes brief compose exit nonzero naming 
   }
 });
 
-test("the destructive-authority clause names all three conjuncts and the manifest path, and a moved manifest makes compose exit nonzero", () => {
+test("the destructive-authority clause names all three conjuncts and the registry path, and a moved registry makes compose exit nonzero", () => {
   const clause = flatten(clauseSection(readFileSync(briefPath, "utf8"), "destructive-authority"));
   assert.ok(
-    clause.includes("gates.manifest.json"),
-    "the destructive-authority clause does not name the manifest by path",
+    clause.includes("gate-registry.yaml"),
+    "the destructive-authority clause does not name the registry by path",
   );
   assert.ok(clause.includes("destructiveCommands"), "the clause does not name the list");
   /* THE THREE CONJUNCTS, each asserted by the thing that makes it a rule rather
@@ -885,12 +885,12 @@ test("the destructive-authority clause names all three conjuncts and the manifes
   const dir = stageKernel("tiphys-impl-manifest-");
   try {
     assert.equal(composeIn(dir).status, 0);
-    const manifest = join(dir, "gates.manifest.json");
+    const manifest = join(dir, "gate-registry.yaml");
     const original = readFileSync(manifest, "utf8");
     rmSync(manifest);
     const red = composeIn(dir);
-    assert.notEqual(red.status, 0, "the manifest was moved and compose still exited 0");
-    assert.match(red.stderr, /gates\.manifest\.json/);
+    assert.notEqual(red.status, 0, "the registry was moved and compose still exited 0");
+    assert.match(red.stderr, /gate-registry\.yaml/);
     writeFileSync(manifest, original);
     assert.equal(composeIn(dir).status, 0);
   } finally {

@@ -1549,17 +1549,12 @@ test("--token-env sends the named variable's value as a bearer token on every AP
   }
 });
 
-test("the registry and the manifest both declare the token variable in merge-preconditions' command, and the pull-request step sets it", () => {
+test("the registry declares the token variable in merge-preconditions' command, and the pull-request step sets it", () => {
   const registry = readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8");
   assert.match(registry, /command: \[node, src\/gates\/merge-preconditions\.ts, --token-env, GH_TOKEN\]/);
-  const manifest = JSON.parse(readFileSync(join(repoRoot, "gates.manifest.json"), "utf8")) as {
-    gates: { id: string; command: string[] }[];
-  };
-  const entry = manifest.gates.find((gate) => gate.id === "merge-preconditions");
-  assert.deepEqual(entry?.command, ["node", "src/gates/merge-preconditions.ts", "--token-env", "GH_TOKEN"]);
   const workflow = readFileSync(join(repoRoot, ".github", "workflows", "gates.yml"), "utf8");
-  const step = /- name: M2 exit test \(pull request\)\n((?: {8}.*\n)+)/.exec(workflow);
-  assert.ok(step !== null, "no pull-request M2 exit step in gates.yml");
+  const step = /- name: Gates \(pull request\)\n((?: {8}.*\n)+)/.exec(workflow);
+  assert.ok(step !== null, "no pull-request gates step in gates.yml");
   assert.match(step[1] as string, /env:\n {10}GH_TOKEN: \$\{\{ github\.token \}\}\n/);
 });
 

@@ -136,19 +136,19 @@ test("conflicts exits 0 with zero overlaps for a disjoint pair and still prints 
 
 test("a shared append-only registry is reported on its own line and does not make a pair overlap", (t) => {
   const dir = scratch(t);
-  const left = declaration(dir, "M9-P1", ["src/a.ts"], ["test/behaviors.json", "gates.manifest.json"]);
-  const right = declaration(dir, "M9-P2", ["src/b.ts"], ["test/behaviors.json", "gates.manifest.json"]);
+  const left = declaration(dir, "M9-P1", ["src/a.ts"], ["test/behaviors.json", "delivery/requirements/clause-map.json"]);
+  const right = declaration(dir, "M9-P2", ["src/b.ts"], ["test/behaviors.json", "delivery/requirements/clause-map.json"]);
   const run = runConflicts([left, right]);
   assert.equal(run.status, 0, run.stdout + run.stderr);
   assert.ok(
     run.lines.includes(
-      "append-only, union-resolved, never an overlap: test/behaviors.json, gates.manifest.json, delivery/requirements/clause-map.json",
+      "append-only, union-resolved, never an overlap: test/behaviors.json, delivery/requirements/clause-map.json",
     ),
     run.stdout,
   );
   assert.deepEqual(
     run.lines.filter((line) => line.startsWith("APPEND-ONLY ")),
-    ["APPEND-ONLY M9-P1 M9-P2 gates.manifest.json", "APPEND-ONLY M9-P1 M9-P2 test/behaviors.json"],
+    ["APPEND-ONLY M9-P1 M9-P2 delivery/requirements/clause-map.json", "APPEND-ONLY M9-P1 M9-P2 test/behaviors.json"],
   );
   assert.ok(run.lines.includes("DISJOINT M9-P1 M9-P2"), run.stdout);
   assertObligationLast(run);
