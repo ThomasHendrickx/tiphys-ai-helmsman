@@ -453,3 +453,124 @@ test("the dispatch passes the executor exactly the kernel's reviewer grant, and 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+/* ------------------------------------------------------------------ */
+/* The Claude Code executor maps the grant (DR-0065, fix round 2)      */
+/* ------------------------------------------------------------------ */
+
+const executorArgv = (await import(new URL("../plugin/src/review.ts", import.meta.url).href)) as {
+  reviewArgv: (model: string, prompt: string, grant: unknown) => string[];
+};
+
+/** The real stream of the fix-round-2 live dispatch, run with the grant's flags. */
+const GRANT_SMOKE = join(fixtures, "grant-smoke.stream.jsonl");
+
+/** The values that follow `flag` in `argv`, up to the next flag. */
+function flagValues(argv: string[], flag: string): string[] {
+  const at = argv.indexOf(flag);
+  if (at === -1) {
+    return [];
+  }
+  const rest = argv.slice(at + 1);
+  const end = rest.findIndex((part) => part.startsWith("--"));
+  return end === -1 ? rest : rest.slice(0, end);
+}
+
+/** The `system/init` row of a captured stream. */
+function initRow(path: string): Record<string, unknown> {
+  const row = readFileSync(path, "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as Record<string, unknown>)
+    .find((candidate) => candidate["type"] === "system" && candidate["subtype"] === "init");
+  assert.ok(row !== undefined, `${path} has no system/init row`);
+  return row;
+}
+
+test("the Claude Code executor maps the reviewer grant to exactly its permission flags: acceptEdits, an allow-list anchored at the review directory with one Bash rule per granted command, and a deny-list for push and network tools; a grant it cannot map throws", () => {
+  const prompt = "Review according to the brief on standard input.";
+  assert.deepEqual(executorArgv.reviewArgv("some-model", prompt, reviewModule.REVIEWER_GRANT), [
+    "claude",
+    "-p",
+    prompt,
+    "--output-format",
+    "stream-json",
+    "--verbose",
+    "--model",
+    "some-model",
+    "--permission-mode",
+    "acceptEdits",
+    "--allowedTools",
+    "Read(./**)",
+    "Edit(./**)",
+    "Bash(node *)",
+    "Bash(npm run build *)",
+    "Bash(git diff *)",
+    "Bash(git log *)",
+    "Bash(git show *)",
+    "Bash(git grep *)",
+    "Bash(git status *)",
+    "Bash(git checkout -- *)",
+    "--disallowedTools",
+    "WebFetch",
+    "WebSearch",
+    "Bash(git push *)",
+  ]);
+  /* The flags follow the grant's data, not a fixed list: a grant with no
+     writes and one command maps to no edit rule, one Bash rule, and a mode
+     that denies anything else. */
+  const readOnly = { readRepository: true, writeReviewWorktree: false, commands: [["git", "diff"]], push: false, networkTools: false };
+  assert.deepEqual(executorArgv.reviewArgv("some-model", prompt, readOnly).slice(8), [
+    "--permission-mode",
+    "dontAsk",
+    "--allowedTools",
+    "Read(./**)",
+    "Bash(git diff *)",
+    "--disallowedTools",
+    "WebFetch",
+    "WebSearch",
+    "Bash(git push *)",
+  ]);
+  /* A grant this executor cannot express faithfully refuses, naming why. */
+  assert.throws(() => executorArgv.reviewArgv("m", prompt, { ...readOnly, push: true }), /allows a push/);
+  assert.throws(() => executorArgv.reviewArgv("m", prompt, { ...readOnly, networkTools: true }), /allows network tools/);
+  assert.throws(() => executorArgv.reviewArgv("m", prompt, { ...readOnly, readRepository: false }), /withholds reads/);
+  assert.throws(() => executorArgv.reviewArgv("m", prompt, { ...readOnly, commands: [["git", "*"]] }), /not a list of plain words/);
+});
+
+test("the real CLI, given the executor's argv for the kernel's grant, ran in acceptEdits without WebFetch or WebSearch, ran node --version and wrote the verdict with no permission denial", () => {
+  const argv = executorArgv.reviewArgv("some-model", "a prompt", reviewModule.REVIEWER_GRANT);
+  const granted = initRow(GRANT_SMOKE);
+  const ungranted = initRow(STREAM);
+  /* The mode the argv asks for is the mode the CLI reported running in; the
+     capture without the flags ran in the default mode. */
+  assert.deepEqual(flagValues(argv, "--permission-mode"), [granted["permissionMode"]]);
+  assert.equal(granted["permissionMode"], "acceptEdits");
+  assert.equal(ungranted["permissionMode"], "default");
+  /* Each network tool the argv denies is listed without the flags and gone
+     with them. */
+  const denied = flagValues(argv, "--disallowedTools");
+  for (const tool of ["WebFetch", "WebSearch"]) {
+    assert.ok(denied.includes(tool), `the argv does not deny ${tool}: [${denied.join(", ")}]`);
+    assert.ok((ungranted["tools"] as string[]).includes(tool), `the capture without the flags does not list ${tool}`);
+    assert.ok(!(granted["tools"] as string[]).includes(tool), `the capture with the flags still lists ${tool}`);
+  }
+  /* And the reviewer could run and write: its Bash call ran node --version,
+     its Write succeeded, and nothing was denied. */
+  const rows = readFileSync(GRANT_SMOKE, "utf8")
+    .split("\n")
+    .filter((line) => line.trim() !== "")
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+  const calls = rows
+    .filter(isTopLevelAssistant)
+    .flatMap((row) => ((row["message"] as Record<string, unknown>)["content"] as Record<string, unknown>[]) ?? [])
+    .filter((part) => part["type"] === "tool_use");
+  assert.ok(
+    calls.some((call) => call["name"] === "Bash" && (call["input"] as Record<string, unknown>)["command"] === "node --version"),
+    "no Bash call ran node --version",
+  );
+  assert.ok(calls.some((call) => call["name"] === "Write"), "no Write call");
+  const result = rows.find((row) => row["type"] === "result") as Record<string, unknown>;
+  assert.equal(result["subtype"], "success");
+  assert.deepEqual(result["permission_denials"], []);
+});

@@ -1,0 +1,32 @@
+{
+  "id": "m6-p5-real-cli-honours-grant-flags",
+  "behavior": "m6-p5-real-cli-honours-grant-flags",
+  "tests": [
+    "the real CLI, given the executor's argv for the kernel's grant, ran in acceptEdits without WebFetch or WebSearch, ran node --version and wrote the verdict with no permission denial"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/review.ts",
+      "find": "    grant.writeReviewWorktree === true ? \"acceptEdits\" : \"dontAsk\",",
+      "replace": "    \"dontAsk\","
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/review.ts",
+      "find": "    \"--disallowedTools\",\n    \"WebFetch\",",
+      "replace": "    \"--disallowedTools\","
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "claude",
+    "captures": [
+      "test/fixtures/review-dispatch/grant-smoke.stream.jsonl",
+      "test/fixtures/review-dispatch/haiku-with-sonnet-subagent.stream.jsonl"
+    ],
+    "provenance": "Two real stdout captures of the harness CLI in headless stream mode, Claude Code 2.1.285, both 2026-09-30 in this container: grant-smoke.stream.jsonl is the M6-P5 fix round 2 live `tiphys review dispatch --tier cheaper`, run with the kernel's reviewer grant mapped to --permission-mode acceptEdits, --allowedTools and --disallowedTools; haiku-with-sonnet-subagent.stream.jsonl was run without those flags. Each file's one declared alteration is in the README beside them. The named test compares the executor's argv with what each capture's system/init row reports and with the grant-smoke run's own tool calls and result row."
+  }
+}

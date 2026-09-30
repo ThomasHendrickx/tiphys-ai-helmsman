@@ -1090,5 +1090,7 @@
   "m6-p5-unclaimed-refusal-red": "a single change with one counted approving review and one committed FIX-ROUND-NEEDED verdict no record names is red at condition-2 naming it, and so is a pair change",
   "m6-p5-vocabulary-mismatch-red": "two counted reviews on different families minted under different vocabulary ids are red at condition-1, naming both ids",
   "m6-p5-failed-run-not-counted": "a record whose executor exited nonzero is not counted, so a pair change with one such record is red naming 1 of 2",
-  "m6-p5-kernel-passes-reviewer-grant": "the dispatch passes the executor exactly the kernel's reviewer grant, and that grant is DR-0065's: read the repository, write only in the review worktree, run node, npm run build and read-only git, no push and no network tools"
+  "m6-p5-kernel-passes-reviewer-grant": "the dispatch passes the executor exactly the kernel's reviewer grant, and that grant is DR-0065's: read the repository, write only in the review worktree, run node, npm run build and read-only git, no push and no network tools",
+  "m6-p5-executor-maps-reviewer-grant": "the Claude Code executor maps the reviewer grant to exactly its permission flags: acceptEdits, an allow-list anchored at the review directory with one Bash rule per granted command, and a deny-list for push and network tools; a grant it cannot map throws",
+  "m6-p5-real-cli-honours-grant-flags": "the real CLI, given the executor's argv for the kernel's grant, ran in acceptEdits without WebFetch or WebSearch, ran node --version and wrote the verdict with no permission denial"
 }

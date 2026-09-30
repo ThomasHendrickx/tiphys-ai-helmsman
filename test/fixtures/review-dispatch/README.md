@@ -31,3 +31,22 @@ altered-and-hidden, and nothing else in any row was changed:
 
 The committed file is 66 rows, sha256
 7d53a0fb23f3199fef409c46f1a2907024f140073f5b338d8f77f3b99d72faa3.
+
+`grant-smoke.stream.jsonl` is a REAL capture of the same CLI (Claude Code
+2.1.285), taken once on 2026-09-30 by the M6-P5 fix round 2 live smoke: the
+stream `tiphys review dispatch --tier cheaper` captured when the Claude Code
+executor ran with the kernel's reviewer grant mapped to its flags (DR-0065).
+The command, the five-line brief and the review record are in
+delivery/work-history/m6-p5.md, fix round 2. The raw capture was 20 rows,
+sha256 a08375099a7ce245d7dab30a78ce082f9d4260965ea95e1b404b8bc6f3aca438.
+
+It carries what the grant changed: the `system/init` row reads
+`permissionMode: acceptEdits` and its `tools` list has no `WebFetch` or
+`WebSearch`, which the capture above (run without the grant's flags) lists;
+the reviewer's `node --version` and `git log` ran, its `Write` of the verdict
+succeeded, and the `result` row's `permission_denials` is empty.
+
+One alteration, declared, and nothing else in any row was changed: in row 15
+of 20 (a `user` row, the Write tool's result), U+2014 was replaced by `--`, 1
+occurrence. The committed file is 20 rows, sha256
+d601c5fb7ffe172e3f2c2350c1ac80ad1c95d8fd7ab4ce2a6dc6d495506a02ca.
