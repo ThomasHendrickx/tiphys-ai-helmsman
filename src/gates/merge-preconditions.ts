@@ -5,18 +5,16 @@ import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { pathsIdentifySameObject } from "../path-identity.ts";
 import {
-  boundAtMergeBase,
-  declaresNoHead,
-  describeAdmittedVerdicts,
-  describeOffHeadVerdicts,
+  BLOCKING_SEVERITIES,
   loadCommittedVerdicts,
   missingRegimeDocument,
   readReviewFamilies,
-  registeredChecks,
-  relateDeclaredHead,
   resolveCorpusSource,
+  verdictApprovalFaults,
 } from "../checks.ts";
-import type { AdmittedVerdict, DerivedCheck, OffHeadVerdict } from "../checks.ts";
+import type { ReviewFamiliesReading } from "../checks.ts";
+import { countKernelReviews, judgeFamilies, loadReviewRecords } from "../review.ts";
+import type { LoadedReviewRecord, ReviewCount } from "../review.ts";
 import { readRegularFileIfPresent, refuseOpenForWrite, runStep, singleLine } from "../task.ts";
 import { decodeDocument } from "../validate.ts";
 import {
@@ -77,21 +75,13 @@ import type { GateResultFields, GateStatus, PreconditionRecord } from "./result.
  *   a ruleset read as a default        -> an empty body from the ruleset API is
  *                                        `error`, never an assumed shape.
  *
- * WHY CONDITIONS 1 AND 2 ARE COMPOSED AND NOT REIMPLEMENTED (plan step 6).
- * M4-P10 shipped `dual-review-decorrelation` (DR-0012 condition 1) and
- * `verdict-pair-approves` (condition 2) as derived checks in `src/checks.ts`,
- * and `scripts/check-dual-review.mjs` is the runner around them. This gate is a
- * SECOND CALLER of the same exported primitives rather than a second copy of
- * the rules: it resolves the corpus with `resolveCorpusSource`, refuses a
- * context whose delivery regime is undeterminable with `missingRegimeDocument`,
- * reads the DR-0038 declaration with `readReviewFamilies`, and then runs the
- * two checks BY ID out of `registeredChecks()`.
- *
- * BY ID, AND A MISSING REGISTRATION IS `error`. `scripts/check-dual-review.mjs`
- * prints `0 registered check(s) named X` beside its own verdict, which is the
- * Kind B witness that deregistering the check is visible. On the MERGE path a
- * condition with no check behind it is a condition nobody evaluated, so here it
- * is `error` and never a green with the comparison quietly skipped.
+ * CONDITIONS 1 AND 2 READ KERNEL RECORDS (M6-P5, DR-0062). A verdict counts
+ * only when a committed review record written by `tiphys review dispatch`
+ * names its path and its sha256 (src/review.ts). The count, the head and the
+ * family come from the records; APPROVE and the findings come from the
+ * verdict, judged by `verdictApprovalFaults`, which `verdict-pair-approves`
+ * shares. The regime and the DR-0038 declaration are read with
+ * `missingRegimeDocument` and `readReviewFamilies`.
  *
  * WHY THE ROW STATUS AND THE GATE STATUS ARE NOT THE SAME WORD, and this is the
  * one place the plan and the criteria say different things, so the reconciliation
@@ -112,8 +102,6 @@ import type { GateResultFields, GateStatus, PreconditionRecord } from "./result.
 const GATE_ID = "merge-preconditions";
 const UNIT_LABEL = "merge preconditions evaluated";
 const DEFAULT_API_BASE = "https://api.github.com";
-const DECORRELATION_CHECK_ID = "dual-review-decorrelation";
-const PAIR_CHECK_ID = "verdict-pair-approves";
 const REQUIRED_CHECK_CONTEXT = "gates";
 
 /**
@@ -121,10 +109,10 @@ const REQUIRED_CHECK_CONTEXT = "gates";
  *
  * SC-011: `not-applicable` ASSERTS that a precondition was evaluated. The
  * precondition here is "a merge is being proposed at this head", evidenced by
- * at least one committed verdict document naming it. A head with no such
- * document is not a merge waiting on six conditions; it is a branch nobody has
- * reviewed yet, and reporting red for that would make the gate unusable on
- * every push while making it say something false.
+ * a counted kernel review of it or by a committed verdict that refuses it
+ * (M6-P5). A head with neither is not a merge waiting on six conditions; it is
+ * a branch nobody has reviewed yet, and reporting red for that would make the
+ * gate unusable on every push while making it say something false.
  */
 const PRECONDITION_ID = "merge-preconditions-verdict-names-this-head";
 
@@ -563,9 +551,7 @@ const HEX_TOKEN = /\b[0-9a-f]{7,40}\b/gi;
  * passes both.
  *
  * VERDICTS ARE IDENTIFIED BY FILE NAME because `schemas/verdict.schema.json`
- * gives a verdict no id of its own; its required keys are kind, phase, head,
- * verdict, produced-by, framing, findings and deviations-judged (M6-P2 dropped
- * criteria and review-contract). The existing arbitration documents in `delivery/review/`
+ * gives a verdict no id of its own. The existing arbitration documents in `delivery/review/`
  * already cite their reviews by path, so the convention that exists is read
  * rather than a field invented.
  *
@@ -730,7 +716,7 @@ export interface VerdictForHead {
 }
 
 /**
- * The `single` tier's approval row (DR-0063): every admitted review of this
+ * The `single` tier's approval row (DR-0063): every counted review of this
  * head reads APPROVE.
  *
  * THE VERDICT WORD IS THE WHOLE TEST, AND THAT IS DR-0063's RULE RATHER THAN A
@@ -759,7 +745,7 @@ export function judgeSingleApproves(verdicts: readonly VerdictForHead[]): {
     seen.push(`${basename(verdict.path)} APPROVE with ${String(findings)} finding(s)`);
   }
   if (verdicts.length === 0) {
-    faults.push("no review is admitted for this head, so nothing approves it");
+    faults.push("no review is counted for this head, so nothing approves it");
   }
   if (faults.length > 0) {
     return { ok: false, sentence: faults.join("; ") };
@@ -767,52 +753,8 @@ export function judgeSingleApproves(verdicts: readonly VerdictForHead[]): {
   return {
     ok: true,
     sentence:
-      `every admitted review of this head approves (${seen.join(", ")}); under DR-0063's single tier a ` +
+      `every counted review of this head approves (${seen.join(", ")}); under DR-0063's single tier a ` +
       "finding blocks through the reviewer's verdict word, so severities are reported and not gated",
-  };
-}
-
-/**
- * Run ONE registered check over the verdicts for this head.
- *
- * A check that is NOT REGISTERED is `error`, never a green with the comparison
- * skipped, which is the whole of the "green because it could not look" class
- * applied to this gate's own instrument.
- */
-function runRegisteredCheck(
-  id: string,
-  verdicts: readonly VerdictForHead[],
-  contextDirectory: string,
-  base: string | undefined,
-): { status: RowStatus; sentence: string } {
-  const selected: DerivedCheck[] = registeredChecks().filter((check) => check.id === id);
-  if (selected.length === 0) {
-    return {
-      status: "error",
-      sentence:
-        `0 registered check(s) named ${id}, so nothing evaluated this condition; a condition with ` +
-        "no check behind it is a condition nobody looked at",
-    };
-  }
-  const messages = new Set<string>();
-  for (const verdict of verdicts) {
-    for (const check of selected) {
-      /* The base goes in so a head-less sibling is judged on its provenance
-         (kernel 0.2.1 fix round 2): history only if it is on the base. */
-      const outcome = check.run(verdict.record, contextDirectory, { base });
-      for (const violation of outcome.violations) {
-        messages.add(`${violation.pointer} ${violation.message}`);
-      }
-    }
-  }
-  if (messages.size > 0) {
-    return { status: "red", sentence: [...messages].sort().join(" | ") };
-  }
-  return {
-    status: "green",
-    sentence:
-      `${id} reported no violation over the ${String(verdicts.length)} verdict(s) committed for ` +
-      "this head",
   };
 }
 
@@ -900,13 +842,22 @@ function stringList(
  * `..` segment and no empty segment, so those shapes match nothing. The
  * classifier compares entries literally, so a glob character matches only a
  * file whose name carries that character, which is not what a glob means. A
- * manifest is one file, so it may not end in `/` either. schemas/charter.schema.json
- * carries the same rule as a pattern; this is the reader's copy, because the
- * gate reads a blob and never runs the schema validator.
+ * manifest is one file, so it may not end in `/` either. M6-P5 (CR-M6P2A-07,
+ * CR-M6P2B-08): git separates segments with `/` and prints no path that starts
+ * or ends with whitespace, so a backslash or a leading or trailing space
+ * matches nothing too. schemas/charter.schema.json carries the same rule as a
+ * pattern; this is the reader's copy, because the gate reads a blob and never
+ * runs the schema validator.
  */
 function entryShapeFault(entry: string, isManifest: boolean): string | undefined {
   if (/[*?[]/.test(entry)) {
     return "carries a glob character (*, ? or [), and entries are literal paths";
+  }
+  if (entry.includes("\\")) {
+    return "carries a backslash, and git separates path segments with /";
+  }
+  if (/^\s|\s$/.test(entry)) {
+    return "starts or ends with whitespace, and git prints no such path";
   }
   if (entry.startsWith("/")) {
     return "starts with /, and entries are relative to the project";
@@ -928,20 +879,24 @@ function entryShapeFault(entry: string, isManifest: boolean): string | undefined
 }
 
 /**
- * The first EXACT entry (a `paths` entry with no trailing `/`, or any
- * `manifests` entry) that names a DIRECTORY at `rev`, as a sentence, or
- * undefined. An exact entry is compared with `===`, and git never prints a
- * directory as a changed path, so `paths: [src]` over a directory `src/`
- * matches nothing under it (CR-M6P2B-02). A listing git could not produce is
- * a sentence too, so the caller fails closed on it.
+ * The first declared entry that matches nothing git prints, judged by what it
+ * names at `rev`, as a sentence, or undefined. An EXACT entry (a `paths` entry
+ * with no trailing `/`, or any `manifests` entry) is compared with `===`, and
+ * git never prints a directory as a changed path, so `paths: [src]` over a
+ * directory `src/` matches nothing under it (CR-M6P2B-02). A PREFIX entry (a
+ * `paths` entry ending in `/`) matches only paths under a directory, so one
+ * that names a FILE at `rev`, or names nothing there, matches nothing either
+ * (M6-P5, CR-M6P2A-07 and CR-M6P2B-08). A listing git could not produce is a
+ * sentence too, so the caller fails closed on it.
  */
-function exactEntryNamingDirectory(contextDirectory: string, rev: string, set: RuntimeSet): string | undefined {
-  const exact: [string, string][] = [
-    ...set.paths.filter((entry) => !entry.endsWith("/")).map((entry): [string, string] => ["paths", entry]),
-    ...set.manifests.map((entry): [string, string] => ["manifests", entry]),
+function entryLookupFault(contextDirectory: string, rev: string, set: RuntimeSet): string | undefined {
+  const entries: [string, string, boolean][] = [
+    ...set.paths.map((entry): [string, string, boolean] => ["paths", entry, entry.endsWith("/")]),
+    ...set.manifests.map((entry): [string, string, boolean] => ["manifests", entry, false]),
   ];
-  for (const [field, entry] of exact) {
-    const listed = spawnSync("git", ["--literal-pathspecs", "ls-tree", "-z", rev, "--", entry], {
+  for (const [field, entry, prefix] of entries) {
+    const name = prefix ? entry.slice(0, -1) : entry;
+    const listed = spawnSync("git", ["--literal-pathspecs", "ls-tree", "-z", rev, "--", name], {
       cwd: contextDirectory,
       encoding: "utf8",
     });
@@ -952,6 +907,21 @@ function exactEntryNamingDirectory(contextDirectory: string, rev: string, set: R
       );
     }
     const first = (listed.stdout ?? "").split("\0")[0] ?? "";
+    if (prefix) {
+      if (first === "") {
+        return (
+          `${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} names nothing at ${rev}, so no path ` +
+          `git prints lies under it (a prefix entry names an existing directory)`
+        );
+      }
+      if (!/^\d{6} tree /.test(first)) {
+        return (
+          `${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} names a FILE at ${rev}, and a prefix ` +
+          `entry matches only paths under a directory (a file entry has no trailing /)`
+        );
+      }
+      continue;
+    }
     if (/^\d{6} tree /.test(first)) {
       return (
         `${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} names a DIRECTORY at ${rev}, and an exact ` +
@@ -1249,11 +1219,15 @@ function classifyOne(entry: ChangedPath, input: TierInput): { tier: ReviewTier; 
   }
   const set = input.declaration.set;
   if (projectPath === RUNTIME_SET_CHARTER) {
+    /* CR-M6P2A-08, CR-M6P2B-09: each arm that could not compare the two blocks
+       is pair. test/merge-preconditions.test.ts stages every one through git. */
     const sides = input.sides.get(projectPath);
     if (sides === undefined) {
+      /* A side git could not show as one regular file (a symlink, a submodule). */
       return { tier: "pair", reason: "the charter changed and its two sides were not read, fail closed" };
     }
     if (sides.base === undefined || sides.head === undefined) {
+      /* Absent at the merge base or deleted at the head. */
       return {
         tier: "pair",
         reason: `the charter is ${sides.base === undefined ? "absent at the merge base" : "deleted at the head"}, so the runtime-set declaration changed`,
@@ -1262,6 +1236,7 @@ function classifyOne(entry: ChangedPath, input: TierInput): { tier: ReviewTier; 
     const before = runtimeSetBlockText(sides.base, `${RUNTIME_SET_CHARTER} at the merge base`);
     const after = runtimeSetBlockText(sides.head, `${RUNTIME_SET_CHARTER} at the head`);
     if (!before.ok || !after.ok) {
+      /* A side that does not parse. */
       return {
         tier: "pair",
         reason: `the charter could not be read on both sides (${before.ok ? "" : before.reason}${!before.ok && !after.ok ? "; " : ""}${after.ok ? "" : after.reason}), fail closed`,
@@ -1274,6 +1249,7 @@ function classifyOne(entry: ChangedPath, input: TierInput): { tier: ReviewTier; 
   if (set.manifests.includes(projectPath)) {
     const sides = input.sides.get(projectPath);
     if (sides === undefined) {
+      /* Unreadable at the merge base or the head (CR-M6P2A-08, CR-M6P2B-09). */
       return { tier: "pair", reason: "a declared manifest whose two sides were not read, fail closed" };
     }
     if (sides.base === undefined || sides.head === undefined) {
@@ -1484,14 +1460,18 @@ export function classifyReviewBudget(
 
   const charterLabel = `${mergeBase}:${prefix}${RUNTIME_SET_CHARTER}`;
   const charterBlob = blobAt(contextDirectory, mergeBase, RUNTIME_SET_CHARTER);
+  /* A charter git cannot show as one regular file is an INVALID declaration,
+     never an empty one (CR-M6P2A-08). */
   const charterReading: RuntimeSetReading =
     charterBlob.kind === "error"
       ? { kind: "invalid", reason: charterBlob.reason }
       : readRuntimeSet(charterBlob.kind === "read" ? charterBlob.body : undefined, charterLabel);
-  /* M6-P2 FIX ROUND 1 (CR-M6P2B-02): an exact entry that is a DIRECTORY at the
-     merge base makes the declaration invalid, so the change is pair, named. */
+  /* An entry that matches nothing git prints makes the declaration invalid, so
+     the change is pair, named: an exact entry that is a DIRECTORY at the merge
+     base (M6-P2 fix round 1, CR-M6P2B-02), a prefix entry that is a FILE or
+     nothing there (M6-P5, CR-M6P2A-07, CR-M6P2B-08). */
   const directoryFault =
-    charterReading.kind === "declared" ? exactEntryNamingDirectory(contextDirectory, mergeBase, charterReading.set) : undefined;
+    charterReading.kind === "declared" ? entryLookupFault(contextDirectory, mergeBase, charterReading.set) : undefined;
   const declaration: RuntimeSetReading =
     directoryFault === undefined ? charterReading : { kind: "invalid", reason: `${charterLabel} ${directoryFault}` };
 
@@ -1545,30 +1525,6 @@ export function classifyReviewBudget(
 }
 
 /**
- * The id of the precondition a `single` change reports unmet at
- * `check-dual-review`, whose question (two decorrelated reviews) is the pair
- * tier's. merge-preconditions checks the single tier's one review itself.
- */
-export const BUDGET_PRECONDITION_ID = "review-budget-requires-pair-review";
-
-/** The evaluated, unmet precondition a `single` change carries at the pair check. */
-export function budgetPrecondition(budget: ReviewBudget): PreconditionRecord {
-  return {
-    id: BUDGET_PRECONDITION_ID,
-    met: false,
-    reason:
-      `${describeBudget(budget)}, so DR-0063 owes it ${String(REQUIRED_VERDICTS.single)} hazard review and ` +
-      "not the pair this gate compares; merge-preconditions requires the single review",
-    evidence: [
-      `tier: ${budget.tier}`,
-      "verdict documents: not read here, because the pair rule does not apply to this tier",
-      ...budget.paths.slice(0, 50).map((entry) => `${entry.tier}: ${entry.path} (${entry.reason})`),
-      ...(budget.paths.length > 50 ? [`and ${String(budget.paths.length - 50)} more path(s)`] : []),
-    ],
-  };
-}
-
-/**
  * The sentence a change with too few admitted verdicts for its tier is red with.
  *
  * THE MISSING COUNT IS IN THE SENTENCE, because criterion p3-missing-is-red asks
@@ -1584,8 +1540,8 @@ export function missingReviewsSentence(
   const missing = Math.max(0, required - admitted);
   return (
     `${describeBudget(budget)}, so DR-0063 requires ${String(required)} approving hazard ` +
-    `${budget.tier === "pair" ? "reviews, distinct on produced-by," : "review"} for the commit under audit ` +
-    `${auditedHead}; ${String(admitted)} of ${String(required)} are admitted and ${String(missing)} missing. ` +
+    `${budget.tier === "pair" ? "reviews, launched by the kernel on distinct observed families or under the declared exception," : "review, launched by the kernel,"} for the commit under audit ` +
+    `${auditedHead}; ${String(admitted)} of ${String(required)} are counted and ${String(missing)} missing. ` +
     "A missing review is RED, never not-applicable (M5-P3)"
   );
 }
@@ -1687,37 +1643,42 @@ async function readRulesets(
 }
 
 /**
- * The review corpus for one head, read through the shipped primitives.
+ * The review evidence for one phase at one head (M6-P5, DR-0062).
  *
- * EXTRACTED IN M5-P3 so the two orders the gate now has read it through ONE
- * function. With `--base` the review evidence is read BEFORE the network,
- * because "this shipped change carries no review" is decidable from the
- * repository alone and must not depend on whether an API answers; without it
- * the order is the M4-P12 one, unchanged.
+ * The verdicts are loaded from `delivery/review/` and the kernel's review
+ * records from `delivery/review/records/`, both through the one corpus source.
+ * A verdict COUNTS only through a record (`countKernelReviews`): the head, the
+ * phase and the family come from the record, and only APPROVE and the findings
+ * from the verdict. With `--base` the review evidence is read BEFORE the
+ * network, because "this change carries no counted review" is decidable from
+ * the repository alone.
+ *
+ * Every refusal below is `error` rather than red: a merge gate that cannot
+ * establish the regime, cannot read the DR-0038 declaration, or cannot examine
+ * a document that looks like a verdict has NOT reached a verdict (M2-C-3).
  */
 type ReviewCorpus =
   | { ok: false; reason: string }
   | {
       ok: true;
       read: number;
-      admitted: AdmittedVerdict[];
-      excluded: OffHeadVerdict[];
+      count: ReviewCount;
+      families: ReviewFamiliesReading;
+      records: LoadedReviewRecord[];
+      invalidRecords: { path: string; reason: string }[];
       forHead: VerdictForHead[];
     };
 
-function readReviewCorpus(contextDirectory: string, head: string, mergeBase?: string): ReviewCorpus {
-  /* THE CORPUS, READ THROUGH THE SHIPPED PRIMITIVES (plan step 6). Every
-     refusal below is `error` rather than red, and each is the one
-     `scripts/check-dual-review.mjs` already makes at the same layer: a merge
-     gate that cannot establish the regime, cannot read the DR-0038 declaration,
-     or cannot examine a document that looks like a verdict has NOT reached a
-     verdict (M2-C-3). */
+function readReviewCorpus(contextDirectory: string, head: string, phase: string, mergeBase?: string): ReviewCorpus {
   const source = resolveCorpusSource(contextDirectory);
   const regime = missingRegimeDocument(contextDirectory, source);
   if (regime !== undefined) {
     return { ok: false, reason: regime.reason };
   }
-  const families = readReviewFamilies(contextDirectory);
+  /* At the merge base when there is one, like the runtime set (M6-P5 fix round
+     1, CR-M6P5A-03): a change must not declare the exception that admits its
+     own correlated pair. Without `--base` there is no base, and HEAD is read. */
+  const families = mergeBase === undefined ? readReviewFamilies(contextDirectory) : readReviewFamilies(contextDirectory, mergeBase);
   if (families.kind === "error") {
     return { ok: false, reason: families.reason };
   }
@@ -1734,62 +1695,69 @@ function readReviewCorpus(contextDirectory: string, head: string, mergeBase?: st
         corpus.unexaminable.map((diagnostic) => diagnostic.message).join("; "),
     };
   }
-
-  /* THE SECOND CALL SITE OF THE EQUALITY MECHANISM, FOUND BY DERIVATION AND
-     NOT BY A REVIEW (DR-0047 sweep round 2).
-     `scripts/check-dual-review.mjs` selected its corpus by comparing the
-     DECLARED head to the RUN head with `===`, and no real flow satisfies that:
-     reviewers read commit X, committing their verdicts produces X+1, and CI
-     audits X+1. This line was the same comparison, spelled once more, so this
-     gate's precondition ("a merge is being proposed at this head, evidenced by
-     a committed verdict naming it") could never be met either and every run
-     reported not-applicable.
-
-     The relation is now ancestry constrained to a paperwork-only gap, which is
-     the same rule and the same function both gates read it from, so the two
-     cannot drift into two answers about one question. An EQUAL head still
-     passes and touches git not at all (`relateDeclaredHead` answers that case
-     before any spawn), which matters here because `--head` comes from the CI
-     event and need not be an object in this checkout.
-
-     AND IT IS THE REVIEW-OF-OLD-CODE GUARD (M5-P3's hazard class). A verdict
-     for an ancestor is admitted only when every path between it and the
-     audited commit is under `delivery/`, so shipped bytes added after a review
-     leave that verdict EXCLUDED, and on a dual-tier change the admitted count
-     then falls below two and the gate is red. */
-  const admitted: AdmittedVerdict[] = [];
-  const excluded: OffHeadVerdict[] = [];
-  const forHead: VerdictForHead[] = [];
-  for (const entry of corpus.verdicts) {
-    /* KERNEL 0.2.1 (DR-0053, DR-0054). A verdict with NO head key is excluded
-       BY NAME before any relation is computed. Until 0.2.1 it reached
-       `relateDeclaredHead` with the empty string, failed to resolve, and was
-       excluded with the sentence "declares head , which does not resolve",
-       which named the wrong fact. The schema no longer requires the field, so
-       absence is now a well-formed document written before the field existed
-       and the ADMISSION rule is here: it is never admitted, so on a dual-tier
-       change it cannot count toward the two reviews condition 1 needs. */
-    if (declaresNoHead(entry.record)) {
-      excluded.push({ path: entry.path, declared: "", relation: { kind: "no-head" } });
-      continue;
-    }
-    /* KERNEL 0.2.1 (DR-0055): admission does not read the stamp, exactly as
-       in `partitionByAuditedHead`, so the two gates cannot disagree about a
-       stamp. Every rule here applies to every verdict, stamped or not. */
-    const declared = String(entry.record["head"] ?? "").toLowerCase();
-    /* M6-P2 FIX ROUND 1 (CR-M6P2A-01, CR-M6P2B-01): ANCESTRY IS BOUNDED AT THE
-       MERGE BASE. With `--base`, a verdict whose declared head the merge base
-       already contains reviewed content on the base, not this change, and is
-       excluded by name as `on-the-base`. No phase match (M6-P5). */
-    const relation = boundAtMergeBase(contextDirectory, declared, mergeBase, relateDeclaredHead(contextDirectory, declared, head));
-    if (relation.kind === "same" || relation.kind === "evidence-only-ancestor") {
-      admitted.push({ path: entry.path, declared, relation });
-      forHead.push({ path: entry.path, record: entry.record });
-      continue;
-    }
-    excluded.push({ path: entry.path, declared, relation });
+  const loaded = loadReviewRecords(contextDirectory, source);
+  if (!loaded.ok) {
+    return { ok: false, reason: loaded.reason };
   }
-  return { ok: true, read: corpus.verdicts.length, admitted, excluded, forHead };
+  const counted = countKernelReviews({
+    contextDirectory,
+    source,
+    records: loaded.records,
+    verdicts: corpus.verdicts,
+    auditedHead: head,
+    phase,
+    mergeBase,
+  });
+  if (!counted.ok) {
+    return { ok: false, reason: counted.reason };
+  }
+  return {
+    ok: true,
+    read: corpus.verdicts.length,
+    count: counted.count,
+    families,
+    records: loaded.records,
+    invalidRecords: loaded.invalid,
+    forHead: counted.count.counted.map((review) => ({
+      path: join(contextDirectory, review.verdictPath),
+      record: review.verdict,
+    })),
+  };
+}
+
+/** What the selection row and a not-applicable precondition print about the records. */
+function describeCount(review: Extract<ReviewCorpus, { ok: true }>, head: string): string[] {
+  const lines: string[] = [];
+  for (const entry of review.count.counted) {
+    lines.push(
+      `COUNTED ${entry.verdictPath} through ${entry.recordPath} (task ${entry.record.taskId}, observed ` +
+        `${entry.record.observation.model ?? "none"}, family ${entry.record.family}, head ${entry.record.head}` +
+        (entry.relation.kind === "same" ? ", the commit under audit)" : `, a paperwork-only ancestor of ${head})`),
+    );
+  }
+  for (const entry of review.count.excluded) {
+    lines.push(`NOT COUNTED ${entry.path} ${entry.reason}`);
+  }
+  for (const entry of review.invalidRecords) {
+    lines.push(`NOT COUNTED ${entry.path} ${entry.reason}`);
+  }
+  for (const path of review.count.unclaimed) {
+    lines.push(`NOT COUNTED ${path}: no kernel review record names it with its sha256, so the kernel did not launch it (DR-0062)`);
+  }
+  return lines;
+}
+
+/**
+ * The committed refusals no counted record names (M6-P5 fix round 1,
+ * CR-M6P5A-04). Each blocks the merge in either tier: a refusal is read from
+ * the committed verdict whether or not the kernel launched the review.
+ */
+function unclaimedRefusalFaults(review: Extract<ReviewCorpus, { ok: true }>, head: string): string[] {
+  return review.count.refusing.map(
+    (refusal) =>
+      `${refusal.path} reads ${refusal.word} for ${refusal.relation.kind === "same" ? `this head ${head}` : `head ${refusal.head}, a paperwork-only ancestor of ${head}`}, ` +
+      "and no counted kernel record names it; a committed refusal blocks the merge whether or not the kernel launched it",
+  );
 }
 
 /** The verdict-selection row, which says what every other row is ABOUT. */
@@ -1798,78 +1766,78 @@ function selectionRow(
   head: string,
   budget: ReviewBudget | undefined,
 ): ConditionRow {
-  /* THE ADMISSION ROUTE IS A ROW, NOT A FOOTNOTE. Every other condition here
-     gets a row because a reader has to be able to see what was asserted; the
-     corpus SELECTION decides what all six conditions are about, so a run whose
-     verdicts were admitted by ANCESTRY rather than by naming this commit must
-     say so in the same place.
-
-     ITS STATUS IS DERIVED FROM THE BUDGET SINCE M5-P3. Without `--base` it is
-     green because selection succeeded (a selection that found nothing reaches
-     the not-applicable arm instead). With `--base` it is RED below the tier's
-     required count (DR-0063: two for pair, one for single), and the missing
-     count is in the sentence. */
+  /* With `--base` the row is RED below the tier's required count (DR-0063:
+     two for pair, one for single), with the missing count in the sentence.
+     Without it the row is green because selection succeeded; a selection that
+     counted nothing reaches the not-applicable arm instead. */
   const short = budget !== undefined && review.forHead.length < REQUIRED_VERDICTS[budget.tier];
   const owed = short ? budget : undefined;
+  const lines = describeCount(review, head);
   return {
     id: "verdict-selection",
-    clause: "DR-0047 the verdicts selected are evidence about THIS head",
+    clause: "DR-0062 the verdicts counted are the kernel-recorded reviews of THIS head and phase",
     status: owed === undefined ? "green" : "red",
     head,
     sentence:
       (owed === undefined ? "" : `${missingReviewsSentence(owed, review.forHead.length, head)} | `) +
-      `${String(review.admitted.length)} verdict(s) admitted and ${String(review.excluded.length)} excluded` +
-      (review.admitted.length === 0 ? "" : `; ${describeAdmittedVerdicts(review.admitted, head).join(" | ")}`) +
-      (review.excluded.length === 0
-        ? ""
-        : ` | EXCLUDED: ${describeOffHeadVerdicts(review.excluded, head).join(" | ")}`),
+      `${String(review.count.counted.length)} review(s) counted from ${String(review.records.length + review.invalidRecords.length)} ` +
+      `record(s) and ${String(review.read)} verdict document(s)` +
+      (lines.length === 0 ? "" : `; ${lines.join(" | ")}`),
   };
 }
 
 /**
- * The review rows, which need nothing but the committed verdicts, PER TIER
- * (DR-0063). `pair`: condition 1 is the decorrelation check (distinct
- * `produced-by` only; the framing and contract comparisons were dropped with the
- * criteria contract, DR-0064) and condition 2 is the pair-approves check.
- * `single`: one row, the single review approves; no decorrelation row, because
- * one review has nothing to be decorrelated from. The criteria-walked row that
- * stood here (DR-0012 condition 3) is gone: DR-0064 supersedes it.
+ * The review rows, PER TIER (DR-0063). `pair`: condition 1 is the family rule
+ * over the counted reviews' kernel records, and condition 2 is that every
+ * counted verdict approves with no blocking finding. `single`: one row, the
+ * counted review approves; one review has nothing to be distinct from.
  */
 function reviewRows(
   review: Extract<ReviewCorpus, { ok: true }>,
   head: string,
-  contextDirectory: string,
-  base: string | undefined,
   tier: ReviewTier,
+  phase: string,
 ): ConditionRow[] {
   const rows: ConditionRow[] = [];
+  const refusals = unclaimedRefusalFaults(review, head);
   if (tier === "single") {
     const single = judgeSingleApproves(review.forHead);
     rows.push({
       id: "condition-2",
       clause: "DR-0063 single: the one hazard review of this head approves",
-      status: single.ok ? "green" : "red",
+      status: single.ok && refusals.length === 0 ? "green" : "red",
       head,
-      sentence: single.sentence,
+      sentence: [...(single.ok ? [] : [single.sentence]), ...refusals].join("; ") || single.sentence,
     });
     return rows;
   }
-  const condition1 = runRegisteredCheck(DECORRELATION_CHECK_ID, review.forHead, contextDirectory, base);
+  const families = judgeFamilies(review.count.counted, review.families, review.records);
   rows.push({
     id: "condition-1",
-    clause: "DR-0063 pair: two hazard reviews of this head, distinct on produced-by",
-    status: condition1.status,
+    clause: "DR-0062 pair: two kernel-launched reviews of this head on distinct observed families, or the declared single-family exception",
+    status: families.ok ? "green" : "red",
     head,
-    sentence: condition1.sentence,
+    sentence: families.sentence,
   });
-
-  const condition2 = runRegisteredCheck(PAIR_CHECK_ID, review.forHead, contextDirectory, base);
+  const faults = [
+    ...review.count.counted.flatMap((entry) =>
+      verdictApprovalFaults({ path: entry.verdictPath, record: entry.verdict }, phase, entry.record.head).map(
+        (fault) => `${fault.pointer} ${fault.message}`,
+      ),
+    ),
+    ...refusals,
+  ];
   rows.push({
     id: "condition-2",
     clause: "DR-0012:23 no unresolved finding at medium or above",
-    status: condition2.status,
+    status: faults.length === 0 && review.count.counted.length > 0 ? "green" : "red",
     head,
-    sentence: condition2.sentence,
+    sentence:
+      faults.length > 0
+        ? faults.join(" | ")
+        : review.count.counted.length === 0
+          ? "no review is counted for this head, so nothing approves it"
+          : `the ${String(review.count.counted.length)} counted verdict(s) read APPROVE and carry no finding at ${BLOCKING_SEVERITIES.join(", ")}`,
   });
   return rows;
 }
@@ -1953,7 +1921,7 @@ export async function runGate(flags: Flags): Promise<number> {
       );
     }
     budget = classified.budget;
-    const read = readReviewCorpus(contextDirectory, head, budget.mergeBase);
+    const read = readReviewCorpus(contextDirectory, head, phase, budget.mergeBase);
     if (!read.ok) {
       return emit(
         resultPath,
@@ -1980,7 +1948,7 @@ export async function runGate(flags: Flags): Promise<number> {
         rows,
       );
     }
-    rows.push(...reviewRows(review, head, contextDirectory, flags.base, budget.tier));
+    rows.push(...reviewRows(review, head, budget.tier, phase));
     const reviewStatus = gateStatusForRows(rows);
     if (reviewStatus !== "green") {
       return emit(
@@ -2050,7 +2018,7 @@ export async function runGate(flags: Flags): Promise<number> {
   }
 
   if (review === undefined) {
-    const read = readReviewCorpus(contextDirectory, head);
+    const read = readReviewCorpus(contextDirectory, head, phase);
     if (!read.ok) {
       return emit(
         resultPath,
@@ -2061,26 +2029,57 @@ export async function runGate(flags: Flags): Promise<number> {
     review = read;
 
     if (review.forHead.length === 0) {
+      /* THE REFUSALS ARE READ BEFORE THIS ARM IS DECIDED (M6-P5 fix round 5,
+         CR-M6P5A-10). A committed verdict that refuses this head, which no
+         counted record names, says a merge was proposed here and refused, so
+         "no merge is being proposed" would be false. It is red, with a
+         condition-2 row naming each refusal in the sentences the `--base`
+         arm prints. */
+      const refusals = unclaimedRefusalFaults(review, head);
+      if (refusals.length > 0) {
+        rows.push(selectionRow(review, head, budget));
+        rows.push({
+          id: "condition-2",
+          clause: "DR-0012:23 no unresolved finding at medium or above",
+          status: "red",
+          head,
+          sentence: refusals.join(" | "),
+        });
+        return emit(
+          resultPath,
+          {
+            ...shared,
+            status: "red",
+            units: rows.length,
+            endedAt: now(),
+            detail:
+              `DR-0063 ${tier} at head ${head}, phase ${phase}: no kernel review record counts a verdict at this head, ` +
+              `and ${String(refusals.length)} committed verdict(s) refuse it: ${refusals.join(" | ")}; ` +
+              "CI, scope, arbitration and the branch-protection encoding were NOT evaluated, because the " +
+              "committed review evidence already refuses this merge",
+          },
+          rows,
+        );
+      }
       /* SC-011: the not-applicable arm of the M4-P12 order, and it carries an
-         EVALUATED precondition rather than a silence. A head with no verdict
-         naming it is not a merge waiting on six conditions. REACHABLE ONLY
-         WITHOUT `--base` since M5-P3: with it, a change of either DR-0063
-         tier and no verdict is red above (M6-P2). */
+         EVALUATED precondition rather than a silence. A head with no counted
+         review and no committed refusal is not a merge waiting on six
+         conditions. REACHABLE ONLY WITHOUT `--base` since M5-P3: with it, a
+         change of either DR-0063 tier and no counted review is red above
+         (M6-P2). */
       const precondition: PreconditionRecord = {
         id: PRECONDITION_ID,
         met: false,
         reason:
-          `no committed verdict document names head ${head}, so no merge is being proposed at this ` +
-          "head and DR-0012's conditions have no subject",
+          `no committed kernel review record counts a verdict for phase ${phase} at head ${head}, and no ` +
+          "committed verdict refuses that head, so no merge is being proposed at this head and DR-0012's " +
+          "conditions have no subject",
         evidence: [
-          `${String(review.read)} committed verdict document(s) were read and examined`,
+          `${String(review.read)} committed verdict document(s) and ` +
+            `${String(review.records.length + review.invalidRecords.length)} review record(s) were read and examined`,
           `head under evaluation: ${head}`,
-          /* EVERY EXCLUDED DOCUMENT IS NAMED WITH THE ROUTE THAT EXCLUDED IT.
-             "There is no verdict here" and "there are two approving verdicts
-             and each reviewed something else" are different facts, and printing
-             the first for both is the fail-open direction
-             `describeOffHeadVerdicts` exists to close one gate along. */
-          ...describeOffHeadVerdicts(review.excluded, head).map((line) => `EXCLUDED ${line}`),
+          /* Every record and verdict that did not count is named with its reason. */
+          ...describeCount(review, head),
         ],
       };
       return emit(
@@ -2097,7 +2096,7 @@ export async function runGate(flags: Flags): Promise<number> {
       );
     }
     rows.push(selectionRow(review, head, budget));
-    rows.push(...reviewRows(review, head, contextDirectory, flags.base, tier));
+    rows.push(...reviewRows(review, head, tier, phase));
   }
 
   const checkRunsUrl = `${apiBase}/repos/${slug}/commits/${head}/check-runs`;
@@ -2240,7 +2239,30 @@ export async function runGate(flags: Flags): Promise<number> {
   );
 }
 
+/**
+ * `--precondition [--context <dir>]`: the registry's `command-exit-zero`
+ * precondition for this gate (M6-P5). Exit 0 when the context resolves a commit,
+ * because then the gate, given `--base` and `--head`, decides from the diff what
+ * review is owed; exit 1 when there is no commit to audit.
+ */
+export function preconditionMain(argv: string[]): number {
+  const context = argv.length === 2 && argv[0] === "--context" ? argv[1] : argv.length === 0 ? "." : undefined;
+  if (context === undefined) {
+    return usageError("--precondition takes only an optional --context <dir>");
+  }
+  const source = resolveCorpusSource(context);
+  if (source.kind !== "commit") {
+    process.stdout.write(`${GATE_ID}: no commit resolves in ${context}, so there is no change to audit: ${source.reason}\n`);
+    return 1;
+  }
+  process.stdout.write(`${GATE_ID}: ${context} resolves ${source.ref} to ${source.refSha}\n`);
+  return 0;
+}
+
 export async function main(argv: string[]): Promise<number> {
+  if (argv[0] === "--precondition") {
+    return preconditionMain(argv.slice(1));
+  }
   const flags = parseFlags(argv);
   if (flags === undefined) {
     return usageError();

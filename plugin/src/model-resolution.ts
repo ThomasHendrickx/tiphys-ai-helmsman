@@ -311,23 +311,38 @@ export function readTurnEnd(path: string): TurnEnd | undefined {
   return { endedAt, exitCode };
 }
 
+/** The distinct assistant-row models of one transcript or stream, split by who spoke. */
+export interface AssistantModels {
+  /** Rows of the top-level turn: no `parent_tool_use_id`, or a null one. */
+  topLevel: string[];
+  /** Rows a subagent wrote: a non-null `parent_tool_use_id`. */
+  subagent: string[];
+}
+
 /**
- * The DISTINCT models named on the transcript's assistant rows.
+ * The DISTINCT models named on the assistant rows, top-level and subagent kept
+ * apart.
  *
- * THE SHAPE IS M4-P1's RESOLVER, not a reimplementation of it. That probe read
- * `row.type === "assistant"` and `row.message.model`, reported the distinct set
- * and put its outcome in one field; the same shape is used here so the arms
- * this module distinguishes are the arms that were actually measured
+ * The shape is M4-P1's resolver: `row.type === "assistant"` and
+ * `row.message.model`
  * (test/fixtures/harness-probe/q3-transcript-model-resolution/plugin-hook-resolve.mjs.txt:1).
+ *
+ * M6-P5: A SUBAGENT'S ROW IS NOT THE TURN'S. The headless stream carries the
+ * rows of any subagent the agent launched, marked by a non-null
+ * `parent_tool_use_id`, and a subagent may run on another model: measured in
+ * test/fixtures/review-dispatch/haiku-with-sonnet-subagent.stream.jsonl:1,
+ * where every top-level row names one model and the subagent's row another.
+ * Counting both would make every review that used a subagent unresolved.
  */
-export function modelsInTranscript(path: string): string[] | undefined {
+export function assistantModelsIn(path: string): AssistantModels | undefined {
   let body: string;
   try {
     body = readFileSync(path, "utf8");
   } catch {
     return undefined;
   }
-  const seen = new Set<string>();
+  const topLevel = new Set<string>();
+  const subagent = new Set<string>();
   for (const line of body.split("\n")) {
     if (line.trim() === "") {
       continue;
@@ -338,16 +353,23 @@ export function modelsInTranscript(path: string): string[] | undefined {
     } catch {
       continue;
     }
-    const typed = row as { type?: unknown; message?: { model?: unknown } };
+    const typed = row as { type?: unknown; message?: { model?: unknown }; parent_tool_use_id?: unknown };
     if (typed.type !== "assistant") {
       continue;
     }
     const model = typed.message?.model;
-    if (typeof model === "string" && model !== "") {
-      seen.add(model);
+    if (typeof model !== "string" || model === "") {
+      continue;
     }
+    const parent = typed.parent_tool_use_id;
+    (parent === undefined || parent === null ? topLevel : subagent).add(model);
   }
-  return [...seen].sort();
+  return { topLevel: [...topLevel].sort(), subagent: [...subagent].sort() };
+}
+
+/** The DISTINCT models on the top-level turn's assistant rows. */
+export function modelsInTranscript(path: string): string[] | undefined {
+  return assistantModelsIn(path)?.topLevel;
 }
 
 /**

@@ -1,0 +1,45 @@
+{
+  "provenance": "Real output of git ls-tree as src/gates/merge-preconditions.ts entryLookupFault runs it at the merge base (git --literal-pathspecs ls-tree -z <rev> -- <entry without its trailing slash>), captured 2026-09-30 by the M6-P5 implementer with git 2.43.0 against the scratch repository test/merge-preconditions.test.ts stages in stageDirectoryEntryRepo: a base holding charter.yaml and src/feature.ts. The three listings the lookup tells apart are a blob (src/feature.ts, a prefix entry naming a FILE), a tree (src, a directory) and nothing (source, a name that is not there). ls-tree prints no commit id, so only <base> in argv is a placeholder and no stdout byte is rewritten. JSON escapes NUL as \\u0000 and TAB as \\t, so this file is ASCII.",
+  "git": "git version 2.43.0",
+  "commands": [
+    {
+      "argv": [
+        "git",
+        "--literal-pathspecs",
+        "ls-tree",
+        "-z",
+        "<base>",
+        "--",
+        "src/feature.ts"
+      ],
+      "exit": 0,
+      "stdout": "100644 blob d4e1bb0cb412200c86b02f548c6208fa348e271e\tsrc/feature.ts\u0000"
+    },
+    {
+      "argv": [
+        "git",
+        "--literal-pathspecs",
+        "ls-tree",
+        "-z",
+        "<base>",
+        "--",
+        "src"
+      ],
+      "exit": 0,
+      "stdout": "040000 tree 4d93e0095a6ae2cdee4501cd137ca558e053c25d\tsrc\u0000"
+    },
+    {
+      "argv": [
+        "git",
+        "--literal-pathspecs",
+        "ls-tree",
+        "-z",
+        "<base>",
+        "--",
+        "source"
+      ],
+      "exit": 0,
+      "stdout": ""
+    }
+  ]
+}

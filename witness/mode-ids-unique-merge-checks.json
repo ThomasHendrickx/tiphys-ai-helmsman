@@ -28,10 +28,10 @@
   "deterministic": true,
   "repeats": 2,
   "consumesExternalOutput": {
-    "program": "scripts/check-dual-review.mjs, the merge-path caller of the dual-review-decorrelation and verdict-pair-approves checks",
+    "program": "bin/tiphys.ts validate --type verdict --context <dir>, which runs the verdict-pair-approves check and so the merge-authority regime reader (scripts/check-dual-review.mjs, the program this witness named before, was deleted by M6-P5, DR-0062)",
     "captures": [
-      "witness/captures/m6-p3-duplicate-mode-id.txt"
+      "witness/captures/m6-p5-merge-duplicate-mode-id.txt"
     ],
-    "provenance": "Captured 2026-09-30 on node v26.6.0 and git 2.43.0 from the repository root at 0553910, over a scratch directory holding the kernel's gate-registry.yaml, schemas/, the charter template retargeted to full, the dual-review fixtures decorrelated-criteria.yaml and shared-family-hazard.yaml, and an assurance-modes.yaml declaring full twice with the weaker copy first; the one alteration, the scratch path written <dir>, is declared in the capture. The named test runs the same script live over the same construction and requires every captured INVALID #/produced-by line verbatim once the scratch path is written <dir>. Required by rule (f) because members 1 and 2 mutate src/checks.ts, which the spawn/parse derivation matches."
+    "provenance": "Captured 2026-09-30 on node v26.6.0 and git 2.43.0 from the M6-P5 worktree with the merge of 3007547 into b074be8 resolved and built, over a scratch directory holding the charter template retargeted to full, the dual-review fixture decorrelated-criteria.yaml, and an assurance-modes.yaml declaring full twice with the weaker copy first; the one alteration, the scratch path written <dir>, is declared in the capture. The named test runs the same command live over the same construction and requires every captured INVALID #/verdict line verbatim once the scratch path is written <dir>. Required by rule (f) because members 1 and 2 mutate src/checks.ts, which the spawn/parse derivation matches."
   }
 }

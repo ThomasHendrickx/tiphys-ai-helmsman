@@ -1,10 +1,14 @@
-# Dual-review decorrelation verdict fixtures (M3-P9 criteria 7 and 7b)
+# Dual-review verdict fixtures (M3-P9 criteria 7 and 7b)
 
-Five verdict documents. They are combined into SETS by
-`test/dual-review.test.ts`, which stages a context directory holding the
-repository's own `assurance-modes.yaml` and a charter, drops the chosen
-verdicts into `delivery/review/`, and runs
-`node scripts/check-dual-review.mjs <dir>` against it.
+Five verdict documents. They are combined into SETS by `test/dual-review.test.ts`,
+`test/verdict-head.test.ts`, `test/merge-preconditions.test.ts` and others, which
+stage a context directory holding the repository's own `assurance-modes.yaml` and
+a charter, drop the chosen verdicts into `delivery/review/`, and run
+`tiphys validate --type verdict` or the merge gate against it. M6-P5 deleted the
+decorrelation check they were first written for (DR-0062): the family of a review
+is now what the kernel observed when it launched the reviewer, recorded under
+`delivery/review/records/`, and the `produced-by` values below are history that
+no reader compares.
 
 WHY THEY LIVE HERE AND NOT UNDER `test/fixtures/`. `witness/` is on this
 phase's declaration and `test/fixtures/` is not

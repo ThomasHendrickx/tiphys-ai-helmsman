@@ -1,0 +1,37 @@
+{
+  "id": "m6-p5-unclaimed-refusal-red",
+  "behavior": "m6-p5-unclaimed-refusal-red",
+  "tests": [
+    "a single change with one counted approving review and one committed FIX-ROUND-NEEDED verdict no record names is red at condition-2 naming it, and so is a pair change"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "      refusing.push({ path, word: typeof word === \"string\" ? word : JSON.stringify(word), head: declared, relation });\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "      status: single.ok && refusals.length === 0 ? \"green\" : \"red\",",
+      "replace": "      status: single.ok ? \"green\" : \"red\","
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    ...refusals,\n",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set.json"
+    ],
+    "provenance": "Real output of the git commands the merge gate runs (the prefix, the NUL-separated name list, the merge base and the ls-tree presence probe), captured 2026-09-29 by the M6-P2 implementer against the repository test/merge-preconditions.test.ts stages in stageShrinkRepo, which re-runs every command and compares git's live output with the recorded stdout. The named test reads the committed charter, verdicts and kernel review records through the same git-backed reads on a repository it stages and commits itself."
+  }
+}

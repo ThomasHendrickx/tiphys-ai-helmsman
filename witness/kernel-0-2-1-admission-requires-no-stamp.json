@@ -2,21 +2,21 @@
   "id": "kernel-0-2-1-admission-requires-no-stamp",
   "behavior": "admission-ignores-stamp-admits-0-2-0-verdict",
   "tests": [
-    "a real-shaped 0.2.0 verdict pair, with a head and no stamp, is admitted by check-dual-review and merge-preconditions, and so is the same pair stamped old or current"
+    "a real-shaped 0.2.0 verdict pair, with a head and no stamp, is counted by merge-preconditions through its kernel records, and so is the same pair stamped old or current"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
-      "file": "src/checks.ts",
-      "find": "    if (declaresNoHead(candidate.record)) {",
-      "replace": "    if (declaresNoHead(candidate.record) || !(\"tiphys-version\" in (candidate.record ?? {}))) {"
+      "file": "src/review.ts",
+      "find": "    if (verdict === undefined) {",
+      "replace": "    if (verdict === undefined || !(\"tiphys-version\" in (verdict.record as object))) {"
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    if (declaresNoHead(entry.record)) {",
-      "replace": "    if (declaresNoHead(entry.record) || !(\"tiphys-version\" in entry.record)) {"
+      "find": "    verdictApprovalFaults({ path: entry.verdictPath, record: entry.verdict }, phase, entry.record.head).map(",
+      "replace": "    [...(\"tiphys-version\" in (entry.verdict as object) ? [] : [{ pointer: \"#\", message: \"carries no tiphys-version\" }]), ...verdictApprovalFaults({ path: entry.verdictPath, record: entry.verdict }, phase, entry.record.head)].map("
     }
   ],
   "deterministic": true,
@@ -26,6 +26,6 @@
     "captures": [
       "witness/captures/kernel-0-2-1-history-git.json"
     ],
-    "provenance": "Real output of git diff -z --no-renames --name-only base...head (the name list classifyReviewBudget reads), captured 2026-09-23 with git 2.43.0 against the scratch repositories test/history-compat.test.ts stages; the named tests stage them again and compare git's live output with the recorded stdout, commit shas spelled by staging name, before trusting either gate."
+    "provenance": "Real output of git diff -z --no-renames --name-only base...head (the name list classifyReviewBudget reads), captured with git 2.43.0 against the scratch repositories test/history-compat.test.ts stages: budget-name-list-with-records (captured 2026-09-30 by M6-P5) is that staging with the kernel review record for each verdict committed beside it. The named tests stage it again and compare git's live output with the recorded stdout, commit shas spelled by staging name, before trusting the gate."
   }
 }

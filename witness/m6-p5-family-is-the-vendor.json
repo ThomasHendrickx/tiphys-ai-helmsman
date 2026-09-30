@@ -1,0 +1,31 @@
+{
+  "id": "m6-p5-family-is-the-vendor",
+  "behavior": "m6-p5-record",
+  "tests": [
+    "a dispatch with a stub executor replaying a real captured stream writes a record with the head, the observed model, family anthropic, cost and token usage"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/vocabulary.ts",
+      "find": "export const FAMILY_PREFIXES: readonly (readonly [string, string])[] = [[\"claude-\", \"anthropic\"]];",
+      "replace": "export const FAMILY_PREFIXES: readonly (readonly [string, string])[] = [\n  [\"claude-opus\", \"opus\"],\n  [\"claude-sonnet\", \"sonnet\"],\n  [\"claude-haiku\", \"haiku\"],\n];"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "  const family = observation.model === null ? UNKNOWN_FAMILY : (executor.familyOf(observation.model) ?? UNKNOWN_FAMILY);",
+      "replace": "  const family = observation.model === null ? UNKNOWN_FAMILY : (observation.model.split(\"-\")[1] ?? UNKNOWN_FAMILY);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "claude",
+    "captures": [
+      "test/fixtures/review-dispatch/haiku-with-sonnet-subagent.stream.jsonl"
+    ],
+    "provenance": "Real stdout of the harness CLI in headless stream mode (claude -p <prompt> --output-format stream-json --verbose --model claude-haiku-4-5-20251001), Claude Code 2.1.285, captured 2026-09-30 by the M6-P5 implementer in this container with a subagent forced onto claude-sonnet-5-5; the two alterations are declared in the README beside it. The named test replays it through the plugin's own review executor with only its command swapped for replay.mjs, so the observation and the result-row reading run on the harness's real output and the kernel's dispatch runs on what they return."
+  }
+}

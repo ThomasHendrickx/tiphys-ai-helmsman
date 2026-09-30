@@ -21,7 +21,7 @@
     {
       "kind": "mutation",
       "file": "schemas/charter.schema.json",
-      "find": "          \"items\": { \"type\": \"string\", \"minLength\": 1, \"pattern\": \"^(?!/)(?!\\\\./)(?!.*//)(?!(?:.*/)?\\\\.{1,2}(?:/|$))(?=.*\\\\S)[^*?\\\\[]+$\" }",
+      "find": "          \"items\": { \"type\": \"string\", \"minLength\": 1, \"pattern\": \"^(?!/)(?!\\\\./)(?!.*//)(?!(?:.*/)?\\\\.{1,2}(?:/|$))(?!\\\\s)(?!.*\\\\s$)[^*?\\\\[\\\\\\\\]+$\" }",
       "replace": "          \"items\": { \"type\": \"string\", \"minLength\": 1, \"pattern\": \"\\\\S\" }"
     }
   ],

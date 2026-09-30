@@ -115,7 +115,8 @@ function baselineVerdict(): Record<string, unknown> {
        fixtures are modelled on. */
     head: "dcbe6704813e861736c8d394dca35f7dc31b4f93",
     verdict: "APPROVE",
-    "produced-by": "a model family recorded here because DR-0012 compares two reviews on it",
+    /* History: verdicts written before M6-P5 carry this line (DR-0054). */
+    "produced-by": "a model family a reviewer recorded before M6-P5",
     framing: "criteria-contract",
     "review-contract": "criteria",
     findings: [],
@@ -362,30 +363,23 @@ test("a low finding with no concrete-fix is rejected too, which is stronger than
 });
 
 /* ------------------------------------------------------------------ */
-/* Criterion 4(c): no produced-by, no framing                           */
+/* Criterion 4(c): produced-by is history, framing is required          */
 /* ------------------------------------------------------------------ */
 
-test("a verdict with no produced-by is rejected, and is accepted once produced-by leaves required", () => {
-  const instance = baselineVerdict();
-  delete instance["produced-by"];
-  assertKeywordGuards(
-    instance,
-    (schema) => {
-      schema["required"] = (schema["required"] as string[]).filter(
-        (name) => name !== "produced-by",
-      );
-    },
-    /^INVALID #\/produced-by required property produced-by is missing$/,
-  );
+test("a verdict with no produced-by is valid, and a committed verdict that still carries one validates as history", () => {
+  /* M6-P5 (DR-0062): the family of a review is what the kernel observed when
+     it launched the reviewer, in the review record, so a reviewer writes no
+     produced-by. A verdict committed before that carries one and must still
+     load (DR-0054), so the property stays and only `required` lost it. */
+  const without = baselineVerdict();
+  delete without["produced-by"];
+  assert.deepEqual(validateModule.validateToLines(verdictSchema(), without), []);
+  const history = baselineVerdict();
+  assert.equal(typeof history["produced-by"], "string");
+  assert.deepEqual(validateModule.validateToLines(verdictSchema(), history), []);
 });
 
 test("a verdict with no framing is rejected, and is accepted once framing leaves required", () => {
-  /* TWO STRUCTURALLY DIFFERENT MEMBERS of one class (CLAUDE.md, one witness
-     is not a class): both fields are guarded by the same keyword on the same
-     object, and a witness that removed only one would leave the other
-     unmeasured. They are two entries in the same `required` list, which is
-     the weakest kind of difference, so it is stated as such rather than
-     claimed as strong decorrelation. */
   const instance = baselineVerdict();
   delete instance["framing"];
   assertKeywordGuards(

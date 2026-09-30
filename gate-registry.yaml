@@ -1,9 +1,8 @@
-# The gate registry: the only gate list (DR-0061, M6-P3). CI runs
+# The gate registry, the only gate list (DR-0061). CI runs
 #   node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full
 #     --event <pull_request|push> --evidence <dir> --base <sha> --head <sha>
 # on each event (plus --phase on a pull request); `--event` selects the gates
-# whose `events` name it. Every gate names the failure it `prevents` and runs
-# on code, a built artefact or git state (DR-0061 (b)).
+# whose `events` name it.
 #
 # `applicability: conditional` marks a gate whose precondition is legitimately
 # unmet in a normal run (a non-phase branch, a diff touching no code, a change
@@ -55,7 +54,8 @@ gates:
 
   - id: typecheck
     prevents: a type error in src/, test/ or plugin/
-    # --force, so the unit count (the files tsc lists) does not depend on dist/.
+    # The gate runs tsc -b with --force, so the unit count (the files tsc
+    # lists) does not depend on dist/.
     command: [node, src/gates/gate-classes.ts, typecheck, --project, tsconfig.src.json, --project, tsconfig.test.json, --project, plugin/tsconfig.json]
     unitLabel: source files type-checked
     applicability: required
@@ -110,9 +110,7 @@ gates:
 
   - id: merge-preconditions
     prevents: a merge without the reviews its tier owes, or without green CI on the merged head
-    # Reads its GitHub API token from the variable it is told to (the
-    # pull-request step sets GH_TOKEN), and reports error, never green, when it
-    # cannot reach the API.
+    # Reports error, never green, when it cannot reach the GitHub API.
     command: [node, src/gates/merge-preconditions.ts, --token-env, GH_TOKEN]
     unitLabel: merge preconditions evaluated
     applicability: conditional
@@ -123,7 +121,7 @@ gates:
     precondition:
       id: merge-preconditions-review-budget-decidable
       kind: command-exit-zero
-      command: [node, scripts/check-dual-review.mjs, --precondition, --review-budget, .]
+      command: [node, src/gates/merge-preconditions.ts, --precondition]
 
 # Commands and modules whose operations can destroy work. The red-witness gate
 # derives a witness class from this list.

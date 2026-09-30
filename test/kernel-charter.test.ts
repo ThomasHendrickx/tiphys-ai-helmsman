@@ -27,6 +27,11 @@
  * So "present but invalid" is loud on the fields the gate reads and SILENT on
  * every other required field, and the schema arm below is what closes that.
  *
+ * M6-P5 DELETED `check-dual-review` (DR-0062). The reader of the charter's
+ * regime is now `verdict-pair-approves`, run by `tiphys validate --type verdict
+ * --context <dir>`, and these tests drive that command instead. The dangerous
+ * states are unchanged: no charter, and a charter present but unusable.
+ *
  * NO COUNTS ANYWHERE. Every assertion here names a string, a mode id or a
  * required property; nothing pins how many verdicts, modes or fields exist,
  * because those registries grow (binding convention 5).
@@ -91,7 +96,6 @@ for (const name of INHERITED_REPOSITORY_ENV) {
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const cliEntry = join(repoRoot, "bin", "tiphys.ts");
-const scriptPath = join(repoRoot, "scripts", "check-dual-review.mjs");
 const fixturesDir = join(repoRoot, "witness", "fixtures", "dual-review");
 const charterPath = join(repoRoot, "charter.yaml");
 
@@ -123,11 +127,21 @@ const yamlModule = (await import("yaml")) as unknown as {
   stringify: (value: unknown) => string;
 };
 
+/** The merge gate's regime reader: undefined when the regime can be determined. */
+const checksModule = (await import(new URL("../src/checks.ts", import.meta.url).href)) as {
+  missingRegimeDocument: (directory: string) => { reason: string } | undefined;
+};
+
+/**
+ * `tiphys validate --type verdict` over one dual-review fixture with `directory`
+ * as the context, which runs `verdict-pair-approves` and so reads the regime.
+ */
 function runScript(directory: string): { status: number; output: string } {
-  const run = spawnSync(process.execPath, [scriptPath, directory], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  });
+  const run = spawnSync(
+    process.execPath,
+    [cliEntry, "validate", "--type", "verdict", join(fixturesDir, DECORRELATED_PAIR[0] as string), "--context", directory],
+    { cwd: repoRoot, encoding: "utf8" },
+  );
   return { status: run.status ?? -1, output: `${run.stdout}${run.stderr}` };
 }
 
@@ -190,13 +204,8 @@ test("the repository root carries a charter, so the merge check can determine th
   assert.ok(existsSync(charterPath), "charter.yaml is absent from the repository root");
   const run = runScript(".");
   assert.doesNotMatch(run.output, REGIME_UNKNOWN, run.output);
-  /* M6-P6: the root charter declares a single review family, so with fewer
-     than two verdicts in the corpus the check errors with DR-0038's count
-     refusal. That refusal is reached only AFTER the regime documents were
-     found, so it is the one error this test accepts. */
-  if (run.status === 21) {
-    assert.match(run.output, /declares a single review family and only [01] verdict document\(s\) were read/, run.output);
-  }
+  assert.doesNotMatch(run.output, /does not define, so its merge-authority is unknown/, run.output);
+  assert.equal(checksModule.missingRegimeDocument(repoRoot), undefined, "merge-preconditions would refuse the root");
 });
 
 test("with a committed pair of verdicts the root charter is what lets the check reach a verdict", () => {
@@ -210,8 +219,7 @@ test("with a committed pair of verdicts the root charter is what lets the check 
        sentences are asserted apart. */
     const reached = runScript(dir);
     assert.equal(reached.status, 0, reached.output);
-    assert.match(reached.output, /registered check\(s\) named dual-review-decorrelation ran over/);
-    assert.match(reached.output, /are distinct on/, reached.output);
+    assert.match(reached.output, /REPORT verdict-pair-approves 2 verdict\(s\) for phase M3-P9 at head [0-9a-f]{40} read APPROVE/, reached.output);
     assert.doesNotMatch(reached.output, /is not a delegated grant/, reached.output);
   } finally {
     rmSync(dir, { recursive: true, force: true });
@@ -229,10 +237,16 @@ test("removing the root charter from that same context makes the merge check err
   try {
     const before = runScript(dir);
     assert.equal(before.status, 0, `the control arm was not green: ${before.output}`);
+    assert.equal(checksModule.missingRegimeDocument(dir), undefined, "the control arm is already refused");
     rmSync(join(dir, "charter.yaml"));
-    const refused = runScript(dir);
-    assert.equal(refused.status, 21, refused.output);
-    assert.match(refused.output, REGIME_UNKNOWN_NAMING_ITS_SOURCE, refused.output);
+    /* merge-preconditions reports error through this reader, and the pair
+       check says it did not evaluate the regime and names that gate. */
+    const refused = checksModule.missingRegimeDocument(dir);
+    assert.notEqual(refused, undefined, "a context with no charter was not refused");
+    assert.match(refused?.reason ?? "", REGIME_UNKNOWN_NAMING_ITS_SOURCE);
+    const reported = runScript(dir);
+    assert.match(reported.output, /were NOT evaluated against a merge-authority regime; the merge gate merge-preconditions refuses such a directory outright/, reported.output);
+    assert.doesNotMatch(reported.output, /read APPROVE/, reported.output);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -271,7 +285,7 @@ test("a root charter that is present and unusable fails loudly, and two differen
 });
 
 test("the root charter validates, and a copy missing any one required key does not", () => {
-  /* THE SCHEMA ARM, which is the half `check-dual-review` deliberately does not
+  /* THE SCHEMA ARM, which is the half the regime reader deliberately does not
      cover. The required list is READ FROM THE SCHEMA rather than written out
      here, so a field a later phase adds to the schema is exercised without this
      test being edited, and nothing here is a count. */
@@ -316,7 +330,7 @@ test("the root charter's declared mode is one assurance-modes.yaml defines, by n
   /* BY NAME, NEVER BY COUNT. This reads both shipped documents and asserts the
      charter's `delivery-mode` and `assurance-tier` each resolve to a declared
      mode id. It stays true as modes are added and reddens if the charter ever
-     names one that was removed, which is the drift `check-dual-review` would
+     names one that was removed, which is the drift the regime reader would
      otherwise only reveal on a pull request that happened to carry verdicts. */
   const charter = yamlModule.parse(readFileSync(charterPath, "utf8")) as Record<string, unknown>;
   const modes = yamlModule.parse(
@@ -331,6 +345,23 @@ test("the root charter's declared mode is one assurance-modes.yaml defines, by n
       `charter.yaml ${field} is ${String(value)}, which assurance-modes.yaml does not declare`,
     );
   }
+});
+
+test("the charter schema admits a review-families declaration and refuses one without a reason", () => {
+  /* Moved here from test/single-family-exception.test.ts by M6-P5. The
+     declaration is now read by the merge gate's condition-1 (DR-0038). */
+  const schema = JSON.parse(
+    readFileSync(join(repoRoot, "schemas", "charter.schema.json"), "utf8"),
+  ) as {
+    properties: Record<string, { required?: string[]; properties?: Record<string, unknown> }>;
+    required: string[];
+  };
+  const field = schema.properties["review-families"];
+  assert.notEqual(field, undefined, "the charter schema declares no review-families");
+  assert.deepEqual((field as { required: string[] }).required.slice().sort(), ["available", "reason"]);
+  /* OPTIONAL AT THE ROOT, deliberately: an absent declaration is the normal
+     case and leaves the cross-family requirement applying unchanged. */
+  assert.ok(!schema.required.includes("review-families"), "review-families became required");
 });
 
 test("this phase's new behaviors are registered in test/behaviors.json", () => {

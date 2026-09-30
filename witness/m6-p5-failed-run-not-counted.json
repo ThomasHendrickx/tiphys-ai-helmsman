@@ -1,0 +1,31 @@
+{
+  "id": "m6-p5-failed-run-not-counted",
+  "behavior": "m6-p5-failed-run-not-counted",
+  "tests": [
+    "a record whose executor exited nonzero is not counted, so a pair change with one such record is red naming 1 of 2"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "    if (record.executorExitCode !== 0) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "\"so the kernel recorded a failed run and it does not count\",\n      });\n      continue;\n",
+      "replace": "\"so the kernel recorded a failed run and it does not count\",\n      });\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set.json"
+    ],
+    "provenance": "Real output of the git commands the merge gate runs (the prefix, the NUL-separated name list, the merge base and the ls-tree presence probe), captured 2026-09-29 by the M6-P2 implementer against the repository test/merge-preconditions.test.ts stages in stageShrinkRepo, which re-runs every command and compares git's live output with the recorded stdout. The named test reads the committed charter, verdicts and kernel review records through the same git-backed reads on a repository it stages and commits itself."
+  }
+}

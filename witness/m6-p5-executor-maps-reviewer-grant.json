@@ -1,0 +1,42 @@
+{
+  "id": "m6-p5-executor-maps-reviewer-grant",
+  "behavior": "m6-p5-executor-maps-reviewer-grant",
+  "tests": [
+    "the Claude Code executor maps the reviewer grant to exactly its permission flags: acceptEdits, an allow-list anchored at the review directory with one Bash rule per granted command, and a deny-list for push and network tools; a grant it cannot map throws"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "plugin/src/review.ts",
+      "find": "\"--model\", model, ...permissionArgs(grant)];",
+      "replace": "\"--model\", model];"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/review.ts",
+      "find": "    allowed.push(\"Edit(./**)\");",
+      "replace": "    allowed.push(\"Write\", \"Edit\");"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/review.ts",
+      "find": "    \"WebFetch\",\n    \"WebSearch\",\n",
+      "replace": ""
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/review.ts",
+      "find": "  if (grant.push !== false) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "plugin/src/review.ts",
+      "find": "    allowed.push(`Bash(${words.join(\" \")} *)`);",
+      "replace": "    allowed.push(`Bash(${words.join(\" \")}*)`);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

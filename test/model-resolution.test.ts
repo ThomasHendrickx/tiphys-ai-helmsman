@@ -50,7 +50,6 @@ const kernel = (await import(
   ) =>
     | { kind: "compared"; differ: boolean; families: [string, string] }
     | { kind: "refused"; reason: string };
-  producedByFromRecord: (record: Record<string, unknown>) => string | undefined;
 };
 
 const writer = (await import(
@@ -440,9 +439,15 @@ test(
       },
     });
 
+    /* M6-P5 (DR-0062): a family is the VENDOR, so two models of one vendor
+       compare as one family, and a token of another vendor differs. */
     const compared = kernel.compareResolvedFamilies(mine, sibling);
     assert.equal(compared.kind, "compared");
-    assert.equal(compared.kind === "compared" ? compared.differ : undefined, true);
+    assert.equal(compared.kind === "compared" ? compared.differ : undefined, false);
+    const otherVendor = clone(sibling);
+    (otherVendor["resolved"] as Record<string, unknown>)["family"] = "another-vendor";
+    const differs = kernel.compareResolvedFamilies(mine, otherVendor);
+    assert.equal(differs.kind === "compared" ? differs.differ : undefined, true);
 
     const same = kernel.compareResolvedFamilies(mine, clone(mine));
     assert.equal(same.kind === "compared" ? same.differ : undefined, false);
@@ -555,7 +560,7 @@ test(
      * and there is no kernel-side counterpart to ask.
      */
     assert.ok((vocabulary.modelForTier("cheaper") ?? "").length > 0);
-    assert.equal(vocabulary.familyOf(OBSERVED_MODEL), "opus");
+    assert.equal(vocabulary.familyOf(OBSERVED_MODEL), "anthropic");
     assert.equal(vocabulary.familyOf("a-model-from-another-vendor"), undefined);
     assert.equal(Object.hasOwn(kernel, "familyOf"), false);
     assert.equal(Object.hasOwn(kernel, "modelForTier"), false);
@@ -953,74 +958,6 @@ test(
     assert.equal(unconsultedObservation["consulted"], false);
     assert.equal(unconsultedObservation["configPath"], undefined);
     assert.equal(unconsultedObservation["configPermission"], undefined);
-  },
-);
-
-/* ------------------------------------------------------------------ */
-/* Criterion 8: the family token reaches the verdict                    */
-/* ------------------------------------------------------------------ */
-
-test(
-  "the family token copied into a verdict equals the record's byte for byte",
-  () => {
-    const record = pluginRecord({
-      observation: {
-        kind: "observed",
-        source: "transcript:/a.jsonl",
-        model: OBSERVED_MODEL,
-        detail: "one distinct model",
-      },
-    });
-    const family = kernel.producedByFromRecord(record);
-    assert.notEqual(family, undefined);
-    const token = family as string;
-
-    /*
-     * BYTE FOR BYTE, ASSERTED AS BYTES. A copy that trimmed, lowercased or
-     * prefixed the token would satisfy every prose reading of "reaches the
-     * verdict" and would break the one comparison the token exists for, so the
-     * comparison here is over the encoded bytes rather than over the strings.
-     */
-    const verdict = {
-      kind: "verdict",
-      phase: "M4-P7",
-      head: "0".repeat(40),
-      verdict: "APPROVE",
-      "produced-by": token,
-      framing: "criteria-contract",
-      "review-contract": "criteria",
-      findings: [],
-      criteria: [
-        {
-          id: "8",
-          quote: "Closeout copies the family token into the verdict.",
-          evidence: ["test/model-resolution.test.ts"],
-          met: true,
-        },
-      ],
-      "deviations-judged": [],
-    };
-    assert.deepEqual(
-      Buffer.from(verdict["produced-by"], "utf8"),
-      Buffer.from(
-        ((record["resolved"] as Record<string, unknown>)["family"] as string),
-        "utf8",
-      ),
-    );
-
-    /* The copied value is accepted where a verdict carries it, checked against
-       the shipped verdict schema rather than against this test's idea of it. */
-    const verdictSchema = JSON.parse(
-      readFileSync(join(repoRoot, "schemas", "verdict.schema.json"), "utf8"),
-    ) as Record<string, unknown>;
-    assert.deepEqual(validateModule.validateToLines(verdictSchema, verdict), []);
-
-    /* An unresolved record has no token to copy, and says so rather than
-       handing the verdict an empty string that would validate. */
-    const unresolved = pluginRecord({
-      observation: { kind: "unresolved", reason: "the transcript was empty at hook time" },
-    });
-    assert.equal(kernel.producedByFromRecord(unresolved), undefined);
   },
 );
 

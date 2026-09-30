@@ -9,14 +9,14 @@
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    const read = readReviewCorpus(contextDirectory, head, budget.mergeBase);",
-      "replace": "    const read = readReviewCorpus(contextDirectory, head);"
+      "find": "    const read = readReviewCorpus(contextDirectory, head, phase, budget.mergeBase);",
+      "replace": "    const read = readReviewCorpus(contextDirectory, head, phase);"
     },
     {
       "kind": "mutation",
-      "file": "src/checks.ts",
-      "find": "  return contained.kind === \"yes\" ? { kind: \"on-the-base\", mergeBase } : relation;",
-      "replace": "  return relation;"
+      "file": "src/review.ts",
+      "find": "      record.head,\n      input.mergeBase,\n",
+      "replace": "      record.head,\n      undefined,\n"
     }
   ],
   "deterministic": true,

@@ -1,0 +1,49 @@
+{
+  "id": "m6-p5-read-failure-arms-pair",
+  "behavior": "m6-p5-read-failure-arms-pair",
+  "tests": [
+    "a charter or a declared manifest that git cannot show as one regular file, a charter deleted or unparseable at the head, each classify the change pair"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  /* A charter git cannot show as one regular file is an INVALID declaration,\n     never an empty one (CR-M6P2A-08). */\n  const charterReading: RuntimeSetReading =\n    charterBlob.kind === \"error\"\n      ? { kind: \"invalid\", reason: charterBlob.reason }",
+      "replace": "  /* A charter git cannot show as one regular file is an INVALID declaration,\n     never an empty one (CR-M6P2A-08). */\n  const charterReading: RuntimeSetReading =\n    charterBlob.kind === \"error\"\n      ? { kind: \"declared\", set: { paths: [], manifests: [], versionPins: [] } }"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "      /* A side git could not show as one regular file (a symlink, a submodule). */\n      return { tier: \"pair\", reason: \"the charter changed and its two sides were not read, fail closed\" };",
+      "replace": "      /* A side git could not show as one regular file (a symlink, a submodule). */\n      return { tier: \"single\", reason: \"the charter changed and its two sides were not read, fail closed\" };"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "      /* Absent at the merge base or deleted at the head. */\n      return {\n        tier: \"pair\",",
+      "replace": "      /* Absent at the merge base or deleted at the head. */\n      return {\n        tier: \"single\","
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "      /* A side that does not parse. */\n      return {\n        tier: \"pair\",",
+      "replace": "      /* A side that does not parse. */\n      return {\n        tier: \"single\","
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "      /* Unreadable at the merge base or the head (CR-M6P2A-08, CR-M6P2B-09). */\n      return { tier: \"pair\", reason: \"a declared manifest whose two sides were not read, fail closed\" };",
+      "replace": "      /* Unreadable at the merge base or the head (CR-M6P2A-08, CR-M6P2B-09). */\n      return { tier: \"single\", reason: \"a declared manifest whose two sides were not read, fail closed\" };"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p5-git-unreadable-sides.json"
+    ],
+    "provenance": "Real output of git ls-tree as blobAt in src/gates/merge-preconditions.ts runs it on the side each arm makes unreadable or absent, captured 2026-09-30 by the M6-P5 implementer with git 2.43.0 against the repositories test/merge-preconditions.test.ts stages in stageReadFailure: mode 120000 blob for a symlinked charter or manifest, nothing for a deleted charter. The named test replays each arm's command and compares git's live output with the recorded stdout before it asks the shipped classifier."
+  }
+}

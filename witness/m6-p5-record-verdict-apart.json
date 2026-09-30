@@ -1,0 +1,31 @@
+{
+  "id": "m6-p5-record-verdict-apart",
+  "behavior": "m6-p5-record-verdict-apart",
+  "tests": [
+    "a verdict placed in the records directory is neither a verdict nor a record, and a record placed beside the verdicts is neither a record nor a verdict"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    listed.paths.filter((path) => !path.startsWith(recordsPrefix)),",
+      "replace": "    listed.paths,"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "  const listed = listSourceFiles(contextDirectory, source, REVIEW_RECORDS_DIRECTORY);",
+      "replace": "  const listed = listSourceFiles(contextDirectory, source, \"delivery/review\");"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set.json"
+    ],
+    "provenance": "Real output of the git commands the merge gate runs (the prefix, the NUL-separated name list, the merge base and the ls-tree presence probe), captured 2026-09-29 by the M6-P2 implementer against the repository test/merge-preconditions.test.ts stages in stageShrinkRepo, which re-runs every command and compares git's live output with the recorded stdout. The named test reads the committed verdicts and kernel review records through the same git-backed corpus source on a repository it stages and commits itself."
+  }
+}

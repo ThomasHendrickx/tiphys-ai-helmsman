@@ -1,0 +1,37 @@
+{
+  "id": "m6-p5-unclaimed-refusal-red-without-base",
+  "behavior": "m6-p5-unclaimed-refusal-red-without-base",
+  "tests": [
+    "without --base, a head whose only committed verdict reads FIX-ROUND-NEEDED and no record names it is red at condition-2 naming the refusal, while an unclaimed APPROVE alone stays not-applicable"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "      if (refusals.length > 0) {\n        rows.push(selectionRow(review, head, budget));\n",
+      "replace": "      if (false) {\n        rows.push(selectionRow(review, head, budget));\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  return review.count.refusing.map(\n",
+      "replace": "  return [].map(\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "      refusing.push({ path, word: typeof word === \"string\" ? word : JSON.stringify(word), head: declared, relation });\n",
+      "replace": ""
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set.json"
+    ],
+    "provenance": "Real output of the git commands the merge gate runs (the prefix, the NUL-separated name list, the merge base and the ls-tree presence probe), captured 2026-09-29 by the M6-P2 implementer against the repository test/merge-preconditions.test.ts stages in stageShrinkRepo, which re-runs every command and compares git's live output with the recorded stdout. The named test reads the committed charter, verdicts and kernel review records through the same git-backed reads on a repository it stages and commits itself, and relates the refusing verdict's head to the audited head through git's own ancestry answer."
+  }
+}

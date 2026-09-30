@@ -60,21 +60,6 @@
             "enum": ["money-path", "architecture", "investigation", "review"]
           }
         },
-        "tier-by-review-tier": {
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["pair", "single"],
-          "properties": {
-            "pair": {
-              "type": "string",
-              "enum": ["strongest", "cheaper"]
-            },
-            "single": {
-              "type": "string",
-              "enum": ["strongest", "cheaper"]
-            }
-          }
-        },
         "charter-override": {
           "type": "string",
           "enum": ["allowed", "forbidden"]
@@ -82,7 +67,6 @@
         "review-model-family": {
           "type": "string",
           "enum": [
-            "must-differ-from-sibling-review",
             "must-differ-from-previous-round",
             "unconstrained"
           ]

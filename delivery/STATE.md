@@ -5,7 +5,7 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-## M6 standing at 2026-09-30, 21:00 UTC, `main` at a8ddf62
+## M6 standing at 2026-09-30, 21:10 UTC, `main` at b0ed202
 
 Plan: delivery/plan/m6-review-and-rule-economy.md:1.
 
@@ -14,10 +14,11 @@ Plan: delivery/plan/m6-review-and-rule-economy.md:1.
 | M6-P1, decisions and plan | #227 | cd2dafe | green |
 | M6-P2, review tier follows the diff | #228 | a726478 | green |
 | M6-P3, removal and admission, one gate list | #229 | 65d4ca5 | gates 36762915815 success |
-| M6-P8, pull-request CI runs each check once | #230 | 3fa602c | gates 36771355583 (full red-witness sweep) |
-| M6-P4, acceptance criteria are tests | #231 | a8ddf62 | pending |
+| M6-P8, pull-request CI runs each check once | #230 | 3fa602c | gates 36771355583 cancelled by the M6-P4 merge (T-009) |
+| M6-P4, acceptance criteria are tests | #231 | a8ddf62 | gates 36776060014 cancelled by the M6-P6 merge (T-009) |
+| M6-P6, environment script, CLAUDE.md rewrite | #232 | b0ed202 | gates 36777401327 success (suite 1279 pass; red-witness not-applicable, no src/ change; M1 exit test green); the full stored-witness sweep runs on the next push that changes src/ |
 
-Landing order next: M6-P6, M6-P5, M6-P7. PR CI for M6-P8 took 7.5 minutes (was about 45).
+Landing order next: M6-P5, M6-P7. Merging without waiting for each push run (T-009): the last `main` head's push run is verified. PR CI for M6-P8 took 7.5 minutes (was about 45).
 
 ## M5 standing at 2026-09-24, 09:15 UTC, `main` at 2c49ab3
 
