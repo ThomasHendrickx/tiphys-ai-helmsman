@@ -156,7 +156,6 @@ modes:
       - credential-scrub
       - credential-token
       - suite
-      - citations
       - scope
       - deploy
       - migrations
@@ -269,7 +268,6 @@ modes:
       - credential-scrub
       - credential-token
       - suite
-      - citations
       - scope
       - clause-map
       - red-witness

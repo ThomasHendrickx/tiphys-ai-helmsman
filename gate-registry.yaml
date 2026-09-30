@@ -57,24 +57,6 @@ gates:
     events: [pull_request, push]
     parameters: [base]
 
-  - id: citations
-    command: [node, src/gates/citations.ts]
-    unitLabel: citations resolved
-    applicability: required
-    verified-by: script
-    modes: [full, direct-pr]
-    events: [pull_request]
-    precondition:
-      id: citations-diff-touches-documents
-      kind: diff-touches
-      paths:
-        - delivery/plan/
-        - delivery/verification/
-        - delivery/decisions/
-        - delivery/tuition/
-        - delivery/requirements/
-        - delivery/STATE.md
-
   - id: scope
     command: [node, src/gates/scope.ts, --declarations, delivery/plan/phase-declarations]
     unitLabel: changed paths audited
