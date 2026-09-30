@@ -43,6 +43,13 @@ thing is not written here, it is not being made.
   delivery/decisions/DR-0065-what-a-kernel-launched-reviewer-may-do.md:1.
   P7 lands last: it extends P5's launcher to a second harness.
 
+- **Speed, from 2026-09-30 evening (owner: "get a move on").** Before a
+  pull request, implementers run `npm run build`, `npm test` and their own
+  witness members by hand. The full `red-witness` sweep (about 45 minutes on
+  this four-CPU box under load) runs once, in CI on the pull request, not
+  again locally. The trade: a red there costs one CI cycle (about 16
+  minutes), against 45 minutes saved on every round.
+
 ## Acceptance criteria are tests, here too
 
 Every criterion below names its `check`: a test name in the suite or a
