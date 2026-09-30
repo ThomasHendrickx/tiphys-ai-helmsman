@@ -1092,5 +1092,8 @@
   "m6-p5-failed-run-not-counted": "a record whose executor exited nonzero is not counted, so a pair change with one such record is red naming 1 of 2",
   "m6-p5-kernel-passes-reviewer-grant": "the dispatch passes the executor exactly the kernel's reviewer grant, and that grant is DR-0065's: read the repository, write only in the review worktree, run node, npm run build and read-only git, no push and no network tools",
   "m6-p5-executor-maps-reviewer-grant": "the Claude Code executor maps the reviewer grant to exactly its permission flags: acceptEdits, an allow-list anchored at the review directory with one Bash rule per granted command, and a deny-list for push and network tools; a grant it cannot map throws",
-  "m6-p5-real-cli-honours-grant-flags": "the real CLI, given the executor's argv for the kernel's grant, ran in acceptEdits without WebFetch or WebSearch, ran node --version and wrote the verdict with no permission denial"
+  "m6-p5-real-cli-honours-grant-flags": "the real CLI, given the executor's argv for the kernel's grant, ran in acceptEdits without WebFetch or WebSearch, ran node --version and wrote the verdict with no permission denial",
+  "m6-p5-dispatch-installs-dependencies": "before launch the kernel runs npm ci in the review worktree of a head with a package-lock.json, so the reviewer finds node_modules in its working directory, and the project checkout gets none",
+  "m6-p5-failed-install-refuses-cleanly": "a failing dependency install refuses before launch with exit 1 and one line naming npm ci, writes no record, and leaves no review worktree registered",
+  "m6-p5-grant-refusal-leaves-nothing": "an executor that cannot map the grant refuses before anything is created: no task directory and no review worktree registered"
 }
