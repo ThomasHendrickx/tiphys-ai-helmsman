@@ -543,6 +543,7 @@ function scopeManifest(dir: string): string {
             command: ["node", scopeEntry, "--declarations", "delivery/plan/phase-declarations"],
             unitLabel: "changed paths audited",
             applicability: "required",
+            prevents: "a fixture failure",
             "verified-by": "script",
             modes: ["full"],
             events: ["pull_request"],

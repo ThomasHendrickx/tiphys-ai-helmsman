@@ -86,6 +86,7 @@ function releaseRegistry(gates: Record<string, unknown>[]): Record<string, unkno
     version: 1,
     preflight: [{ command: ["npm", "ci"], note: "fixture" }],
     gates: gates.map((gate) => ({
+      prevents: "a fixture failure",
       "verified-by": "script",
       modes: ["full"],
       events: ["pull_request", "push"],

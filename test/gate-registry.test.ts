@@ -66,6 +66,7 @@ const yamlModule = (await import("yaml")) as unknown as {
 
 interface RegistryGate {
   id: string;
+  prevents?: string;
   command?: string[];
   unitLabel: string;
   applicability: string;
@@ -169,6 +170,7 @@ function writeFixtureRegistry(dir: string, options: FixtureRegistryOptions): str
     command: ["node", join(dir, "fixture-gate.mjs")],
     unitLabel: "fixture units",
     applicability: options.applicability ?? "required",
+    prevents: "a fixture failure",
     "verified-by": "script",
     modes: options.modes,
     events: ["pull_request"],
@@ -215,6 +217,7 @@ function writeTwoModeFixtureRegistry(
     command: ["node", join(dir, "fixture-gate.mjs")],
     unitLabel: "fixture units",
     applicability: "required",
+    prevents: "a fixture failure",
     "verified-by": "script",
     modes,
     events: ["pull_request"],
@@ -424,6 +427,7 @@ test("a registry run reports zero gates green with an unmet precondition, read f
           command: ["node", join(dir, "fixture-gate.mjs")],
           unitLabel: "fixture units",
           applicability: "conditional",
+          prevents: "a fixture failure",
           "verified-by": "script",
           modes: ["full"],
           events: ["pull_request"],
@@ -753,6 +757,7 @@ test("a clean-room-checklist entry is reported as declared and not executed, and
         id,
         unitLabel: "items checked",
         applicability: "conditional",
+        prevents: "a fixture failure",
         "verified-by": "clean-room-checklist",
         probe: id,
         modes: ["full"],
@@ -1434,6 +1439,7 @@ function writeTwoEventFixtureRegistry(dir: string): string {
     command: ["node", join(dir, "fixture-gate.mjs")],
     unitLabel: "fixture units",
     applicability: "required",
+    prevents: "a fixture failure",
     "verified-by": "script",
     modes: ["full"],
     events,
@@ -1563,5 +1569,46 @@ test("no environment variable changes a production gate's reported status (grep 
         );
       }
     }
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M6-P3: every gate names the failure it prevents (DR-0061 (b))        */
+/* ------------------------------------------------------------------ */
+
+test("the registry schema rejects a gate without prevents and one whose prevents spans two lines, and accepts a one-line prevents", () => {
+  const base = readRegistry(registryPath);
+  const withGate = (gate: Record<string, unknown>): Registry => ({ ...base, gates: [gate as unknown as RegistryGate] });
+  const gate: Record<string, unknown> = {
+    id: "fixture-gate",
+    prevents: "a fixture failure nobody else catches",
+    command: ["node", "gate.mjs"],
+    unitLabel: "units",
+    applicability: "required",
+    "verified-by": "script",
+    modes: ["full"],
+    events: ["pull_request"],
+  };
+  assert.deepEqual(validateModule.validateToLines(readRegistrySchema(), withGate(gate)), []);
+
+  const missing = { ...gate };
+  delete missing["prevents"];
+  const missingLines = validateModule.validateToLines(readRegistrySchema(), withGate(missing));
+  assert.ok(
+    missingLines.some((line) => line.includes("#/gates/0/prevents") && line.includes("missing")),
+    JSON.stringify(missingLines),
+  );
+
+  for (const broken of ["a first line\nand a second", "a first line\r\nand a second", "   ", ""]) {
+    const lines = validateModule.validateToLines(readRegistrySchema(), withGate({ ...gate, prevents: broken }));
+    assert.ok(
+      lines.some((line) => line.startsWith("INVALID #/gates/0/prevents")),
+      `${JSON.stringify(broken)} was accepted: ${JSON.stringify(lines)}`,
+    );
+  }
+
+  /* And the shipped registry carries one on every gate. */
+  for (const entry of base.gates) {
+    assert.equal(typeof entry.prevents, "string", `${entry.id} names no failure it prevents`);
   }
 });

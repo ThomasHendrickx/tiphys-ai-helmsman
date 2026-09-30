@@ -1,22 +1,28 @@
 # The gate registry: the only gate list (DR-0061, M6-P3). CI runs
-# `tiphys gates run --registry gate-registry.yaml --mode full --event <event>`
-# on both events, and `--event` selects the entries whose `events` name it.
+#   node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full
+#     --event <pull_request|push> --evidence <dir> --base <sha> --head <sha>
+# on each event (plus --phase on a pull request); `--event` selects the gates
+# whose `events` name it. Every gate names the failure it `prevents` and runs
+# on code, a built artefact or git state (DR-0061 (b)).
+#
+# `applicability: conditional` marks a gate whose precondition is legitimately
+# unmet in a normal run (a non-phase branch, a diff touching no code, a change
+# with no review evidence yet); the runner fails the run on a `required` gate
+# that is red, vacuous, errors or is not applicable.
 kind: gate-registry
 version: 1
 
-# The ordered local commands every change must pass. Rendered into CLAUDE.md's
-# gate section together with the table below, so that section has no
-# hand-maintained list in it (M3-P2 criterion 6).
 preflight:
   - command: [npm, ci]
     note: install exactly the lockfile, npm only, never pnpm or yarn
   - command: [npm, run, build]
     note: the type gate (tsc -b); emits dist/, which is never committed, and git status must be clean afterwards
-  - command: [node, --test]
-    note: sources are TypeScript run natively via Node type stripping, so the suite needs no prior build
+  - command: [npm, test]
+    note: build first, or the tests that exercise the built CLI skip
 
 gates:
   - id: authored-bytes
+    prevents: a control or non-ASCII byte in a tracked authored file, which turns a source file into binary no diff can review (T-010)
     command: [node, scripts/check-authored-bytes.mjs]
     unitLabel: tracked files checked
     applicability: required
@@ -25,6 +31,7 @@ gates:
     events: [pull_request, push]
 
   - id: credential-scrub
+    prevents: an executor child process inheriting a credential that can open or merge a pull request
     command: [node, src/gates/credentials.ts, credential-scrub]
     unitLabel: credential sources probed
     applicability: required
@@ -33,6 +40,7 @@ gates:
     events: [pull_request, push]
 
   - id: suite
+    prevents: a change that breaks a test, or a registered behavior whose test no longer runs
     command: [node, src/gates/suite.ts, --pin-root, src, --pin-root, bin, --pin-root, test]
     unitLabel: tests reported
     applicability: required
@@ -41,10 +49,30 @@ gates:
     events: [pull_request, push]
     parameters: [base]
 
+  - id: typecheck
+    prevents: a type error in src/, test/ or plugin/
+    # --force, so the unit count (the files tsc lists) does not depend on dist/.
+    command: [node, src/gates/gate-classes.ts, typecheck, --project, tsconfig.src.json, --project, tsconfig.test.json, --project, plugin/tsconfig.json]
+    unitLabel: source files type-checked
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr, local-only]
+    events: [pull_request, push]
+
+  - id: license
+    prevents: a production dependency with a missing or non-allowlisted license in the shipped package
+    command: [node, scripts/license-gate.mjs]
+    unitLabel: production packages licensed
+    applicability: required
+    verified-by: script
+    modes: [full, direct-pr, local-only]
+    events: [pull_request, push]
+
   - id: scope
+    prevents: a phase branch changing a file outside its phase declaration
     command: [node, src/gates/scope.ts, --declarations, delivery/plan/phase-declarations]
     unitLabel: changed paths audited
-    applicability: required
+    applicability: conditional
     verified-by: script
     modes: [full, direct-pr]
     events: [pull_request]
@@ -55,9 +83,10 @@ gates:
       pattern: claude/m[0-9]+-p[0-9]+-.*
 
   - id: red-witness
+    prevents: a src/, bin/ or plugin/ change whose tests stay green when the change is mutated away
     command: [node, src/gates/red-witness.ts]
     unitLabel: witnesses evaluated
-    applicability: required
+    applicability: conditional
     verified-by: script
     modes: [full, direct-pr]
     events: [pull_request]
@@ -70,133 +99,11 @@ gates:
         - bin/
         - plugin/
 
-  # NEW IN M3-P10 (EXT-F-09, DR-0013 clause 5, D-M3-34).
-  - id: license
-    $comment: >-
-      M3-P10 step 2. EXT-F-09's five checks as one command with one exit code:
-      inventory the TRANSITIVE production dependency set, require license
-      metadata on every member, refuse any license off the declared allowlist,
-      require THIRD-PARTY-NOTICES whenever copied third-party code is declared
-      (plan v1 D-1's license note makes this declaration-driven, because
-      protocol reimplementation carries no notice obligation), and require
-      LICENSE in the `npm pack` listing. WHY IT IS A GATE AND NOT ONLY A RELEASE
-      STEP: what ships is a property of every change, not of the release that
-      happens to notice it, and DR-0013 marked a grown production tree the
-      costly direction. WHERE IT RUNS, STATED AS WHAT IS TRUE RATHER THAN AS AN
-      ABSOLUTE (corrected in M3-P10 fix round 1, clean-room finding HRB-7):
-      `.github/workflows/release.yml` runs it as an explicit STEP before
-      publishing, which is the enforcement point because it depends on no
-      lifecycle hook; `prepublishOnly` runs it on every publish path that runs
-      lifecycle scripts, and `--ignore-scripts` skips it, measured on npm
-      11.18.0. The earlier wording said no publish path at all could skip it,
-      and that was false in a file that SHIPS. BOTH EVENTS, and the
-      reason is T-009's: a dependency added on `main` by a merge is exactly the
-      state that matters, and an arm with no witness is the arm that breaks.
-      WHAT EXECUTES IT IN CI, stated rather than implied: `scripts/m2-exit-test.sh`
-      invokes the runner with `--manifest gates.manifest.json` on both arms and
-      that file is on no M3 phase's declaration, so a registry-only gate does not
-      reach the runner. A step in `.github/workflows/gates.yml` carrying no `if:`
-      is what runs it, exactly as for `agent-rules-drift` and
-      `check-agents-references`, and `test/gate-registry.test.ts` records the
-      divergence with its reason so the gap is declared rather than discovered.
-      NOT CONDITIONAL, DELIBERATELY: there is no tree here with no production
-      dependencies, so a precondition would be a not-applicable arm that can
-      never be reached, and M2-C-2 already refuses a green with zero units.
-    command: [node, scripts/license-gate.mjs]
-    unitLabel: production packages licensed
-    applicability: required
-    verified-by: script
-    modes: [full, direct-pr, local-only]
-    events: [pull_request, push]
-
-  # NEW IN M4-P14, entry one of two (R-041, DR-0028, DR-0029, M4-P13).
-  - id: typecheck
-    $comment: >-
-      R-041, retargeted by M4-P13 under DR-0028. The kernel ships the gate
-      CLASS and no command; the project ships the command. This repository is
-      the project, so this is the kernel dogfooding the extension point rather
-      than being exempt from it (DR-0029: "the kernel becomes just another
-      project under the scheme, with its own registry"). The subject is the one
-      M4 has, package.json's build script, which CLAUDE.md already calls the
-      type gate. WHY IT IS NOT THE SAME THING AS THE `build` PREFLIGHT STEP:
-      preflight is an ordered local command with no record, no units and no
-      vacuity protection, so nothing downstream can tell a build that checked
-      the whole project from one that checked nothing. This entry produces a
-      GateResult whose `units` is the count of distinct paths `tsc --listFiles`
-      PRINTED, so a compiler that read no file is error rather than green.
-      WHY `--force` IS IN THE COMMAND: without it `tsc -b` is incremental and
-      the printed file list depends on the state of `dist/`, which would make
-      the unit count a property of the runner's working directory instead of
-      the code. `events: [pull_request]` alone, and it is derived rather than
-      assigned: `scripts/m2-exit-test.sh` declares the push arm's gate set once
-      in MAIN_ONLY_GATES and this id is not in it, so the push arm cannot run
-      it and test/gate-registry.test.ts asserts `events` against that harness.
-    command: [node, src/gates/gate-classes.ts, typecheck, --project, tsconfig.src.json, --project, tsconfig.test.json, --project, plugin/tsconfig.json]
-    unitLabel: source files type-checked
-    applicability: required
-    verified-by: script
-    modes: [full, direct-pr, local-only]
-    events: [pull_request]
-
-  # NEW IN M4-P12 (DR-0012, DR-0036, T-009, R-064, R-065a).
   - id: merge-preconditions
-    $comment: >-
-      M4-P12. The artifact DR-0012's delegated grant has never had: one record
-      per condition, each carrying the HEAD SHA it was evaluated against, so
-      that "the six conditions held" stops being a sentence somebody wrote and
-      becomes a thing a reader can check. It is a PRECONDITION READER and not a
-      merge command: M4-D-09 puts the merge capability in the plugin at cutover
-      and DR-0036 keeps merge authority with the current process for the whole
-      of M4, so the orchestrator reads this record before merging, by hand.
-      CONDITIONS 1 AND 2 ARE COMPOSED, NOT REIMPLEMENTED. M4-P10 shipped
-      `dual-review-decorrelation` and `verdict-pair-approves` as derived checks
-      in src/checks.ts; this gate is a second caller of the same exported
-      primitives and runs those checks BY ID, so deregistering either one is
-      visible here as an `error` rather than absorbed as a pass.
-      `applicability: conditional`, AND THE PRECONDITION IS ANSWERED IN TWO
-      PLACES BECAUSE IT IS TWO QUESTIONS. The declared `command-exit-zero` block
-      is the SAME probe check-dual-review declares, and it answers the question
-      a registry precondition can answer: does this project have any committed
-      review verdict at all. The narrower question, whether a verdict names THIS
-      head, needs the run's `--head`, and a precondition command is spawned
-      without it (src/gates/run.ts:1524 appends the parameter flags to the GATE
-      command, not to the precondition's). So the gate answers that half itself
-      and emits its own PreconditionRecord with `met: false`, which is SC-011's
-      requirement that not-applicable ASSERT an evaluated precondition rather
-      than stand for silence. Both arms are not-applicable and each names which
-      question was unmet, so a reader is never told only that the gate did not
-      run.
-      `events: [pull_request]` ALONE, and it is derived rather than assigned:
-      scripts/m2-exit-test.sh declares the push arm's gate set once in
-      MAIN_ONLY_GATES and this id is not in it, so the push arm cannot run it,
-      and test/gate-registry.test.ts asserts `events` against that harness
-      rather than against a wish. It is ALSO in gates.manifest.json, because CI
-      invokes the runner with `--manifest`: a gate declared only here is
-      declared and never executed, which is a gate that cannot go red.
-      THE API IS PROBED, NEVER ASSUMED. CLAUDE.md standing warning 6 records
-      REST reachability here measured both ways on different days with the
-      cause unestablished, so the gate probes first and reports `error` with
-      units 0 when it cannot reach the API. Never `not-applicable`, never green:
-      M2-C-3, and the hazard this whole entry exists against is a merge
-      precondition check that is green because it could not look.
-      M5-P3: THIS IS THE GATE THAT MAKES AN UNREVIEWED SHIPPED CHANGE FAIL IN
-      CI, because it is the review gate the pull-request bundle runs. `base` is
-      a parameter and the precondition is the review-budget arm, for the reason
-      given on check-dual-review above: the old precondition's NO kept the gate
-      from ever being spawned on a branch with no verdict. With `--base` the
-      review evidence is decided BEFORE any network request, so a change with
-      fewer admitted verdicts than its DR-0063 tier owes (two for pair, one for
-      single) is red whether or not the API answers.
-      AND A RUN INSIDE THE UNCONCLUDED CI OF ITS OWN HEAD IS NOT-APPLICABLE,
-      with every review row green and evidence naming them, because condition
-      4 asks about the CI this run is part of. Before M5-P3 no verdict was ever
-      committed, so the gate never ran in CI and that loop was invisible.
-      `--token-env GH_TOKEN` NAMES the variable the gate reads its API token
-      from, so the read is declared here rather than ambient; the pull-request
-      step of .github/workflows/gates.yml sets it from the job token. Measured
-      2026-09-23: an unauthenticated request from a shared address answered
-      403 "API rate limit exceeded", and an error there would fail every
-      reviewed shipped-code pull request.
+    prevents: a merge without the reviews its tier owes, or without green CI on the merged head
+    # Reads its GitHub API token from the variable it is told to (the
+    # pull-request step sets GH_TOKEN), and reports error, never green, when it
+    # cannot reach the API.
     command: [node, src/gates/merge-preconditions.ts, --token-env, GH_TOKEN]
     unitLabel: merge preconditions evaluated
     applicability: conditional
@@ -209,9 +116,8 @@ gates:
       kind: command-exit-zero
       command: [node, scripts/check-dual-review.mjs, --precondition, --review-budget, .]
 
-# Carried across from gates.manifest.json unchanged. M2-P2 rule (e) DERIVES a
-# witness class from this list rather than trusting an implementer to declare
-# one, so shortening it weakens the red-witness gate.
+# Commands and modules whose operations can destroy work. The red-witness gate
+# derives a witness class from this list.
 destructiveCommands:
   - pool destroy
   - teardown

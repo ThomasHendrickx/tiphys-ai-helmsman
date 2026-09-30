@@ -1421,6 +1421,7 @@ test("mode show lists exactly the gates the registry beside the document selects
       command: ["node", "gate.mjs"],
       unitLabel: "units",
       applicability: "required",
+      prevents: "a fixture failure",
       "verified-by": "script",
       modes,
       events: ["pull_request"],

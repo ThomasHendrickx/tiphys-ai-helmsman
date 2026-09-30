@@ -38,6 +38,7 @@ gates:
   # correctness: the project's unit tests. The adapter runs them and reports
   # the number of tests executed as units.
   - id: unit-tests
+    prevents: a change that breaks one of the project's unit tests
     command: [node, scripts/tiphys-gates/unit-tests.mjs]
     unitLabel: tests executed
     applicability: required
@@ -47,6 +48,7 @@ gates:
 
   # correctness: the project's type check. Units are files checked.
   - id: typecheck
+    prevents: a type error in the project's sources
     command: [node, scripts/tiphys-gates/typecheck.mjs]
     unitLabel: source files type-checked
     applicability: required
@@ -56,6 +58,7 @@ gates:
 
   # The project's lint, with its own threshold. Units are files linted.
   - id: lint
+    prevents: a lint violation over the project's own threshold
     command: [node, scripts/tiphys-gates/lint.mjs]
     unitLabel: files linted
     applicability: required

@@ -196,6 +196,7 @@ function registryDocument(gates: unknown[]): Record<string, unknown> {
             }
           : {};
       return {
+        prevents: "a fixture failure",
         "verified-by": "script",
         modes: ["full"],
         events: ["pull_request", "push"],

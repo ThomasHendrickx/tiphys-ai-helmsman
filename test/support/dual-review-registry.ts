@@ -7,6 +7,7 @@
  */
 export const DUAL_REVIEW_ENTRY = [
   "  - id: check-dual-review",
+  "    prevents: a pair-tier change merged with two reviews from one model family",
   "    command: [node, scripts/check-dual-review.mjs, .]",
   "    unitLabel: review verdicts examined for decorrelation",
   "    applicability: conditional",

@@ -13,6 +13,7 @@ preflight:
     note: install exactly the lockfile
 gates:
   - id: deploy
+    prevents: a fixture failure
     command: [node, src/gates/deploy.ts]
     unitLabel: release verifications satisfied
     applicability: conditional

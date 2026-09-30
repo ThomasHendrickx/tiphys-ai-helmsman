@@ -260,6 +260,7 @@ test("adding a gate to the project's gate-registry.yaml adds its row to the comp
           "    command: [node, scripts/invented.mjs]\n" +
           "    unitLabel: inventions counted\n" +
           "    applicability: required\n" +
+          "    prevents: a fixture failure nobody else catches\n" +
           "    verified-by: script\n" +
           "    modes: [full]\n" +
           "    events: [pull_request]\n" +
