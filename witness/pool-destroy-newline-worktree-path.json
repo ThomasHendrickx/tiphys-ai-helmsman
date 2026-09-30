@@ -9,8 +9,8 @@
     {
       "kind": "mutation",
       "file": "src/pool.ts",
-      "find": "  const listed = runGit(contextDir, [\"worktree\", \"list\", \"--porcelain\", \"-z\"]);\n  if (listed.status === 0) {\n    let currentPath: string | undefined;\n    for (const line of listed.stdout.split(\"\\0\")) {\n      if (line.startsWith(\"worktree \")) {\n        currentPath = line.slice(\"worktree \".length);\n      } else if (line === `branch refs/heads/${branchName}`) {",
-      "replace": "  const listed = runGit(contextDir, [\"worktree\", \"list\", \"--porcelain\"]);\n  if (listed.status === 0) {\n    let currentPath: string | undefined;\n    for (const line of listed.stdout.split(\"\\n\")) {\n      if (line.startsWith(\"worktree \")) {\n        currentPath = line.slice(\"worktree \".length).trim();\n      } else if (line.trim() === `branch refs/heads/${branchName}`) {"
+      "find": "  let argv = [\"worktree\", \"list\", \"--porcelain\", \"-z\"];\n  let separator = \"\\0\";\n  let listed = runGit(contextDir, argv);\n  if (listed.status === 129 && WORKTREE_LIST_Z_UNKNOWN.test(listed.stderr)) {\n    argv = [\"worktree\", \"list\", \"--porcelain\"];\n    separator = \"\\n\";\n    listed = runGit(contextDir, argv);\n  }\n  if (listed.status !== 0) {\n    return { ok: false, detail: `git ${argv.join(\" \")} failed: ${gitFailureLine(listed)}` };\n  }\n  const lines = listed.stdout.split(separator);\n  if (separator === \"\\n\") {\n    const unreadable = lines.find((line) => !PORCELAIN_LINE_BEFORE_Z.test(line));\n    if (unreadable !== undefined) {\n      return {\n        ok: false,\n        detail:\n          `git ${argv.join(\" \")} printed ${JSON.stringify(unreadable)}, which is ` +\n          `no attribute: a worktree path holds a newline, and this git has no -z ` +\n          `to list it by`,\n      };\n    }\n  }\n  return { ok: true, lines };\n",
+      "replace": "  const listed = runGit(contextDir, [\"worktree\", \"list\", \"--porcelain\"]);\n  if (listed.status !== 0) {\n    return { ok: true, lines: [] };\n  }\n  return { ok: true, lines: listed.stdout.split(\"\\n\").map((line) => line.trim()) };\n"
     },
     {
       "kind": "mutation",

@@ -2717,6 +2717,49 @@ test("an honest witness over files whose names git decorates is green: a space i
   assert.equal(outcome.evaluations[0]?.status, "green", reasonsOf(outcome));
 });
 
+/** `count` numbered lines `<prefix>1` to `<prefix><count>`, with the given lines replaced or inserted. */
+function numberedLines(prefix: string, count: number, edit: (lines: string[]) => void = () => {}): string {
+  const lines = Array.from({ length: count }, (_, index) => `${prefix}${String(index + 1)}`);
+  edit(lines);
+  return `${lines.join("\n")}\n`;
+}
+
+test("the phase diff credits every hunk to its own file: a quoted +++ header that also carries git's trailing TAB, and an added line that reads like a header", () => {
+  /* M6-P3 fix round 4, CR-M6P3A-08. git quotes `src/zcaf\303\251 x.ts` for its
+     non-ASCII byte and appends a TAB for its space, so its header is
+     `+++ "b/src/zcaf\303\251 x.ts"<TAB>` (measured on git 2.43.0, in the
+     capture). Unread, that header left the file's hunks on the file before it,
+     src/plain.ts, which has no such lines. The same file adds a line whose
+     text is `++ b/src/plain.ts`, printed `+++ b/src/plain.ts` inside the hunk,
+     which is not a header. */
+  const quoted = "src/zcafé x.ts";
+  const fixture = makeFixture(
+    { "src/plain.ts": numberedLines("p", 10), [quoted]: numberedLines("q", 8) },
+    {
+      "src/plain.ts": numberedLines("p", 10, (lines) => {
+        lines[0] = "p1 changed";
+      }),
+      [quoted]: numberedLines("q", 8, (lines) => {
+        lines[7] = "q8 changed";
+        lines.splice(2, 0, "++ b/src/plain.ts");
+      }),
+    },
+  );
+  replayPathListings(fixture.dir, "witness-hunks-quoted-tab", fixture.base);
+  const computed = runModule.computePhaseDiff(fixture.dir, fixture.base, fixture.head);
+  assert.ok(computed.ok, computed.ok ? "" : computed.reason);
+  const hunks = Object.fromEntries(
+    [...computed.diff.files.values()].map((file) => [file.path, file.hunks]),
+  );
+  assert.deepEqual(hunks, {
+    "src/plain.ts": [[1, 1]],
+    [quoted]: [
+      [3, 3],
+      [9, 9],
+    ],
+  });
+});
+
 test("a shallow repository is an error naming the fetch depth requirement", () => {
   const fixture = adderFixture();
   const shallowParent = mkdtempSync(join(tmpdir(), "wshal-"));

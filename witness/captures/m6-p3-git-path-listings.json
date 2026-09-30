@@ -1,5 +1,5 @@
 {
-  "provenance": "Real output of git 2.43.0, captured 2026-09-30 by the M6-P3 fix round 3 implementer, for the path listings the CR-M6P3B-05 mechanism covers: each case pairs the line form a site read before this round with the -z form it reads now (and, for witness-hunks, the -U0 diff whose +++ headers src/witness/run.ts parses). Each case was recorded inside its own named test, against the fixture that test stages, by switching the test's replay helper for one run to write git's live stdout here instead of comparing it; the committed helper compares. Cases and their named tests: witness-coverage and witness-hunks, test/witness.test.ts; scope-edit and scope-rename, test/scope-gate.test.ts; cutover-sync and cutover-restore, test/cutover.test.ts; pool-worktree-newline, test/pool.test.ts. Substitutions, the only bytes rewritten: a base commit sha in an argv is spelled <base>; in the pool case the scratch directory is spelled <tmp> and each commit sha <sha>, in the recorded stdout as the test rewrites git's live stdout. JSON escapes NUL as \\u0000, TAB as \\t and non-ASCII characters as \\u escapes, so this file is ASCII.",
+  "provenance": "Real output of git 2.43.0, captured 2026-09-30 by the M6-P3 fix round 3 implementer, for the path listings the CR-M6P3B-05 mechanism covers: each case pairs the line form a site read before this round with the -z form it reads now (and, for witness-hunks, the -U0 diff whose +++ headers src/witness/run.ts parses). Each case was recorded inside its own named test, against the fixture that test stages, by switching the test's replay helper for one run to write git's live stdout here instead of comparing it; the committed helper compares. M6-P3 fix round 4 added the witness-hunks-quoted-tab case (git 2.43.0, 2026-09-30): a name holding a space AND a non-ASCII byte, whose -U0 header git prints quoted with a trailing TAB, beside an added line whose text begins `++ `; it was recorded by a script that builds the named test's fixture with the same git commands the test's makeFixture runs, and the named test replays it. Cases and their named tests: witness-coverage, witness-hunks and witness-hunks-quoted-tab, test/witness.test.ts; scope-edit and scope-rename, test/scope-gate.test.ts; cutover-sync and cutover-restore, test/cutover.test.ts; pool-worktree-newline, test/pool.test.ts. Substitutions, the only bytes rewritten: a base commit sha in an argv is spelled <base>; in the pool case the scratch directory is spelled <tmp> and each commit sha <sha>, in the recorded stdout as the test rewrites git's live stdout. JSON escapes NUL as \\u0000, TAB as \\t and non-ASCII characters as \\u escapes, so this file is ASCII.",
   "git": "git version 2.43.0",
   "cases": [
     {
@@ -237,6 +237,34 @@
           ],
           "exit": 0,
           "stdout": "worktree <tmp>/fleet/projects/demo\u0000HEAD <sha>\u0000branch refs/heads/main\u0000\u0000worktree <tmp>/fleet/worktrees/t-nl\u0000HEAD <sha>\u0000branch refs/heads/task/t-nl\u0000\u0000worktree <tmp>/fleet/worktrees/t-nl\nx\u0000HEAD <sha>\u0000branch refs/heads/task/t-nl\u0000\u0000"
+        }
+      ]
+    },
+    {
+      "case": "witness-hunks-quoted-tab",
+      "commands": [
+        {
+          "argv": [
+            "git",
+            "diff",
+            "-z",
+            "--name-status",
+            "--no-renames",
+            "<base>...HEAD"
+          ],
+          "exit": 0,
+          "stdout": "M\u0000src/plain.ts\u0000M\u0000src/zcaf\u00e9 x.ts\u0000"
+        },
+        {
+          "argv": [
+            "git",
+            "diff",
+            "-U0",
+            "--no-renames",
+            "<base>...HEAD"
+          ],
+          "exit": 0,
+          "stdout": "diff --git a/src/plain.ts b/src/plain.ts\nindex aad4989..8b9d757 100644\n--- a/src/plain.ts\n+++ b/src/plain.ts\n@@ -1 +1 @@\n-p1\n+p1 changed\ndiff --git \"a/src/zcaf\\303\\251 x.ts\" \"b/src/zcaf\\303\\251 x.ts\"\nindex 3423bfd..e9a3bbf 100644\n--- \"a/src/zcaf\\303\\251 x.ts\"\t\n+++ \"b/src/zcaf\\303\\251 x.ts\"\t\n@@ -2,0 +3 @@ q2\n+++ b/src/plain.ts\n@@ -8 +9 @@ q7\n-q8\n+q8 changed\n"
         }
       ]
     }
