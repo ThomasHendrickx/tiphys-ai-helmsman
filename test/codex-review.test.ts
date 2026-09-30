@@ -62,6 +62,15 @@ const codex = (await import(new URL("../adapters/codex/review.ts", import.meta.u
 
 const review = (await import(new URL("../src/review.ts", import.meta.url).href)) as {
   REVIEWER_GRANT: Grant;
+  reviewChildEnv: (
+    parentEnv: Record<string, string | undefined>,
+    taskDirectory: string,
+  ) => { ok: true; env: Record<string, string> } | { ok: false; reason: string };
+  applyHarnessEnvironment: (
+    env: Record<string, string>,
+    entries: { name: string; reason: string }[],
+    parentEnv: Record<string, string | undefined>,
+  ) => Record<string, string>;
   judgeFamilies: (
     counted: unknown[],
     declaration: unknown,
@@ -285,6 +294,107 @@ test("a dispatch through the Codex executor gives the reviewer the harness varia
     assert.match(refused.stderr, /declares an environment the kernel refuses: the allowlist extension entry GH_TOKEN/);
     assert.equal(refused.record, undefined, "a refused dispatch wrote a record");
     assert.equal(spawnSync("test", ["-e", join(root, "second", "out")]).status, 1, "the refusal created the out directory");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/* The five names src/exec/env.ts CREDENTIAL_STORE_REDIRECTIONS redirects, written out so a name dropped there is noticed here. */
+const CREDENTIAL_STORE_POINTERS = ["HOME", "XDG_CONFIG_HOME", "GH_CONFIG_DIR", "GIT_CONFIG_GLOBAL", "GIT_CONFIG_SYSTEM"];
+
+test("an executor declaring a credential-store pointer never gives the reviewer the kernel's HOME or its credentials: the dispatch is refused before anything is created, and the harness join sets every pointer back to its harness-owned target", () => {
+  const { root, repo } = project();
+  try {
+    /* The kernel's own HOME, holding a credential the reviewer must not reach. */
+    const kernelHome = join(root, "kernel-home");
+    mkdirSync(kernelHome);
+    const secret = "https://x:SECRET-TOKEN@github.com\n";
+    writeFileSync(join(kernelHome, ".git-credentials"), secret);
+
+    /* Arm 1, the dispatch: an executor declaring HOME, with the kernel's HOME set. The safety property is checked
+       before the refusal, so a dispatch that runs reports what the reviewer was handed. */
+    const echo = join(root, "echo.json");
+    const home = dispatch(repo, root, {
+      executor: STUB,
+      echo,
+      env: { CODEX_API_KEY: "codex-key-for-the-probe", HOME: kernelHome, TIPHYS_STUB_DECLARE: "HOME" },
+    });
+    if (spawnSync("test", ["-e", echo]).status === 0) {
+      const seen = JSON.parse(readFileSync(echo, "utf8")) as { home: string | null };
+      let readable: string | null = null;
+      try {
+        readable = readFileSync(join(seen.home ?? "", ".git-credentials"), "utf8");
+      } catch {
+        readable = null;
+      }
+      assert.deepEqual(
+        { reviewerHomeIsKernelHome: seen.home === kernelHome, reviewerHomeGitCredentials: readable },
+        { reviewerHomeIsKernelHome: false, reviewerHomeGitCredentials: null },
+        `the reviewer was handed HOME ${String(seen.home)} (the kernel's real HOME is ${kernelHome}) and HOME/.git-credentials reads ${JSON.stringify(readable)}`,
+      );
+    }
+    assert.equal(home.status, 1, `${home.stdout}${home.stderr}`);
+    assert.match(
+      home.stderr,
+      /declares an environment the kernel refuses: the allowlist extension entry HOME is a credential-store pointer/,
+    );
+    assert.equal(home.record, undefined, "a refused dispatch wrote a record");
+    assert.equal(spawnSync("test", ["-e", join(root, "out")]).status, 1, "the refusal created the out directory");
+    for (const name of CREDENTIAL_STORE_POINTERS.slice(1)) {
+      const where = join(root, name);
+      mkdirSync(where);
+      const refused = dispatch(repo, where, { executor: STUB, env: { [name]: join(root, "real"), TIPHYS_STUB_DECLARE: name } });
+      assert.equal(refused.status, 1, `${name}: ${refused.stdout}${refused.stderr}`);
+      assert.match(
+        refused.stderr,
+        new RegExp(`declares an environment the kernel refuses: the allowlist extension entry ${name} is a credential-store pointer`),
+      );
+      assert.equal(spawnSync("test", ["-e", join(where, "out")]).status, 1, `${name}: the refusal created the out directory`);
+    }
+
+    /* Arm 2, the join: every pointer declared, with the kernel's real values set, and a child run in the result. */
+    const kernelGitconfig = join(root, "kernel-gitconfig");
+    writeFileSync(kernelGitconfig, "[credential]\n\thelper = store\n");
+    const parentEnv: Record<string, string> = {
+      PATH: process.env["PATH"] ?? "",
+      HOME: kernelHome,
+      XDG_CONFIG_HOME: join(kernelHome, ".config"),
+      GH_CONFIG_DIR: join(kernelHome, ".config", "gh"),
+      GIT_CONFIG_GLOBAL: kernelGitconfig,
+      GIT_CONFIG_SYSTEM: kernelGitconfig,
+      CODEX_API_KEY: "codex-key-for-the-probe",
+    };
+    const taskDirectory = join(root, "task");
+    mkdirSync(taskDirectory);
+    const built = review.reviewChildEnv(parentEnv, taskDirectory);
+    assert.ok(built.ok, built.ok ? "" : built.reason);
+    const targets = Object.fromEntries(CREDENTIAL_STORE_POINTERS.map((name) => [name, built.env[name]]));
+    const joined = review.applyHarnessEnvironment(
+      { ...built.env },
+      [...CREDENTIAL_STORE_POINTERS, "CODEX_API_KEY"].map((name) => ({ name, reason: "a test declares it" })),
+      parentEnv,
+    );
+    const child = spawnSync(
+      process.execPath,
+      [
+        "-e",
+        "const fs = require('node:fs'); const read = (p) => { try { return fs.readFileSync(p, 'utf8'); } catch { return null; } }; " +
+          "process.stdout.write(JSON.stringify({ env: process.env, credentials: read(require('node:path').join(process.env.HOME, '.git-credentials')), gitconfig: read(process.env.GIT_CONFIG_GLOBAL) }));",
+      ],
+      { env: joined, encoding: "utf8" },
+    );
+    assert.equal(child.status, 0, child.stderr);
+    const reviewer = JSON.parse(child.stdout) as { env: Record<string, string>; credentials: string | null; gitconfig: string | null };
+    assert.deepEqual(
+      { reviewerHomeIsKernelHome: reviewer.env["HOME"] === kernelHome, reviewerHomeGitCredentials: reviewer.credentials, reviewerGitConfigGlobal: reviewer.gitconfig },
+      { reviewerHomeIsKernelHome: false, reviewerHomeGitCredentials: null, reviewerGitConfigGlobal: "" },
+      `the reviewer was handed HOME ${String(reviewer.env["HOME"])} and GIT_CONFIG_GLOBAL ${String(reviewer.env["GIT_CONFIG_GLOBAL"])}`,
+    );
+    for (const name of CREDENTIAL_STORE_POINTERS) {
+      assert.equal(reviewer.env[name], targets[name], `${name} is not the harness-owned target`);
+      assert.ok((targets[name] ?? "").startsWith(join(taskDirectory, "scrub-env")), `${name} target ${targets[name]} is not under the task's scrub-env`);
+    }
+    assert.equal(reviewer.env["CODEX_API_KEY"], "codex-key-for-the-probe", "the declared harness variable did not reach the reviewer");
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

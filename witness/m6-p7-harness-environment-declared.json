@@ -15,7 +15,7 @@
     {
       "kind": "mutation",
       "file": "src/review.ts",
-      "find": "      childEnv.env[entry.name] = value;\n",
+      "find": "      env[entry.name] = value;\n",
       "replace": ""
     }
   ],

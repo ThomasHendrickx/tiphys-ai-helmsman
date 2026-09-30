@@ -15,7 +15,7 @@ import {
 } from "./checks.ts";
 import type { HeadRelation, LoadedVerdict, ReviewFamiliesReading, VerdictCorpusSource } from "./checks.ts";
 import { loadTypeSchema } from "./commands/validate.ts";
-import { SCRUB_DIR_NAME, buildChildEnv, refuseExtraAllowlist } from "./exec/env.ts";
+import { CREDENTIAL_STORE_REDIRECTIONS, SCRUB_DIR_NAME, buildChildEnv, refuseExtraAllowlist } from "./exec/env.ts";
 import type { ChildEnvExtension } from "./exec/env.ts";
 import { singleLine } from "./task.ts";
 import { decodeDocument, formatDiagnostics, validateInstance } from "./validate.ts";
@@ -345,6 +345,59 @@ export function reviewChildEnv(
 }
 
 /**
+ * A declared name that is a credential-store pointer (M6-P7 fix round 1,
+ * CR-M6P7A-01). `buildChildEnv` redirects HOME and the four other pointers in
+ * CREDENTIAL_STORE_REDIRECTIONS to empty harness-owned targets, and the
+ * harness's declared variables are copied from the KERNEL's environment, so a
+ * declared HOME would hand the reviewer the kernel's own home directory and
+ * every credential store under it. The dispatch refuses such a declaration
+ * before anything is created; this returns the one line naming it.
+ */
+export function refuseCredentialStorePointer(entries: readonly ChildEnvExtension[]): string | undefined {
+  for (const entry of entries) {
+    if (CREDENTIAL_STORE_REDIRECTIONS.some((redirection) => redirection.name === entry.name)) {
+      return (
+        `the allowlist extension entry ${entry.name} is a credential-store pointer the kernel redirects ` +
+        `to an empty harness-owned target, and a declared value would give the reviewer the kernel's own credential store`
+      );
+    }
+  }
+  return undefined;
+}
+
+/**
+ * The harness's declared variables joined onto the reviewer's scrubbed
+ * environment (M6-P7), with the credential-store redirections applied LAST
+ * again (fix round 1, CR-M6P7A-01). `buildChildEnv` sets the five pointers last
+ * so nothing copied before them overrides them; this join runs after it (after
+ * the dependency install, so no install script sees the harness's variables),
+ * so it restores that ordering itself by setting each pointer back to the
+ * target `buildChildEnv` chose. The dispatch refuses a declared pointer before
+ * this is reached; this is the second layer, for a join reached without it.
+ */
+export function applyHarnessEnvironment(
+  env: Record<string, string>,
+  entries: readonly ChildEnvExtension[],
+  parentEnv: Record<string, string | undefined>,
+): Record<string, string> {
+  const redirected = CREDENTIAL_STORE_REDIRECTIONS.map((redirection) => [redirection.name, env[redirection.name]] as const);
+  for (const entry of entries) {
+    const value = parentEnv[entry.name];
+    if (value !== undefined) {
+      env[entry.name] = value;
+    }
+  }
+  for (const [name, target] of redirected) {
+    if (target === undefined) {
+      delete env[name];
+    } else {
+      env[name] = target;
+    }
+  }
+  return env;
+}
+
+/**
  * The KERNEL's own npm cache (M6-P5 fix round 4), resolved from the kernel's
  * environment the way npm 11 resolves it (@npmcli/config, `loadEnv` and the
  * `cache` definition): `npm_config_cache` when set, else npm's POSIX default,
@@ -490,6 +543,10 @@ export function dispatchReview(options: DispatchOptions): DispatchOutcome {
   if (refusedEnvironment !== undefined) {
     return { ok: false, reason: `the executor ${executor.name} declares an environment the kernel refuses: ${refusedEnvironment}` };
   }
+  const refusedPointer = refuseCredentialStorePointer(harnessEnvironment);
+  if (refusedPointer !== undefined) {
+    return { ok: false, reason: `the executor ${executor.name} declares an environment the kernel refuses: ${refusedPointer}` };
+  }
 
   /* The grant is mapped BEFORE anything is created (M6-P5 fix round 3): an
      executor that cannot map it refuses with no task directory and no
@@ -541,13 +598,9 @@ export function dispatchReview(options: DispatchOptions): DispatchOutcome {
   /* The harness's own variables join the scrubbed environment only now, after
      the dependency install, so no install script of the reviewed head sees
      them; each was refused above unless it carried a reason and named nothing
-     in a refused vocabulary (M6-P7). */
-  for (const entry of harnessEnvironment) {
-    const value = parentEnv[entry.name];
-    if (value !== undefined) {
-      childEnv.env[entry.name] = value;
-    }
-  }
+     in a refused vocabulary and no credential-store pointer (M6-P7), and the
+     pointers are redirected again after the join (fix round 1). */
+  applyHarnessEnvironment(childEnv.env, harnessEnvironment, parentEnv);
 
   const streamPath = join(taskDirectory, "stream.jsonl");
   const stderrPath = join(taskDirectory, "stderr.txt");

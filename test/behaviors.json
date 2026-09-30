@@ -1102,6 +1102,7 @@
   "m6-p7-families-from-two-vocabularies": "families from two vocabularies are comparable only when both tokens are in charter.yaml review-families.available: a Claude and a Codex review both declared are green, and a token outside the list is red naming it",
   "m6-p7-harness-environment-declared": "a dispatch through the Codex executor gives the reviewer the harness variable it declares and no pull-request credential, records no observed model from the real capture, and a declared pull-request credential refuses the dispatch before anything is created",
   "m6-p7-review-executor-from-charter": "without --executor the dispatch loads the executor the project's charter.yaml names in review-executor, and with neither it is refused before launch naming both",
+  "m6-p7-harness-environment-credential-store-pointer": "an executor declaring a credential-store pointer never gives the reviewer the kernel's HOME or its credentials: the dispatch is refused before anything is created, and the harness join sets every pointer back to its harness-owned target",
   "mode-ids-unique-validate-refuses": "validate refuses an assurance-modes document declaring mode full twice with the weaker row first, naming the id",
   "mode-ids-unique-mode-show-refuses": "mode show refuses a document declaring mode full twice with the weaker row first, naming the id, and serves neither row",
   "mode-ids-unique-merge-checks-refuse": "the merge checks refuse a modes document declaring the charter's mode twice with the weaker row first, rather than reporting that row's regime",
