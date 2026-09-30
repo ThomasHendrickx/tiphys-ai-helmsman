@@ -15,7 +15,7 @@ import { fileURLToPath } from "node:url";
  * judged on (passed, skipped, todo, failed, never reported) is the node test
  * runner's own report, never a hand-written reporter line.
  *
- * Two red outputs are compared byte for byte with REAL captured output of the
+ * Four red outputs are compared byte for byte with REAL captured output of the
  * gate CLI on the same fixtures, witness/captures/m6-p4-criteria-gate-cli.txt,
  * taken on node v26.6.0 in the kernel container. Every child here gets a
  * scrubbed environment (no NODE_OPTIONS, no NODE_TEST_*), for the reasons
