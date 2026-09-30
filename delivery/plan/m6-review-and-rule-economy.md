@@ -337,7 +337,12 @@ command with its expected exit. `not-testable` criteria carry a reason.
      tokens and lets one Claude and one Codex review form a distinct pair.
   5. One live `tiphys review dispatch --executor adapters/codex/review.ts
      --tier cheaper`, with its record in the work history.
-  6. The work history reports the measured cost of that review next to a
+  6. `tiphys review dispatch` without `--executor` today falls back to
+     `@tiphys/claude-code-plugin`, named in `src/review.ts`. The fallback
+     moves to project configuration (for example `review-executor` in
+     `charter.yaml`), so a project run by a Codex harness needs no flag and
+     `src/` names no harness package.
+  7. The work history reports the measured cost of that review next to a
      Claude review of the same brief. The orchestrator then decides whether
      `review-families.available` gains `openai`, which would end the
      single-vendor exception and make every pair cross-vendor (DR-0063).
