@@ -485,6 +485,34 @@ test("a hazard verdict with no review-contract and no criteria validates, the sa
   assert.deepEqual(validateModule.validateToLines(schema, baselineVerdict()), []);
 });
 
+test("a verdict declaring review-contract criteria without criteria[] is rejected, with or without hazard classes, and a committed criteria verdict still validates", () => {
+  /* M6-P2 FIX ROUND 1, CR-M6P2B-04. THE MECHANISM: branch A required only
+     `review-contract: criteria`, so a NEW verdict could declare the dropped
+     contract and carry neither completeness array, and the hazard-class check
+     skips a criteria verdict. Both arms are the reviewer's dodge. */
+  const schema = verdictSchema();
+  const dodge = baselineHazardVerdict();
+  dodge["review-contract"] = "criteria";
+  delete dodge["criteria"];
+  delete dodge["hazard-classes-addressed"];
+  const withClasses = baselineHazardVerdict();
+  withClasses["review-contract"] = "criteria";
+  delete withClasses["criteria"];
+  for (const [name, instance] of [
+    ["no criteria and no hazard classes", dodge],
+    ["no criteria, hazard classes present", withClasses],
+  ] as const) {
+    assert.notDeepEqual(validateModule.validateToLines(schema, instance), [], `${name}: accepted`);
+    /* THE ONE DIFFERENCE: the same document WITH criteria[] validates, so the
+       rejection above is the missing array and nothing else. */
+    const restored = { ...instance, criteria: baselineVerdict()["criteria"] };
+    assert.deepEqual(validateModule.validateToLines(schema, restored), [], `${name}: restored`);
+  }
+  /* HISTORY (DR-0054): the committed shape, a criteria verdict WITH criteria[],
+     is unaffected. */
+  assert.deepEqual(validateModule.validateToLines(schema, baselineVerdict()), []);
+});
+
 test("a verdict naming a phase the plan does not declare is rejected rather than passing vacuously", () => {
   const dir = scratch();
   try {

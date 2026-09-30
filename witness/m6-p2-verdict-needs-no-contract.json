@@ -15,7 +15,7 @@
     {
       "kind": "mutation",
       "file": "schemas/verdict.schema.json",
-      "find": "      \"required\": [\"review-contract\"],\n",
+      "find": "      \"required\": [\"review-contract\", \"criteria\"],\n",
       "replace": ""
     }
   ],
