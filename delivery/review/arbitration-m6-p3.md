@@ -106,3 +106,25 @@ stand-in system `osxkeychain` helper and green after. Same rule: no
 reviewer re-check.
 
 Pair: A, B and C are one vendor, merged under the single-vendor exception.
+
+## Final-head checks D and E (head ee56470)
+
+CI's `pull_request` run at 784651b was red on one gate only:
+`merge-preconditions: red: ... DR-0063 requires 2 approving hazard reviews,
+distinct on produced-by, for the commit under audit 784651b...; 0 of 2 are
+admitted` (run 36749979516, job 110005808494). The gate admits a verdict only
+when it names the landing code or an ancestor with only `delivery/` after it.
+A and B name ea3edb3 and refuse; C names 0027bbb, and ee56470 changed a test
+after it. So the owner's "proven stays proven" rule does not reach this gate:
+it counts reviews of the exact code that lands.
+
+Ruled (orchestrator, DR-0016): two short final-head checks, not re-reviews.
+Each checks only (1) the landing code is C's code plus the named delta,
+(2) every high or medium finding of A, B and C is closed by a named test and
+witness (proof: CI's red-witness row at 784651b, same code), (3) nothing new
+since C. Mutations are not re-run. Every later phase gets the same check
+after its last merge of `main`.
+
+- D: m6-p3-hazard-d.json at ee56470, APPROVE, no findings (sonnet). Maps the
+  four mediums (CR-M6P3A-01, CR-M6P3B-01, CR-M6P3B-05, CR-M6P3A-07 =
+  CR-M6P3B-06) to their fix commits, named tests and witness specs.
