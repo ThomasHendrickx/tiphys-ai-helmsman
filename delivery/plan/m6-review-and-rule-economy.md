@@ -50,6 +50,19 @@ thing is not written here, it is not being made.
   again locally. The trade: a red there costs one CI cycle (about 16
   minutes), against 45 minutes saved on every round.
 
+- **Proven stays proven.** The owner, 2026-09-30: "Once something is proven
+  deterministically, it is proven", then, asked for the exact scope: "yes,
+  skip re-reviews after merging main, and skip reviewer re-checks of fixes
+  proven by their tests". So:
+  - merging `main` into a reviewed branch is not re-reviewed; CI on the pull
+    request checks the combined code;
+  - a finding whose fix is proven red-then-green by its named test is closed
+    by the arbitration, without a reviewer re-check.
+  It follows that a phase is reviewed as soon as its code is final, without
+  waiting for the phases ahead of it to land. New code still gets its
+  review: M6-P3's fix round 4 is judged by the third review contract that
+  DR-0016 requires.
+
 ## Acceptance criteria are tests, here too
 
 Every criterion below names its `check`: a test name in the suite or a
