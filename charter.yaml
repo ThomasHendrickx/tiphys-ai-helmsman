@@ -27,9 +27,9 @@ kind: charter
 identity:
   name: tiphys-kernel
   repo: git@github.com:ThomasHendrickx/tiphys-ai-helmsman.git
-  # An EXACT version, never a range: the schema's own $comment says a range
-  # makes the delivery process a moving target. 0.1.0 is the version in
-  # package.json on this branch and the version published to the registry.
+  # An EXACT version, never a range: a range makes the delivery process a
+  # moving target. 0.1.0 is the version in package.json on this branch and
+  # the version published to the registry.
   kernel-version-pin: 0.1.0
 
 # CLOSED VOCABULARY AT v0.1.0 (DR-0020). Both fields draw on the same three ids,
