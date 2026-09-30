@@ -1,0 +1,24 @@
+{
+  "id": "m6-p4-criterion-exactly-one-shape",
+  "behavior": "m6-p4-criterion-exactly-one-shape",
+  "tests": [
+    "a plan criterion with neither check nor not-testable, or with both, is rejected naming the criterion"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "schemas/plan.schema.json",
+      "find": "\"oneOf\": [\n              { \"required\": [\"check\"]",
+      "replace": "\"anyOf\": [\n              { \"required\": [\"check\"]"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/plan.schema.json",
+      "find": "              { \"required\": [\"check\"], \"properties\": { \"check\": { \"type\": \"object\" } } },",
+      "replace": "              { \"properties\": { \"check\": { \"type\": \"object\" } } },"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}
