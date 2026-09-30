@@ -1,476 +1,255 @@
 # Tiphys kernel: repository rules
 
-This file is the agent-rules single source for this repository until the M3
-gate registry replaces it. It records the binding conventions of kernel plan
-v1 section 1.4 (delivery/plan/kernel-plan-v1.md), the repository's gate list,
-and the delivery procedures that must survive any single session.
+The binding rules for working in this repository. Current rules only: the
+incidents behind them are in git history, `delivery/tuition/` and
+`delivery/decisions/`, cited where a rule needs its reason.
 
 Read this file first. Then, for the task you are about to do, read the
-matching skill in `.claude/skills/`.
+matching skill in `.claude/skills/`. To prepare the environment, run
+`bash scripts/setup-env.sh` (full clone, Node at the `engines.node` floor,
+`npm ci` when needed, `npm run build`); cloud sessions run it from the
+SessionStart hook in `.claude/settings.json`.
 
 ## What this repository is
 
-Tiphys is a delivery-process kernel: a versioned npm package that will run
-orchestrated delivery for other projects. It is being built BY the existing
-orchestrated delivery process, not by itself. Nothing runs on Tiphys before
-milestone M4 (settled owner decision). Do not treat the kernel's own future
-artifacts as available tooling.
+Tiphys is a delivery-process kernel: a versioned npm package that runs
+orchestrated delivery for other projects. It is built by the orchestrated
+delivery process it implements.
 
 The governing documents, in precedence order:
 
 1. `delivery/intake/orchestrated-delivery-process.md`, the process being run.
-2. `delivery/plan/kernel-plan-v1.md`, the owner-approved plan. Its binding
-   rule holds: if it is not written there, it is not being made. Unanswered
-   questions go to the orchestrator, and from the orchestrator to the owner.
-3. `delivery/decisions/`, owner decision records. A decided record is
-   settled and is never reopened by an agent.
+2. The owner-approved plan in `delivery/plan/` (`kernel-plan-v1.md` and the
+   milestone plans after it, currently `m6-review-and-rule-economy.md`). If it
+   is not written there, it is not being made. Unanswered questions go to the
+   orchestrator, and from the orchestrator to the owner.
+3. `delivery/decisions/`, owner decision records. A decided record is settled
+   and is never reopened by an agent.
 4. This file.
 
-## Durability rule (why this file exists)
+## Durability rule
 
-Principle 4 of the blueprint: restart is a non-event, all truth lives in
-files and git, and any session's conversation memory is a cache. That rule
-is only real if it is obeyed while the work is happening.
-
-Anything in the table below must be a committed file before the producing
-session ends. An agent that discovers something and reports it only in chat
-has lost it.
+All truth lives in files and git; a session's conversation memory is a cache.
+Anything below must be a committed file before the producing session ends. A
+finding reported only in chat is lost.
 
 | What | Where | When |
 |---|---|---|
 | Where the pipeline currently stands | `delivery/STATE.md` | whenever a phase, decision, or owner action changes state |
 | Owner decision, asked or answered | `delivery/decisions/DR-nnnn-<slug>.md` | when raised, updated when decided |
-| Plan and every revision | `delivery/plan/kernel-plan-v1.md` | before dispatch of anything it governs |
+| Plan and every revision | `delivery/plan/` | before dispatch of anything it governs |
 | Requirements extraction | `delivery/requirements/` | before the plan cites it |
 | Review of a plan | `delivery/review/plan-review-<round>.md` | before findings are applied |
-| Review of a PR | `delivery/review/<phase-id>-<contract>.json`, one verdict per review contract, valid against `schemas/verdict.schema.json` | before merge |
+| Review of a PR | `delivery/review/<phase-id>-<contract>.json`, valid against `schemas/verdict.schema.json` | before merge |
 | Verification of a fix round | `delivery/review/verification-<phase>-fix-round.md` | before merge |
 | Investigation of a mystery | `delivery/verification/<subject>.md` | before the question is called settled |
 | What an implementer did and why | `delivery/work-history/<phase>.md` | in the phase branch, before the PR |
 | A failure mode worth not repeating | `delivery/tuition/T-nnn-<slug>.md` | when discovered, not at the end |
 
-Evidence beats assertion everywhere: exit codes, counts, file paths with
-line numbers, captured output, URLs. An agent's claim with no verifiable
-artifact behind it is treated as unknown.
+Evidence beats assertion: exit codes, counts, paths with line numbers,
+captured output, URLs. A claim with no verifiable artifact is unknown.
 
 ## Where things live
 
-- `delivery/` is the build's own paperwork. It is not shipped in the npm
-  package and is not a kernel deliverable.
+- `delivery/` is the build's own paperwork. Not shipped, not a deliverable.
 - `src/`, `bin/`, `test/` are the kernel itself.
-- `schemas/`, `roles/`, `tuition/` at the repository root are SHIPPED M3
-  kernel deliverables. The do-not-populate-early instruction that stood here
-  until 2026-09-16 was FALSE from the day M3 landed, and M4-P23's re-verification
-  pass removed it rather than carrying it into the kernel briefs. Measured:
-  `roles/` holds 7 entries, `schemas/` 17 and `tuition/` 17, none of them
-  placeholders. Extend them through the phase that owns them, never casually.
-  The root `tuition/` directory is the future cross-project tuition feed
-  and is not the same thing as `delivery/tuition/`, which is this build's
-  own failure log.
-- `.claude/skills/` holds the procedures for running this repository's
-  delivery. This is harness configuration for the current process. It is
-  not a kernel deliverable and must not be confused with the role briefs
-  that M3 ships.
+- `schemas/`, `roles/`, `tuition/`, `templates/`, `checklists/` at the root
+  are SHIPPED kernel deliverables. Extend them through the phase that owns
+  them, never casually. The root `tuition/` is the cross-project tuition feed;
+  `delivery/tuition/` is this build's own failure log.
+- `.claude/` is harness configuration for the current process (skills,
+  orchestrator scripts, the SessionStart hook). Not a kernel deliverable, and
+  not the same thing as the role briefs in `roles/`.
 
 ## Binding conventions
 
 1. English only.
 2. npm only, never pnpm or yarn.
-3. No em dashes in any authored text (commas, colons, parentheses instead).
-   Authored files must be pure ASCII **and free of control characters**, and
-   Check tracked authored bytes with the portable repository script:
-
-   ```
-   node scripts/check-authored-bytes.mjs
-   ```
-
-   The general shape is the one this project keeps paying for: a guard whose
-   condition does not test the property that matters is green and worthless
-   (T-008's postscript, the red-witness rule one level up). Control characters
-   a test genuinely needs AS DATA belong in escapes, never as literal bytes in
-   source. A quick way to see the failure mode is `git diff --stat`: a source
-   file reported as `Bin` is unreviewable whatever the ASCII check says.
-   The NUL incident behind this rule is
-   delivery/tuition/T-010-the-control-character-check-could-not-see-nul.md:1.
-
-   **AUTHORED is the operative word, and two exemptions are real.** Measured on
-   `main` at `dd42ccb`: ZERO tracked files carry control characters, and
-   exactly one carries non-ASCII,
-   `delivery/intake/orchestrated-delivery-process.md`, which is the
-   owner-supplied process document this build executes. It is INPUT, not
-   agent-authored, and must not be transliterated. The other exemption is
-   VENDORED fixtures such as `test/fixtures/json-schema-test-suite/**`, where
-   non-ASCII content is the thing under test and transliterating it would
-   destroy the test. Both exemptions are scoped BY PATH, never by judgment, so
-   The script checks `git ls-files`, minus those two trees, and expects zero.
-   **CAPTURED OUTPUT COLLIDES WITH THIS RULE, and the collision has ONE correct
-   resolution.** The red-witness rule demands real captured output from the
-   program under test rather than hand-written strings. Node's test reporter
-   prints U+2139 and U+2716 at the head of its summary and failure lines. So a
-   work history pasting a real `node --test` run verbatim FAILS the non-ASCII
-   check, and the three ways out are not equal:
-
-   - Hand-write the output to avoid the glyphs. **Forbidden.** That is exactly
-     the fabrication the red-witness rule exists to prevent, and it is invisible
-     to every gate.
-   - Paste the glyphs raw. Fails the check, which is the check working.
-   - **TRANSLITERATE, AND DECLARE IT.** This is the resolution.
-
-   A transliterated capture must carry a note naming the exact codepoints
-   replaced, what they were replaced with, and HOW MANY of each. That makes the
-   change auditable and reversible, so a reader can tell altered-and-declared
-   from altered-and-hidden. The M3-P3 round-8 work history is the worked example:
-   it names U+2139 and U+2716, renders them `i` and `x`, gives the counts (10 and
-   6), and states that nothing else in any captured output was changed.
-
-   Silent transliteration is the failure mode this entry exists to prevent,
-   because after the fact it is indistinguishable from fabricated evidence.
-4. Falsifiable acceptance criteria only; "works correctly" is banned; the
-   register is "node --test exits 0 and reports N tests, N > 0".
-5. One phase = one branch = one PR, always. Parallelism is ON where a
-   recorded pre-pass proves the phases disjoint (DR-0011, superseding the
-   original "off until M5"). MERGE order is always dependency order even when
-   work order is concurrent, and the pre-pass must be written down before
-   dispatch, not asserted. M2's is `delivery/plan/m2-conflict-pre-pass.md`:
-   M2-P1 serialises, M2-P2 to M2-P8 are mutually disjoint, M2-P9 runs last.
-   The shared registry `test/behaviors.json` is append-only and resolved as a
-   union against the merge base; it never re-serialises phases.
-
-   **A test over an append-only registry asserts BY NAME and never BY COUNT,
-   and never on a specific row's presence.** The rule was written for
-   `test/behaviors.json` and it generalises to every registry above, because
-   the property that makes it necessary is the append-only-ness, not the file.
-   A count is a claim about every FUTURE phase, and it is false the moment the
-   next one appends. Measured 2026-08-08: M3-P1's `test/checks.test.ts` pinned
-   `clause-map: green (12 clause-map rows checked)`, `R-094 pending M3-P2`, and
-   a pending-row count. All three would have reddened for M3-P3 and every phase
-   after it, not only for M3-P2 which happened to find them. A fourth site no
-   grep could see was found only by execution: a test helper hand-listed the
-   four directories it staged, and M3-P2's rows name a file at the repository
-   root.
-
-   The consequence for scope: a phase that extends a registry may have to edit
-   the TEST that over-asserts on it, so that test belongs on the phase's
-   declaration. Derive counts from the registry at run time instead of pinning
-   them.
+3. No em dashes in authored text. Authored files are pure ASCII and free of
+   control characters; check with `node scripts/check-authored-bytes.mjs`
+   (it refuses a dirty tree, so run it after committing). Control characters
+   a test needs as data are written as escapes, never as literal bytes. Two
+   path-scoped exemptions: `delivery/intake/orchestrated-delivery-process.md`
+   (owner input, never transliterated) and vendored fixtures such as
+   `test/fixtures/json-schema-test-suite/**`
+   (delivery/tuition/T-010-the-control-character-check-could-not-see-nul.md:1).
+   **Captured output with non-ASCII glyphs** (Node's test reporter prints
+   U+2139 and U+2716): never hand-write the output to avoid them. Transliterate
+   and DECLARE it: name each codepoint replaced, its replacement, and how many
+   of each, and state that nothing else was changed. Silent transliteration is
+   indistinguishable from fabricated evidence.
+4. Acceptance criteria are tests (DR-0064): each criterion names the test(s)
+   or command that proves it (`check`). A criterion that cannot be a test is
+   marked `not-testable: <reason>` and goes to the hazard reviewer's brief.
+   "Works correctly" is never a criterion.
+5. One phase = one branch = one PR. Phases may run concurrently only where a
+   pre-pass, written down before dispatch, proves them disjoint (DR-0011);
+   merge order is always dependency order. Shared registries
+   (`test/behaviors.json` and the like) are append-only and resolved as a
+   union against the merge base. **A test over an append-only registry
+   asserts BY NAME, never BY COUNT and never on one row's presence**: a count
+   is a claim about every future phase. Derive counts at run time. A phase
+   that extends a registry may have to edit the test that over-asserts on it.
 6. Milestone exit tests are hard gates: no milestone starts before the
    previous exit test has passed with recorded evidence.
 7. Commit messages carry no AI model or tool names.
 
 ## Gates
 
-The gates are listed in `gate-registry.yaml`, the only gate list: every change
-passes `npm ci`, `npm run build` and `npm test`, then
-`node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --event <pull_request|push> --evidence <dir>`
-(plus `--base`, `--head` and, on a pull request, `--phase`), which is exactly
-what CI runs on each event.
+`gate-registry.yaml` is the only gate list; each gate states what it
+`prevents` (DR-0061). Every change passes `npm ci`, `npm run build` and
+`npm test`, then the registry, exactly as CI runs it on each event:
 
-Beyond the mechanical gates, a phase is not done until: every acceptance
-criterion in its plan section has been walked with evidence or explicitly
-marked CI-deferred with a reason; the scope audit passes (changed files are
-on the phase's files-to-touch list, plus `test/behaviors.json` and the
-phase work history, which are standing pre-authorized extras); and every
-new behavior is registered in `test/behaviors.json` and resolves by name.
+```
+node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full \
+  --event <pull_request|push> --evidence <dir> --base <sha> --head <sha> [--phase <id>]
+```
+
+Use `--only <gate>` to run one gate locally. A phase is not done until every
+acceptance criterion's `check` passes (or is `not-testable` with a reason),
+the scope audit passes (changed files are on the phase's files-to-touch list,
+plus `test/behaviors.json` and the phase work history, the two standing
+extras), and every new behavior is registered in `test/behaviors.json` and
+resolves by name.
 
 ## Red-witness rule
 
-A test only counts as guarding a behavior if it has been demonstrated red
-without the behavior and green with it. Applies to fix-round tests too.
+A test guards a behavior only if it has been shown red without the behavior
+and green with it. This applies to fix-round tests too.
 
-Stronger form, learned the hard way (delivery/tuition/T-003): the test must
-be red against the DANGEROUS state, not merely against the absent feature.
-A test that exercises a destroy on a branch carrying nothing, or a
-concurrency path where no contention can occur, is green, registered, and
-worthless. Where the behavior under test consumes another program's output,
-assertions must include real captured output from that program, not
-hand-written strings chosen to match the implementation.
+- **Red against the DANGEROUS state**, not merely the absent feature. A test
+  of a destroy on a branch carrying nothing, or of a concurrency path where no
+  contention can occur, is green and worthless
+  (delivery/tuition/T-003-fix-rounds-need-verification.md:1).
+- **Real captured output**: where the behavior consumes another program's
+  output, assert on real captured output from that program, never
+  hand-written strings chosen to match the implementation.
+- **One witness is not a class**: a witness for a class must redden under at
+  least TWO structurally different members of it.
+- A changed `src/` or `bin/` file needs a witness spec under `witness/`
+  (the `red-witness` gate). Removals owe no witness (DR-0061).
 
-## Fix-round contract (measured, 2026-08-05)
-
-Every avoidable instance had a counterfactual that was a COMMAND or a DECLARED
-SCOPE, never a judgment call. So this is mechanical, and it is binding on every
-fix round from now on.
+## Fix-round contract
 
 A fix round is not done, and a work history is not acceptable, without all
-three of these:
+three:
 
 1. **Name the MECHANISM, not the finding.** "A FIFO at the beacon hangs the
-   guard" is a finding. "Reading a path whose type has not been established"
-   is the mechanism. The round fixes the second.
-2. **Publish the derivation.** The exact command that enumerates every call
-   site of that mechanism, and its full output. Not a summary of it.
-3. **State what the derivation did NOT cover.** The regions the search
-   excluded, and why. A search whose scope is wrong returns an empty result
-   that is indistinguishable from an absence of defects, and this project has
-   been bitten by that three times: `state/session.lock` probed when the lease
-   is `state/orchestrator.lock`; an inventory scoped to `tasks/`, `state/` and
-   `worktrees/` while the missed path sat at the fleet root; a usage error
-   read as a clean result.
+   guard" is a finding; "reading a path whose type has not been established"
+   is the mechanism. The round fixes the mechanism.
+2. **Publish the derivation**: the exact command that enumerates every call
+   site of the mechanism, and its full output, not a summary.
+3. **State what the derivation did NOT cover**: the regions excluded, and
+   why. A wrongly scoped search returns an empty result indistinguishable
+   from an absence of defects.
 
-**The reviewer's FIRST check is item 3**, before examining any row.
+**The reviewer's FIRST check is item 3.** An orchestrator-side hotfix to
+shared harness code is a fix round too and owes the same contract.
 
-### The claim grep, also binding
-
-Before submitting any work history, run:
+**The claim grep.** Before submitting any work history, run:
 
 ```
 grep -nEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to' delivery/work-history/<phase>.md
 ```
 
-Every hit must carry an adjacent captured command that settles it, or be
-restated as an open question. "I did not find a way to force this arm" is a
-true sentence; "this arm cannot be forced here" is a false one, and the first
-invites the next reader to try. Tuition T-006 records seven instances of this
-across M1, one of them the orchestrator's own, and notes that the pattern
-survived being documented as a norm. A grep is mechanical; a reminder is not.
-
-**THE COMMAND ABOVE IS LINE-BASED AND THIS PROSE IS HARD-WRAPPED, so a hit
-phrase that straddles a wrap is INVISIBLE TO IT.** Found 2026-08-12 by the
-orchestrator, against its own document: the sentence "there is no way / to
-satisfy" wrapped between `way` and `to`, and the grep reported clean on the one
-over-claim in the file. The single-word alternatives (`never`, `always`,
-`impossible`) are effectively immune; the multi-word ones (`cannot be`,
-`no way to`, `needs a`, `is covered`, `would catch`) are the exposed set.
-
-Measured across three work histories and the document that found it, counting
-OCCURRENCES rather than matching lines, so the two numbers are comparable:
-
-| file | line-visible | total | missed by wrap |
-|---|---|---|---|
-| `delivery/work-history/m3-p3.md` | 223 | 223 | **0** |
-| `delivery/work-history/m3-p1.md` | 62 | 62 | **0** |
-| `delivery/work-history/m3-p4.md` | 182 | 184 | **2** |
-| the M3-P9 dispatch read | 2 | 3 | **1** |
-
-So the gap is REAL and SMALL, and it is stated that way rather than inflated:
-two misses in a 184-hit work history is not the shape of a broken guard, and one
-miss in a three-hit document is how it was noticed at all. Run the wrap-
-insensitive form as well when the document is prose you wrapped yourself:
+Every hit carries an adjacent captured command that settles it, or is restated
+as an open question. "I did not find a way to force this arm" is true; "this
+arm cannot be forced" is a claim
+(delivery/tuition/T-006-unexecuted-claims-about-the-world.md:1). The command is
+line-based and prose is hard-wrapped, so a multi-word phrase split across a
+line break escapes it. Also run the wrap-insensitive form and compare:
 
 ```
 tr '\n' ' ' < delivery/work-history/<phase>.md \
   | grep -oEi 'cannot be|impossible|needs a|is covered|catches|would catch|recovers|anyway|always|never|no way to'
 ```
 
-It loses line numbers, which is why it supplements the binding command rather
-than replacing it: run the line-based one to locate hits, and this one to learn
-whether the first missed any.
+## Dispatch contract: no agent without a beacon and a guard
 
-### One witness is not a class
+A dead process sends no notification, so waiting for a completion
+notification is process liveness, which constraint C-2 forbids
+(delivery/tuition/T-008-the-orchestrator-had-no-beacon.md:1). Binding on
+every dispatch:
 
-A witness for a CLASS must redden under at least TWO structurally different
-members of it. M1-P6 produced two consecutive mediums from this alone: one
-defang reddened a guard test, three others left it green, and the round after
-it repeated the mistake one abstraction up.
-
-## Dispatch contract: no agent without a beacon and a guard (T-008, binding)
-
-Measured 2026-08-06: two review agents died within minutes of dispatch and the
-orchestrator did not notice for **nine hours and eleven minutes**, while
-answering the owner and dispatching other work throughout. Nothing was lost but
-wall clock, and it was the largest single waste in the project.
-
-The orchestrator's supervision was "wait for a completion notification". That
-is PROCESS LIVENESS, which constraint C-2 forbids for exactly this reason: a
-dead process sends no notification, and no notification is indistinguishable
-from work in progress. This repository is building the watcher and liveness
-guard that prevent precisely this, and the rule was not applied to the process
-building it.
-
-A stated stall rule is not sufficient. It addresses attention, and attention is
-what a busy session does not have. This project has recorded twice that a rule
-depending on memory does not survive; the answer both times was a mechanism.
-
-**THREE rules, all mechanical, binding on every dispatch:**
-
-1. **Every dispatched agent writes its output INCREMENTALLY.** It creates its
-   artifact within the first minutes and appends as it works. The file's mtime
-   is its beacon. A death then leaves a partial result rather than nothing,
-   which is the difference between salvage and a total loss.
+1. **Every dispatched agent writes its output INCREMENTALLY**: it creates its
+   artifact within the first minutes and appends as it works. The file's
+   mtime is its beacon, and a death leaves a partial result.
 2. **A freshness watchdog is armed in the SAME TURN as the dispatch.** It
-   watches the newest mtime under the agent's working directory and reports
-   stale after a threshold. It must test FRESHNESS, never existence and never
+   watches the newest mtime under every path the agent writes and reports
+   stale after a threshold. It tests FRESHNESS, never existence and never
    completion.
-3. **THE WATCHDOG ITSELF EXPIRES, AND RE-ARMING IT IS PART OF THE RULE.**
-   Measured 2026-08-12: a monitor requested with `persistent: true` and a
-   3600000ms timeout was created with a **1800000ms** timeout regardless, and
-   died at thirty minutes while its agent was still running. The tool reports
-   the timeout it actually used in its own start message, and it is not always
-   the one asked for; read that number rather than the one you passed.
-   A watchdog that has expired cannot go red, which is the same failure as one
-   watching the wrong place, and it is silent in the same way. Treat the
-   "[Monitor timed out]" notice as a REQUIRED ACTION, not an FYI, and re-arm in
-   the turn it arrives. This is the third variant of "cannot go red" this
-   project has hit, after including the orchestrator's own worktrees in the
-   watch set and after excluding the agent's.
-   **AND THE NOTICE DOES NOT ALWAYS ARRIVE, WHICH THIS RULE AS FIRST WRITTEN DID
-   NOT COVER.** Measured the same day, a few hours after the sentence above was
-   committed: a CI-completion monitor expired and produced NO timeout notice at
-   all. It was noticed only because its stream of events had stopped, which is
-   the weakest detection available, because **an expired monitor is
-   indistinguishable from one watching a quiet system.** Reacting to a notice is
-   therefore not sufficient; monitor LIFETIME has to be tracked. The cheap form
-   is to treat any monitor older than its reported timeout as expired by default
-   and re-arm it without waiting for evidence, since re-arming a live monitor
-   costs one restart and trusting a dead one costs the thing it was watching.
+3. **The watchdog expires, and re-arming it is part of the rule.** Read the
+   timeout the tool reports it used, not the one you asked for. Track monitor
+   lifetime: treat a monitor older than its reported timeout as expired and
+   re-arm it without waiting for a notice, because the timeout notice does not
+   always arrive and an expired monitor looks like a quiet system.
 
-The second rule has its own recorded failure: the first watchdog written after
-this incident tested whether the report file EXISTED, so it fired two minutes
-in, reported success, and said nothing. A guard whose condition does not test
-the property that matters is green and worthless, which is the red-witness rule
-one level up.
+Answer in writing in the dispatch turn, before arming:
 
-Answer these three IN WRITING in the dispatch turn, before arming anything:
-
-1. **Where does THIS agent write? MEASURE IT, DO NOT PREDICT IT.** An earlier
-   version of this line said "read its brief", and that is structurally
-   unreliable: agents create working directories that no brief names, because
-   the directories did not exist when the brief was written. Measured
-   2026-08-12, BOTH watchdogs armed that afternoon watched a subset, and both
-   read a busy agent as possibly dead, one for twenty-three minutes. The better
-   the agent behaves the surer this is: a delta verifier built its own mutation
-   lab precisely so it would not touch the tree under review, which is correct
-   practice and invisible to any prediction.
+1. **Where does this agent write? MEASURE it, do not predict it**, and
+   re-measure at every stale reading; agents create directories no brief
+   names. Watch the union, plus `/tmp` scratch used by gate runs:
 
    ```
    find "$SCRATCHPAD" -maxdepth 1 -printf '%T@ %y %p\n' | sort -rn | head -15
    ```
 
-   Every directory the agent has made for itself appears at the top by recency.
-   Run it BEFORE arming and AGAIN at every stale reading, because an agent
-   starting a new kind of work has just made a new place to write. Watch the
-   UNION of what appears, plus `/tmp` scratch used by gate runs, which still do
-   write evidence outside the tree. A watchdog pointed at one of an agent's
-   several paths is not weak, it is FALSE: it reports quiet at full speed.
-2. **What is the baseline before its first write?** DISPATCH TIME, never the
-   inherited mtime of whatever the previous agent left, or the watchdog fires
-   instantly on a healthy agent. On a RE-ARM the baseline is the newest existing
-   write, because the grace was already spent.
-3. **What does silence mean here?** State which of "dead", "in a long run" and
-   "finished" this watchdog can distinguish, and label its output accordingly.
-   One that cannot tell them apart must SAY so rather than print a number
-   implying it can.
+2. **What is the baseline?** Dispatch time on a first arm, never an inherited
+   mtime; on a re-arm, the newest existing write.
+3. **What does silence mean?** Say which of "dead", "in a long run" and
+   "finished" the watchdog can tell apart, and label its output accordingly.
 
-The two rules below come from one measured incident, 2026-09-15: one of six
-implementers was dispatched without worktree isolation, because its
-files-to-touch list read as documents only, and it checked out its own branch
-IN THE ORCHESTRATOR'S CLONE. Nothing was lost, only because the orchestrator's
-work was already pushed. The account is
-delivery/tuition/T-026-worktree-isolation-needs-a-git-cwd-and-fails-instantly-without-one.md:45.
+Isolation (delivery/tuition/T-026-worktree-isolation-needs-a-git-cwd-and-fails-instantly-without-one.md:1):
 
-Two rules follow, both cheap:
+- **Isolate EVERY dispatched implementer in its own worktree**, including
+  those that only write documents; an agent told to commit on its own branch
+  creates that branch wherever it stands.
+- **The orchestrator takes its own worktree before dispatching**:
+  `git worktree add -f <scratch>/orch <orchestrator-branch>`.
+- **Exclude the orchestrator's own worktrees from any agent watchdog**; a
+  watchdog that cannot go red is trusted and worse than none
+  (delivery/tuition/T-014-the-watchdog-watched-the-wrong-place-six-times.md:1).
+  If an agent is not isolated, watch its path too and say which agents the
+  watchdog covers.
 
-1. **Isolate EVERY dispatched implementer, including the ones that only write
-   documents.** An agent told to commit on its own branch will create that
-   branch wherever it is standing.
-2. **The orchestrator takes its own worktree before dispatching**, so its
-   working tree is not the one an agent moves:
+## Green is scoped to the run that produced it
 
-   ```
-   git worktree add -f <scratch>/orch <orchestrator-branch>
-   ```
+A gate result is evidence only for the configuration it ran under
+(delivery/tuition/T-009-green-on-the-wrong-event.md:1). "CI is green" is never
+a complete sentence: name the event and the head sha. The `pull_request` and
+`push` events select different gates from the registry.
 
-This also breaks the watchdog rule above in a way worth naming: the unisolated
-agent's freshness is NOT visible in `.claude/worktrees/`, so a watchdog watching
-only those directories reads quiet at full speed for that one agent. Either
-isolate it, or watch its path too and say which agents the watchdog covers.
+1. **A merge is complete only when the post-merge `push` run on the new
+   `main` head is observed to completion and green**, with the same watchdog
+   discipline as a dispatch.
+2. **Where behavior forks on the CI event, BOTH arms need a witness.**
 
-**Exclude the orchestrator's own worktrees from any agent watchdog.** Including
-them keeps it green regardless of the agent, and a watchdog that cannot go red
-is worse than none because it is trusted. Full account in
-delivery/tuition/T-014-the-watchdog-watched-the-wrong-place-six-times.md:1.
+**Merging quickly cancels post-merge runs.** `.github/workflows/gates.yml`
+uses `group: gates-${{ github.ref }}` with `cancel-in-progress: true`, so
+merge N+1 cancels the running `push` run for head N. A cancelled run is
+neither red nor green. Do not re-run it and do not report red: verify the
+CURRENT `main` head's push run to completion (`main` is cumulative, so it
+exercises head N's changes; it says nothing about the intermediate tree at
+head N, which is an accepted trade) and say in the evidence that head N's
+run was cancelled by head N+1. Waiting for each push run before the next
+merge also works and costs a CI cycle per merge; pick one and say which.
 
-## Green is scoped to the run that produced it (T-009, binding)
+**A green bundle is not evidence that a particular gate asserted anything.**
+Quote the gate's own row: the runner prints one `gates: <id>: <status>:
+<detail>` line per gate, and the job uploads `summary.json` (artifact
+`gates-summary-<pull-request|push>-attempt-<n>`, 7-day retention), whose
+`gates[]` row carries the gate's `status`, `units`, `applicable` and
+`vacuous`. Say which half of a claim is observed and which is deduced.
 
-The `gates` workflow fires on two events and they run DIFFERENT bundles: the
-`pull_request` event runs the strong PR bundle with `--phase` from
-`github.head_ref`, and a `push` to `main` runs `--bundle main` with no `--phase`.
-A defect on the arm only one event takes is invisible to the other.
+## Branch names are load-bearing
 
-**The mechanism: a gate result is evidence only for the configuration it ran
-under.** "CI is green" is never a complete sentence here. The complete sentence
-names the event and the head sha.
-
-Two rules, both mechanical:
-
-1. **A merge is not complete until the post-merge `push` run on the new `main`
-   head is observed to completion.** Not the PR check on the branch: the run
-   whose head sha is the new tip. The phase does not close until that run is
-   green. Watch it with the same watchdog discipline T-008 requires.
-2. **Where behavior forks on the CI event, BOTH arms need a witness.** One
-   witnessed arm and one unwitnessed arm is the exact shape that broke here, and
-   the unwitnessed one is the one that broke.
-
-**AND RULE 1 IS DEFEATED BY MERGING QUICKLY, WHICH IS NOT OBVIOUS AND WAS READ
-AS A RED `main` TWICE.** `.github/workflows/gates.yml` sets
-`group: gates-${{ github.ref }}` with `cancel-in-progress: true`. On a `push`
-event the ref is `refs/heads/main` for EVERY merge, so the group is shared and
-**merge N+1 CANCELS the still-running post-merge run for head N.** Measured
-2026-09-18 on `5ec129e` (M4-P21): `macOS smoke=success`, `gates=cancelled`, and
-a watcher that classifies anything not-success as failure printed `main is red`.
-It was not red. A cancelled run is not a green one either, so neither reading is
-right and the naive watcher cannot tell them apart.
-
-What discharges rule 1 when this happens is stated rather than assumed, because
-it is a weaker claim than the rule's plain words:
-
-- `main` is CUMULATIVE, so a green `push` run at head N+1 exercises the main
-  bundle against a tree that CONTAINS head N's changes. That is evidence the
-  landed work passes the push arm.
-- It is NOT evidence about the intermediate tree at head N, which no one will
-  ever check out. Accepting that is a deliberate trade, not an oversight.
-- So on a cancelled post-merge run: do NOT re-run it and do NOT report red.
-  Verify the CURRENT `main` head's push run to completion, and say in the
-  evidence that head N's own run was cancelled by head N+1.
-
-Waiting for each push run before merging the next pull request also works and
-costs a full CI cycle per merge. Neither is free; pick one and say which.
-
-Corollary, paid for in the same incident: an orchestrator-side hotfix to shared
-harness code IS a fix round and owes the full fix-round contract above. PR #27
-fixed one arm of "the harness assumes a run has a phase" and left the sibling
-arm twelve lines away, because it was treated as too small to open the contract
-for. PR #30 is what that exemption cost.
-
-### A green BUNDLE is not evidence that a PARTICULAR gate asserted anything
-
-Quote the gate's own row, never the bundle's counts. The runner prints one
-`gates: <id>: <status>: <detail>` line per gate in the job log, and the `gates`
-job uploads that run's `summary.json` (artifact
-`gates-summary-<pull-request|push>-attempt-<n>`, file
-`<evidence>/summary.json`, 7-day retention), whose `gates[]` row carries the
-gate's `status`, `units`, `applicable` and `vacuous`. Quoting
-`declared N applicable N verdict N green N` as evidence about one gate is a
-bundle-level green passed off as a gate-level one, the substitution T-009
-names, one scope smaller.
-
-## Branch names are load-bearing, not labels (binding)
-
-The scope auditor derives a phase id from the BRANCH NAME. Any branch matching
-`^claude/m[0-9]+-p[0-9]+-` is treated as that phase's one branch: the gate
-reads `delivery/plan/phase-declarations/<phase-id>.json` from the MERGE BASE
-and requires the declaration's own `branch` field to equal the current branch.
-
-So a non-phase branch named after the phase it relates to is not a naming
-preference, it is a red gate. Two shapes, both measured on 2026-08-08:
-
-- `claude/m3-p1-prereqs` (a prerequisites branch) derived phase `m3-p1` and
-  looked for a declaration that the branch itself was adding. The check could
-  never pass.
-- `claude/m3-p1-reviews` (a review-evidence branch) derived `m3-p1`, found the
-  declaration, and errored because the declaration's branch is
-  `claude/m3-p1-schemas-and-validator`.
-
-**Rule: only the phase's own implementation branch may match that pattern.**
-Every other branch (prerequisites, review evidence, paperwork, harness fixes)
-puts the phase id somewhere the pattern cannot match, for example
-`claude/reviews-m3-p1` or `claude/m3-prereqs-<slug>`.
-
-This entry exists because the orchestrator made the same mistake TWICE in one
-session, the second time within an hour of fixing the first, which is the exact
-shape tuition T-005 and T-006 record: a rule that depends on remembering does
-not survive a busy session, and the answer is a written mechanism. Check the
-name before pushing:
+The scope gate derives a phase id from the branch name. A branch matching
+`^claude/m[0-9]+-p[0-9]+-` is that phase's one branch: the gate reads
+`delivery/plan/phase-declarations/<phase-id>.json` and requires its `branch`
+field to equal the current branch. **Only the phase's own implementation
+branch may match the pattern.** Every other branch (prerequisites, reviews,
+paperwork, harness fixes) puts the phase id where the pattern cannot match,
+for example `claude/reviews-m3-p1`. Check before pushing:
 
 ```
 node -e 'console.log(/^claude\/m[0-9]+-p[0-9]+-/.test(process.argv[1]))' <branch>
@@ -478,46 +257,24 @@ node -e 'console.log(/^claude\/m[0-9]+-p[0-9]+-/.test(process.argv[1]))' <branch
 
 ## Identifier schemes
 
-Stable IDs, never renumbered, cited across documents.
-
-**A RETIRED id is never reused, in ANY of these schemes.** The rule is stated
-under `A-n` below because that is where the namespace first collided, but it
-binds all of them, and it has now been paid for twice. Measured 2026-08-09: the
-orchestrator allocated `DR-0019` for the closed-vocabulary decision without
-checking, and `DR-0019` had already been created (`719f04f`) and then DELETED
-(`f775c56`) as a fabricated owner decision. Two unrelated documents under one
-id, one of them a cautionary record about a fabricated sign-off. It was caught by
-a delta verifier, not by the author, and the record was renumbered to `DR-0020`.
-
-Deletion does NOT free an id, because the retired one keeps being cited by the
-documents that discuss the retirement. Before allocating, check the whole
-history, not the current tree:
-
-```
-git log --all --oneline -- 'delivery/decisions/DR-nnnn*'
-git log --all --oneline -S'DR-nnnn'
-```
-
-**THOSE TWO COMMANDS ARE WRITTEN FOR THE `DR-nnnn` SCHEME AND THAT IS WHY THE
-RULE BROKE AGAIN, TWICE, IN THE `T-nnn` ONE.** Measured 2026-09-18: `T-031` and
-`T-032` each carried two unrelated tuition entries on `main` at the same time.
-An allocator working in a scheme with no command reads a binding rule, finds
-nothing to run, and falls back to the highest id they can see, which cannot see
-an id another session has allocated and not yet merged. Recorded as
-delivery/tuition/T-039-two-tuition-ids-each-carried-two-different-entries.md:1.
-
-**Run the script, which covers the two file-per-id schemes and prints the next
-free id in each:**
+Stable ids, never renumbered, cited across documents. **A retired id is never
+reused in ANY scheme**: deletion does not free it, because the documents that
+discuss the retirement still cite it
+(delivery/tuition/T-039-two-tuition-ids-each-carried-two-different-entries.md:1).
+Before allocating, run:
 
 ```
 node scripts/check-id-collisions.mjs
 ```
 
-Exit 0 means no live collision; exit 1 names every colliding file. Its TAKEN set
-reads all of history, so a deleted id still counts. It covers `T-nnn` and
-`DR-nnnn` only, because those are the schemes that allocate one FILE per id; the
-rest live inside documents and a filename check is blind to them, so for those
-the two `git log` commands above, with the prefix changed, are still the method.
+Exit 0 means no live collision; exit 1 names every colliding file. It reads
+all of history and prints the next free `T-nnn` and `DR-nnnn`. For the schemes
+that live inside documents, search all history with the prefix changed:
+
+```
+git log --all --oneline -- 'delivery/decisions/DR-nnnn*'
+git log --all --oneline -S'DR-nnnn'
+```
 
 The schemes:
 
@@ -531,552 +288,183 @@ The schemes:
 - `T-nnn` tuition entries
 - `C-n` binding implementation constraints declared in the plan
 - `D-nn` decisions taken inside the plan
-- `A-n` owner ACTIONS: things only the owner can perform because they need
-  access an agent does not hold. Distinct from `DR-nnnn`, which is a CHOICE.
-  **`delivery/STATE.md` is the sole allocator**, and its "Owner action items"
-  section is the register; a plan that needs a new action asks for an id
-  rather than picking one. This entry exists because the namespace was
-  unregistered and collided: `A-4` meant the npm publish credential in the M3
-  plan and branch deletion in STATE.md, while `A-3` meant three different
-  things, one of them a literal string inside the gate manifest on `main`
-  (`implementer-token-present-owner-action-a-3`). A shipped configuration
-  string is why an id here is not free to renumber, so allocate a fresh id and
-  never reuse a retired one.
+- `A-n` owner ACTIONS: things only the owner can do because they need access
+  an agent does not hold (a `DR-nnnn` is a CHOICE). **`delivery/STATE.md` is
+  the sole allocator**; its "Owner action items" section is the register. A
+  plan that needs one asks for an id rather than picking one.
 
 ## Delivery protocol
 
-One phase, one branch, one PR. Branch names are given by the plan
-(`claude/m1-pN-<slug>`). The orchestrator never writes feature code and
-never lets a review be skipped; implementers never open PRs and never merge.
+One phase, one branch, one PR, branch names from the plan. The orchestrator
+never writes feature code and never lets a review be skipped; implementers
+never open PRs and never merge. The procedure is
+`.claude/skills/phase-delivery/SKILL.md`; read it before dispatching or
+implementing a phase.
 
-**When to involve the owner (DR-0016, binding).** Escalate ONLY when two or
-more options are genuinely comparable AND the consequence is high impact and
-costly to reverse. If the analysis yields a recommendation you would defend,
-the options are not comparable and there is nothing to ask: decide, record it
-as a decision record with its reasoning, and report it. Asking the owner a
-question whose answer was already obvious is a FAILURE of the system, because
-it costs them the focus they were spending elsewhere. Write your recommendation
-first; doing so is what reveals whether a question was ever a question.
-Unchanged: anything needing elevated access the agent does not hold, and
-milestone exit-test evidence, which is reported unasked.
+**When to involve the owner (DR-0016).** Escalate ONLY when two or more
+options are genuinely comparable AND the consequence is high impact and
+costly to reverse. If you would defend a recommendation, there is nothing to
+ask: decide, record it as a decision record with its reasoning, and report
+it. Write the recommendation first; that reveals whether it was a question.
+Anything needing access an agent does not hold, and milestone exit-test
+evidence, still go to the owner.
 
-Merge authority normally rests with the owner. It is currently DELEGATED to
-the orchestrator under DR-0012, conditional on dual cross-model clean review:
-two independent clean-room reviews of the same head, produced on different
-model families, both APPROVE with no unresolved high or medium finding, CI
-green on that exact head, and the scope audit passing. Read
-`delivery/decisions/DR-0012-delegated-merge-authority.md` before merging
-anything; it also records the limits the orchestrator holds itself to,
-including stopping rather than grinding when a phase needs more than two fix
-rounds or a high-severity finding recurs in one component. **DR-0016 changes
-what "stopping" means**: the phase no longer waits for the owner. A fresh
-implementer plus a third review contract is dispatched immediately and the
-owner is notified asynchronously. Only if THAT round also fails does the phase
-go to the owner. The property being protected is that something different must
-happen, and the measured evidence is that the fresh implementer, not the owner
-decision, is the half that worked.
+**Review and merge.** Merge authority is delegated to the orchestrator
+(DR-0012) under these conditions, as narrowed by DR-0062, DR-0063 and DR-0064:
 
-The full procedure is in `.claude/skills/phase-delivery/SKILL.md`. Read it
-before dispatching or implementing a phase.
+- **The review tier follows the diff (DR-0063).** `pair` when the diff touches
+  the runtime set (`src/`, `bin/`, `plugin/`, `schemas/`, and `package.json`,
+  `package-lock.json` or `plugin/package.json` when a non-version key
+  changes): two hazard reviews on distinct observed model families, or under
+  the declared single-vendor exception (`review-families` in `charter.yaml`,
+  DR-0038); the orchestrator arbitrates disagreements with evidence; an
+  unresolved high or medium blocks. `single` for everything else: one hazard
+  review on the cheaper tier, no arbitration, one fix round, and a finding
+  blocks only if it makes a shipped artefact wrong. Every change is reviewed.
+- **The kernel launches reviewers (DR-0062).** Review count, reviewed head and
+  model family come from kernel records, never from fields a reviewer writes;
+  a review the kernel did not launch does not count toward the pair.
+- CI green on the exact head being merged, and the scope audit passing.
+- **Stop rather than grind.** When a phase needs more than two fix rounds, or
+  a high-severity finding recurs in one component, dispatch a fresh
+  implementer plus another review at once and notify the owner
+  asynchronously; only if that round also fails does the phase go to the
+  owner. Something different must happen.
 
-Process paperwork (`delivery/**`) reaches `main` through a pull request like
-everything else, batched rather than one PR per file. Do not let evidence
-accumulate only on a long-lived side branch: if that branch is lost, the
-code survives and its proof does not.
+Read `delivery/decisions/DR-0012-delegated-merge-authority.md` before merging;
+it records the limits the orchestrator holds itself to.
 
-## A commit, a pull request and a CI run are three different things (DR-0031, binding)
-
-Owner decision, 2026-08-13, after one day produced **ten pull requests for two
-phases**. Each CI cycle is about sixteen minutes and branch protection
-SERIALISES them, so eight auxiliary pull requests cost eight sequential cycles.
+## A commit, a pull request and a CI run are three different things (DR-0031)
 
 1. **A commit is a unit of work.**
-2. **A pull request is a unit of SELF-CONTAINED VALUE and carries ALL its
-   evidence.** For a phase that is the code, the work history, both clean-room
-   reviews, the arbitration, any verification, and the record of what it merges
-   carrying. Splitting a phase's evidence into its own pull request is the
-   pattern this rule exists to stop.
-3. **CI enforces that `main` stays green. It is NOT how you find out whether you
-   are green.** Establish that locally first.
+2. **A pull request is a unit of self-contained value and carries ALL its
+   evidence**: the code, the work history, the reviews, any arbitration and
+   verification. Do not split a phase's evidence into its own pull request,
+   and batch process paperwork rather than one PR per file.
+3. **CI enforces that `main` stays green; it is not how you find out.**
+   Establish green locally first, on the union: merge `main` in and run the
+   gates. If CI tells you something you did not know locally, fix the local
+   procedure. Genuinely CI-only: the macOS smoke job and the M1 exit test in
+   full mode.
 
-**`main` is the record of work actually DONE.** Evidence about an abandoned
-phase belongs with the abandoned branch, not on `main`. Work that never reaches
-`main` is a normal and wanted outcome, more so with more than one contributor.
-So "the evidence would be lost if the phase dies" is not an argument for a
-separate evidence pull request; it is the correct behaviour.
+`main` is the record of work actually done: evidence about an abandoned phase
+stays with its branch. Check both directions before opening a PR: it must not
+carry code it is not delivering, nor evidence about code that has not landed
+(delivery/tuition/T-019-a-verification-branch-carried-the-code-it-was-verifying.md:1).
 
-### The mirror of T-019, and neither the gate nor any review caught it
-
-Measured on `main` at `bdec27d` while M3-P9 was still open: the two clean-room
-reviews and the delta verification for M3-P9 were PRESENT, while `AGENTS.md` and
-`scripts/check-dual-review.mjs` were ABSENT. **`main` asserted review evidence
-for code it did not contain.**
-
-T-019 was a paperwork pull request carrying code that should not land. This is
-paperwork pull requests carrying evidence about code that has not landed. One
-defect: **the pull request's contents do not match the unit of value it claims to
-deliver.** Check both directions before opening one.
-
-### Local green before opening, and it is STRONGER than the CI run
-
-The `pull_request` run tests the union with the base AS OF THAT RUN. Merging
-`main` in locally and running the union is not a weaker substitute: it is what
-found two failures in M3-P6 that neither branch's CI could see.
-
-**If CI tells you something you did not already know locally, that is a defect in
-the local procedure, not a normal outcome.** Fix the procedure rather than
-pushing again.
-
-Genuinely CI-only, measured, and it is a short list: the macOS smoke job
-(different operating system), and the M1 exit test in FULL mode (`gh` is unusable
-here, standing warning 6). Everything else in the bundle runs locally on the
-floor-satisfying toolchain.
-
-**CORRECTED 2026-09-16 BY MEASUREMENT (M4-P23): the rule that stood here was
-FALSE and is withdrawn.** It said scope declaration grants still need their own
-pull request, because the scope gate reads the declaration from the MERGE BASE
-only. M3-P11 shipped the both-declarations read. src/gates/scope.ts:110 records
-it: from that phase on the declaration is read from BOTH the merge base and the
-head, an entry ADDED on the head is allowed, and the protection against it is
-that the addition is PRINTED BY NAME for a reviewer to sign off. A removal is
-still refused outright, so the grant is additive only.
-
-So a declaration GRANT lands WITH the phase that needs it. The three extra pull
-requests that rule cost in a single day are not owed again.
-
-**BE EXACT ABOUT WHAT CHANGED, because the correction is easy to over-read and
-the over-reading is a second false rule.** The relaxation is about ENTRIES
-inside a declaration. The declaration FILE itself must still exist at the merge
-base: src/gates/scope.ts:877 reddens a phase branch whose
-`delivery/plan/phase-declarations/<phase-id>.json` is absent there, with "the
-declaration must be committed to main before the phase branch is created".
-Measured 2026-09-16 against this phase's own branch: scope red, exactly that
-reason. So a NEW phase still needs its declaration on `main` first, and only the
-amendment stopped costing a pull request.
-
-This is the worked example of why a retirement re-verifies every rule against
-`src/` rather than carrying it across: an uncorrected rule here would have become
-a false constraint in a kernel brief, where nobody would have a scope gate to
-check it against.
+Scope declarations: a new phase's declaration FILE must exist at the merge
+base before its branch is created (the scope gate is red otherwise). ENTRIES
+added to a declaration on the phase branch are allowed and printed by name for
+the reviewer; a removal is refused. So a declaration grant lands with the
+phase that needs it.
 
 ## Standing environment warnings
 
-Each of these bit someone once. Forward them to every implementer.
+`scripts/setup-env.sh` fixes the clone depth, the Node floor and the build.
+What it cannot fix is below. The numbers are stable ids cited from `src/`,
+`test/` and `scripts/`: 1 is retired (the toolchain is the script's job) and
+never reused.
 
-1. THREE Node versions are installed and which one you get depends on how
-   the shell was started. Measured 2026-08-05: a login shell resolves `node`
-   to v22.22.2 via `/opt/node22/bin`, but a STRIPPED environment
-   (`env -i bash -c`, and some subagent or hook contexts) resolves it to
-   **v20.20.2** via `/usr/local/bin/node`, a symlink to `/opt/node20`. Node 20
-   has no TypeScript type stripping, so the suite fails there in a way that
-   does not look like a version problem. A second trap in the same family: an
-   exported PATH survives for the rest of a shell invocation, so a run intended
-   to measure the default toolchain can silently measure the floor one. Always
-   check `node --version` in the shell that actually runs the command, and prefer an absolute path or an explicit
-   PATH prefix over trusting the ambient one. A reviewer hit this and had to
-   run the default-toolchain gates through `bash -lc`.
-   The container's default Node is 22.x while the declared floor is `>=26`.
-   EBADENGINE warnings on every npm operation are expected. Never lower the
-   floor and never set engine-strict. Node 22.18+ runs TypeScript natively so
-   the suite works on the default toolchain, and CI on Node 26 remains the
-   authority. Tests must still be floor-gated, because the default toolchain
-   is below the floor.
-   A floor-satisfying toolchain CAN be fetched, which removes "witnessed in
-   CI" as the only way to discharge a floor-dependent assertion. Measured
-   2026-08-05: `curl -O https://nodejs.org/dist/v26.6.0/node-v26.6.0-linux-x64.tar.xz`
-   then `tar -xJf` into a scratch prefix and put its `bin` first on PATH.
-   Against `main` at `bcefc98` that toolchain gave npm 11.18.0, `npm ci`
-   exit 0 with no EBADENGINE line, `npm run build` exit 0, a clean
-   `git status` after build, and `npm test` exit 0 with 106 tests, 106 pass,
-   0 fail and 0 SKIPPED, where the default toolchain skips the floor-gated
-   ones. Install to a scratch prefix, never over the system Node.
+**2. `typescript` is pinned exact; keep `"types": ["node"]` in both
+tsconfigs.**
 
-   **AND THE SCRATCH PREFIX HAS A TRAP THAT DEPENDS ON WHERE YOUR CLONE IS,
-   measured 2026-08-14.** `/tmp/claude-0` is `drwx------`, so a process running
-   as an unprivileged uid cannot traverse into it. `runCliUnprivileged` at
-   test/gates.test.ts:3530 drops to exactly such a uid and spawns
-   `process.execPath`, which IS the scratch toolchain when you have put it first
-   on PATH. Same head, same working tree, one variable changed:
+**3. `*.tsbuildinfo` is gitignored**, and `git status` is clean after a build.
 
-   | interpreter | result |
-   |---|---|
-   | the scratch toolchain under `/tmp/claude-0/...` | `spawnSync ... EACCES`, suite exit 1 |
-   | `/opt/node22/bin/node` | that test alone: 1 test, 1 pass, 0 fail |
+**4. Import a `src` module from `test/` with the computed-URL dynamic import
+pattern** in `test/doctor.test.ts`; a literal relative import fails the build
+with TS2878.
 
-   The failure is a property of the INTERPRETER'S PATH, not of the branch, and
-   the diagnosis is `namei -m "$(command -v node)"` rather than reading the
-   assertion.
+**5. Tests that create scratch git repositories set command-scoped
+`GIT_AUTHOR_*` and `GIT_COMMITTER_*`**; CI runners have no identity and tests
+never touch user or global config.
 
-   **Why nobody hit it before, and it is the interesting half.** The test's own
-   helper calls `grantTraversalWhenUnderTmp(repoRoot)`, which opens the
-   traversal chain when the REPO is under `/tmp`, and says nothing about the
-   interpreter. An agent whose worktree is in the scratchpad therefore opens
-   `/tmp/claude-0` incidentally and the interpreter becomes reachable as a side
-   effect. The ORCHESTRATOR's clone is at `/home/user`, so nothing opens it.
-   Three agents reported 809 pass 0 skipped on this exact toolchain while the
-   orchestrator got a hard failure, and both were honest.
+**6. `gh` is absent here and present in CI**, so tests use a deterministic
+gh-free PATH. GitHub REST reachability is probed per session, not assumed
+either way (the agent proxy supplies credentials; the value of `GH_TOKEN` is
+irrelevant). The GitHub MCP tools are a working path. A CI watcher writes its
+failure arm first: one that turns an error into silence cannot go red.
 
-   Two consequences. First, a green suite from a scratchpad worktree is not
-   evidence that the same suite is green from a clone elsewhere, which is one
-   more axis on top of standing warning 12's three. Second, the helper granting
-   traversal for the repo and not for the interpreter is a real gap in
-   `test/`, tracked rather than blocking, and it would bite a consumer running
-   from a home directory with a privately-installed Node.
-2. `typescript` is pinned exact. Do not remove `"types": ["node"]` from
-   either tsconfig; the strict build cannot resolve Node builtins without it.
-3. `*.tsbuildinfo` is gitignored deliberately; `tsc -b` writes one at the
-   repository root and a clean `git status` after build is an acceptance
-   criterion.
-4. Importing a `src` module from `test/` with a literal relative path fails
-   the build with TS2878 under `rewriteRelativeImportExtensions` across the
-   project reference. Use the computed-URL dynamic import pattern already
-   present in `test/doctor.test.ts`.
-5. Tests that create scratch git repositories must set command-scoped
-   `GIT_AUTHOR_*` and `GIT_COMMITTER_*`; CI runners have no git identity.
-   The fleet's own bootstrap commit does this by design (decision EXT-F-02
-   option B) and must never touch user or global config.
-6. `gh` is absent locally and present in CI. Use a deterministic gh-free
-   PATH in tests rather than assuming either.
-   MEASURED 2026-08-05, and it matters for the M1 exit test's FULL mode: `gh`
-   CAN be installed here (release tarball from github.com, same pattern as the
-   Node 26 toolchain) and `gh api user` does authenticate as the owner. But it
-   is NOT usable for the exit test. `gh auth status` reports the GH_TOKEN
-   invalid, `permissions.push` reads FALSE even on the kernel repository where
-   git pushes demonstrably succeed, and GraphQL is refused with "only the
-   pinned set of PR-review operations is served". So the API path and the git
-   path have different authorities in this container, and `gh pr create`,
-   `gh pr merge` and `gh pr view` cannot be relied on. Full mode needs a real
-   runner or the owner's machine; local mode is the form that runs here.
-   **THE CONSEQUENCE THAT KEEPS COSTING SOMETHING: NO BASH-BASED CI WATCHER CAN
-   WORK HERE, AND IT FAILS SILENTLY.** `GH_TOKEN` and `GITHUB_TOKEN` are both
-   SET, which is why this looks like it should work, and the REST API answers
-   `{"message":"Bad credentials","status":"401"}` to every request made with
-   them. Measured 2026-08-13 against `/repos/.../pulls/125` and `/pulls/128`.
-   A poll loop written the obvious way pipes that 401 into a `.catch(()=>{})` or
-   a `|| true` and emits nothing, so **a watcher with no CI access is
-   indistinguishable from a CI run still in progress.** The orchestrator armed
-   exactly such a watcher for 1500s and it reported nothing while a job it was
-   watching had already completed; it was caught by an hourly liveness check,
-   not by the watcher. This is the T-008 shape, a guard that cannot go red, in
-   the one family where the environment guarantees it.
-   **The GitHub MCP tools DO work** and are a reachable CI path, so status can
-   always be read by calling them.
+**7. `--test-name-pattern` must precede the positional test path**, or it is
+silently ignored.
 
-   **REVERSED IN PART, MEASURED 2026-08-14, AND THE PARAGRAPH ABOVE IS LEFT
-   STANDING RATHER THAN DELETED BECAUSE THE REASONING IN IT IS STILL RIGHT.**
-   The REST API is reachable from this container today. Found by the M3-P10
-   criteria reviewer as finding CR-001, which reported that plain `curl` with
-   `$GH_TOKEN` read pull-request, rate-limit and check-run data, contradicting
-   this warning. The orchestrator re-measured rather than averaging the two
-   honest accounts, which is the discipline standing warning 12 records for
-   suite counts:
+**8. `git checkout -- <path>` is destructive** in a tree holding uncommitted
+work, including a single path. There is no safe narrow form: commit or copy
+out of the tree first.
 
-   | probe | result |
-   |---|---|
-   | `GET /rate_limit` with `$GH_TOKEN` | **200**, `core.limit` 15000 |
-   | `GET /repos/.../pulls/140` | **200** |
-   | `GET /actions/runs/31778877771` (a real `push`-event run) | **200**, head sha and conclusion readable |
-   | `GET /user` | **200**, identity `ThomasHendrickx` |
-   | **`GET /rate_limit` with a DELIBERATELY INVALID token** | **200**, same 15000 limit |
+**9. `-C` changes where git resolves, not where your shell is.** `git -C
+<repo> worktree add <relative>` and `git remote set-url` resolve relative
+paths against the repository. Pass absolute paths. `git worktree list` finds
+a stray worktree; `git worktree remove --force` removes it.
 
-   **The last row is the one that explains everything.** An invalid token
-   getting an App-installation rate limit means the value in `GH_TOKEN` is
-   IRRELEVANT: the agent proxy at `$HTTPS_PROXY` substitutes real credentials
-   on the way out. So "is the token good" was the wrong question all along, and
-   `gh auth status` calling it invalid was a true statement about a value
-   nothing uses.
+**10. Derive an error signature from real captured output** under forced
+conditions, never from a hand-written example: the transient error of two git
+operations contending on one clone names a ref, not a lock file (T-003).
 
-   Consequences, stated as changes rather than left to be inferred:
+**11. Suite wall time grows with real-clock lease waits.** Budget harness
+timeouts for them; never shorten the waits.
 
-   - **A bash-based CI watcher CAN work here**, and the blanket prohibition
-     above is withdrawn. Reading CI is no longer necessarily an orchestrator
-     action, so an agent can be asked to observe a run to completion.
-   - **Everything the old paragraph says about SILENCE still binds.** A watcher
-     that pipes a failure into `|| true` and emits nothing is a guard that
-     cannot go red whatever the cause of the failure, and that is the T-008
-     shape the entry was really about. Write the failure arm first.
-   - **The cause of the 2026-08-13 401s is NOT established.** That measurement
-     was real and it is not reproducible today. Nobody has shown whether the
-     proxy changed, the installation's grants changed, or those two endpoints
-     differed. Treat REST reachability as a thing to PROBE at the start of a
-     session that depends on it, not as a settled property in either direction.
-7. `--test-name-pattern` must precede the positional test path, or it is
-   silently ignored.
-8. `git checkout --` wipes uncommitted sibling edits. Copy before
-   experimenting. SHARPER FORM, paid for twice: ANY `git checkout --` in a
-   tree holding uncommitted work is destructive, INCLUDING when it names a
-   single path, and especially the path you have been editing. An implementer
-   used it to clean up one control probe and silently lost four rounds' worth
-   of uncommitted harness edits, having read this warning beforehand. Commit or
-   copy out of tree first; there is no safe narrow form.
-9. `git remote set-url` resolves relative paths against the repository, not
-   the current working directory. Use absolute paths in test staging.
-   **SAME TRAP, ONE COMMAND ALONG, AND IT IS NOT A TEST-ONLY CONCERN:
-   `git -C <repo> worktree add <relative-path>` ALSO resolves against the
-   repository.** Measured 2026-08-12: `cd $SCRATCH && git -C /home/user/... \
-   worktree add --detach ppass origin/main` created the worktree at the
-   REPOSITORY ROOT, not under `$SCRATCH`, and the following `cd ppass` failed
-   with "No such file or directory" from a shell that was standing in the wrong
-   place to see it. The failure surfaced later as an untracked directory in
-   `git status` on the repository, which is the shape most likely to get a
-   scratch worktree committed by accident. `git worktree remove --force` is the
-   cleanup; `git worktree list` is how you find one. The general rule for this
-   family: **`-C` changes where git resolves, not where your shell is**, so
-   every path handed to a `-C` invocation should be absolute.
-10. Concurrent git operations against one clone contend on ref locks, and
-    the real transient message names a ref, not a lock file. Never derive a
-    retry signature from hand-written examples; capture real stderr under
-    forced contention (delivery/tuition/T-003).
-11. Suite wall time grows with real-clock lease waits. Budget harness
-    timeouts accordingly rather than shortening the waits.
-12. **Running the suite without building first SILENTLY SKIPS NINE TESTS, and
-    the run still exits 0.** Warning 1 says correctly that the suite needs no
-    prior build to RUN; that is true and it is not the whole story. Nine tests
-    exercise the built CLI and skip themselves when `dist/` is absent: five in
-    `test/gates.test.ts`, four in `test/m2-exit-test.test.ts` (deleted by
-    M6-P3 with the M2 harness, so today's count is lower), each skip message
-    naming the dist entry it wanted. Measured 2026-08-09 on node v26.6.0, same
-    head, both arms exit 0:
+**12. A suite result names its toolchain, build state and invocation**, and
+quotes the skipped count: "N tests, N pass, 0 fail, 0 skipped" from `npm test`
+on node vX with `dist/` built. Tests that need `dist/` skip when it is absent
+and the run still exits 0; bare `node --test` also picks up `sandbox/test/`,
+which `npm test` does not. **The default toolchain can FAIL a floor-dependent
+test** that CI passes: a red there is not proof of a red branch, so establish
+the base's result on the same interpreter before blaming your change. New
+floor-dependent tests are floor-gated like those in `test/doctor.test.ts`.
 
-    | state | reported |
-    |---|---|
-    | `dist/` built | 504 tests, 504 pass, **0 skipped** |
-    | `rm -rf dist` | 504 tests, 495 pass, **9 skipped** |
+**13. `git diff main..branch` is not a merge preview**: on a branch behind
+`main` it shows `main`'s additions as deletions. Use `git diff main...branch`
+for the branch's own changes and `git merge-tree --write-tree main <branch>`
+for the merge result.
 
-    This is why two honest agents reported different totals for the same commit
-    and neither was wrong: the gate order in this file runs `npm run build`
-    before `node --test`, so CI and anyone following it sees the full suite,
-    while anyone running the suite alone silently measures nine tests fewer.
-    A skipped test is not a passing test, and "exit 0" does not distinguish
-    them. Quote the SKIPPED count alongside the pass count, always; a bare
-    "N pass, exit 0" is the incomplete sentence here, exactly as "CI is green"
-    is under T-009.
+**14. `git push --dry-run` does not probe authorization**, for any ref. Only
+`refs/heads/*` is pushable from this container. **Deleting a remote branch is
+an OWNER action**: do not attempt it; ask for an `A-n` id.
 
-    **The complete sentence for a suite result names the toolchain AND the
-    build state**, because the two axes skip different tests and they compose.
-    Measured at the same head: node v26.6.0 with `dist/` built gives 504 pass
-    and 0 skipped, and the DEFAULT toolchain (`bash -lc`, node v22.22.2) gives
-    502 pass and **2** skipped, those two being the floor-gated `doctor` tests.
-    The floor accounts for two, never nine. That matters because the obvious
-    first guess for a skip discrepancy here is warning 1, the Node floor, and on
-    this occasion that guess was WRONG; the round measured both axes instead of
-    stopping at the plausible one.
+**15. A toolchain must sit where an unprivileged uid can traverse it**; some
+tests run `process.execPath` as one. A private `$HOME` is not such a place.
 
-    Found by the M3-P3 round-7 implementer while settling a discrepancy the
-    orchestrator had flagged rather than averaged away.
+## The orchestrator does not decide when it is finished
 
-    **THERE IS A THIRD AXIS AND IT IS THE INVOCATION.** Measured 2026-08-10 by
-    the M3-P3 round-9 clean-room reviewer, at one head, one toolchain and one
-    build state, differing only in the command:
+A stop is computed, never judged. `.claude/orchestrator-next.mjs` derives the
+next action from git and files, prints what it cannot see (open PRs, CI
+conclusions, post-merge push runs), and **exits nonzero whenever work
+remains**. A server-side hourly Routine re-creates the in-memory 20-minute
+kick if it is missing, because in-memory jobs die with the session. **None of
+these is a reason to stop**: having just answered the owner, having written a
+status report, a subagent being in flight (verify its beacon and keep
+working), or something looking blocked (name the blocker in one line and do
+everything that is not blocked).
 
-    | invocation | tests | pass | SKIPPED |
-    |---|---|---|---|
-    | `npm test` | 506 | 506 | 0 |
-    | bare `node --test` from the repository root | **508** | 508 | 0 |
+## Agent concurrency (DR-0044)
 
-    The two extra are NAMED rather than inferred, by diffing the passing-test
-    names against the CI log: `greet rejects an empty name` and `greet returns a
-    greeting for a name`, from `sandbox/test/greet.test.js`, a TRACKED sandbox
-    fixture at the repository root. `package.json`'s `test` script is
-    `node --test "test/**/*.test.ts"`, which excludes it, and the `suite` GATE
-    runs that script rather than a pattern of its own.
+One workflow in flight, two agents at a time
+(delivery/decisions/DR-0044-two-agents-in-parallel-is-enough.md:1). Do not
+open a second workflow to get around the cap; check that nothing else is
+running and queue rather than launch. **Before dispatching, state in writing:
+how many agents, in how many workflows, therefore how many run at once (never
+more than 2), and a token estimate** (a clean-room review costs 150,000 to
+490,000 subagent tokens, a fix round 115,000 to 400,000). Read the number the
+tool reports, not the one you passed. Write the dispatch script once with an
+args filter so one script serves every slice. Model choice is per agent;
+review stages benefit from a different family than the stage they review.
 
-    So **506 is what CI and the gate mean, and 508 is what gate-list step 3
-    (`node --test`) literally asks for.** Both are true sentences about different
-    commands, which is exactly why quoting a bare number starts an
-    investigation. Head-independence was controlled: the same bare invocation at
-    a different head, same toolchain and build state, also reports 508.
+## Reporting to the owner
 
-    Quote the INVOCATION alongside the toolchain and the build state. This
-    repository has now paid three times for an unexplained suite-count
-    difference, and the third time the reviewer refused to average a two-test gap
-    and found the cause instead.
-
-    **AND SINCE 2026-08-20 THE DEFAULT TOOLCHAIN DOES NOT MERELY SKIP, IT
-    FAILS.** The numbers above are historical and correct for the head they
-    name; do not read them as today's expectation. At `1945d69`,
-    test/doctor.test.ts:1086 is floor-DEPENDENT without being floor-GATED, so
-    the container default reports `846 pass, 1 fail, 2 skipped` at a head whose
-    CI is green. Two interpreters, one head, one test: fail on v22.22.2, pass on
-    v26.6.0. **A red on the default toolchain is therefore no longer proof of a
-    red branch**, which is a worse position than skipping, because it trains a
-    reader to wave a failure through. Establish the base's result before
-    attributing a failure to your change, and quote the interpreter with it.
-    The citation above is where that test sits now; at `1945d69` it was line 934.
-
-13. **`git diff main..branch` IS NOT A MERGE PREVIEW, and on a branch that has
-    fallen behind it reads as though the branch DELETES things.** Measured
-    2026-08-12: `git diff origin/main origin/claude/m3-p6-...` reported
-    `CLAUDE.md | +2 -35`, showing the branch removing a whole binding rule
-    (T-008's third) and a standing-warning extension, both of which had been
-    added to `main` after the branch was cut. Nothing was being deleted. A
-    two-dot diff compares two TREES, so anything `main` gained and the branch
-    never saw appears as a deletion by the branch.
-    The alarming reading nearly bought a wrong action, which would have been to
-    "restore" those lines onto the branch and thereby create the conflict that
-    did not exist. **Ask git for the MERGE RESULT instead, and inspect it:**
-
-    ```
-    T=$(git merge-tree --write-tree origin/main origin/<branch>)
-    git cat-file -p "$T:CLAUDE.md" | grep -c '<the text you fear losing>'
-    ```
-
-    That produced a merged `CLAUDE.md` carrying BOTH sides: the branch's new
-    gate row and every rule `main` had gained meanwhile. `merge-tree` exit 0
-    already said the merge was clean; the diff was the misleading artefact, and
-    the fix was to read the thing that answers the question rather than the
-    thing that was easy to run. Use `git diff main...branch`, three dots, when
-    you want the branch's own changes since the merge base.
-
-14. **THIS CONTAINER CANNOT DELETE A REMOTE REF, AND `--dry-run` WILL TELL YOU
-    IT CAN.** The refusal itself is not new: it was measured on 2026-08-07 and
-    recorded in the owner-action register at delivery/STATE.md:188, where A-4
-    notes that ref deletion is refused with HTTP 403 on both the GitHub API and
-    `git push --delete` while ordinary pushes from the same credentials succeed.
-    It is repeated here because a fact that lives only in one item of a
-    thousand-line register does not survive: the orchestrator rediscovered it
-    from scratch, by three methods, thirteen days later.
-
-    **GENERALISED 2026-09-15, AND THE ORIGINAL ENTRY UNDERSTATED IT.** A
-    cross-environment-exclusion probe measured a SECOND, independent instance
-    that has nothing to do with deletion. Same commit, same clone, four target
-    refs, `--dry-run` versus real:
-
-    | ref | `--dry-run` | real push |
-    |---|---|---|
-    | `refs/heads/tiphys/lease` | `* [new branch]`, exit 0 | exit 0 |
-    | `refs/tags/...` | `* [new tag]`, exit 0 | **exit 1, HTTP 403** |
-    | `refs/notes/...` | `* [new reference]`, exit 0 | **exit 1, HTTP 403** |
-    | `refs/tiphys-probe/lease` | `* [new reference]`, exit 0 | **exit 1, HTTP 403** |
-
-    So the rule is not "a dry-run lies about deletion". It is
-    **`git push --dry-run` does not probe push AUTHORIZATION at all**, for any
-    ref namespace, in either direction. It reports what the local side intends,
-    not what the remote will accept. Never accept a dry-run as evidence that a
-    push will succeed.
-
-    Two consequences worth carrying. **Only `refs/heads/*` is pushable from this
-    container**, which matters for any design reaching for a side namespace: a
-    "dedicated ref" must be read as a dedicated BRANCH, and it is then visible
-    in branch listings and subject to any `refs/heads/**` ruleset. And whether
-    the 403 originates at GitHub or at the agent proxy is UNRESOLVED; the two
-    available signals disagree and the control arm cannot be run here.
-
-    **Consequence: branch cleanup is an OWNER action, always, and there is no
-    non-destructive way to confirm that in advance.** Do not spend a round
-    proving it again, do not attempt a real delete to find out, and do not
-    report a green dry-run as evidence that a branch can be removed. Ask for an
-    `A-n` id and put it in the register.
-
-## The orchestrator does not decide when it is finished (binding)
-
-Measured 2026-08-08 and 2026-08-09: the orchestrator stopped mid-milestone
-THREE times while the owner was asleep and had asked for exactly the opposite.
-Each stop was a JUDGMENT ("nothing appears to be in flight", "I have reported,
-so I am done") presented as a status report, and each time a report was
-mistaken for a deliverable.
-
-Two separate defects, and fixing either alone leaves the other:
-
-1. **The keep-going mechanism was not durable.** `CronCreate` jobs are
-   in-memory and session-only, so they die with the session. One was armed,
-   VERIFIED PRESENT, and reported to the owner as safety; it then vanished
-   twice, silently. Verifying a thing once says nothing about it an hour later.
-2. **Even when the kick fired, the orchestrator decided whether work existed.**
-   A prompt that asks "is there anything to do?" can be answered "no". That is
-   the false stop, and it is the one that kept recurring.
-
-**The mechanism, and it is two layers because one is not enough:**
-
-- `.claude/orchestrator-next.mjs` computes the stop condition from git and
-  files, never from conversation memory: which phases are merged, which
-  branches are pushed and unmerged, which worktrees are stale by mtime. It
-  prints ONE next action and **exits nonzero whenever work remains**. A nonzero
-  exit is a fact that cannot be reported around. It also prints what it CANNOT
-  see (open PRs, CI conclusions, post-merge push runs) rather than letting an
-  absence of network read as an absence of work.
-- A server-side Routine (`create_trigger`, hourly, the durable floor) whose
-  FIRST step is to re-create the in-memory 20-minute kick if it is missing.
-  The durable layer resurrects the fast one. Neither interval alone works:
-  Routines have a one-hour minimum, and `CronCreate` does not survive a
-  session.
-
-**None of these is a reason to stop, and every one has been used:** having just
-answered the owner (answering is an interruption to the work, not the end of
-it), having just written a status report, a subagent being in flight (verify
-its beacon, then do orchestrator work meanwhile), or something looking blocked
-(name the blocker in one line and do everything that is not blocked).
-
-## Agent concurrency: ONE workflow at a time, two agents (DR-0044, binding)
-
-The owner decided on 2026-09-16 that one workflow in flight is enough, which
-withdrew the fan-out rule that stood here. The per-workflow cap is
-`min(16, CPUs - 2)` and `nproc` returns 4, so one workflow runs two agents at
-a time. Do not open a second workflow to get around the cap: before
-dispatching, check that nothing else is running, and queue rather than launch
-if something is. Fourteen concurrent agents drove this four-CPU box to load 69,
-and in that band a required gate reported false reds, so more parallelism
-bought work whose measurements were suspect. The record, and what it does NOT
-settle: delivery/decisions/DR-0044-two-agents-in-parallel-is-enough.md:1.
-
-The dispatch script pattern stays, so it survives a busy session:
-
-1. Write the script ONCE with an args filter, so one script serves every slice:
-
-   ```
-   const wanted = Array.isArray(args) && args.length > 0 ? args : Object.keys(TASKS)
-   const mine = wanted.filter((k) => TASKS[k])
-   ```
-
-2. Launch it inline the first time. The tool result returns a `scriptPath`.
-
-**Before dispatching, state in writing: how many agents, in how many
-workflows, therefore how many run at once.** If that third number is more
-than 2, the dispatch is wrong. This is the same discipline T-008 requires for
-watchdogs, one level up: the number you intended is not the number the tool
-used, so read the number the tool reports rather than the one you passed.
-
-Add a token estimate to that statement, as T-028 asks: the agent count says
-nothing about the session quota. Measured here, a clean-room review costs
-150,000 to 490,000 subagent tokens and a fix round 115,000 to 400,000
-(delivery/decisions/DR-0044-two-agents-in-parallel-is-enough.md:65-66).
-
-**Model choice is per agent and costs nothing to set.** `agent(prompt, {model:
-'fable'})` overrides for that call. Review and judgment stages benefit from a
-DIFFERENT family than the stage they review, which is the same decorrelation
-property DR-0012 condition 1 protects, applied to subagents.
-
-## Reporting to the owner (binding, 2026-09-15)
-
-Owner instruction, in their words: "Can you hide the text when you are talking
-to yourself? Only show what I need to see for making decisions?"
-
-**The owner's screen is an interface for DECISIONS, not a log of the work.**
-Everything else already has a home: the durability rule above requires it to be
-a committed file, so putting it in chat as well is duplication that costs the
-owner attention. This is the same property DR-0016 protects when it forbids
-asking a question whose answer was already obvious.
-
-Surface exactly four things:
+The owner's screen is for DECISIONS, not a log of the work; everything else
+goes in a committed file. Surface exactly four things:
 
 1. A decision the owner must take, with the options and a recommendation.
-2. An action only the owner can perform, because it needs access an agent does
-   not hold. **Verify it is not already done before asking.** Measured
-   2026-09-15: two of five owner actions raised in one message were a request
-   for work that already existed and a preference toggle nothing reads.
+2. An action only the owner can perform. **Verify it is not already done
+   before asking.**
 3. A finished result.
 4. A blocker, in one line, naming what is blocked and by what.
 
-Do NOT surface: progress narration, which agents are running, what is being
-measured, the reasoning behind a recommendation already given, or a restatement
-of what was just decided. If it would go in a file, it goes in the file.
-
-**Plain language is part of this.** The owner reads English fluently and is not
-a native speaker, and has said the writing needs reading twice. Short sentences.
-One idea per sentence. No nested clauses. Ordinary words over precise-sounding
-ones. This constrains the OWNER-FACING text only: work histories, reviews and
-decision records keep their existing register, because their readers are agents
-and later reviewers.
+Do NOT surface progress narration, which agents are running, what is being
+measured, the reasoning behind a recommendation already given, or a
+restatement of what was just decided. **Plain language**: short sentences, one
+idea per sentence, no nested clauses, ordinary words. This binds owner-facing
+text only; work histories, reviews and decision records keep their register.
 
 ## Never
 

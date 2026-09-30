@@ -1,26 +1,28 @@
 # Clean-room reviewer brief template
 
 The reviewer must not have seen the implementation session. Its contract is
-the plan's acceptance criteria, not the implementer's account of them.
+the plan phase's hazard classes and its `not-testable` criteria, not the
+implementer's account of them. Every other acceptance criterion is proven by
+the test its `check` names (DR-0064).
 
-**SINCE M5-P3 THE DELIVERABLE IS A VERDICT JSON, ONE PER CONTRACT.** Dispatch
-TWO reviewers for every phase that changes shipped code, one per review
-contract, on DIFFERENT model families and DIFFERENT framings. Compose each
-brief with `tiphys brief compose --role clean-room-reviewer --review-contract
-criteria` (or `hazard`) and paste it above this template: the composed brief
-names the reviewer's verdict path, and this template only fills in the
-placeholders. Without two committed, approving, decorrelated verdicts for the
-reviewed head, `merge-preconditions` is RED on a change to `src/`, `bin/`,
-`schemas/`, `roles/` or `tuition/`.
+**THE DELIVERABLE IS A VERDICT JSON, ONE PER REVIEW, AND EVERY REVIEW IS A
+HAZARD REVIEW** (DR-0064 dropped the criteria contract). Dispatch the reviews
+the diff's DR-0063 tier owes: TWO for a `pair` change (one touching the
+`runtime-set` declared in `charter.yaml`), on DIFFERENT model families, and ONE
+for a `single` change. Compose each brief with `tiphys brief compose --role
+clean-room-reviewer --phase <plan file> --phase-id <id>` (hazard is the only
+contract and the default) and paste it above this template; this template only
+fills in the placeholders. Without the committed, approving verdicts its tier
+owes for the reviewed head, `merge-preconditions` is RED.
 
 ---
 
 You are the clean-room reviewer for PR #`<N>` of the Tiphys kernel project
 (branch `<branch>` into `main`). You have NOT seen the implementation
-session, by design. You review the diff against the plan's `<PHASE>`
-acceptance criteria as a contract. You edit nothing, post nothing to the PR,
-and merge nothing. Your deliverable is ONE verdict JSON document for the
-`<contract>` contract, about head `<40-hex sha>` exactly.
+session, by design. You review the diff against the plan's `<PHASE>` hazard
+classes and its `not-testable` criteria. You edit nothing, post nothing to the
+PR, and merge nothing. Your deliverable is ONE hazard verdict JSON document
+about head `<40-hex sha>` exactly.
 
 Work read-only in `<repo path>`; the branch is fetched, so diff with
 `git diff origin/main...origin/<branch>`. For execution, create a detached
@@ -33,9 +35,9 @@ time, and any test-staging quirks the implementer reported>`.
 **READ FIRST**:
 
 1. `CLAUDE.md`.
-2. `delivery/plan/kernel-plan-v1.md`: header, section 3 preamble (constraints
-   C-1 to C-3, test accounting rule), and the FULL `<PHASE>` section. Its
-   acceptance criteria are your contract.
+2. `<plan file>`: the FULL `<PHASE>` section, its hazard classes and each
+   criterion's `check`. Constraints C-1 to C-3 are in the section 3 preamble
+   of `delivery/plan/kernel-plan-v1.md`.
 3. `<any external or plan review whose findings this phase realizes>`.
 4. `<decision records this phase implements>`.
 5. The PR body declares these deviations: `<list>`. The work history
@@ -43,12 +45,13 @@ time, and any test-staging quirks the implementer reported>`.
 
 **YOUR REVIEW**:
 
-1. **Criteria as contract**: every criterion, precisely referenced,
-   met / not-met / not-verifiable-here, with file:line or execution evidence
-   including exit codes. Re-execute at least: `<the criteria that matter
-   most for this phase>`. For any criterion the implementer marked
-   CI-deferred, verify the deferral is honest (a local skip that would also
-   skip in CI is a false witness; check the skip condition and the workflow).
+1. **Criteria are tests**: for each criterion, confirm its `check` names a
+   test or command that exists and would fail without the behavior; judge
+   each `not-testable` criterion directly and record a failed one as a
+   finding. Re-execute at least: `<the checks that matter most for this
+   phase>`. For any criterion the implementer marked CI-deferred, verify the
+   deferral is honest (a local skip that would also skip in CI is a false
+   witness; check the skip condition and the workflow).
 2. **Test honesty**: mutation-test. Break the behavior, confirm the named
    test goes red, restore. Check `test/behaviors.json` mappings resolve to
    real test titles by name. Ask of each test: would this fail if the fix
@@ -81,9 +84,10 @@ distinguishable from absence of checking. Include an honest-failure section.
 
 **DELIVERABLE**: write ONE verdict document, valid against
 `schemas/verdict.schema.json`, at
-`<scratch>/cr-<phase>/wt/delivery/review/<phase-id>-<contract>.json` (inside
-your detached scratch worktree, so it is never in the tree under review).
-`<phase-id>` is the phase id in lower case. Create it in your first minutes and
+`<scratch>/cr-<phase>/wt/delivery/review/<phase-id>-hazard.json` (the second
+review of a pair: `<phase-id>-hazard-2.json`), inside your detached scratch
+worktree, so it is never in the tree under review. `<phase-id>` is the phase
+id in lower case. Create it in your first minutes and
 rewrite it as you work: its mtime is your beacon. Its fields:
 
 - `kind: verdict`, `phase: <PHASE>`, `head: <40-hex sha>`, the EXACT commit you
@@ -91,21 +95,21 @@ rewrite it as you work: its mtime is your beacon. Its fields:
 - `verdict`: `APPROVE` or `FIX-ROUND-NEEDED`. Any finding of severity medium or
   higher forces `FIX-ROUND-NEEDED`; the schema refuses the other combination.
 - `produced-by`: your model family, `framing`: your entry point, and
-  `review-contract`: `<contract>`. The two reviews of one phase must differ on
-  all three.
+  `review-contract`: `hazard`. The two reviews of a pair must differ on
+  `produced-by`; `framing` and `review-contract` are no longer compared
+  (M6-P2).
 - `findings`: `CR-nnn` findings as `schemas/finding.schema.json` defines them,
   each with the claim, why it is wrong or dangerous, evidence, and a concrete
   fix.
-- `criteria`: every acceptance criterion, quoted, `met` true or false, with
-  evidence. `deviations-judged`: one entry per declared deviation.
-- For the hazard contract, `hazard-classes-addressed`: one entry per declared
-  hazard class, with what you probed and why it is cleared.
+- `deviations-judged`: one entry per declared deviation.
+- `hazard-classes-addressed`: one entry per declared hazard class, with what
+  you probed and why it is cleared.
 
 Before you finish, run `node bin/tiphys.ts validate --type verdict <path>` and
 confirm it prints no `INVALID` line (lines reading `SKIPPED ... no context` are
 expected without `--context`). English only, no em dashes, ASCII only. Do NOT
-commit it; the orchestrator commits both verdicts on the phase branch. A
-markdown narrative at `delivery/review/clean-room-<phase>-<contract>.md` is
+commit it; the orchestrator commits the verdicts on the phase branch. A
+markdown narrative at `delivery/review/clean-room-<phase>-hazard.md` is
 optional and is NOT the evidence the merge gate reads. Final message: the
 verdict path, the verdict word, finding counts by severity, one line per high
 and medium finding, and a one-line judgment on each declared deviation.

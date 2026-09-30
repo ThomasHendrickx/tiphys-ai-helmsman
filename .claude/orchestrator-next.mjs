@@ -206,9 +206,9 @@ function git(args) {
  * which is the half this script exists to make un-report-around-able, lied.
  *
  * That is this project's most-recorded failure shape: a guard whose condition
- * does not test the property it claims, reported green. CLAUDE.md's own
- * fix-round contract names "a usage error read as a clean result" as one of
- * three recorded instances.
+ * does not test the property it claims, reported green. "A usage error read
+ * as a clean result" is one of the three instances behind the fix-round
+ * contract's third item (state what the derivation did not cover).
  *
  * So: counts go through `gitTry`, and a failed count is a HARD ERROR that exits
  * nonzero rather than a zero. A guard that cannot measure must not report
@@ -312,6 +312,27 @@ let planUnread = null;
  * numeric order and the rule it has always had. */
 let planOrdered = null;
 
+/* The milestone's markdown plan: `kernel-plan-<m>.md` when origin/main has it
+ * (M2 to M4), otherwise the ONE `delivery/plan/<m>-*.md` on origin/main with a
+ * phase heading of this milestone (M6's is m6-review-and-rule-economy.md).
+ * None or several falls back to the kernel-plan name, so the read below
+ * fails and says so exactly as before. */
+function milestonePlanPath() {
+  const named = `delivery/plan/kernel-plan-${MILESTONE}.md`;
+  if (gitTry(["cat-file", "-e", `origin/main:${named}`]).ok) return named;
+  const listed = gitTry(["ls-tree", "--name-only", "origin/main", "delivery/plan/"]);
+  if (!listed.ok) return named;
+  const heading = new RegExp(`^#{2,4} (?:[0-9.]+ )?${MILESTONE.toUpperCase()}-P[0-9]+[: ]`, "im");
+  const plans = listed.out
+    .split("\n")
+    .filter((path) => path.startsWith(`delivery/plan/${MILESTONE}-`) && path.endsWith(".md"))
+    .filter((path) => {
+      const shown = gitTry(["show", `origin/main:${path}`]);
+      return shown.ok && heading.test(shown.out);
+    });
+  return plans.length === 1 ? plans[0] : named;
+}
+
 function derivePhaseNumbers() {
   const found = new Set();
   const harvest = (text, re) => {
@@ -373,7 +394,7 @@ function derivePhaseNumbers() {
    *
    * A MISSING PLAN IS REPORTED, NEVER SILENTLY ZERO. gitTry rather than git,
    * and the reason is pushed onto hardErrors below. */
-  const planPath = `delivery/plan/kernel-plan-${MILESTONE}.md`;
+  const planPath = milestonePlanPath();
   const plan = gitTry(["show", `origin/main:${planPath}`]);
   /* THE VALUE-DELIVERY PLAN, when it names this milestone (M5-P4). Its
    * phases are harvested in PLAN ORDER and with their BRANCHES, and that
@@ -569,8 +590,8 @@ function planNextAction(entries, planLabel) {
       return {
         next:
           `DRIVE ${p.id.toUpperCase()} TO MERGE. ${where}, and ${remote} is ${ahead} commit(s) ahead of main. ` +
-          `Next step is whichever of these is not yet done: scope green, dual cross-model clean-room ` +
-          `review, arbitration, fix round, delta verification, merge, post-merge push run verified.`,
+          `Next step is whichever of these is not yet done: scope green, the reviews its tier owes ` +
+          `(DR-0063), arbitration if pair, fix round, merge, post-merge push run verified.`,
         exitCode: 2,
       };
     }
@@ -680,8 +701,8 @@ if (unreplicated.length > 0) {
   next =
     `DRIVE ${p.id.toUpperCase()} TO MERGE. Its branch ${p.remoteBranch} is ${p.ahead} commit(s) ` +
     `ahead of main and unmerged. Next step is whichever of these is not yet done: ` +
-    `scope green, dual cross-model clean-room review, arbitration, fix round, ` +
-    `delta verification, merge, post-merge push run verified.`;
+    `scope green, the reviews its tier owes (DR-0063), arbitration if pair, fix round, ` +
+    `merge, post-merge push run verified.`;
   exitCode = 2;
 } else {
   const p = notStarted[0];

@@ -37,13 +37,10 @@ lesson:
 mechanisms:
   - mechanism: Claim file (mutual exclusion by O_EXCL)
     rule: >-
-      A claim that cannot be taken must fail LOUDLY and name the stuck file. A
-      silent timeout is indistinguishable from an absence of contention. There
-      are now THREE claim-file users (the lock, the watcher seen-state, and
-      M2-P1's evidence-directory run claim); the next one reads `src/lock.ts`
-      first, and the M2-P1 instance is the worked example of doing that and
-      stating the one difference (no expiry, because an evidence directory must
-      not have a lease that lapses).
+      A claim that cannot be taken must fail LOUDLY and name the stuck file; a
+      silent timeout is indistinguishable from no contention. Read `src/lock.ts`
+      before adding a claim-file user and state how yours differs (the
+      evidence-directory run claim in `src/gates/run.ts` has no expiry).
     siblings:
       - src/lock.ts
       - src/watch.ts
