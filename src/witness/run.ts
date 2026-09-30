@@ -236,21 +236,23 @@ function escapeRegExp(value: string): string {
  * The new-side path a `+++ b/<path>` hunk header names, or undefined for any
  * other line (M6-P3 fix round 3). Two decorations git applies are undone here,
  * both measured on git 2.43.0 and recorded in
- * witness/captures/m6-p3-git-hunk-headers.json:
+ * witness/captures/m6-p3-git-path-listings.json:
  *   - a name holding a non-ASCII byte, a double quote, a backslash or a control
  *     character is C-quoted, `+++ "b/src/caf\303\251.ts"`, and is unquoted;
- *   - a name holding a space is left unquoted but the line gets a trailing TAB,
- *     `+++ b/src/a b.ts<TAB>`, which is dropped. An unquoted name cannot itself
- *     carry a TAB, because a TAB is a control character and forces quoting.
+ *   - a label holding a space gets a trailing TAB, `+++ b/src/a b.ts<TAB>`,
+ *     which is dropped. git tests the label AFTER quoting, so a quoted name
+ *     that also holds a space ends `"<TAB>` (fix round 4, CR-M6P3A-08), and the
+ *     TAB is dropped before the quote test. An unquoted name cannot itself end
+ *     in a TAB, because a TAB is a control character and forces quoting.
  */
 function newSidePathOfHeader(line: string): string | undefined {
-  if (line.startsWith('+++ "') && line.endsWith('"') && line.length > 6) {
-    const unquoted = unquoteCStyle(line.slice(5, -1));
+  const label = line.endsWith("\t") ? line.slice(0, -1) : line;
+  if (label.startsWith('+++ "') && label.endsWith('"') && label.length > 6) {
+    const unquoted = unquoteCStyle(label.slice(5, -1));
     return unquoted !== undefined && unquoted.startsWith("b/") ? unquoted.slice(2) : undefined;
   }
-  if (line.startsWith("+++ b/")) {
-    const path = line.slice("+++ b/".length);
-    return path.endsWith("\t") ? path.slice(0, -1) : path;
+  if (label.startsWith("+++ b/")) {
+    return label.slice("+++ b/".length);
   }
   return undefined;
 }
@@ -362,18 +364,30 @@ export function computePhaseDiff(
   if (!hunkOutput.ok) {
     return { ok: false, reason: hunkOutput.reason };
   }
+  /* Each file's section opens with `diff --git` and its header lines run to
+     the first `@@`. The current file is cleared at the section's start and set
+     only by a `+++` header this parser can read, so a header it cannot read
+     (or `+++ /dev/null`) leaves the section's hunks on no file rather than on
+     the file before it, which is fail closed under rule (d) (fix round 4,
+     CR-M6P3A-08). A `+++` line after the first `@@` is an added line whose
+     text begins `++ `, never a header. */
   let current: DiffFile | undefined;
+  let inHeader = false;
   for (const line of hunkOutput.stdout.split("\n")) {
-    const plus = newSidePathOfHeader(line);
-    if (plus !== undefined) {
-      current = files.get(plus);
+    if (line.startsWith("diff --git ")) {
+      current = undefined;
+      inHeader = true;
       continue;
     }
-    if (line.startsWith("+++ /dev/null")) {
-      current = undefined;
+    if (inHeader && line.startsWith("+++ ")) {
+      const plus = newSidePathOfHeader(line);
+      current = plus === undefined ? undefined : files.get(plus);
       continue;
     }
     const hunk = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/.exec(line);
+    if (hunk !== null) {
+      inHeader = false;
+    }
     if (hunk !== null && current !== undefined) {
       const start = Number(hunk[1]);
       const count = hunk[2] === undefined ? 1 : Number(hunk[2]);

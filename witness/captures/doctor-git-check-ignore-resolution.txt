@@ -37,3 +37,10 @@ stdout and returns the same codes:
   git check-ignore -- notes/evidence
     exit 0
     stdout: notes/evidence
+
+M6-P3 fix round 4 (2026-09-30): the residue named above is closed. The
+retention check now reads exit 1 as not ignored and any other exit as no
+answer, which FAILs naming git's own line rather than printing PASS.
+witness/captures/m6-p3-git-check-ignore-unanswered.json records both
+non-answers (not a repository, and a config git cannot parse) on git 2.43.0
+and git 2.34.1.

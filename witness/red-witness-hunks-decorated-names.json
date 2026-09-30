@@ -9,13 +9,13 @@
     {
       "kind": "mutation",
       "file": "src/witness/run.ts",
-      "find": "    return path.endsWith(\"\\t\") ? path.slice(0, -1) : path;",
-      "replace": "    return path;"
+      "find": "  const label = line.endsWith(\"\\t\") ? line.slice(0, -1) : line;",
+      "replace": "  const label = line;"
     },
     {
       "kind": "mutation",
       "file": "src/witness/run.ts",
-      "find": "  if (line.startsWith('+++ \"') && line.endsWith('\"') && line.length > 6) {",
+      "find": "  if (label.startsWith('+++ \"') && label.endsWith('\"') && label.length > 6) {",
       "replace": "  if (false) {"
     },
     {
