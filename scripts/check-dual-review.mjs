@@ -69,7 +69,7 @@ const checksModule = await import(
 );
 /* M5-P3. THE REVIEW BUDGET IS READ FROM THE MERGE-PRECONDITIONS MODULE, never
    copied here: both review gates must classify one diff into one tier, and two
-   copies of DR-0027's table would be two answers the day one of them is edited. */
+   copies of the DR-0063 classifier would be two answers the day one of them is edited. */
 const budgetModule = await import(
   pathToFileURL(join(repoRoot, "src", "gates", "merge-preconditions.ts")).href
 );
@@ -78,8 +78,12 @@ const {
   classifyReviewBudget,
   budgetPrecondition,
   missingReviewsSentence,
-  REQUIRED_VERDICTS,
+  REQUIRED_VERDICTS: REQUIRED_BY_TIER,
 } = budgetModule;
+/* M6-P2. This gate's question is the PAIR tier's (two decorrelated reviews),
+   so its required count is the pair tier's; a `single` change is not-applicable
+   here and merge-preconditions checks its one review (DR-0063). */
+const REQUIRED_VERDICTS = REQUIRED_BY_TIER.pair;
 const { refuseOpenForWrite } = taskModule;
 const {
   registeredChecks,
@@ -153,7 +157,7 @@ function parseArgs(argv) {
        makes it do, exactly as it has always done for `scope`. */
     head: undefined,
     /* M5-P3. THE DIFF BASE, and with it the REVIEW BUDGET. When present the
-       gate classifies `base...head` by DR-0027's table and a dual-tier change
+       gate classifies `base...head` by DR-0063's tiers and a pair-tier change
        with fewer than two admitted verdicts is RED, where without it an empty
        corpus is the not-applicable it has always been. The registry declares
        `parameters: [base, head]`, so every runner invocation supplies it; the
@@ -283,7 +287,11 @@ function parseArgs(argv) {
 export const HEADLESS_ONLY_WARNING =
   "WARNING every committed verdict declares no head, so none is a review of any commit; without --base this script computes no review budget and cannot refuse a change that owes two reviews: pass --base (the gate runner does) for that refusal";
 
-export function committedVerdictPaths(directory, requestedHead) {
+/* M6-P2 FIX ROUND 1 (CR-M6P2A-01, CR-M6P2B-01): `mergeBase`, when the review
+   budget supplied one, bounds admission there, through the same
+   `boundAtMergeBase` merge-preconditions uses, so the two gates cannot
+   disagree about a verdict whose declared head is already on the base. */
+export function committedVerdictPaths(directory, requestedHead, mergeBase) {
   const loaded = loadCommittedVerdicts(directory);
   if (!loaded.ok) {
     return { ok: false, reason: loaded.reason };
@@ -299,7 +307,7 @@ export function committedVerdictPaths(directory, requestedHead) {
   }
   const partition =
     anchor.kind === "anchored"
-      ? partitionByAuditedHead(directory, loaded.verdicts, anchor.head)
+      ? partitionByAuditedHead(directory, loaded.verdicts, anchor.head, mergeBase)
       : {
           onHead: [...loaded.verdicts],
           admitted: [],
@@ -388,7 +396,7 @@ export function committedVerdictPaths(directory, requestedHead) {
  * verdicts it is refusing to judge.
  */
 export function evaluate(directory, requestedHead, options = {}) {
-  /* M5-P3. THE BUDGET IS DECIDED FIRST, and a below-dual change never reads
+  /* M5-P3. THE BUDGET IS DECIDED FIRST, and a single-tier change never reads
      the corpus. That order is deliberate: a paperwork change in a context
      whose regime documents are absent is not a merge-regime question at all,
      and refusing it with `error` for a missing charter would force the pair
@@ -400,11 +408,11 @@ export function evaluate(directory, requestedHead, options = {}) {
       return { status: "error", units: 0, lines: [classified.reason], checksRun: 0 };
     }
     budget = classified.budget;
-    if (budget.tier !== "dual") {
+    if (budget.tier !== "pair") {
       return { status: "not-applicable", units: 0, lines: [], checksRun: 0, budget };
     }
   }
-  const found = committedVerdictPaths(directory, requestedHead);
+  const found = committedVerdictPaths(directory, requestedHead, budget?.mergeBase);
   if (!found.ok) {
     return { status: "error", units: 0, lines: [found.reason], checksRun: 0 };
   }
@@ -456,7 +464,7 @@ export function evaluate(directory, requestedHead, options = {}) {
       ],
     };
   }
-  /* M5-P3, criterion p3-missing-is-red. A dual-tier change with fewer than
+  /* M5-P3, criterion p3-missing-is-red. A pair-tier change with fewer than
      two ADMITTED verdicts is RED, and the sentence carries the missing count.
      Placed after every could-not-determine refusal above, because those are
      `error` and an error must never be downgraded to a verdict; placed before
@@ -836,7 +844,7 @@ function main(argv) {
     });
   }
 
-  /* M5-P3, criterion p3-paperwork-budget. A change below the dual-review tier
+  /* M5-P3, criterion p3-paperwork-budget. A change in the DR-0063 single tier
      is not forced through the two-verdict rule, and it says which tier and
      which paths put it there, as an EVALUATED precondition (SC-011) rather than
      as a silence. */
@@ -984,7 +992,7 @@ function main(argv) {
       startedAt,
       detail:
         `not-applicable by declaration (${DECLARED_EVIDENCE}): ${String(run.units)} verdict(s) were read and ` +
-        `compared on framing and review-contract, and ${CHARTER_DOCUMENT} declares that exactly one model family ` +
+        `counted, produced-by was not required to differ, and ${CHARTER_DOCUMENT} declares that exactly one model family ` +
         `(${family}) is available here, so DR-0012 condition 1's CROSS-FAMILY requirement was not evaluated: ` +
         `the reviews were two and the families were one; reason: ${run.singleFamily.reason}; ${provenance}`,
       precondition: {

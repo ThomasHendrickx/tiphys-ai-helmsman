@@ -224,7 +224,7 @@ test("every clause id in both new briefs occurs exactly once as a body anchor, a
 /* Criterion 10: the two review contracts                                */
 /* ------------------------------------------------------------------ */
 
-test("both review contracts compose, declare themselves, and differ in their first instruction; an unknown contract exits nonzero naming it", () => {
+test("the hazard contract composes, declares itself and opens on its own clause; the dropped criteria contract is refused naming DR-0064, and an unknown contract exits nonzero naming it", () => {
   const composed = new Map<string, string>();
   for (const contract of rolesModule.REVIEW_CONTRACTS) {
     const emitted = compose("clean-room-reviewer", ["--review-contract", contract]);
@@ -262,6 +262,15 @@ test("both review contracts compose, declare themselves, and differ in their fir
     }
   }
 
+  /* M6-P2: DR-0064 dropped the criteria contract. The default is the hazard
+     contract, and asking for criteria is refused BY NAME, not as unknown. */
+  const byDefault = compose("clean-room-reviewer", []);
+  assert.equal(byDefault.status, 0, byDefault.stderr);
+  assert.match(byDefault.stdout, /^review-contract: hazard$/m);
+  const dropped = compose("clean-room-reviewer", ["--review-contract", "criteria"]);
+  assert.notEqual(dropped.status, 0, "the dropped criteria contract composed");
+  assert.match(dropped.stderr, /criteria was dropped by DR-0064/);
+
   const unknown = compose("clean-room-reviewer", ["--review-contract", "vibes"]);
   assert.notEqual(unknown.status, 0, "an unknown review contract composed");
   assert.match(unknown.stderr, /vibes/);
@@ -273,7 +282,7 @@ test("both review contracts compose, declare themselves, and differ in their fir
   assert.match(wrongRole.stderr, /investigator/);
 });
 
-test("the hazard brief instructs the reviewer not to begin from the criteria, and the criteria brief refuses to be a completeness claim", () => {
+test("the hazard brief instructs the reviewer not to begin from the criteria, and carries no criteria-contract clause", () => {
   const hazard = compose("clean-room-reviewer", ["--review-contract", "hazard"]);
   assert.equal(hazard.status, 0, hazard.stderr);
   const hazardText = flatten(hazard.stdout);
@@ -285,28 +294,9 @@ test("the hazard brief instructs the reviewer not to begin from the criteria, an
     hazardText.includes("Your starting question is the phase's declared hazard classes"),
     "the hazard brief does not name the hazard classes as the starting question",
   );
-
-  const criteria = compose("clean-room-reviewer", ["--review-contract", "criteria"]);
-  assert.equal(criteria.status, 0, criteria.stderr);
-  const criteriaText = flatten(criteria.stdout);
-  assert.ok(
-    criteriaText.includes('"all acceptance criteria met" is ONE INPUT and never a terminal green'),
-    "the criteria brief does not carry the sentence that a criteria verdict is not completeness",
-  );
-
-  /* BOTH DIRECTIONS: the criteria brief must NOT tell the reviewer to start
-     from the hazards, and the hazard brief must NOT be the criteria walk. If
-     both strings appeared in both briefs the selection did nothing. */
-  assert.equal(
-    criteriaText.includes("DO NOT BEGIN FROM THE ACCEPTANCE CRITERIA"),
-    false,
-    "the criteria brief carries the hazard contract's instruction",
-  );
-  assert.equal(
-    hazardText.includes('"all acceptance criteria met" is ONE INPUT'),
-    false,
-    "the hazard brief carries the criteria contract's sentence",
-  );
+  /* M6-P2: the criteria contract's clause is gone from the role brief, so no
+     composed brief can carry it. */
+  assert.equal(hazard.stdout.includes("review-contract-criteria"), false, "the criteria clause survived");
 });
 
 test("a clean-room brief whose selected contract clause is missing is refused, rather than composing without it", () => {

@@ -1,0 +1,31 @@
+{
+  "id": "m6-p2-directory-entry-pair",
+  "behavior": "m6-p2-directory-entry-pair",
+  "tests": [
+    "a runtime-set paths entry without a trailing slash that names a directory at the merge base is an invalid declaration, so a change under it is pair, and an exact entry naming a file is still declared"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    if (/^\\d{6} tree /.test(first)) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    directoryFault === undefined ? charterReading : { kind: \"invalid\", reason: `${charterLabel} ${directoryFault}` };",
+      "replace": "    charterReading;"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set-directory.json"
+    ],
+    "provenance": "Real output of the git commands classifyReviewBudget in src/gates/merge-preconditions.ts runs when a runtime-set paths entry has no trailing slash (the NUL-separated name list, the merge base, and the ls-tree lookup of the exact entry at the merge base, a tree entry for the directory src and a blob entry for src/feature.ts), captured 2026-09-30 by the M6-P2 fix round 1 implementer against the repository test/merge-preconditions.test.ts stages in stageDirectoryEntryRepo, which re-runs every command and compares git's live output with the recorded stdout before trusting the classifier."
+  }
+}

@@ -4,7 +4,8 @@
   "staging": {
     "base": [
       "kernel/src/feature.ts",
-      "kernel/src/old.ts"
+      "kernel/src/old.ts",
+      "kernel/charter.yaml (added by M6-P2, declaring runtime-set paths [src/]; unchanged by the change, so neither recorded output depends on it, which the test's live re-run confirms)"
     ],
     "change": [
       "modify kernel/src/feature.ts",

@@ -268,8 +268,8 @@ gates:
     $comment: >-
       M3-P9 step 3b. The `decorrelated-review` duty made into a command with an
       exit code: two verdicts for one head, distinct `produced-by` model
-      families (DR-0012 condition 1), distinct `framing` values (T-001), and
-      distinct `review-contract` values (T-007). The comparison itself is the
+      families (DR-0012 condition 1; M6-P2 dropped the `framing` and
+      `review-contract` comparisons, DR-0064). The comparison itself is the
       Kind B derived check `dual-review-decorrelation` in `src/checks.ts`; this
       script is the runner around it, so deregistering the check is a real
       witness rather than a simulated one (section 2.3 rule 3).
@@ -305,10 +305,10 @@ gates:
       exactly how a shipped change with no review read as not-applicable on
       every head of three milestones (T-040, T-041). It now asks only whether a
       commit resolves here (`--review-budget`), and `base` is a parameter, so
-      the gate classifies `base...head` by DR-0027's table itself: a change
-      below the dual-review tier is not-applicable with an EVALUATED
-      precondition naming its tier and paths, and a dual-tier change with fewer
-      than two admitted verdicts is RED with the missing count. The workflow
+      the gate classifies `base...head` by DR-0063's tiers itself: a `single`
+      change is not-applicable here with an EVALUATED precondition naming its
+      tier and paths, and a `pair` change with fewer than two admitted verdicts
+      is RED with the missing count. The workflow
       step passes no `--base` and keeps the M3-P9 meaning; CI's enforcing arm
       is `merge-preconditions`, which is in gates.manifest.json.
     command: [node, scripts/check-dual-review.mjs, .]
@@ -471,9 +471,9 @@ gates:
       a parameter and the precondition is the review-budget arm, for the reason
       given on check-dual-review above: the old precondition's NO kept the gate
       from ever being spawned on a branch with no verdict. With `--base` the
-      review evidence is decided BEFORE any network request, so a dual-tier
-      change with fewer than two admitted verdicts is red whether or not the
-      API answers, and a below-dual change is not-applicable with its tier.
+      review evidence is decided BEFORE any network request, so a change with
+      fewer admitted verdicts than its DR-0063 tier owes (two for pair, one for
+      single) is red whether or not the API answers.
       AND A RUN INSIDE THE UNCONCLUDED CI OF ITS OWN HEAD IS NOT-APPLICABLE,
       with every review row green and evidence naming them, because condition
       4 asks about the CI this run is part of. Before M5-P3 no verdict was ever

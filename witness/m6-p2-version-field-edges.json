@@ -1,0 +1,37 @@
+{
+  "id": "m6-p2-version-field-edges",
+  "behavior": "m6-p2-version-field-edges",
+  "tests": [
+    "a workspace's nested node_modules/ entry, a pinned name inside a node_modules/ entry, and a pinned name in peerDependencies are not version fields, so each classifies pair"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  return !key.split(\"/\").includes(\"node_modules\");",
+      "replace": "  return !key.startsWith(\"node_modules/\");"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "  if (segments.length === 4 && segments[0] === \"packages\" && isWorkspaceKey(segments[1] as string)) {",
+      "replace": "  if (segments.length === 4 && segments[0] === \"packages\") {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "const PIN_FIELDS = new Set([\"dependencies\", \"devDependencies\", \"optionalDependencies\"]);",
+      "replace": "const PIN_FIELDS = new Set([\"dependencies\", \"devDependencies\", \"peerDependencies\", \"optionalDependencies\"]);"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set.json"
+    ],
+    "provenance": "Real output of the git commands classifyReviewBudget in src/gates/merge-preconditions.ts runs for DR-0063's tier (the prefix, the NUL-separated name list, the merge base and the ls-tree presence probe of charter.yaml), captured 2026-09-29 by the M6-P2 implementer against the repository test/merge-preconditions.test.ts stages in stageShrinkRepo, which re-runs every command and compares git's live output with the recorded stdout before trusting the classifier. The other named tests in that file consume git too: git show of the PR #224 manifests at 0e29760 and 7c9602d (file bytes, not reformatted by git) and the staged phase branches the gate itself reads through the same commands."
+  }
+}

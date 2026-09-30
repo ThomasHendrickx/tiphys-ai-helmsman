@@ -5,6 +5,6 @@
      "verdict",
      "produced-by",
 -    "framing",
-     "review-contract",
      "findings",
-     "criteria",
+     "deviations-judged"
+   ],

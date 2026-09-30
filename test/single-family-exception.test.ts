@@ -755,24 +755,6 @@ test("no arm of the declared single-family exception reports green, over the who
 /* Criterion 7: the exception narrows ONE dimension, two members       */
 /* ------------------------------------------------------------------ */
 
-test("a one-family declaration does not excuse a shared framing", () => {
-  const run = runScript(arm("narrowed-to-one-dimension-shared-framing").stage());
-  assert.equal(run.record.status, "red");
-  assert.ok(
-    run.stdout.includes("are not decorrelated on framing"),
-    `framing was not refused:\n${run.stdout}`,
-  );
-});
-
-test("a one-family declaration does not excuse a shared review-contract", () => {
-  const run = runScript(arm("narrowed-to-one-dimension-shared-review-contract").stage());
-  assert.equal(run.record.status, "red");
-  assert.ok(
-    run.stdout.includes("are not decorrelated on review-contract"),
-    `review-contract was not refused:\n${run.stdout}`,
-  );
-});
-
 test("the exception is reported as narrowing produced-by only, and the report names the dimensions actually compared", () => {
   const run = runScript(arm("permissive-arm-fixture-declared").stage());
   const report = run.stdout
@@ -780,11 +762,13 @@ test("the exception is reported as narrowing produced-by only, and the report na
     .find((line) => line.startsWith("REPORT dual-review-decorrelation"));
   assert.notEqual(report, undefined, `no decorrelation report in:\n${run.stdout}`);
   const line = report as string;
-  assert.ok(line.includes("distinct on framing, review-contract"), line);
+  /* M6-P2: framing and review-contract are no longer compared (DR-0064), so
+     under the exception the pair is counted and compared on nothing. */
+  assert.ok(line.includes("compared on no dimension"), line);
   /* THE SENTENCE DR-0038 EXISTS TO STOP BEING WRITTEN. "distinct on
      produced-by" about a pair that was never required to differ on it is the
      false value the whole decision refuses. */
-  assert.ok(!line.includes("produced-by"), `the report still claims produced-by distinctness: ${line}`);
+  assert.ok(!line.includes("distinct on"), `the report still claims distinctness: ${line}`);
 });
 
 /* ------------------------------------------------------------------ */

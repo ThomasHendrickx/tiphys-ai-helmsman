@@ -54,7 +54,6 @@ const checksModule = (await import(
   ) => { lines: string[]; failed: boolean };
   registerCheck: (check: DerivedCheck) => void;
   deregisterCheck: (id: string) => boolean;
-  verdictCriteriaComplete: DerivedCheck;
   verdictDeviationsJudged: DerivedCheck;
   verdictHazardClassesAddressed: DerivedCheck;
   verdictFindingReferencesResolve: DerivedCheck;
@@ -466,73 +465,105 @@ test("a hazard-class entry with neither a finding nor a cleared-because is rejec
 });
 
 /* ------------------------------------------------------------------ */
-/* Criterion 4b(a): verdict-criteria-complete, Kind B                   */
+/* M6-P2 (DR-0064): a new verdict needs neither criteria nor contract     */
 /* ------------------------------------------------------------------ */
 
-test("a verdict omitting an acceptance criterion of its phase is rejected naming the check, and passes with the check deregistered", () => {
-  const dir = scratch();
-  try {
-    const plan = loadPlan();
-    writeYaml(dir, "plan.yaml", plan);
-    writeYaml(dir, "work-history.yaml", loadWorkHistory());
-    /* THE DANGEROUS INSTANCE: a review that quietly skipped a criterion.
-       Every entry present is well formed and the schema is satisfied; the one
-       criterion nobody walked is invisible without the other document. */
-    const instance = baselineVerdict();
-    const walked = instance["criteria"] as Record<string, unknown>[];
-    assert.ok(walked.length >= 2, "the example plan has too few criteria to omit one");
-    const dropped = String((walked.pop() as Record<string, unknown>)["id"]);
-    const file = writeYaml(dir, "verdict.yaml", instance);
+test("a hazard verdict with no review-contract and no criteria validates, the same verdict without hazard classes is rejected, and a criteria verdict still validates", () => {
+  const schema = verdictSchema();
+  const fresh = baselineHazardVerdict();
+  delete fresh["review-contract"];
+  delete fresh["criteria"];
+  assert.deepEqual(validateModule.validateToLines(schema, fresh), []);
 
-    const rejected = runCli(["validate", "--type", "verdict", "--context", dir, file]);
-    assert.equal(rejected.status, 1, rejected.stdout + rejected.stderr);
-    assert.match(
-      rejected.stdout,
-      new RegExp(
-        `^INVALID #/criteria acceptance criterion ${dropped} of phase .* has no entry, so this review did not walk it \\(check: verdict-criteria-complete\\)$`,
-        "m",
-      ),
-      rejected.stdout,
-    );
+  /* WITHOUT review-contract A VERDICT IS A HAZARD VERDICT, so it still owes its
+     hazard classes: dropping the field must not drop the obligation. */
+  const noClasses = { ...fresh };
+  delete noClasses["hazard-classes-addressed"];
+  assert.notDeepEqual(validateModule.validateToLines(schema, noClasses), []);
 
-    /* KIND B WITNESS: the CHECK is removed, not a keyword. */
-    assert.equal(checksModule.deregisterCheck("verdict-criteria-complete"), true);
-    const withoutCheck = checksModule.runChecks("verdict", instance, dir);
-    assert.equal(withoutCheck.failed, false, withoutCheck.lines.join("\n"));
-    checksModule.registerCheck(checksModule.verdictCriteriaComplete);
-    assert.equal(checksModule.runChecks("verdict", instance, dir).failed, true);
-
-    /* CONTROL: the complete verdict passes against the same plan. */
-    const complete = writeYaml(dir, "complete.yaml", baselineVerdict());
-    const control = runCli(["validate", "--type", "verdict", "--context", dir, complete]);
-    assert.equal(control.status, 0, control.stdout + control.stderr);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
+  /* HISTORY (DR-0054): a committed criteria-contract verdict stays valid. */
+  assert.deepEqual(validateModule.validateToLines(schema, baselineVerdict()), []);
 });
 
-test("a verdict walking a criterion the phase does not declare is rejected, which is the other direction", () => {
+test("a verdict declaring review-contract criteria without criteria[] is rejected, with or without hazard classes, and a committed criteria verdict still validates", () => {
+  /* M6-P2 FIX ROUND 1, CR-M6P2B-04. THE MECHANISM: branch A required only
+     `review-contract: criteria`, so a NEW verdict could declare the dropped
+     contract and carry neither completeness array, and the hazard-class check
+     skips a criteria verdict. Both arms are the reviewer's dodge. */
+  const schema = verdictSchema();
+  const dodge = baselineHazardVerdict();
+  dodge["review-contract"] = "criteria";
+  delete dodge["criteria"];
+  delete dodge["hazard-classes-addressed"];
+  const withClasses = baselineHazardVerdict();
+  withClasses["review-contract"] = "criteria";
+  delete withClasses["criteria"];
+  for (const [name, instance] of [
+    ["no criteria and no hazard classes", dodge],
+    ["no criteria, hazard classes present", withClasses],
+  ] as const) {
+    assert.notDeepEqual(validateModule.validateToLines(schema, instance), [], `${name}: accepted`);
+    /* THE ONE DIFFERENCE: the same document WITH criteria[] validates, so the
+       rejection above is the missing array and nothing else. */
+    const restored = { ...instance, criteria: baselineVerdict()["criteria"] };
+    assert.deepEqual(validateModule.validateToLines(schema, restored), [], `${name}: restored`);
+  }
+  /* HISTORY (DR-0054): the committed shape, a criteria verdict WITH criteria[],
+     is unaffected. */
+  assert.deepEqual(validateModule.validateToLines(schema, baselineVerdict()), []);
+});
+
+/**
+ * The real output of `tiphys validate` for the MI staging below, with the
+ * scratch directory spelled <context>. The test re-runs the command and
+ * requires the same exit code and the same bytes before reading the sentence.
+ */
+const HAZARD_NO_CONTRACT_CAPTURE = join(
+  repoRoot,
+  "witness",
+  "captures",
+  "m6-p2-validate-hazard-classes-no-contract.json",
+);
+
+test("a verdict with no review-contract that omits a declared hazard class is refused by verdict-hazard-classes-addressed, and the same verdict addressing every class is accepted", () => {
+  /* M6-P2 FIX ROUND 1, CR-M6P2B-03 (MI). Since DR-0064 a verdict need not say
+     `review-contract`, and roles/clean-room-reviewer.md tells reviewers so,
+     which puts a verdict WITHOUT the field on the real path. The check's guard
+     must exempt only `criteria` history; its pre-M6-P2 spelling `!== "hazard"`
+     would exempt every new verdict. */
+  const recorded = JSON.parse(readFileSync(HAZARD_NO_CONTRACT_CAPTURE, "utf8")) as {
+    argv: string[];
+    exit: number;
+    stdout: string;
+  };
   const dir = scratch();
   try {
     writeYaml(dir, "plan.yaml", loadPlan());
     writeYaml(dir, "work-history.yaml", loadWorkHistory());
-    /* Usually a criterion id left behind by a plan revision: the review walked
-       something that is no longer in the contract, and reported it as met. */
-    const instance = baselineVerdict();
-    (instance["criteria"] as Record<string, unknown>[]).push({
-      id: "99",
-      quote: "A criterion this plan does not declare.",
-      evidence: ["src/example.ts:1"],
-      met: true,
-    });
-    const file = writeYaml(dir, "verdict.yaml", instance);
-    const run = runCli(["validate", "--type", "verdict", "--context", dir, file]);
-    assert.equal(run.status, 1, run.stdout + run.stderr);
-    assert.match(
-      run.stdout,
-      /criterion 99 is walked here and .* declares no such acceptance criterion on this phase \(check: verdict-criteria-complete\)/,
-      run.stdout,
+    const complete = baselineHazardVerdict();
+    delete complete["review-contract"];
+    delete complete["criteria"];
+    /* CONTROL: every declared class addressed, accepted end to end. */
+    const accepted = runCli(["validate", "--type", "verdict", "--context", dir, writeYaml(dir, "complete.yaml", complete)]);
+    assert.equal(accepted.status, 0, accepted.stdout + accepted.stderr);
+    /* THE DANGEROUS INSTANCE: the first declared class has no entry. */
+    const partial = {
+      ...complete,
+      "hazard-classes-addressed": (complete["hazard-classes-addressed"] as unknown[]).slice(1),
+    };
+    const refused = runCli(["validate", "--type", "verdict", "--context", dir, writeYaml(dir, "verdict.yaml", partial)]);
+    assert.equal(refused.status, recorded.exit, refused.stdout + refused.stderr);
+    /* THE REFUSAL LINES ARE COMPARED BYTE FOR BYTE. The other lines carry what
+       git says about the scratch directory, which depends on where the
+       temporary directory is, so they are not part of the comparison. */
+    const invalid = (text: string): string[] => text.split("\n").filter((line) => line.startsWith("INVALID "));
+    assert.equal(invalid(recorded.stdout).length, 1, recorded.stdout);
+    assert.deepEqual(
+      invalid(refused.stdout.replaceAll(dir, "<context>")),
+      invalid(recorded.stdout),
+      `tiphys validate no longer prints what was captured:\n${refused.stdout}`,
     );
+    assert.match(refused.stdout, /hazard class H1 of phase M9-P1 in .* has no entry, so this hazard review did not address it/);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
@@ -543,7 +574,10 @@ test("a verdict naming a phase the plan does not declare is rejected rather than
   try {
     writeYaml(dir, "plan.yaml", loadPlan());
     writeYaml(dir, "work-history.yaml", loadWorkHistory());
-    const instance = baselineVerdict();
+    /* A HAZARD verdict since M6-P2: the plan-phase lookup is now made by
+       verdict-hazard-classes-addressed alone, verdict-criteria-complete being
+       retired with the criteria contract (DR-0064). */
+    const instance = baselineHazardVerdict();
     instance["phase"] = "M9-P404";
     const file = writeYaml(dir, "verdict.yaml", instance);
     const run = runCli(["validate", "--type", "verdict", "--context", dir, file]);
@@ -558,7 +592,6 @@ test("the verdict checks require a context and are SKIPPED rather than passing w
   const outcome = checksModule.runChecks("verdict", baselineVerdict(), undefined);
   assert.equal(outcome.failed, true);
   for (const id of [
-    "verdict-criteria-complete",
     "verdict-deviations-judged",
     "verdict-hazard-classes-addressed",
   ]) {
@@ -839,7 +872,6 @@ test("this phase's verdict behaviors are registered in test/behaviors.json", () 
   ) as Record<string, string>;
   for (const id of [
     "verdict-approve-with-high-finding-rejected",
-    "verdict-criteria-completeness",
     "verdict-deviations-completeness",
     "verdict-finding-requires-fix",
     "verdict-records-framing",

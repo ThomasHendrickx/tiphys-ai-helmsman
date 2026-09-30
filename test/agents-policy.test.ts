@@ -707,7 +707,7 @@ const REVERSAL_CITATIONS: readonly { clause: string; tokens: string[] }[] = [
   { clause: "merge-authority", tokens: ["DR-0015"] },
   { clause: "escalation-threshold", tokens: ["DR-0016"] },
   { clause: "stalled-phase-response", tokens: ["DR-0016"] },
-  { clause: "two-review-contracts", tokens: ["T-007"] },
+  { clause: "hazard-review-contract", tokens: ["T-007", "DR-0064", "DR-0063"] },
   { clause: "merge-is-not-complete-until", tokens: ["T-009"] },
 ];
 
@@ -739,10 +739,12 @@ test("the escalation-threshold clause carries both limbs, the ordering rule, and
   assert.match(text, /4\.7 hours/);
 });
 
-test("the two-review-contracts clause names two CONTRACTS and says why two models are not sufficient", () => {
-  const text = flatten(clauseText(body, "two-review-contracts"));
-  assert.match(text, /TWO REVIEW CONTRACTS/);
-  assert.match(text, /WHY TWO MODELS ARE NOT SUFFICIENT/);
+test("the hazard-review-contract clause names one hazard contract, one review for single and two for pair", () => {
+  const text = flatten(clauseText(body, "hazard-review-contract"));
+  assert.match(text, /criteria contract is dropped/);
+  assert.match(text, /ONE hazard review/);
+  assert.match(text, /TWO hazard reviews/);
+  assert.doesNotMatch(text, /clause-review-contract-criteria/);
   /* THE RESIDUE T-007 asks this clause to carry. */
   assert.match(text, /never a terminal green/i);
 });

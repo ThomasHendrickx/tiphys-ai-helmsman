@@ -46,7 +46,7 @@ clauses:
   - fleet-resume-specification
   - escalation-threshold
   - stalled-phase-response
-  - two-review-contracts
+  - hazard-review-contract
   - salvage-discipline
   - verification-dispatch-isolation
   - probe-injection
@@ -420,23 +420,31 @@ each closed one path at a time. The property being protected is that SOMETHING
 DIFFERENT must happen, and the measured evidence says the fresh implementer is
 the half that worked.
 
-## clause two-review-contracts: two review CONTRACTS, not two reviewers
+## clause hazard-review-contract: one HAZARD review contract, and the diff decides how many reviews
 
-T-007. For a code phase you dispatch TWO REVIEW CONTRACTS. One is composed with
-the criteria contract and `checklists/clean-room.yaml#probes`; the other with the
-hazard contract and `checklists/hazard-review.yaml#probes`, carrying the phase's
-declared hazard classes as its starting question. The two briefs are
-`roles/clean-room-reviewer.md#clause-review-contract-criteria` and
-`roles/clean-room-reviewer.md#clause-review-contract-hazard`.
+DR-0064 supersedes T-007's two-contract rule. The criteria contract is dropped,
+because acceptance criteria are tests the kernel runs. Every review you dispatch
+is composed with the hazard contract,
+`roles/clean-room-reviewer.md#clause-review-contract-hazard`, and
+`checklists/hazard-review.yaml#probes`, carrying the phase's declared hazard
+classes as its starting question.
 
-WHY TWO MODELS ARE NOT SUFFICIENT, with the evidence, because this reads like a
-refinement of model decorrelation and is not one. Two reviewers on different
-model families walked all fifteen of one phase's acceptance criteria by direct
-execution, agreed on every mechanical fact, and one returned APPROVE while the
-other found a high-severity defect that live-locked every supervision command.
-The approving report does not contain the name of the function at fault. Had both
-been briefed on the criteria, both would have approved, on any two models. The
-decorrelation that mattered was in the QUESTION ASKED.
+How many you dispatch is the change's review tier, DR-0063, decided from the
+diff against the project's declared runtime set:
+
+- `single` (the diff touches nothing in the runtime set): ONE hazard review, on
+  the cheaper tier. No arbitration. One fix round. A finding blocks only if it
+  makes a shipped artefact wrong.
+- `pair` (the diff touches the runtime set): TWO hazard reviews, on the
+  strongest tier, distinct in `produced-by`. You arbitrate disagreements. An
+  unresolved high or medium finding blocks.
+
+WHY THE HAZARD CONTRACT IS THE ONE KEPT, with T-007's evidence. Two reviewers on
+different model families walked all fifteen of one phase's acceptance criteria
+by direct execution, agreed on every mechanical fact, and one returned APPROVE
+while the other, briefed on hazards, found a high-severity defect that
+live-locked every supervision command. The decorrelation that mattered was in
+the QUESTION ASKED, and the hazard question is the one that found it.
 
 THE RESIDUE, stated plainly: "all acceptance criteria met" is ONE INPUT to a
 phase's assurance and is never a terminal green. A phase whose contract did not
@@ -501,24 +509,21 @@ DR-0012 and T-001, cited by id because this clause encodes both.
 
 When the declared mode's merge authority is a delegated grant, you may merge only
 after VERIFYING, against the verdict files rather than against your memory of the
-session, all five of these:
+session, these, per the change's DR-0063 tier:
 
-(a) TWO verdicts exist for the exact head being merged;
-(b) their `produced-by` model families are DISTINCT, which is DR-0012 condition
-    one, and the field is `schemas/verdict.schema.json#properties.produced-by`;
-(c) their `framing` values are DISTINCT, which is T-001's second lesson, that two
-    reviews with different STARTING QUESTIONS find different things and that the
-    checklists should vary the entry point rather than only the reviewer;
-(d) NEITHER carries an unresolved finding at high or medium severity, which is
-    DR-0012 condition two;
-(e) their `review-contract` values are DISTINCT, one criteria and one hazard,
-    which is T-007 and the field
-    `schemas/verdict.schema.json#properties.review-contract`.
+(a) the verdicts the tier owes exist for the exact head being merged: TWO for
+    `pair`, ONE for `single`;
+(b) for `pair`, their `produced-by` model families are DISTINCT, which is
+    DR-0012 condition one narrowed by DR-0063, and the field is
+    `schemas/verdict.schema.json#properties.produced-by`;
+(c) for `pair`, NEITHER carries an unresolved finding at high or medium
+    severity, which is DR-0012 condition two; for `single`, the one verdict
+    reads APPROVE.
 
-(e) IS NOT A DUPLICATE OF (b) OR (c), and the difference is the whole point:
-DR-0012's condition checks the MODEL and T-007's condition checks the QUESTION,
-and this project has a recorded pair of verdicts that satisfied the first and
-failed the second while agreeing on every mechanical fact.
+The `framing` and `review-contract` distinctness this clause used to require is
+gone: DR-0064 dropped the criteria contract, so every review is a hazard review.
+T-001's lesson, that the entry point matters, now lives in the hazard contract's
+starting question rather than in a comparison between two reviews.
 
 THE VERIFICATION IS A COMMAND, not a habit. Point the CLI this package installs
 at a project and it runs the `dual-review-decorrelation` check over the verdict

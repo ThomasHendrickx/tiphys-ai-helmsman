@@ -1,0 +1,24 @@
+{
+  "id": "m6-p2-criteria-contract-needs-criteria",
+  "behavior": "m6-p2-criteria-contract-needs-criteria",
+  "tests": [
+    "a verdict declaring review-contract criteria without criteria[] is rejected, with or without hazard classes, and a committed criteria verdict still validates"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "schemas/verdict.schema.json",
+      "find": "      \"required\": [\"review-contract\", \"criteria\"],",
+      "replace": "      \"required\": [\"review-contract\"],"
+    },
+    {
+      "kind": "mutation",
+      "file": "schemas/verdict.schema.json",
+      "find": "      \"$comment\": \"Branch B, the hazard contract (T-007), and since M6-P2 every verdict that does not say `criteria`, including one with no `review-contract` at all. `review-contract` and `hazard-classes-addressed` are BOTH restated in a sibling `properties` here, which is not redundancy: measured against ajv 8.20.0 under this validator's `strict: true`, a `required` naming a property not declared in `properties` at the same level fails COMPILATION under strictRequired. The two branches are discriminated by a `const` on one field, so exactly one can ever match and `oneOf` is an exclusive choice rather than an ambiguity.\",\n      \"required\": [\"hazard-classes-addressed\"],\n      \"properties\": {\n        \"review-contract\": {\n          \"type\": \"string\",\n          \"const\": \"hazard\"",
+      "replace": "      \"$comment\": \"Branch B, the hazard contract (T-007), and since M6-P2 every verdict that does not say `criteria`, including one with no `review-contract` at all. `review-contract` and `hazard-classes-addressed` are BOTH restated in a sibling `properties` here, which is not redundancy: measured against ajv 8.20.0 under this validator's `strict: true`, a `required` naming a property not declared in `properties` at the same level fails COMPILATION under strictRequired. The two branches are discriminated by a `const` on one field, so exactly one can ever match and `oneOf` is an exclusive choice rather than an ambiguity.\",\n      \"required\": [\"hazard-classes-addressed\"],\n      \"properties\": {\n        \"review-contract\": {\n          \"type\": \"string\",\n          \"enum\": [\"hazard\", \"criteria\"]"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

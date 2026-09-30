@@ -170,6 +170,30 @@
         }
       }
     },
+    "runtime-set": {
+      "$comment": "M6-P2 (DR-0063): what this project SHIPS, for the review tier. A change touching the set is `pair` (two hazard reviews), anything else is `single` (one). The merge gates read it from the MERGE BASE's committed charter, so a change cannot shrink the set that judges it, and a change to this block is itself `pair`. OPTIONAL, and its absence is not `single`: a project with no declaration, or one the gates cannot read, is all `pair` (fail closed).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["paths"],
+      "properties": {
+        "paths": {
+          "$comment": "Project-relative. An entry ending in `/` is a directory prefix; any other entry is an exact path, and an exact entry that is a DIRECTORY at the merge base makes the declaration invalid (so pair). The pattern refuses (M6-P2 fix round 1) a leading ./ or /, a . or .. segment and an empty segment, which match no path git prints, and a glob character (* ? [), which is compared literally and so does not mean what it looks like. The gate's reader, readRuntimeSet in src/gates/merge-preconditions.ts, refuses the same shapes.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!\\./)(?!.*//)(?!(?:.*/)?\\.{1,2}(?:/|$))(?=.*\\S)[^*?\\[]+$" }
+        },
+        "manifests": {
+          "$comment": "JSON manifests (package.json, a lockfile) that count only when something other than a version field changes: the top-level version, a lockfile's root or workspace entry version (a packages key with no node_modules segment), or a pin on a package named in version-pins in dependencies, devDependencies or optionalDependencies of the root or a lockfile workspace entry. Judged BEFORE paths, so a manifest under a declared prefix can still be a version-only bump. Same shape rules as paths, and no trailing /: a manifest is one file.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!\\./)(?!.*//)(?!.*/$)(?!(?:.*/)?\\.{1,2}(?:/|$))(?=.*\\S)[^*?\\[]+$" }
+        },
+        "version-pins": {
+          "$comment": "Package names whose pin counts as a version field, in dependencies, devDependencies or optionalDependencies of a declared manifest's root or of a lockfile workspace entry. Not in peerDependencies, and not inside a node_modules entry.",
+          "type": "array",
+          "items": { "type": "string", "minLength": 1, "pattern": "\\S" }
+        }
+      }
+    },
     "retention": {
       "$comment": "Consumed by M3-P8 for R-098.",
       "type": "object",

@@ -48,6 +48,16 @@ release-verification:
   note: >-
     The real shape of this field is settled by the first real project charter
     at M4's pilot. Until then a project declares reserved and says why.
+# DR-0063: the paths this project SHIPS, for the review tier. A change touching
+# them owes two hazard reviews (pair); any other change owes one (single).
+# WITHOUT this block every change is pair. Uncomment and edit to declare it.
+# A trailing / is a directory prefix. A listed manifest counts only when a key
+# other than a version field changes; version-pins names the packages whose
+# dependency pin counts as a version field.
+# runtime-set:
+#   paths: [src/, bin/]
+#   manifests: [package.json, package-lock.json]
+#   version-pins: []
 retention:
   work-history: delivery/work-history/
   evidence: delivery/evidence/

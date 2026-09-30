@@ -3,21 +3,21 @@
   "behavior": "m5-p3-paperwork-review-budget",
   "tests": [
     "a delivery-only change is not forced through the two-verdict rule and names its tier",
-    "merge-preconditions through the real runner is not-applicable for a delivery-only change, and an approving pair reaches the network conditions"
+    "merge-preconditions through the real runner is red for a delivery-only change with no review, naming 0 of 1, and an approving pair reaches the network conditions"
   ],
   "class": "classification",
   "dangerousStates": [
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "      return { tier: row.tier, source: row.source };",
-      "replace": "      return { tier: \"dual\", source: row.source };"
+      "find": "  return { tier: \"single\", reason: \"outside the declared runtime set\" };",
+      "replace": "  return { tier: \"pair\", reason: \"outside the declared runtime set\" };"
     },
     {
       "kind": "mutation",
       "file": "src/gates/merge-preconditions.ts",
-      "find": "    paths: [\"delivery/\", \"CLAUDE.md\", \".claude/\"],",
-      "replace": "    paths: [\"CLAUDE.md\", \".claude/\"],"
+      "find": "  return { tier: paths.some((entry) => entry.tier === \"pair\") ? \"pair\" : \"single\", paths };",
+      "replace": "  return { tier: \"pair\", paths };"
     }
   ],
   "deterministic": true,

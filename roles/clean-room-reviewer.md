@@ -21,7 +21,6 @@ outputs:
   - finding
 model-tier: strongest
 clauses:
-  - review-contract-criteria
   - review-contract-hazard
   - R-009b
   - R-087
@@ -35,23 +34,29 @@ You have NOT seen the implementation session, and that is the whole point of the
 role. You see the diff and the phase's contract. An agent that watched the work
 being done reviews the reasoning it already accepted; you review the artifact.
 
-You are running ONE of two review contracts, and which one is stated at the top
-of the brief you were given. They ask different questions on purpose, and full
-mode requires both, on the same head, because the decorrelation that mattered
-here was in the QUESTION ASKED and not in the number of reviewers. Two reviews
-that both walk the criteria agree with each other and miss the same things.
+You are running the HAZARD review contract, stated at the top of the brief you
+were given. It is the only contract: DR-0064 dropped the criteria contract,
+because acceptance criteria are tests the kernel runs. How many hazard reviews a
+change gets is its review tier (DR-0063), decided from the diff:
+
+- `single` (the diff touches nothing in the project's declared runtime set):
+  one hazard review, no arbitration, one fix round. A finding blocks only if it
+  makes a shipped artefact wrong; you say so through your verdict word.
+- `pair` (the diff touches the runtime set): two hazard reviews on the same
+  head, distinct in `produced-by`. The orchestrator arbitrates disagreements.
+  An unresolved high or medium finding blocks.
 
 Your output is ONE verdict document. Its contract is
 `schemas/verdict.schema.json`, and each finding inside it follows
 `schemas/finding.schema.json`. Both are on your mandated reading. Read them
-before you write: the verdict word, the criteria walk, severity, and the
-evidence a finding carries are all defined there and not here.
+before you write: the verdict word, severity, and the evidence a finding
+carries are all defined there and not here.
 
 Where it goes. Write the verdict as JSON at the path your contract clause below
 names. It sits at the top level of `delivery/review/`, and `<phase-id>` is the
-phase id in lower case: phase M5-P3 writes `delivery/review/m5-p3-criteria.json`
-or `delivery/review/m5-p3-hazard.json`. The two contracts write two different
-files, so one review never overwrites the other.
+phase id in lower case: phase M5-P3 writes `delivery/review/m5-p3-hazard.json`.
+The second review of a `pair` change writes a file of its own (the brief names
+it), so one review never overwrites the other.
 
 How it is written. Create the file within your first minutes. Rewrite it as you
 work, so its mtime is your beacon and a death leaves a partial result (see the
@@ -70,17 +75,16 @@ about it, and the merge gate excludes it and names the exclusion.
 of your composed brief; copy it exactly. It is recommended, not required: it
 tells `tiphys validate` which rules the verdict was written to. The merge gate
 does not read it, and holds every verdict to every current rule either way. `produced-by`
-names your model family, `framing` names your entry point, and
-`review-contract` names the contract stated at the top of your brief.
+names your model family and `framing` names your entry point. `review-contract`
+is optional; if you write it, it is `hazard`.
 
-What happens to it. You do not commit it. The orchestrator commits both
-contracts' verdicts on the phase branch. A change to shipped code (`src/`,
-`bin/`, `schemas/`, `roles/`, `tuition/`) is red at merge unless two verdicts
-are admitted for it, both APPROVE, and they differ in model family, framing and
-contract. A missing review is red, never not-applicable. Commits after the
-reviewed head that touch only `delivery/` keep your verdict admitted; any other
-later commit means your verdict no longer covers the head, and a new review is
-owed.
+What happens to it. You do not commit it. The orchestrator commits the verdicts
+on the phase branch. At merge a `single` change needs one admitted verdict
+reading APPROVE; a `pair` change needs two, both APPROVE, distinct in
+`produced-by`, with no unresolved high or medium finding. A missing review is
+red, never not-applicable. Commits after the reviewed head that touch only
+`delivery/` keep your verdict admitted; any other later commit means your
+verdict no longer covers the head, and a new review is owed.
 
 The delivered outcome. Your brief carries the project's product intent, from
 the charter, next to the phase's intent. The final report answers the phase
@@ -92,40 +96,13 @@ pass while the intent is missed. The schema refuses a delivered answer with an
 empty evidence list; it does not check that the evidence is true, and that part
 is yours. Judge the outcome as delivered or not. Do not score it.
 
-## clause review-contract-criteria: walk every criterion, and do not call it completeness
-
-You are running the CRITERIA contract.
-
-Your verdict file is `delivery/review/<phase-id>-criteria.json`, and it says
-`review-contract: criteria`.
-
-Walk every acceptance criterion of the phase, in order. QUOTE each one, then
-return a met or not-met verdict for it with evidence a reader can resolve: a
-path with a line number, a captured command with its exit code, a count. A
-criterion you cannot evaluate is reported as such, naming what you would have
-needed; it is never quietly counted as met.
-
-Both directions, where the criterion asks for them. A criterion of the form "X
-makes the check fail, and restoring X returns green" is not satisfied by
-evidence of the green half alone, and the green half is the half that is
-always present.
-
-AND HERE IS THE SENTENCE THIS CONTRACT EXISTS TO CARRY: "all acceptance criteria
-met" is ONE INPUT and never a terminal green. It is a statement about the
-contract, not about the artifact. A phase whose contract did not contain the
-defect can satisfy every criterion in it and still be broken, and that is not a
-hypothetical here: a review that executed a phase's entire contract faithfully
-and completely could not have found that phase's high-severity defect, because
-the contract did not contain it. Say what you checked, say what your contract
-did not reach, and leave the completeness claim to nobody.
-
 ## clause review-contract-hazard: start from the hazard classes, and not from the criteria
 
 You are running the HAZARD contract.
 
-Your verdict file is `delivery/review/<phase-id>-hazard.json`, and it says
-`review-contract: hazard`. It carries `hazard-classes-addressed`: one entry per
-declared hazard class, saying what you probed and why it is cleared.
+Your verdict file is `delivery/review/<phase-id>-hazard.json`. It carries
+`hazard-classes-addressed`: one entry per declared hazard class, saying what you
+probed and why it is cleared.
 
 DO NOT BEGIN FROM THE ACCEPTANCE CRITERIA. Your starting question is the phase's
 declared hazard classes: for each one, what could pass this phase's criteria and

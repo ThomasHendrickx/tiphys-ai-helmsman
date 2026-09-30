@@ -1290,13 +1290,13 @@ test("full's escalation response is the fresh implementer and third contract, no
 /* Criterion 4d: two review contracts, Kind A                           */
 /* ------------------------------------------------------------------ */
 
-test("a mode running clean-room-review with one review contract is rejected naming the pointer, and two named contracts are accepted", () => {
+test("a mode running clean-room-review with no review contract is rejected naming the pointer, and full's one hazard contract is accepted", () => {
   const schemaName = "assurance-modes.schema.json";
   const document = loadModes();
-  modeNamed(document, "full")["review-contracts"] = ["criteria"];
+  modeNamed(document, "full")["review-contracts"] = [];
   assert.deepEqual(validateModule.validateToLines(readSchema(schemaName), document), [
     "INVALID #/modes/0 value does not satisfy the requirements its own shape triggers here",
-    "INVALID #/modes/0/review-contracts array has 1 items, fewer than the required minimum 2",
+    "INVALID #/modes/0/review-contracts array has 0 items, fewer than the required minimum 1",
   ]);
 
   const defanged = readSchema(schemaName);
@@ -1312,22 +1312,22 @@ test("a mode running clean-room-review with one review contract is rejected nami
 
   assert.notDeepEqual(validateModule.validateToLines(readSchema(schemaName), document), []);
 
-  /* THE OTHER DIRECTION, with the ids asserted: T-007's finding is that the
-     decorrelation which mattered was in the QUESTION asked, so two contracts
-     called `criteria` and `hazard` is the claim, not two entries. */
+  /* THE OTHER DIRECTION, with the id asserted: DR-0064 dropped the criteria
+     contract, and the hazard contract is the one T-007 measured finding the
+     defect (M6-P2). */
   const shipped = loadModes();
-  assert.deepEqual(modeNamed(shipped, "full")["review-contracts"], ["criteria", "hazard"]);
+  assert.deepEqual(modeNamed(shipped, "full")["review-contracts"], ["hazard"]);
   assert.deepEqual(validateModule.validateToLines(readSchema(schemaName), shipped), []);
 });
 
-test("two review contracts with the same id are rejected as duplicates and full's two are distinct", () => {
+test("two review contracts with the same id are rejected as duplicates and full's contract list is distinct", () => {
   /* T-007's failure mode reproduced exactly: two entries both named `criteria`
      satisfy `minItems: 2` and give a phase two reviews briefed on the same
      question, which is the state in which both reviewers approved and one
      high-severity live-lock went unfound. */
   const schemaName = "assurance-modes.schema.json";
   const document = loadModes();
-  modeNamed(document, "full")["review-contracts"] = ["criteria", "criteria"];
+  modeNamed(document, "full")["review-contracts"] = ["hazard", "hazard"];
   /* ONE line, not two. `uniqueItems` sits on modeShape rather than inside the
      conditional rule, so no `if`/`then` composite accompanies it; the sibling
      `minItems` test above does produce the composite line, and the difference
@@ -1357,7 +1357,7 @@ test("two review contracts with the same id are rejected as duplicates and full'
 
   const contracts = modeNamed(loadModes(), "full")["review-contracts"] as string[];
   assert.equal(new Set(contracts).size, contracts.length);
-  assert.equal(contracts.length, 2);
+  assert.ok(contracts.length >= 1);
 });
 
 /* ------------------------------------------------------------------ */

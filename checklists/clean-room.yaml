@@ -68,29 +68,9 @@ probes:
     applies-to: deviations
     evidence-required: true
 
-  # R-053. Each acceptance criterion quoted, with file:line evidence and a
-  # met-or-not-met verdict. The completeness of this walk is not left to the
-  # reviewer's memory: the verdict schema's `criteria[]` carries one entry per
-  # criterion and `verdict-criteria-complete` compares it against the plan.
-  - id: criteria-walked-with-evidence
-    probe: >-
-      Quote each acceptance criterion of the phase VERBATIM from the plan,
-      cite the file and line that discharges it, and record met or not-met.
-      A criterion discharged by a CI-deferred reason is not-met with that
-      reason recorded; a criterion you could not evaluate is not-met, never
-      omitted.
-    applies-to: criteria-walk
-    evidence-required: true
-
-  - id: criteria-none-silently-dropped
-    probe: >-
-      Does the phase's plan section carry an acceptance criterion that your
-      walk has no entry for? Count the criteria in the plan and the entries in
-      your walk, and name any difference. A review that quietly skipped a
-      criterion is the shape `verdict-criteria-complete` exists against, and
-      this probe is what catches it before the check does.
-    applies-to: criteria-walk
-    evidence-required: true
+  # R-053 (each acceptance criterion quoted and walked) is no longer a review
+  # probe: DR-0064 makes acceptance criteria tests the kernel runs, so M6-P2
+  # removed the two criteria-walk probes that stood here.
 
   # R-055 correctness probes. FIVE SEPARATE ENTRIES, not one "check the edge
   # cases" row (criterion 3b). A single generic row is answerable without
@@ -298,16 +278,10 @@ probes:
     verifies-gate: fixtures-for-changed-component-states
 
 framings:
-  # T-001's two ACTUALLY EXERCISED entry points from the M1-P4 dual review,
-  # cited rather than invented. The two reviewers found different defects
-  # because they were given different starting questions.
-  - id: criteria-contract
-    entry-point: >-
-      Treat the plan's acceptance criteria as a contract the diff either meets
-      or does not. Start at criterion 1 and walk to the last one before you
-      form any opinion about the code.
-    orders-probes: [criteria-walk, changed-code, test-honesty, deviations, gate-probe]
-
+  # T-001's ACTUALLY EXERCISED entry point from the M1-P4 dual review, cited
+  # rather than invented. Its sibling, the criteria-contract framing, and the
+  # two criteria-walk probes were removed in M6-P2: DR-0064 drops the criteria
+  # contract, because acceptance criteria are tests the kernel runs.
   - id: destructive-paths
     entry-point: >-
       Start from where this can destroy something, or claim a guarantee it
@@ -322,4 +296,4 @@ framings:
     entry-point: >-
       This review is of a FIX ROUND. Before you examine any row, ask what the
       derivation did not cover.
-    orders-probes: [fix-round, criteria-walk, test-honesty, changed-code]
+    orders-probes: [fix-round, test-honesty, changed-code]

@@ -1,0 +1,31 @@
+{
+  "id": "m6-p2-suite-deleted-behavior-allowed",
+  "behavior": "suite-gate-deleted-behavior-allowed",
+  "tests": [
+    "a behavior registered at the merge base and deleted on the head no longer reddens the suite gate"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "  // register must still resolve to a reported test.\n",
+      "replace": "  // register must still resolve to a reported test.\n  for (const behavior of Object.keys(baseRegistry)) {\n    if (!(behavior in headRegistry.registry)) {\n      findings.push(`behavior ${behavior} is registered at the merge base and deleted from the head registry`);\n    }\n  }\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/suite.ts",
+      "find": "  // absent from the head registry is NOT a finding since M6-P2: that rule was a\n",
+      "replace": "  // absent from the head registry is NOT a finding since M6-P2: that rule was a\n  headRegistry.registry = { ...baseRegistry, ...headRegistry.registry };\n"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "node src/gates/suite.ts (the gate CLI under test), which itself spawns the configured npm test script and parses its reporter stream",
+    "captures": [
+      "witness/captures/m4-p29-gate-cli-stdio.txt"
+    ],
+    "provenance": "The behaviour under test is what the suite gate CLI decides from the node test runner's reporter stream, which the named test produces LIVE by running the real runner in a scratch fixture; rule (f) binds this witness because the mutated file spawns that runner and parses its output. The cited capture is the M4-P29 REAL output of this gate CLI (taken 2026-09-17 on node v26.6.0 in the kernel container) referenced from the same test file; nothing asserted is a hand-written string standing in for the runner's output."
+  }
+}

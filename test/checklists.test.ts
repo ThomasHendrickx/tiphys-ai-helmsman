@@ -758,13 +758,15 @@ test("the class-witness probe asks for two structurally different members", () =
 /* ------------------------------------------------------------------ */
 
 test("the two exercised framings both resolve and their first probes differ", () => {
+  /* M6-P2: the criteria-contract framing was removed with the criteria
+     contract (DR-0064); the two framings the checklist declares are compared. */
   const criteria = runCli([
     "checklist",
     "resolve",
     "--checklist",
     "clean-room",
     "--framing",
-    "criteria-contract",
+    "fix-round",
   ]);
   const destructive = runCli([
     "checklist",
@@ -785,7 +787,7 @@ test("the two exercised framings both resolve and their first probes differ", ()
      changing the ENTRY POINT would be cosmetic, and the phase's own hazard
      class names that. */
   assert.notEqual(firstOf(criteria.stdout), firstOf(destructive.stdout));
-  assert.equal(firstOf(criteria.stdout), "criteria-walked-with-evidence");
+  assert.equal(firstOf(criteria.stdout), "fix-round-not-covered");
   assert.equal(firstOf(destructive.stdout), "destructive-authority-declared");
 });
 
@@ -966,7 +968,7 @@ test("a framing id absent from the checklist exits nonzero naming it and listing
   ]);
   assert.equal(run.status, 1, run.stdout + run.stderr);
   assert.match(run.stderr, /declares no framing no-such-framing/);
-  assert.match(run.stderr, /criteria-contract/);
+  assert.match(run.stderr, /destructive-paths/);
 });
 
 test("the fix-round framing resolves fix-round-not-covered first, and moving that probe later in the file changes the resolved head", () => {
@@ -1033,7 +1035,7 @@ test("the fix-round framing resolves fix-round-not-covered first, and moving tha
   const hoistedDocument = readShipped("clean-room");
   const hoistedProbes = probesOf(hoistedDocument);
   const criteriaIndex = hoistedProbes.findIndex(
-    (probe) => probe["id"] === "criteria-walked-with-evidence",
+    (probe) => probe["id"] === "correctness-negative-values",
   );
   assert.notEqual(criteriaIndex, -1);
   const [hoisted] = hoistedProbes.splice(criteriaIndex, 1);
@@ -1069,7 +1071,7 @@ test("a framing drops no probe, it only reorders", () => {
      which is the same shape as an extra file silently overriding one. */
   const canonical = readShipped("clean-room");
   const declared = probesOf(canonical).map((probe) => String(probe["id"])).sort();
-  for (const framing of ["criteria-contract", "destructive-paths", "fix-round"]) {
+  for (const framing of ["destructive-paths", "fix-round"]) {
     const run = runCli([
       "checklist",
       "resolve",

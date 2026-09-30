@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { pathsIdentifySameObject } from "../path-identity.ts";
 import {
+  boundAtMergeBase,
   declaresNoHead,
   describeAdmittedVerdicts,
   describeOffHeadVerdicts,
@@ -17,6 +18,7 @@ import {
 } from "../checks.ts";
 import type { AdmittedVerdict, DerivedCheck, OffHeadVerdict } from "../checks.ts";
 import { readRegularFileIfPresent, refuseOpenForWrite, runStep, singleLine } from "../task.ts";
+import { decodeDocument } from "../validate.ts";
 import {
   EXIT_GATE_ERROR,
   exitCodeForStatus,
@@ -49,20 +51,20 @@ import type { GateResultFields, GateStatus, PreconditionRecord } from "./result.
  *                                        standing warning 6 records this shape
  *                                        costing a whole watcher.
  *   an API failure called N/A          -> `not-applicable` is reachable from
- *                                        exactly THREE places since M5-P3, and
- *                                        none of them is an API failure. Each
+ *                                        exactly TWO places since M6-P2, and
+ *                                        neither is an API failure. Each
  *                                        carries its own evaluated precondition
  *                                        record (SC-011): the M4-P12
  *                                        NO-VERDICT-AT-THIS-HEAD arm (only
- *                                        without `--base`), a change below the
- *                                        dual-review tier (BUDGET_PRECONDITION_ID),
- *                                        and a run inside the unconcluded CI of
- *                                        this head with every review row green
+ *                                        without `--base`), and a run inside
+ *                                        the unconcluded CI of this head with
+ *                                        every review row green
  *                                        (CI_CONCLUDED_PRECONDITION_ID).
- *   an unreviewed shipped change called N/A -> with `--base`, a dual-tier
- *                                        change with fewer than two admitted
- *                                        verdicts is RED, decided before any
- *                                        network request (M5-P3).
+ *   an unreviewed change called N/A    -> with `--base`, a change with fewer
+ *                                        admitted verdicts than its DR-0063
+ *                                        tier owes (two for pair, one for
+ *                                        single) is RED, decided before any
+ *                                        network request (M5-P3, M6-P2).
  *   CI-green read off the BRANCH       -> condition 4 compares
  *                                        `check_run.head_sha` against the head
  *                                        under evaluation and reddens when they
@@ -562,8 +564,8 @@ const HEX_TOKEN = /\b[0-9a-f]{7,40}\b/gi;
  *
  * VERDICTS ARE IDENTIFIED BY FILE NAME because `schemas/verdict.schema.json`
  * gives a verdict no id of its own; its required keys are kind, phase, head,
- * verdict, produced-by, framing, review-contract, findings, criteria and
- * deviations-judged. The existing arbitration documents in `delivery/review/`
+ * verdict, produced-by, framing, findings and deviations-judged (M6-P2 dropped
+ * criteria and review-contract). The existing arbitration documents in `delivery/review/`
  * already cite their reviews by path, so the convention that exists is read
  * rather than a field invented.
  *
@@ -719,7 +721,7 @@ export function judgeRulesets(rulesets: readonly RulesetReading[]): {
 }
 
 /* -------------------------------------------------------------------- */
-/* Conditions 1, 2 and 3: the review evidence                            */
+/* Conditions 1 and 2: the review evidence                               */
 /* -------------------------------------------------------------------- */
 
 export interface VerdictForHead {
@@ -728,55 +730,45 @@ export interface VerdictForHead {
 }
 
 /**
- * Condition 3, and what it DOES and DOES NOT establish.
+ * The `single` tier's approval row (DR-0063): every admitted review of this
+ * head reads APPROVE.
  *
- * DR-0012 condition 3 (delivery/decisions/DR-0012-delegated-merge-authority.md:24)
- * says both reviewers were given the phase's acceptance criteria as their
- * contract and both WALKED OR EXECUTED them. What is reachable from the verdict
- * documents alone is that each one declares a `review-contract` and carries a
- * non-empty `criteria[]` whose entries each record `met`. Whether that walk
- * COVERS every acceptance criterion the plan declares is a comparison against a
- * different document and it is the shipped Kind B check
- * `verdict-criteria-complete`, which resolves a `plan.yaml` out of its context.
- * This repository has no such document, so running it here would make this row
- * permanently error about the instrument rather than about the merge. The row's
- * sentence therefore says which half it established, and the other half is
- * recorded as residue in delivery/work-history/m4-p12.md rather than implied.
+ * THE VERDICT WORD IS THE WHOLE TEST, AND THAT IS DR-0063's RULE RATHER THAN A
+ * SHORTCUT. Under `single` "a finding blocks only if it makes a shipped
+ * artefact wrong", which is the reviewer's judgement and is carried by the one
+ * word the reviewer chooses, so severities are reported and not gated here. The
+ * RAW spelling is compared, for the reason `verdict-pair-approves` gives: a
+ * sibling reading `Approve` is not an authorisation however it canonicalises.
+ * How many reviews exist is the selection row's question, decided before this.
  */
-export function judgeCriteriaWalked(verdicts: readonly VerdictForHead[]): {
+export function judgeSingleApproves(verdicts: readonly VerdictForHead[]): {
   ok: boolean;
   sentence: string;
 } {
   const faults: string[] = [];
+  const seen: string[] = [];
   for (const verdict of verdicts) {
-    const contract = String(verdict.record["review-contract"] ?? "");
-    if (contract === "") {
-      faults.push(`${verdict.path} declares no review-contract`);
-    }
-    const criteria = verdict.record["criteria"];
-    if (!Array.isArray(criteria) || criteria.length === 0) {
-      faults.push(`${verdict.path} walks no acceptance criterion`);
+    const word = verdict.record["verdict"];
+    if (word !== "APPROVE") {
+      faults.push(
+        `${verdict.path} reads ${typeof word === "string" ? word : "no verdict word"}, and the single tier's review must read APPROVE`,
+      );
       continue;
     }
-    const unwalked = criteria.filter(
-      (entry) => (entry as { met?: unknown } | null)?.met === undefined,
-    );
-    if (unwalked.length > 0) {
-      faults.push(
-        `${verdict.path} carries ${String(unwalked.length)} criterion entr(ies) with no met field`,
-      );
-    }
+    const findings = Array.isArray(verdict.record["findings"]) ? verdict.record["findings"].length : 0;
+    seen.push(`${basename(verdict.path)} APPROVE with ${String(findings)} finding(s)`);
+  }
+  if (verdicts.length === 0) {
+    faults.push("no review is admitted for this head, so nothing approves it");
   }
   if (faults.length > 0) {
     return { ok: false, sentence: faults.join("; ") };
   }
-  const contracts = verdicts.map((verdict) => String(verdict.record["review-contract"] ?? ""));
   return {
     ok: true,
     sentence:
-      `all ${String(verdicts.length)} verdict(s) declare a review-contract (${contracts.join(", ")}) ` +
-      "and walk at least one acceptance criterion with a recorded met; COMPLETENESS against the " +
-      "plan's acceptance list is the separate check verdict-criteria-complete and is NOT asserted here",
+      `every admitted review of this head approves (${seen.join(", ")}); under DR-0063's single tier a ` +
+      "finding blocks through the reviewer's verdict word, so severities are reported and not gated",
   };
 }
 
@@ -825,7 +817,7 @@ function runRegisteredCheck(
 }
 
 /* -------------------------------------------------------------------- */
-/* The review budget (M5-P3; DR-0027, DR-0035, T-040, T-041)             */
+/* The review tier (M6-P2; DR-0063, DR-0035, T-040, T-041)               */
 /* -------------------------------------------------------------------- */
 
 /**
@@ -834,87 +826,509 @@ function runRegisteredCheck(
  * WHY THIS EXISTS, in one measured sentence: until M5-P3 both review gates were
  * conditional on "is there any verdict document at all", so a branch carrying
  * shipped code and NO review was not-applicable, and T-041 counts sixteen such
- * phases merged. Absence of evidence was read as absence of a subject. The
- * budget turns the question round: the DIFF decides how much review is owed,
- * and the verdicts are then measured against what is owed.
+ * phases merged. The DIFF decides how much review is owed, and the verdicts are
+ * then measured against what is owed.
  *
- * THE TABLE IS DR-0027's, READ LITERALLY, and it is not re-derived here.
- * delivery/decisions/DR-0027-reviews-target-shipped-value-not-ceremony.md:38
- * declares three rows. Row 3 (`delivery/**`, `CLAUDE.md`, `.claude/**`) gets no
- * review round. Row 2 (`scripts/`, `test/`, `.github/`, `gate-registry.yaml`,
- * `gates.manifest.json`) gets ONE round whose findings do not block. Row 1 (the
- * npm package) gets the full contract, which is DR-0012's two decorrelated
- * approving reviews. DR-0035 later made "every change is reviewed" the owner's
- * rule; it tiers the FIX-ROUND count and leaves DR-0012's pair where it was, so
- * nothing here contradicts it: the two lower rows are not EXEMPT from review,
- * they are exempt from the MACHINE-ENFORCED PAIR, which is the only thing a gate
- * can count.
+ * DR-0063 IS THE RULE (delivery/decisions/DR-0063-review-tier-follows-the-diff.md:1).
+ * Two tiers and no third. `pair`: the diff touches the project's declared
+ * runtime set, and two hazard reviews are owed. `single`: everything else, and
+ * one hazard review is owed. The kernel ships the mechanism and the PROJECT
+ * declares the set, in its charter's `runtime-set` block (DR-0029: the project
+ * owns the predicate). DR-0027's hardcoded three-row table is gone.
  *
- * FAIL CLOSED ON EVERY PATH THE TABLE DOES NOT NAME. Row 1's own list (`src/`,
- * `bin/`, `schemas/`, `roles/`, `tuition/`) is narrower than what ships today:
- * `plugin/src/` shipped sixteen unreviewed changes (T-041), and `templates/`,
- * `checklists/`, `AGENTS.md` and `package.json` are all in the package's
- * `files`. So the two LOWER rows are listed and everything else is held to the
- * dual tier. A table that listed the dual tier instead would read a new
- * top-level directory as paperwork, which is the fail-open direction.
- *
- * `gate-registry.yaml` AND `gates.manifest.json` ARE IN THE PACKAGE'S `files`
- * AND IN ROW 2 AT ONCE. That is a real disagreement between two declarations
- * and it is NOT resolved here: DR-0027 is the owner's explicit classification,
- * so it wins, and the disagreement is recorded in delivery/work-history/m5-p3.md
- * as an open question rather than silently decided.
+ * FAIL CLOSED WHEREVER THE ANSWER IS NOT ESTABLISHED. No declaration, one that
+ * does not decode or does not validate, a manifest that does not parse at
+ * either side, a path outside the project, and a change to the declaration
+ * itself are all `pair`, each with its reason printed. An unreadable
+ * declaration read as "no runtime paths" would make every change `single`,
+ * which is the fail-open direction this section exists against.
  */
-export type ReviewTier = "dual" | "single" | "none";
+export type ReviewTier = "pair" | "single";
 
-interface BudgetRow {
-  tier: Exclude<ReviewTier, "dual">;
-  source: string;
+/** How many approving verdicts each tier requires (DR-0063). */
+export const REQUIRED_VERDICTS: Readonly<Record<ReviewTier, number>> = { pair: 2, single: 1 };
+
+/** The charter key the declaration lives under. */
+export const RUNTIME_SET_FIELD = "runtime-set";
+
+/** The one charter a project's review gates read, at the context directory. */
+const RUNTIME_SET_CHARTER = "charter.yaml";
+
+/** A project's declared runtime set, as `schemas/charter.schema.json` shapes it. */
+export interface RuntimeSet {
   /** A trailing `/` is a directory prefix; anything else is an exact path. */
-  paths: readonly string[];
+  paths: string[];
+  /** JSON manifests that count only when a key other than a version field changes. */
+  manifests: string[];
+  /** Package names whose dependency pin counts as a version field. */
+  versionPins: string[];
 }
 
-export const REVIEW_BUDGET_ROWS: readonly BudgetRow[] = [
-  {
-    tier: "none",
-    source: "DR-0027 row 3 (no review round)",
-    paths: ["delivery/", "CLAUDE.md", ".claude/"],
-  },
-  {
-    tier: "single",
-    source: "DR-0027 row 2 (one review round, findings do not block)",
-    paths: ["scripts/", "test/", ".github/", "gate-registry.yaml", "gates.manifest.json"],
-  },
-];
+export type RuntimeSetReading =
+  | { kind: "declared"; set: RuntimeSet }
+  | { kind: "undeclared"; reason: string }
+  | { kind: "invalid"; reason: string };
 
-/** How many approving, decorrelated verdicts the dual tier requires. */
-export const REQUIRED_VERDICTS = 2;
+function isMapping(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
-/** Which tier one project-relative path belongs to, and which row said so. */
-export function tierOfPath(path: string): { tier: ReviewTier; source: string } {
-  for (const row of REVIEW_BUDGET_ROWS) {
-    const named = row.paths.some((entry) =>
-      entry.endsWith("/") ? path.startsWith(entry) : path === entry,
-    );
-    if (named) {
-      return { tier: row.tier, source: row.source };
+/** A list of non-empty strings, or the reason the value is not one. */
+function stringList(
+  value: unknown,
+  where: string,
+): { ok: true; list: string[] } | { ok: false; reason: string } {
+  if (!Array.isArray(value)) {
+    return { ok: false, reason: `${where} is not a list` };
+  }
+  const list: string[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const entry: unknown = value[index];
+    if (typeof entry !== "string" || entry.trim() === "") {
+      return { ok: false, reason: `${where}[${String(index)}] is not a non-empty string` };
+    }
+    list.push(entry);
+  }
+  return { ok: true, list };
+}
+
+/**
+ * Why one declared `paths` or `manifests` entry is refused for its SHAPE, or
+ * undefined (M6-P2 fix round 1, CR-M6P2B-02 and CR-M6P2A-02). THE MECHANISM: an entry that matches nothing was a valid
+ * declaration, so the set was silently empty and every change was `single`.
+ * git prints project-relative paths with no leading `./` or `/`, no `.` or
+ * `..` segment and no empty segment, so those shapes match nothing. The
+ * classifier compares entries literally, so a glob character matches only a
+ * file whose name carries that character, which is not what a glob means. A
+ * manifest is one file, so it may not end in `/` either. schemas/charter.schema.json
+ * carries the same rule as a pattern; this is the reader's copy, because the
+ * gate reads a blob and never runs the schema validator.
+ */
+function entryShapeFault(entry: string, isManifest: boolean): string | undefined {
+  if (/[*?[]/.test(entry)) {
+    return "carries a glob character (*, ? or [), and entries are literal paths";
+  }
+  if (entry.startsWith("/")) {
+    return "starts with /, and entries are relative to the project";
+  }
+  if (entry.startsWith("./")) {
+    return "starts with ./, and git prints no such prefix";
+  }
+  const segments = (entry.endsWith("/") ? entry.slice(0, -1) : entry).split("/");
+  if (segments.some((segment) => segment === "")) {
+    return "has an empty segment";
+  }
+  if (segments.some((segment) => segment === "." || segment === "..")) {
+    return "has a . or .. segment";
+  }
+  if (isManifest && entry.endsWith("/")) {
+    return "ends in /, and a manifest is one file";
+  }
+  return undefined;
+}
+
+/**
+ * The first EXACT entry (a `paths` entry with no trailing `/`, or any
+ * `manifests` entry) that names a DIRECTORY at `rev`, as a sentence, or
+ * undefined. An exact entry is compared with `===`, and git never prints a
+ * directory as a changed path, so `paths: [src]` over a directory `src/`
+ * matches nothing under it (CR-M6P2B-02). A listing git could not produce is
+ * a sentence too, so the caller fails closed on it.
+ */
+function exactEntryNamingDirectory(contextDirectory: string, rev: string, set: RuntimeSet): string | undefined {
+  const exact: [string, string][] = [
+    ...set.paths.filter((entry) => !entry.endsWith("/")).map((entry): [string, string] => ["paths", entry]),
+    ...set.manifests.map((entry): [string, string] => ["manifests", entry]),
+  ];
+  for (const [field, entry] of exact) {
+    const listed = spawnSync("git", ["--literal-pathspecs", "ls-tree", "-z", rev, "--", entry], {
+      cwd: contextDirectory,
+      encoding: "utf8",
+    });
+    if (listed.error !== undefined || listed.status !== 0) {
+      return (
+        `${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} could not be looked up at ${rev} ` +
+        `(git ls-tree failed: ${singleLine(String(listed.error ?? listed.stderr ?? ""))})`
+      );
+    }
+    const first = (listed.stdout ?? "").split("\0")[0] ?? "";
+    if (/^\d{6} tree /.test(first)) {
+      return (
+        `${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} names a DIRECTORY at ${rev}, and an exact ` +
+        `entry is compared with ===, so no path under it matches (a directory entry ends in /)`
+      );
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Read the `runtime-set` block out of one charter's TEXT. Pure.
+ *
+ * `undefined` text means the charter does not exist at that revision. Every
+ * shape the schema refuses is `invalid` here too, checked in code rather than
+ * by the schema validator because this runs inside a merge gate over a blob,
+ * and the three readings must stay three: no declaration, a declaration, and a
+ * declaration that could not be read. The caller turns the first and the third
+ * into `pair`, never into "no runtime paths".
+ */
+export function readRuntimeSet(text: string | undefined, label: string): RuntimeSetReading {
+  if (text === undefined) {
+    return { kind: "undeclared", reason: `${label} does not exist, so no runtime set is declared` };
+  }
+  const decoded = decodeDocument(text, label);
+  if (!decoded.ok) {
+    return { kind: "invalid", reason: decoded.reason };
+  }
+  if (!isMapping(decoded.value)) {
+    return { kind: "invalid", reason: `${label} is not a mapping, so no runtime set can be read from it` };
+  }
+  if (!(RUNTIME_SET_FIELD in decoded.value)) {
+    return { kind: "undeclared", reason: `${label} carries no ${RUNTIME_SET_FIELD} block` };
+  }
+  const block = decoded.value[RUNTIME_SET_FIELD];
+  if (!isMapping(block)) {
+    return { kind: "invalid", reason: `${label} ${RUNTIME_SET_FIELD} is not a mapping` };
+  }
+  const known = new Set(["paths", "manifests", "version-pins"]);
+  const unknown = Object.keys(block).filter((key) => !known.has(key));
+  if (unknown.length > 0) {
+    return { kind: "invalid", reason: `${label} ${RUNTIME_SET_FIELD} carries unknown key(s) ${unknown.join(", ")}` };
+  }
+  const paths = stringList(block["paths"], `${label} ${RUNTIME_SET_FIELD}.paths`);
+  if (!paths.ok) {
+    return { kind: "invalid", reason: paths.reason };
+  }
+  if (paths.list.length === 0) {
+    return { kind: "invalid", reason: `${label} ${RUNTIME_SET_FIELD}.paths is empty` };
+  }
+  const manifests =
+    block["manifests"] === undefined
+      ? ({ ok: true, list: [] } as const)
+      : stringList(block["manifests"], `${label} ${RUNTIME_SET_FIELD}.manifests`);
+  if (!manifests.ok) {
+    return { kind: "invalid", reason: manifests.reason };
+  }
+  const pins =
+    block["version-pins"] === undefined
+      ? ({ ok: true, list: [] } as const)
+      : stringList(block["version-pins"], `${label} ${RUNTIME_SET_FIELD}.version-pins`);
+  if (!pins.ok) {
+    return { kind: "invalid", reason: pins.reason };
+  }
+  for (const [field, list] of [
+    ["paths", paths.list],
+    ["manifests", manifests.list],
+  ] as const) {
+    for (const entry of list) {
+      const fault = entryShapeFault(entry, field === "manifests");
+      if (fault !== undefined) {
+        return {
+          kind: "invalid",
+          reason:
+            `${label} ${RUNTIME_SET_FIELD}.${field} entry ${JSON.stringify(entry)} ${fault}, ` +
+            "so it does not name the paths it looks like it names, and the declaration is refused (fail closed)",
+        };
+      }
     }
   }
   return {
-    tier: "dual",
-    source: "DR-0027 row 1 (the shipped tree, and every path the table does not name, fail closed)",
+    kind: "declared",
+    set: { paths: [...paths.list], manifests: [...manifests.list], versionPins: [...pins.list] },
   };
 }
 
-const TIER_RANK: Record<ReviewTier, number> = { none: 0, single: 1, dual: 2 };
+/** The raw `runtime-set` value of one charter text, key-sorted, or why not. */
+function runtimeSetBlockText(text: string, label: string): { ok: true; value: string } | { ok: false; reason: string } {
+  const decoded = decodeDocument(text, label);
+  if (!decoded.ok) {
+    return { ok: false, reason: decoded.reason };
+  }
+  if (!isMapping(decoded.value)) {
+    return { ok: false, reason: `${label} is not a mapping` };
+  }
+  return { ok: true, value: canonicalJson(decoded.value[RUNTIME_SET_FIELD]) };
+}
+
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map(canonicalJson).join(",")}]`;
+  }
+  if (isMapping(value)) {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+      .join(",")}}`;
+  }
+  return value === undefined ? "undefined" : JSON.stringify(value);
+}
+
+/**
+ * The dependency fields in which a pinned name's value is a version field.
+ * NOT peerDependencies: a peer range is the package's compatibility contract
+ * with its host, not which release it installs, so changing it is `pair`
+ * (fix round 1, CR-M6P2B-05).
+ */
+const PIN_FIELDS = new Set(["dependencies", "devDependencies", "optionalDependencies"]);
+
+/** A version as a manifest spells it: exact, or a caret or tilde range of one. */
+const VERSION_VALUE = /^[~^]?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$/;
+
+function pointerOf(segments: readonly string[]): string {
+  return `/${segments.map((segment) => segment.replace(/~/g, "~0").replace(/\//g, "~1")).join("/")}`;
+}
+
+/**
+ * Is a lockfile `packages` key a workspace entry, the root entry `""` included?
+ * Only when NO segment of it is `node_modules`: npm writes a workspace's own
+ * nested installs as `<workspace>/node_modules/<name>`, and those are
+ * dependencies exactly as `node_modules/<name>` is (fix round 1, CR-M6P2A-03
+ * and CR-M6P2B-05; the rule before it tested only the key's START).
+ */
+function isWorkspaceKey(key: string): boolean {
+  return !key.split("/").includes("node_modules");
+}
+
+/**
+ * Is the leaf at `segments` a version field (DR-0063)? Three shapes, and only
+ * these: the top-level `version`; the `version` of a lockfile workspace entry
+ * (`packages[""]` or a `packages` key with no `node_modules` segment); and a
+ * pin of a name declared in `version-pins`, in `dependencies`,
+ * `devDependencies` or `optionalDependencies` of the document's root or of a
+ * lockfile workspace entry. A pin anywhere else (inside a `node_modules` entry,
+ * in `peerDependencies`, at any other depth) is not a version field.
+ */
+function isVersionField(segments: readonly string[], pins: readonly string[]): boolean {
+  if (segments.length === 1 && segments[0] === "version") {
+    return true;
+  }
+  if (
+    segments.length === 3 &&
+    segments[0] === "packages" &&
+    segments[2] === "version" &&
+    isWorkspaceKey(segments[1] as string)
+  ) {
+    return true;
+  }
+  if (segments.length === 2) {
+    return PIN_FIELDS.has(segments[0] as string) && pins.includes(segments[1] as string);
+  }
+  if (segments.length === 4 && segments[0] === "packages" && isWorkspaceKey(segments[1] as string)) {
+    return PIN_FIELDS.has(segments[2] as string) && pins.includes(segments[3] as string);
+  }
+  return false;
+}
+
+/**
+ * Every difference between two parsed manifests, split into version-field
+ * changes and everything else. Pure.
+ *
+ * A VERSION FIELD COUNTS ONLY WHEN BOTH SIDES ARE VERSIONS. A pin rewritten
+ * from `0.2.1` to `file:../elsewhere` or to an object changes WHAT is
+ * installed, not which release, so it is reported as a non-version change.
+ * An added or removed key is always non-version, wherever it is.
+ */
+export function manifestDifferences(
+  base: unknown,
+  head: unknown,
+  pins: readonly string[],
+): { version: string[]; other: string[] } {
+  const version: string[] = [];
+  const other: string[] = [];
+  const walk = (left: unknown, right: unknown, segments: string[]): void => {
+    if (isMapping(left) && isMapping(right)) {
+      const keys = [...new Set([...Object.keys(left), ...Object.keys(right)])].sort();
+      for (const key of keys) {
+        if (!(key in left)) {
+          other.push(`${pointerOf([...segments, key])} added`);
+        } else if (!(key in right)) {
+          other.push(`${pointerOf([...segments, key])} removed`);
+        } else {
+          walk(left[key], right[key], [...segments, key]);
+        }
+      }
+      return;
+    }
+    if (Array.isArray(left) && Array.isArray(right)) {
+      if (left.length !== right.length) {
+        other.push(`${pointerOf(segments)} changed length`);
+        return;
+      }
+      for (let index = 0; index < left.length; index += 1) {
+        walk(left[index], right[index], [...segments, String(index)]);
+      }
+      return;
+    }
+    if (canonicalJson(left) === canonicalJson(right)) {
+      return;
+    }
+    const where = pointerOf(segments);
+    if (
+      isVersionField(segments, pins) &&
+      typeof left === "string" &&
+      typeof right === "string" &&
+      VERSION_VALUE.test(left) &&
+      VERSION_VALUE.test(right)
+    ) {
+      version.push(`${where} ${left} -> ${right}`);
+      return;
+    }
+    other.push(`${where} changed`);
+  };
+  walk(base, head, []);
+  return { version, other };
+}
+
+/** One changed path as the classifier sees it. */
+export interface ChangedPath {
+  /** As git printed it, relative to the repository root. */
+  path: string;
+  /** Relative to the project, or undefined when the path is outside it. */
+  projectPath: string | undefined;
+}
+
+/** Bytes of one project path at the merge base and at the head; undefined = absent there. */
+export interface PathSides {
+  base: string | undefined;
+  head: string | undefined;
+}
+
+export interface ClassifiedPath {
+  path: string;
+  tier: ReviewTier;
+  reason: string;
+}
+
+export interface TierInput {
+  /** The declaration read at the MERGE BASE, never at the head. */
+  declaration: RuntimeSetReading;
+  changed: readonly ChangedPath[];
+  /**
+   * Both sides of every changed path a rule reads (the charter and each
+   * declared manifest), keyed by project path. A path a rule needs and this
+   * map lacks is `pair`: content that was not supplied was not shown to be a
+   * version bump.
+   */
+  sides: ReadonlyMap<string, PathSides>;
+}
+
+/**
+ * Classify a change `pair | single` (DR-0063). PURE: no git, no filesystem.
+ *
+ * Per path, in this order, and the order is part of the rule:
+ *   1. outside the project: `pair`;
+ *   2. no usable declaration at the merge base: `pair`, naming why;
+ *   3. the charter, when its `runtime-set` block differs between the two
+ *      sides: `pair` (a change to the set that judges it is judged by pair);
+ *   4. a declared manifest: `single` when every difference is a version field,
+ *      else `pair`. BEFORE the path prefixes, so `plugin/package.json` under a
+ *      declared `plugin/` is judged by the manifest rule, which is the only way
+ *      DR-0063's version-only bump (PR #224) is `single`;
+ *   5. a declared path (trailing `/` a prefix, else exact): `pair`;
+ *   6. everything else: `single`.
+ * The change's tier is `pair` when any path is. An empty change is `single`.
+ */
+export function classifyTier(input: TierInput): { tier: ReviewTier; paths: ClassifiedPath[] } {
+  const paths: ClassifiedPath[] = [];
+  for (const entry of input.changed) {
+    paths.push({ path: entry.path, ...classifyOne(entry, input) });
+  }
+  return { tier: paths.some((entry) => entry.tier === "pair") ? "pair" : "single", paths };
+}
+
+function classifyOne(entry: ChangedPath, input: TierInput): { tier: ReviewTier; reason: string } {
+  const projectPath = entry.projectPath;
+  if (projectPath === undefined) {
+    return { tier: "pair", reason: "outside the project, fail closed" };
+  }
+  if (input.declaration.kind !== "declared") {
+    return {
+      tier: "pair",
+      reason: `no usable runtime-set declaration at the merge base (${input.declaration.reason}), fail closed`,
+    };
+  }
+  const set = input.declaration.set;
+  if (projectPath === RUNTIME_SET_CHARTER) {
+    const sides = input.sides.get(projectPath);
+    if (sides === undefined) {
+      return { tier: "pair", reason: "the charter changed and its two sides were not read, fail closed" };
+    }
+    if (sides.base === undefined || sides.head === undefined) {
+      return {
+        tier: "pair",
+        reason: `the charter is ${sides.base === undefined ? "absent at the merge base" : "deleted at the head"}, so the runtime-set declaration changed`,
+      };
+    }
+    const before = runtimeSetBlockText(sides.base, `${RUNTIME_SET_CHARTER} at the merge base`);
+    const after = runtimeSetBlockText(sides.head, `${RUNTIME_SET_CHARTER} at the head`);
+    if (!before.ok || !after.ok) {
+      return {
+        tier: "pair",
+        reason: `the charter could not be read on both sides (${before.ok ? "" : before.reason}${!before.ok && !after.ok ? "; " : ""}${after.ok ? "" : after.reason}), fail closed`,
+      };
+    }
+    if (before.value !== after.value) {
+      return { tier: "pair", reason: `the ${RUNTIME_SET_FIELD} declaration itself changed` };
+    }
+  }
+  if (set.manifests.includes(projectPath)) {
+    const sides = input.sides.get(projectPath);
+    if (sides === undefined) {
+      return { tier: "pair", reason: "a declared manifest whose two sides were not read, fail closed" };
+    }
+    if (sides.base === undefined || sides.head === undefined) {
+      return {
+        tier: "pair",
+        reason: `a declared manifest ${sides.base === undefined ? "added" : "deleted"} by the change`,
+      };
+    }
+    let before: unknown;
+    let after: unknown;
+    try {
+      before = JSON.parse(sides.base);
+      after = JSON.parse(sides.head);
+    } catch (error) {
+      return {
+        tier: "pair",
+        reason: `a declared manifest that does not parse as JSON on both sides (${singleLine((error as Error).message)}), fail closed`,
+      };
+    }
+    const differences = manifestDifferences(before, after, set.versionPins);
+    if (differences.other.length > 0) {
+      return {
+        tier: "pair",
+        reason: `a declared manifest changing more than version fields: ${differences.other.slice(0, 5).join(", ")}${differences.other.length > 5 ? ` and ${String(differences.other.length - 5)} more` : ""}`,
+      };
+    }
+    return {
+      tier: "single",
+      reason:
+        differences.version.length === 0
+          ? "a declared manifest with no parsed difference"
+          : `a declared manifest changing version fields only: ${differences.version.join(", ")}`,
+    };
+  }
+  const named = set.paths.find((declared) =>
+    declared.endsWith("/") ? projectPath.startsWith(declared) : projectPath === declared,
+  );
+  if (named !== undefined) {
+    return { tier: "pair", reason: `in the declared runtime set (${named})` };
+  }
+  return { tier: "single", reason: "outside the declared runtime set" };
+}
 
 export interface ReviewBudget {
   base: string;
   head: string;
+  /** The merge base the diff and the declaration were read at. */
+  mergeBase: string;
   tier: ReviewTier;
-  /** Every changed path with the tier it was classified into. */
-  paths: { path: string; tier: ReviewTier }[];
-  /** The changed paths that put the change in the dual tier. */
-  dual: string[];
+  /** Where the runtime set was read from and what it declared, one sentence. */
+  declaration: string;
+  /** Every changed path with its tier and the rule that decided it. */
+  paths: ClassifiedPath[];
+  /** The changed paths that put the change in the pair tier. */
+  pair: string[];
 }
 
 /** How many paths to name in a sentence before it stops being readable. */
@@ -925,39 +1339,94 @@ export function describeBudget(budget: ReviewBudget): string {
     list.slice(0, NAMED_PATHS).join(", ") +
     (list.length > NAMED_PATHS ? ` and ${String(list.length - NAMED_PATHS)} more` : "");
   if (budget.paths.length === 0) {
-    return `the diff ${budget.base}...${budget.head} changes no path`;
+    return `the diff ${budget.base}...${budget.head} changes no path, so its DR-0063 tier is single; ${budget.declaration}`;
   }
-  if (budget.tier === "dual") {
+  if (budget.tier === "pair") {
     return (
       `the diff ${budget.base}...${budget.head} changes ${String(budget.paths.length)} path(s), ` +
-      `${String(budget.dual.length)} of them in the dual-review tier (${named(budget.dual)})`
+      `${String(budget.pair.length)} of them in the DR-0063 pair tier ` +
+      `(${named(budget.paths.filter((entry) => entry.tier === "pair").map((entry) => `${entry.path}: ${entry.reason}`))}); ` +
+      budget.declaration
     );
   }
   return (
     `the diff ${budget.base}...${budget.head} changes ${String(budget.paths.length)} path(s) and ` +
-    `every one is below the dual-review tier (${named(budget.paths.map((entry) => `${entry.path}: ${entry.tier}`))})`
+    `every one is in the DR-0063 single tier (${named(budget.paths.map((entry) => `${entry.path}: ${entry.reason}`))}); ` +
+    budget.declaration
   );
 }
 
+type Blob = { kind: "absent" } | { kind: "read"; body: string } | { kind: "error"; reason: string };
+
 /**
- * Classify the change `base...head` by the review it owes.
+ * One project path's bytes at one revision, through git, with ABSENT kept
+ * apart from COULD-NOT-READ. `ls-tree` answers presence (an empty listing is
+ * absence, a nonzero exit is an error), and only a regular-file blob is read:
+ * a symlink, a directory or a submodule at a declared path is an error here,
+ * which the caller turns into `pair`.
+ */
+function blobAt(contextDirectory: string, rev: string, projectPath: string): Blob {
+  const listed = spawnSync(
+    "git",
+    ["--literal-pathspecs", "ls-tree", "-z", rev, "--", projectPath],
+    { cwd: contextDirectory, encoding: "utf8" },
+  );
+  if (listed.error !== undefined || listed.status !== 0) {
+    return {
+      kind: "error",
+      reason: `git ls-tree ${rev} -- ${projectPath} failed (${singleLine(String(listed.error ?? listed.stderr ?? ""))})`,
+    };
+  }
+  const entries = (listed.stdout ?? "").split("\0").filter((line) => line !== "");
+  if (entries.length === 0) {
+    return { kind: "absent" };
+  }
+  const match = /^(\d{6}) (\w+) ([0-9a-f]+)\t/.exec(entries[0] as string);
+  if (entries.length !== 1 || match === null || match[2] !== "blob" || !["100644", "100755"].includes(match[1] as string)) {
+    return {
+      kind: "error",
+      reason: `${projectPath} at ${rev} is not one regular file (${singleLine(entries.join(" | "))})`,
+    };
+  }
+  const shown = spawnSync("git", ["cat-file", "blob", match[3] as string], {
+    cwd: contextDirectory,
+    encoding: "utf8",
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (shown.error !== undefined || shown.status !== 0) {
+    return {
+      kind: "error",
+      reason: `git cat-file blob ${match[3] as string} failed (${singleLine(String(shown.error ?? shown.stderr ?? ""))})`,
+    };
+  }
+  return { kind: "read", body: shown.stdout ?? "" };
+}
+
+/**
+ * Classify the change `base...head` by the review it owes (DR-0063).
  *
  * THREE DOTS, the merge base, which is what `scope` and the `diff-touches`
  * precondition already compare: a branch is charged for what IT changed, never
  * for what `main` gained after it was cut.
  *
+ * THE DECLARATION IS READ AT THE MERGE BASE, from the committed charter, so a
+ * change cannot shrink the set that judges it: a head that drops `src/` from
+ * its own declaration while touching `src/` is still judged by the set it
+ * started from, and the declaration change is itself `pair`.
+ *
  * `-z` AND `--no-renames` FOR THE REASONS src/checks.ts gives at its own diff:
  * without `--no-renames` a move from `src/a.ts` to `delivery/a.md` prints only
  * the destination and the change would read as paperwork; without `-z` a
- * non-ASCII paperwork name arrives quoted and is misread as shipped.
+ * non-ASCII paperwork name arrives quoted and is misread.
  *
- * A PATH OUTSIDE THE CONTEXT DIRECTORY IS DUAL, fail closed. git prints paths
+ * A PATH OUTSIDE THE CONTEXT DIRECTORY IS `pair`, fail closed. git prints paths
  * relative to the repository root and the project may be nested; a change
  * outside the project is still unreviewed content in the commit under audit.
  *
  * EVERY git FAILURE IS AN ERROR RETURN, never an empty diff. An empty diff is a
- * real answer (tier `none`), so a diff that could not be computed must never be
- * able to produce it.
+ * real answer (tier `single`), so a diff that could not be computed must never be
+ * able to produce it. A blob that could not be read is `pair` rather than an
+ * error, because it is one path's content and the rule for it fails closed.
  */
 export function classifyReviewBudget(
   contextDirectory: string,
@@ -991,72 +1460,133 @@ export function classifyReviewBudget(
         "unknown and no review verdict can be reached",
     };
   }
-  const changed = (diff.stdout ?? "")
+  const mergeBaseRun = spawnSync("git", ["merge-base", base, head], {
+    cwd: contextDirectory,
+    encoding: "utf8",
+  });
+  const mergeBase = (mergeBaseRun.stdout ?? "").trim();
+  if (mergeBaseRun.error !== undefined || mergeBaseRun.status !== 0 || mergeBase === "") {
+    return {
+      ok: false,
+      reason:
+        `the review budget could not be established: git merge-base ${base} ${head} failed ` +
+        `(${singleLine(String(mergeBaseRun.error ?? mergeBaseRun.stderr ?? ""))}), so the runtime-set ` +
+        "declaration that judges this change could not be read",
+    };
+  }
+  const changed: ChangedPath[] = (diff.stdout ?? "")
     .split("\0")
-    .map((line) => line.trim())
-    .filter((line) => line !== "");
-  const paths = changed.map((path) => ({
-    path,
-    tier: path.startsWith(prefix) ? tierOfPath(path.slice(prefix.length)).tier : ("dual" as ReviewTier),
-  }));
-  const tier = paths.reduce<ReviewTier>(
-    (worst, entry) => (TIER_RANK[entry.tier] > TIER_RANK[worst] ? entry.tier : worst),
-    "none",
-  );
+    .filter((line) => line !== "")
+    .map((path) => ({
+      path,
+      projectPath: path.startsWith(prefix) ? path.slice(prefix.length) : undefined,
+    }));
+
+  const charterLabel = `${mergeBase}:${prefix}${RUNTIME_SET_CHARTER}`;
+  const charterBlob = blobAt(contextDirectory, mergeBase, RUNTIME_SET_CHARTER);
+  const charterReading: RuntimeSetReading =
+    charterBlob.kind === "error"
+      ? { kind: "invalid", reason: charterBlob.reason }
+      : readRuntimeSet(charterBlob.kind === "read" ? charterBlob.body : undefined, charterLabel);
+  /* M6-P2 FIX ROUND 1 (CR-M6P2B-02): an exact entry that is a DIRECTORY at the
+     merge base makes the declaration invalid, so the change is pair, named. */
+  const directoryFault =
+    charterReading.kind === "declared" ? exactEntryNamingDirectory(contextDirectory, mergeBase, charterReading.set) : undefined;
+  const declaration: RuntimeSetReading =
+    directoryFault === undefined ? charterReading : { kind: "invalid", reason: `${charterLabel} ${directoryFault}` };
+
+  const wanted = new Set<string>();
+  for (const entry of changed) {
+    if (entry.projectPath === undefined) {
+      continue;
+    }
+    if (
+      entry.projectPath === RUNTIME_SET_CHARTER ||
+      (declaration.kind === "declared" && declaration.set.manifests.includes(entry.projectPath))
+    ) {
+      wanted.add(entry.projectPath);
+    }
+  }
+  const sides = new Map<string, PathSides>();
+  const unread: string[] = [];
+  for (const projectPath of wanted) {
+    const before = blobAt(contextDirectory, mergeBase, projectPath);
+    const after = blobAt(contextDirectory, head, projectPath);
+    if (before.kind === "error" || after.kind === "error") {
+      /* Left out of `sides`, so the pure rule reads it as not shown to be a
+         version bump, which is `pair`. The reason is kept for the sentence. */
+      unread.push(`${projectPath}: ${before.kind === "error" ? before.reason : ""}${after.kind === "error" ? after.reason : ""}`);
+      continue;
+    }
+    sides.set(projectPath, {
+      base: before.kind === "read" ? before.body : undefined,
+      head: after.kind === "read" ? after.body : undefined,
+    });
+  }
+  const classified = classifyTier({ declaration, changed, sides });
+  const declared =
+    declaration.kind === "declared"
+      ? `the runtime set declared at ${charterLabel} is paths [${declaration.set.paths.join(", ")}], ` +
+        `manifests [${declaration.set.manifests.join(", ")}], version-pins [${declaration.set.versionPins.join(", ")}]`
+      : `${declaration.kind === "undeclared" ? "NO runtime set is declared" : "the runtime-set declaration is INVALID"} ` +
+        `at the merge base (${declaration.reason}), so every changed path is pair (DR-0063 fail closed)`;
   return {
     ok: true,
     budget: {
       base,
       head,
-      tier,
-      paths,
-      dual: paths.filter((entry) => entry.tier === "dual").map((entry) => entry.path),
+      mergeBase,
+      tier: classified.tier,
+      declaration: declared + (unread.length === 0 ? "" : `; unreadable, so pair: ${unread.join("; ")}`),
+      paths: classified.paths,
+      pair: classified.paths.filter((entry) => entry.tier === "pair").map((entry) => entry.path),
     },
   };
 }
 
 /**
- * The id of the precondition a below-dual change reports unmet.
- *
- * SHARED by both review gates, so "this change is below the dual-review tier"
- * is one fact with one name wherever it is reported.
+ * The id of the precondition a `single` change reports unmet at
+ * `check-dual-review`, whose question (two decorrelated reviews) is the pair
+ * tier's. merge-preconditions checks the single tier's one review itself.
  */
-export const BUDGET_PRECONDITION_ID = "review-budget-requires-dual-review";
+export const BUDGET_PRECONDITION_ID = "review-budget-requires-pair-review";
 
-/** The evaluated, unmet precondition a below-dual change carries. */
+/** The evaluated, unmet precondition a `single` change carries at the pair check. */
 export function budgetPrecondition(budget: ReviewBudget): PreconditionRecord {
   return {
     id: BUDGET_PRECONDITION_ID,
     met: false,
     reason:
-      `${describeBudget(budget)}, so DR-0027 does not require the ${String(REQUIRED_VERDICTS)}-verdict ` +
-      "shipped-code review for it and this gate does not force it through that rule",
+      `${describeBudget(budget)}, so DR-0063 owes it ${String(REQUIRED_VERDICTS.single)} hazard review and ` +
+      "not the pair this gate compares; merge-preconditions requires the single review",
     evidence: [
       `tier: ${budget.tier}`,
-      "verdict documents: not read, because the pair rule does not apply to this tier",
-      ...budget.paths.slice(0, 50).map((entry) => `${entry.tier}: ${entry.path}`),
+      "verdict documents: not read here, because the pair rule does not apply to this tier",
+      ...budget.paths.slice(0, 50).map((entry) => `${entry.tier}: ${entry.path} (${entry.reason})`),
       ...(budget.paths.length > 50 ? [`and ${String(budget.paths.length - 50)} more path(s)`] : []),
     ],
   };
 }
 
 /**
- * The sentence a dual-tier change with too few admitted verdicts is red with.
+ * The sentence a change with too few admitted verdicts for its tier is red with.
  *
  * THE MISSING COUNT IS IN THE SENTENCE, because criterion p3-missing-is-red asks
- * for it and because "red" alone does not tell an operator whether one review or
- * both are owed.
+ * for it and because "red" alone does not tell an operator how many reviews
+ * are owed.
  */
 export function missingReviewsSentence(
   budget: ReviewBudget,
   admitted: number,
   auditedHead: string,
 ): string {
-  const missing = Math.max(0, REQUIRED_VERDICTS - admitted);
+  const required = REQUIRED_VERDICTS[budget.tier];
+  const missing = Math.max(0, required - admitted);
   return (
-    `${describeBudget(budget)}, so DR-0012 requires ${String(REQUIRED_VERDICTS)} approving, decorrelated ` +
-    `verdicts for the commit under audit ${auditedHead}; ${String(admitted)} of ${String(REQUIRED_VERDICTS)} ` +
-    `are admitted and ${String(missing)} missing. A missing review is RED, never not-applicable (M5-P3)`
+    `${describeBudget(budget)}, so DR-0063 requires ${String(required)} approving hazard ` +
+    `${budget.tier === "pair" ? "reviews, distinct on produced-by," : "review"} for the commit under audit ` +
+    `${auditedHead}; ${String(admitted)} of ${String(required)} are admitted and ${String(missing)} missing. ` +
+    "A missing review is RED, never not-applicable (M5-P3)"
   );
 }
 
@@ -1175,7 +1705,7 @@ type ReviewCorpus =
       forHead: VerdictForHead[];
     };
 
-function readReviewCorpus(contextDirectory: string, head: string): ReviewCorpus {
+function readReviewCorpus(contextDirectory: string, head: string, mergeBase?: string): ReviewCorpus {
   /* THE CORPUS, READ THROUGH THE SHIPPED PRIMITIVES (plan step 6). Every
      refusal below is `error` rather than red, and each is the one
      `scripts/check-dual-review.mjs` already makes at the same layer: a merge
@@ -1247,7 +1777,11 @@ function readReviewCorpus(contextDirectory: string, head: string): ReviewCorpus 
        in `partitionByAuditedHead`, so the two gates cannot disagree about a
        stamp. Every rule here applies to every verdict, stamped or not. */
     const declared = String(entry.record["head"] ?? "").toLowerCase();
-    const relation = relateDeclaredHead(contextDirectory, declared, head);
+    /* M6-P2 FIX ROUND 1 (CR-M6P2A-01, CR-M6P2B-01): ANCESTRY IS BOUNDED AT THE
+       MERGE BASE. With `--base`, a verdict whose declared head the merge base
+       already contains reviewed content on the base, not this change, and is
+       excluded by name as `on-the-base`. No phase match (M6-P5). */
+    const relation = boundAtMergeBase(contextDirectory, declared, mergeBase, relateDeclaredHead(contextDirectory, declared, head));
     if (relation.kind === "same" || relation.kind === "evidence-only-ancestor") {
       admitted.push({ path: entry.path, declared, relation });
       forHead.push({ path: entry.path, record: entry.record });
@@ -1272,9 +1806,10 @@ function selectionRow(
 
      ITS STATUS IS DERIVED FROM THE BUDGET SINCE M5-P3. Without `--base` it is
      green because selection succeeded (a selection that found nothing reaches
-     the not-applicable arm instead). With `--base` on a dual-tier change it is
-     RED below two admitted verdicts, and the missing count is in the sentence. */
-  const short = budget !== undefined && budget.tier === "dual" && review.forHead.length < REQUIRED_VERDICTS;
+     the not-applicable arm instead). With `--base` it is RED below the tier's
+     required count (DR-0063: two for pair, one for single), and the missing
+     count is in the sentence. */
+  const short = budget !== undefined && review.forHead.length < REQUIRED_VERDICTS[budget.tier];
   const owed = short ? budget : undefined;
   return {
     id: "verdict-selection",
@@ -1291,18 +1826,38 @@ function selectionRow(
   };
 }
 
-/** Conditions 1, 2 and 3, which need nothing but the committed verdicts. */
+/**
+ * The review rows, which need nothing but the committed verdicts, PER TIER
+ * (DR-0063). `pair`: condition 1 is the decorrelation check (distinct
+ * `produced-by` only; the framing and contract comparisons were dropped with the
+ * criteria contract, DR-0064) and condition 2 is the pair-approves check.
+ * `single`: one row, the single review approves; no decorrelation row, because
+ * one review has nothing to be decorrelated from. The criteria-walked row that
+ * stood here (DR-0012 condition 3) is gone: DR-0064 supersedes it.
+ */
 function reviewRows(
   review: Extract<ReviewCorpus, { ok: true }>,
   head: string,
   contextDirectory: string,
   base: string | undefined,
+  tier: ReviewTier,
 ): ConditionRow[] {
   const rows: ConditionRow[] = [];
+  if (tier === "single") {
+    const single = judgeSingleApproves(review.forHead);
+    rows.push({
+      id: "condition-2",
+      clause: "DR-0063 single: the one hazard review of this head approves",
+      status: single.ok ? "green" : "red",
+      head,
+      sentence: single.sentence,
+    });
+    return rows;
+  }
   const condition1 = runRegisteredCheck(DECORRELATION_CHECK_ID, review.forHead, contextDirectory, base);
   rows.push({
     id: "condition-1",
-    clause: "DR-0012:22 two decorrelated clean-room reviews of this head",
+    clause: "DR-0063 pair: two hazard reviews of this head, distinct on produced-by",
     status: condition1.status,
     head,
     sentence: condition1.sentence,
@@ -1315,15 +1870,6 @@ function reviewRows(
     status: condition2.status,
     head,
     sentence: condition2.sentence,
-  });
-
-  const condition3 = judgeCriteriaWalked(review.forHead);
-  rows.push({
-    id: "condition-3",
-    clause: "DR-0012:24 the acceptance criteria were the reviewers' contract",
-    status: condition3.ok ? "green" : "red",
-    head,
-    sentence: condition3.sentence,
   });
   return rows;
 }
@@ -1386,15 +1932,14 @@ export async function runGate(flags: Flags): Promise<number> {
 
   /* M5-P3: THE BUDGET, AND THE REVIEW EVIDENCE, BEFORE THE NETWORK. With
      `--base` (which the registry now declares, so every runner invocation
-     supplies it) the diff decides what review is owed. A change below the
-     dual-review tier is not-applicable with an evaluated precondition naming
-     its tier and paths (criterion p3-paperwork-budget). A dual-tier change with
-     fewer than two admitted verdicts is RED with the missing count, and that is
-     decided from the repository alone: whether an API answers must not decide
-     whether an unreviewed shipped change can merge (criterion
-     p3-missing-is-red). Without `--base` nothing here runs and the M4-P12 order
-     is unchanged, which is what keeps a hand run by the old command meaning
-     what it meant. */
+     supplies it) the diff decides what review is owed (DR-0063 since M6-P2):
+     `pair` owes two approving hazard reviews, `single` owes one, and there is
+     no tier that owes none. Fewer admitted verdicts than the tier requires is
+     RED with the missing count, and that is decided from the repository alone:
+     whether an API answers must not decide whether an unreviewed change can
+     merge (criterion p3-missing-is-red). Without `--base` the tier is unknown
+     and is taken as `pair`, fail closed, in the M4-P12 order, which is what
+     keeps a hand run by the old command meaning what it meant. */
   let budget: ReviewBudget | undefined;
   let review: Extract<ReviewCorpus, { ok: true }> | undefined;
   const rows: ConditionRow[] = [];
@@ -1408,22 +1953,7 @@ export async function runGate(flags: Flags): Promise<number> {
       );
     }
     budget = classified.budget;
-    if (budget.tier !== "dual") {
-      const precondition = budgetPrecondition(budget);
-      return emit(
-        resultPath,
-        {
-          ...shared,
-          status: "not-applicable",
-          units: 0,
-          endedAt: now(),
-          precondition,
-          detail: precondition.reason,
-        },
-        [],
-      );
-    }
-    const read = readReviewCorpus(contextDirectory, head);
+    const read = readReviewCorpus(contextDirectory, head, budget.mergeBase);
     if (!read.ok) {
       return emit(
         resultPath,
@@ -1443,14 +1973,14 @@ export async function runGate(flags: Flags): Promise<number> {
           units: rows.length,
           endedAt: now(),
           detail:
-            `DR-0012 at head ${head}, phase ${phase}: ${missingReviewsSentence(budget, review.forHead.length, head)}; ` +
-            "conditions 1 to 6 and the branch-protection encoding were NOT evaluated, because a shipped " +
-            "change without its two reviews is refused whatever they would say",
+            `DR-0063 ${budget.tier} at head ${head}, phase ${phase}: ${missingReviewsSentence(budget, review.forHead.length, head)}; ` +
+            "the review rows, CI, scope, arbitration and the branch-protection encoding were NOT evaluated, " +
+            "because a change without the review its tier owes is refused whatever they would say",
         },
         rows,
       );
     }
-    rows.push(...reviewRows(review, head, contextDirectory, flags.base));
+    rows.push(...reviewRows(review, head, contextDirectory, flags.base, budget.tier));
     const reviewStatus = gateStatusForRows(rows);
     if (reviewStatus !== "green") {
       return emit(
@@ -1461,15 +1991,19 @@ export async function runGate(flags: Flags): Promise<number> {
           units: rows.length,
           endedAt: now(),
           detail:
-            `DR-0012 at head ${head}, phase ${phase}: ` +
+            `DR-0063 ${budget.tier} at head ${head}, phase ${phase}: ` +
             rows.map((row) => `${row.id}=${row.status}`).join(" ") +
-            "; the review evidence already refuses this merge, so conditions 4 to 6 and the " +
+            "; the review evidence already refuses this merge, so CI, scope, arbitration and the " +
             "branch-protection encoding were NOT evaluated and nothing about them is asserted",
         },
         rows,
       );
     }
   }
+
+  /* The tier the rest of the run is judged by. Without `--base` no diff was
+     classified, so it is `pair`, fail closed. */
+  const tier: ReviewTier = budget === undefined ? "pair" : budget.tier;
 
   const slug = flags.repo ?? slugFromGit(contextDirectory) ?? "";
   if (slug === "") {
@@ -1530,8 +2064,8 @@ export async function runGate(flags: Flags): Promise<number> {
       /* SC-011: the not-applicable arm of the M4-P12 order, and it carries an
          EVALUATED precondition rather than a silence. A head with no verdict
          naming it is not a merge waiting on six conditions. REACHABLE ONLY
-         WITHOUT `--base` since M5-P3: with it, a dual-tier change and no
-         verdict is red above, and a below-dual change never reads the corpus. */
+         WITHOUT `--base` since M5-P3: with it, a change of either DR-0063
+         tier and no verdict is red above (M6-P2). */
       const precondition: PreconditionRecord = {
         id: PRECONDITION_ID,
         met: false,
@@ -1563,7 +2097,7 @@ export async function runGate(flags: Flags): Promise<number> {
       );
     }
     rows.push(selectionRow(review, head, budget));
-    rows.push(...reviewRows(review, head, contextDirectory, flags.base));
+    rows.push(...reviewRows(review, head, contextDirectory, flags.base, tier));
   }
 
   const checkRunsUrl = `${apiBase}/repos/${slug}/commits/${head}/check-runs`;
@@ -1637,23 +2171,27 @@ export async function runGate(flags: Flags): Promise<number> {
     sentence: scope.sentence,
   });
 
-  const arbitrationDirectory = absolute(
-    flags.arbitrations ?? join(contextDirectory, "delivery", "review"),
-  );
-  const arbitrationPath = join(arbitrationDirectory, `arbitration-${phase}.md`);
-  const arbitration = judgeArbitration(
-    arbitrationPath,
-    head,
-    review.forHead.map((verdict) => verdict.path),
-    read(arbitrationPath),
-  );
-  rows.push({
-    id: "condition-6",
-    clause: "DR-0012:27 a recorded arbitration over BOTH verdicts at this head",
-    status: arbitration.ok ? "green" : "red",
-    head,
-    sentence: arbitration.sentence,
-  });
+  /* ARBITRATION IS THE PAIR TIER'S ALONE (DR-0063): one review has nothing to
+     arbitrate between, so a `single` change carries no condition-6 row. */
+  if (tier === "pair") {
+    const arbitrationDirectory = absolute(
+      flags.arbitrations ?? join(contextDirectory, "delivery", "review"),
+    );
+    const arbitrationPath = join(arbitrationDirectory, `arbitration-${phase}.md`);
+    const arbitration = judgeArbitration(
+      arbitrationPath,
+      head,
+      review.forHead.map((verdict) => verdict.path),
+      read(arbitrationPath),
+    );
+    rows.push({
+      id: "condition-6",
+      clause: "DR-0063 pair: a recorded arbitration over BOTH verdicts at this head",
+      status: arbitration.ok ? "green" : "red",
+      head,
+      sentence: arbitration.sentence,
+    });
+  }
 
   const rulesets = await readRulesets(apiBase, slug, token);
   if (!rulesets.ok) {
@@ -1690,7 +2228,7 @@ export async function runGate(flags: Flags): Promise<number> {
       units: rows.length,
       endedAt: now(),
       detail:
-        `DR-0012 at head ${head}, phase ${phase}: ` +
+        `DR-0063 ${tier} at head ${head}, phase ${phase}: ` +
         rows.map((row) => `${row.id}=${row.status}`).join(" ") +
         (scopeInstrumentMissing
           ? "; the gate word is error rather than red because the scope gate record was ABSENT, " +

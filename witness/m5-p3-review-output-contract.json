@@ -9,14 +9,14 @@
     {
       "kind": "mutation",
       "file": "roles/clean-room-reviewer.md",
-      "find": "Your verdict file is `delivery/review/<phase-id>-criteria.json`, and it says",
-      "replace": "Your verdict file is `delivery/review/<phase-id>-hazard.json`, and it says"
+      "find": "Your verdict file is `delivery/review/<phase-id>-hazard.json`. It carries",
+      "replace": "Your verdict file is `delivery/review/<phase-id>/hazard.json`. It carries"
     },
     {
       "kind": "mutation",
       "file": "roles/clean-room-reviewer.md",
-      "find": "Your verdict file is `delivery/review/<phase-id>-hazard.json`, and it says",
-      "replace": "Your verdict file is `delivery/review/<phase-id>/hazard.json`, and it says"
+      "find": "phase id in lower case: phase M5-P3 writes `delivery/review/m5-p3-hazard.json`.",
+      "replace": "phase id as the plan spells it: phase M5-P3 writes `delivery/review/M5-P3-hazard.json`."
     }
   ],
   "deterministic": true,
