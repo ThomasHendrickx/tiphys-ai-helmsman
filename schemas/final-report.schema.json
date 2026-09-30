@@ -2,8 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://tiphys.dev/schemas/final-report.schema.json",
   "title": "Tiphys final report",
-  "$comment": "R-089a. Kernel plan M3, M3-P4 step 2. THE FINAL REPORT IS A PROJECTION, NOT A SUMMARY, and that property is load-bearing beyond this phase. Every field here is DERIVED from records that already exist (findings, verdicts, decisions, work histories), which is the same relation M3-P8's mechanism index has to the tuition feed. That relation is what makes a dense read layer possible on top of a verbose archive: the projections are consumed at every dispatch and must stay dense, while the raw entries are read only in dispute. M3 BUILDS NO COMPACTOR AND THIS SCHEMA PROPOSES NONE; what it does is make the distinction structural, so a later compaction is a question about which layer a file is in rather than a judgement about which files look like filler. SILENCE AND EMPTINESS ARE DISTINGUISHABLE: each of the four enumerable sections is a two-branch oneOf, so `none: true` carries NO entries key at all and `none: false` carries at least one entry. That closes BOTH directions of the relation rather than one: an empty list without a marker is a rejection, and a `none: true` marker sitting on top of real entries is also a rejection. THE PARITY BETWEEN `inputs[]` AND `input-findings[]` IS NOT HERE: cross-array completeness is not a keyword property (M3R-002), so it is the derived check `final-report-finding-parity` (deleted by M6-P3) in src/checks.ts, and it is checked a second time by the M2-P6 coverage checker's (deleted by M6-P3) finding-to-outcome parity mode because the artifact should be self-checking AND the independent checker is the one the pipeline runs.",
-  "description": "One document per delivery. Every input finding mapped to an outcome, whether the phase delivered its intended outcome and on what evidence, plus the decisions owed, the owner verifications outstanding, the infrastructure left behind, and anything done out of band.",
+  "description": "One document per delivery: each input finding's outcome, whether the intended outcome was delivered, and what remains owed or left behind.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -12,6 +11,7 @@
     "inputs",
     "input-findings",
     "delivered-outcome",
+    "not-testable",
     "decisions-owed",
     "owner-verification",
     "infrastructure-left",
@@ -24,7 +24,6 @@
       "const": "final-report"
     },
     "tiphys-version": {
-      "$comment": "KERNEL 0.2.1 (DR-0055): THE KERNEL VERSION WHOSE RULES THIS REPORT WAS WRITTEN TO. Optional in shape: an unstamped report is pre-stamp history, and `tiphys validate` holds it to the 0.1.0 rules only (RULES_SINCE in src/stamp.ts; `delivered-outcome` is required from 0.2.0). The shipped template carries the package version, so a report written from it is held to every current rule. Same grammar as the verdict's stamp, the one parseKernelVersion in src/stamp.ts reads.",
       "type": "string",
       "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]+)?$"
     },
@@ -35,13 +34,11 @@
       "pattern": "\\S"
     },
     "inputs": {
-      "$comment": "The finding ids this delivery took in. Kept SEPARATE from `input-findings[]` on purpose: a table that is its own inventory cannot be incomplete, which is the circularity the deleted scripts/check-clause-map.mjs named one level up. The derived check compares the two.",
       "type": "array",
       "items": { "type": "string", "minLength": 1, "pattern": "\\S" },
       "uniqueItems": true
     },
     "input-findings": {
-      "$comment": "R-089a's table. Every id in `inputs[]` lands in exactly one row here with a non-empty outcome.",
       "type": "array",
       "items": {
         "type": "object",
@@ -54,7 +51,6 @@
       }
     },
     "delivered-outcome": {
-      "$comment": "M5-P2 step 2, hazard ceremonial-intent. THE ONE JOIN FROM PHASE INTENT TO DELIVERED OUTCOME. The plan carries a phase intent and brief composition hands it to every agent beside the charter's product intent; without this object no completion artifact answers it, so intent is printed and never closed. EXACTLY FOUR FIELDS AND A CLOSED KEY SET, deliberately: the phase intent restated, a yes-or-no delivered, the evidence, and an explanation. NO SCORE, NO CONFIDENCE PERCENTAGE, NO COST RATIO, NO RISK MATRIX AND NO NUMERIC FIELD OF ANY KIND (hazard goodhart-score): a number becomes a target an agent optimizes instead of an outcome it reports. `additionalProperties: false` is what keeps it four, and test/report-contract.test.ts asserts the closed set through the validator rather than a list of forbidden words. THE EVIDENCE COUPLING: `delivered: true` requires at least one evidence entry, so a delivery claim with nothing behind it is a rejection by the schema, not by a reviewer's attention. `delivered: false` may carry an empty evidence list, because an undelivered outcome's case is made in the explanation; the key itself is still required, so an author must write the empty list rather than omit the field. WHAT THIS DOES NOT REACH, stated rather than left to be found: nothing here compares `phase-intent` with the plan's text or checks that an evidence entry resolves. It closes the internal contradiction (delivered with no evidence) and the silence (no answer at all); a false answer with plausible evidence is a reviewer's finding.",
       "description": "Whether the phase delivered the outcome its intent names, and the evidence for that answer.",
       "type": "object",
       "additionalProperties": false,
@@ -76,7 +72,6 @@
           "type": "boolean"
         },
         "evidence": {
-          "$comment": "M5-P2 fix round 1, CR-M5P2-01. TWO MECHANICAL RULES, NEITHER A JUDGEMENT OF QUALITY. `uniqueItems`: the same string cited twice is one piece of evidence, so a list of one claim repeated cannot satisfy `minItems` for `delivered: true`. The item `pattern` requires at least one ASCII letter or digit: every form this field names (a path with a line number, a command, an exit code, a run URL, a sentence) contains one, and a string of only punctuation and spaces refers to nothing. WHAT THEY DO NOT REACH: `uniqueItems` compares exact strings, so `a` and `a ` are two items; a single alphanumeric character such as `x` passes; and nothing checks that an entry resolves or is true. Those are a reviewer's.",
           "description": "What shows the answer is true: paths with line numbers, commands with exit codes, run URLs.",
           "type": "array",
           "uniqueItems": true,
@@ -112,6 +107,24 @@
         }
       }
     },
+    "not-testable": {
+      "description": "Per phase, the ids of the criteria the plan marks not-testable, as tiphys plan count prints them; the count is the list's length (DR-0064).",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phase", "criteria"],
+        "properties": {
+          "phase": { "type": "string", "minLength": 1, "pattern": "\\S" },
+          "criteria": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": { "type": "string", "minLength": 1, "pattern": "\\S" }
+          }
+        }
+      }
+    },
     "decisions-owed": { "$ref": "#/$defs/enumerableSection" },
     "owner-verification": { "$ref": "#/$defs/enumerableSection" },
     "infrastructure-left": { "$ref": "#/$defs/enumerableSection" },
@@ -119,7 +132,6 @@
   },
   "$defs": {
     "enumerableSection": {
-      "$comment": "ALLOWED TO BE EMPTY ONLY WITH AN EXPLICIT MARKER, so silence and emptiness are distinguishable (plan step 2). The two branches are exclusive by construction: branch 1 permits `none: true` AND NOTHING ELSE, so a marker sitting on top of real entries is a rejection; branch 2 requires `none: false` with at least one entry, so an empty list hiding behind a false marker is a rejection too. Both directions, rather than the one the requirement's letter names. RESIDUE, ADDED IN M3-P4 FIX ROUND 2 BY THE CR-002 ENUMERATION: this is the same mechanism CR-002 named one document over. The branch is picked by A VALUE THE AUTHOR WRITES, and branch 1 owes NOTHING, so an author with three real decisions owed writes `none: true` and the schema is satisfied. What the two branches close is INTERNAL CONTRADICTION (a marker over entries, entries with no marker); what neither reaches is a marker over a truth outside the document. Nothing in this schema could reach it, because there is no second record here to compare against; the derived check `final-report-finding-parity` (deleted by M6-P3) is what that comparison looks like where a second record exists, and `decisions-owed` has none.",
       "oneOf": [
         {
           "type": "object",

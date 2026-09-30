@@ -1,0 +1,24 @@
+{
+  "id": "m6-p4-final-report-not-testable",
+  "behavior": "m6-p4-final-report-not-testable",
+  "tests": [
+    "the final report schema rejects a current report without the per-phase not-testable count and accepts it with one"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "schemas/final-report.schema.json",
+      "find": "    \"delivered-outcome\",\n    \"not-testable\",\n",
+      "replace": "    \"delivered-outcome\",\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/stamp.ts",
+      "find": "    type: \"final-report\",\n    since: \"0.2.2\",",
+      "replace": "    type: \"final-report-not-gated\",\n    since: \"0.2.2\","
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

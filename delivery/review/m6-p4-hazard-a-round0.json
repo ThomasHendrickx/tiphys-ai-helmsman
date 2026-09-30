@@ -1,0 +1,182 @@
+{
+  "kind": "verdict",
+  "phase": "M6-P4",
+  "head": "41e886a33cdd552c60a88475ce859f7416b5fe4c",
+  "tiphys-version": "0.2.2",
+  "verdict": "APPROVE",
+  "produced-by": "claude-fable-5-1",
+  "framing": "hazard-criteria-first",
+  "review-contract": "hazard",
+  "findings": [
+    {
+      "id": "CR-M6P4A-01",
+      "severity": "low",
+      "evidence": [
+        "src/gates/suite.ts:1189-1190 feeds the criteria judge only points with entityType \"test\" (const reported: ReportedTest[] = points.filter((point) => point.entityType === \"test\")). That exclusion has no test and no witness member: it is the one line of the criteria block whose removal leaves every named test green.",
+        "MUT-03, scratch script mut03.mjs: the filter replaced by .filter(() => true), then node --test test/criteria.test.ts on node v26.6.0: exit 0, tests 14 pass 14 fail 0 (log: scratchpad rev-m6-p4-a/mut/MUT-03-ALL.txt). The find string is not unique in suite.ts (3 occurrences), so the member below must carry the context line.",
+        "What the line guards, measured on the mutated gate over a fixture whose test file is describe(\"group of skipped tests\", () => { test(\"one\", { skip: \"r\" }, ...); test(\"two\", { skip: \"r\" }, ...); }) with acceptance [{ id: c-suite, check: { tests: [\"group of skipped tests\"] } }]: exit 0 status green, detail \"reported 2 test(s) ... (pass 0, fail 0, skipped 2, todo 0, did-not-run 0) ... 1 criterion(s), 1 proven by their check, 0 unproven\". A criterion PROVEN while both tests behind it were skipped: the plan's first hazard, one level up.",
+        "Same fixture, shipped code (suite.ts restored, git status --porcelain shows only this verdict file): exit 1 status red, \"criterion c-suite: test \\\"group of skipped tests\\\" was not reported by the suite, so nothing proves it\". So the shipped artefact is right today; only the guard on that line is missing.",
+        "Not reachable by a real user path at this head: it needs a future edit to that filter, and the red-witness gate's coverage rule is per changed file, not per line, so such an edit with any other suite.ts member present would pass it."
+      ],
+      "concrete-fix": "In test/criteria.test.ts, extend the test \"a criterion whose named test was skipped, is a todo, was filtered out or never ran ...\" (or add one) with a fixture file describe(\"group of skipped tests\", ...) holding two skipped tests and a criterion { id: c-suite, check: { tests: [\"group of skipped tests\"] } }, asserting the finding 'criterion c-suite: test \"group of skipped tests\" was not reported by the suite, so nothing proves it' and that the run is red; then add a member to witness/m6-p4-criterion-test-not-passed-red.json on src/gates/suite.ts with find \"    const reported: ReportedTest[] = points\\n      .filter((point) => point.entityType === \\\"test\\\")\\n\" and replace \"    const reported: ReportedTest[] = points\\n      .filter(() => true)\\n\", and re-capture witness/captures/m6-p4-criteria-gate-cli.txt if the tests-red block's fixture changes.",
+      "analysis": "Hazard 1 asks whether a criterion can read as proven by a test that was skipped. Through a TEST title it cannot (MUT-01, MUT-05, MUT-17, probes S1, S3, S14 all red). Through a SUITE title it can only if this filter regresses, and nothing would notice. Low because the shipped code is correct and the path needs a regression; recorded because the missing guard is exactly the shape the phase exists to close."
+    },
+    {
+      "id": "CR-M6P4A-02",
+      "severity": "low",
+      "evidence": [
+        "src/gates/suite.ts:917-920: when --plan and --phase are both given and the plan declares no phase with that id, criteriaState is not-applicable and the gate stays green: measured by test/criteria.test.ts:336 (exit 0, detail ends \"; criteria not applicable: plan plan.json declares no phase M6-P4\"), and MUT-15 (the absent arm read as a phase with zero criteria) reddened that test, so the wording is pinned.",
+        "So a pull request that HAS a phase, whose plan mis-spells or omits that phase (an id drift, a plan not updated for the phase), proves nothing and is green, with the reason in the detail only. The old scope gate reddened on a missing declaration (src/gates/scope.ts:877); this half does not.",
+        "Why not-applicable is nevertheless the defensible default here: .github/workflows/gates.yml:94 derives --phase with sed -E 's#^(claude/)?(m[0-9]+-p[0-9]+).*#\\2#', which passes the WHOLE branch name for a non-phase branch (this M6 branch claude/upbeat-gates-w3cm5m becomes --phase claude/upbeat-gates-w3cm5m), so an error arm on \"no such phase\" would redden every non-phase pull request of a project that passes --plan.",
+        "This repository is not affected at this head: gate-registry.yaml:48 passes no --plan, and test/criteria.test.ts:378-382 shows --phase without --plan proves and prints nothing about criteria."
+      ],
+      "concrete-fix": "In src/gates/suite.ts, split the absent arm: when flags.phase matches the plan schema's phase-id pattern ignoring case (/^m[0-9]+-p[0-9]+$/i) and the plan declares no such phase, return error(...) naming the plan and the id; keep not-applicable for a --phase that is not phase-shaped. Add the two cases to test/criteria.test.ts:336 and a member to witness/m6-p4-criteria-phase-absent-not-applicable.json.",
+      "analysis": "The brief's hazard 3 asks whether the criteria half is not-applicable only when there is truly no phase. It is also not-applicable when the run names a phase the plan lacks. The detail says so on the gate's own stdout row, and the plan section is silent on this arm, so it is a default the orchestrator may accept; low."
+    },
+    {
+      "id": "CR-M6P4A-03",
+      "severity": "low",
+      "evidence": [
+        "src/criteria.ts:237-243 runsInlineShell refuses only an argv whose FIRST element is a shell and which carries a -c style flag. Measured through the real gate on a fixture (scratch probes.mjs, block S4/S10/S11/S12): [\"env\",\"sh\",\"-c\",\"false || true\"] PROVEN; [\"sh\",\"swallow.sh\"] with swallow.sh = \"false\\ntrue\\n\" PROVEN; [\"node\",\"-e\",\"try { ... } catch {}; process.exit(0)\"] PROVEN; [\"/bin/sh\",\"-c\",\"exit 0\"] refused (basename); [\"node\",\"--test\",\"test/nonexistent.test.ts\"] exited 1 (red, good).",
+        "The work history declares the first three open (delivery/work-history/m6-p4.md:214-218) and roles/plan-writer.md:48-50 and roles/adversarial-plan-reviewer.md:43-48 make a command that cannot fail a plan-review finding. So the gap is disclosed, not hidden; what is missing is the cheap mechanical half."
+      ],
+      "concrete-fix": "In runsInlineShell, skip a leading \"env\" and any following VAR=value arguments before reading the program, so [\"env\",\"sh\",\"-c\",...] and [\"env\",\"X=1\",\"bash\",\"-lc\",...] are refused like [\"sh\",\"-c\",...]; leave scripts and always-zero programs to the plan reviewer, as the briefs already say, and add the env case to the command test in test/criteria.test.ts:278.",
+      "analysis": "A check.command that cannot fail is a criterion proven by nothing, which is the failure the phase names in its prevents. The plan text asks only that a command must exit 0, so the refusal of sh -c is already beyond the letter; low, with the one bypass that is a two-line fix named."
+    },
+    {
+      "id": "CR-M6P4A-04",
+      "severity": "low",
+      "evidence": [
+        "schemas/final-report.schema.json:110-127 requires not-testable as a non-empty list of { phase, criteria: [ids] } rows and nothing more; test/criteria.test.ts:538 refuses only shape errors (no rows, a row with no list, a number, a duplicate id). A report writing criteria: [] for a phase whose plan marks three criteria not-testable validates, and no gate or command compares the list with tiphys plan count.",
+        "The template (templates/final-report.example.yaml:72-79) and AGENTS.md:83-86 instruct copying the ids from tiphys plan count, which is prose. M6-P3 deleted the derived-check layer (src/checks.ts) where a cross-document parity check would have lived, so a mechanism needs a new home.",
+        "Hazard 2's other half holds: the count reaches the hazard reviewer's brief mechanically (test/criteria.test.ts:586 passes; MUT-13 and MUT-18 red), the suite gate detail prints it (probe S7: \"3 criterion(s), 0 proven by their check, 0 unproven, 3 not-testable\", green), and tiphys plan count reads it from the validated plan (MUT-16 red)."
+      ],
+      "concrete-fix": "Either accept the self-report as the plan's letter (\"states\") and say so in DR-0064's consequences, or add tiphys plan count --plan <plan> --phase-id <id> --report <final-report> that exits 1 when the report's row for that phase differs from the plan's ids, and name it in the merge procedure; no schema change can reach it.",
+      "analysis": "DR-0064's purpose is that the owner reads the not-testable count from data. The data is there and required; its truth rests on the author copying it, like every other final-report field (the delivered-outcome evidence is self-reported the same way). Low; recorded because the brief asks whether the count reaches the report as the plan says, and the honest answer is: as a required field, unverified."
+    }
+  ],
+  "criteria": [
+    {
+      "id": "p4-schema",
+      "quote": "the plan schema rejects a criterion with neither check nor not-testable. check: named test.",
+      "evidence": [
+        "node --test test/criteria.test.ts at 41e886a, node v26.6.0, dist built: 14 tests, 14 pass, 0 fail, 0 skipped, exit 0 (scratch criteria-baseline.txt); the two schema tests are test/criteria.test.ts:166 (neither, both, each alone) and :196 (check needs tests or command, empty list, empty reason, unknown key).",
+        "MUT-08: schemas/plan.schema.json acceptance oneOf -> anyOf: the :166 test red (exit 1, 1 test 0 pass 1 fail, AssertionError strictly equal on the validate exit). Restored, tree clean.",
+        "Parse-equality (scratch diet-equal.mjs): plan.schema.json differs from base only by head-only /$defs/criterionCheck, .../acceptance/items/properties/check, .../not-testable and .../oneOf, with every $comment and description stripped on both sides.",
+        "node bin/tiphys.ts validate --type plan templates/plan.example.yaml: exit 0, no INVALID line."
+      ],
+      "met": true
+    },
+    {
+      "id": "p4-maps",
+      "quote": "a criterion whose named test is absent, failing or skipped is red; one whose test passes is green. check: named tests.",
+      "evidence": [
+        "test/criteria.test.ts:222 (skipped, todo, filtered out, prefix, longer title), :258 (failing twin), :278 (command exits 3, false || true with no shell, sh -c refused, timeout), :306 (green, lower-case phase, not-testable count) all pass at head; :222 and :278 assert run.stdout === the captured block in witness/captures/m6-p4-criteria-gate-cli.txt byte for byte, so the asserted text is the gate's real output.",
+        "My mutations, each applied to the committed tree, the named test run alone with --test-name-pattern before the path, restored with git checkout --, porcelain checked after each: MUT-01 (skip/todo read as proven) red; MUT-02 (prefix match) red; MUT-04 (findings not pushed) red on :222, :258 and :278, the gate going green in each; MUT-05 (pointOutcome skip arm removed) red; MUT-09 (shell: true) red; MUT-14 (nonzero exit not a finding) red; MUT-17 (unreported title proven) red; MUT-10 (case-sensitive phase) red on :306. Logs: scratchpad rev-m6-p4-a/mut/*.txt, summary.txt.",
+        "Hand probes through the real gate (scratch probes.mjs, probes-out.txt): a child cancelled by a throwing before() hook -> \"criterion c-child: test \\\"child\\\" did not run\"; a criterion naming the describe title -> \"was not reported\"; twin titles with one skipped -> \"was skipped\"; nested and top-level tests sharing a title with the nested one skipped -> \"was skipped\"; a named test passing beside an unrelated failing test -> criterion proven, suite red on its own finding.",
+        "Gap, CR-M6P4A-01: the suite-point exclusion that makes the second probe red has no guard (MUT-03 leaves all 14 tests green)."
+      ],
+      "met": true
+    },
+    {
+      "id": "p4-report",
+      "quote": "the final report schema requires the per-phase not-testable count. check: named test.",
+      "evidence": [
+        "test/criteria.test.ts:538 passes at head: the template validates, a report without not-testable is INVALID #/not-testable, four bad shapes refused, an unstamped report validates with HISTORY final-report-not-testable-required.",
+        "MUT-12 (not-testable dropped from required): red. MUT-19 (RULES_SINCE since 0.1.0, so history is held to the rule): red on the HISTORY line. Both restored, tree clean.",
+        "node bin/tiphys.ts validate --type final-report templates/final-report.example.yaml: exit 0.",
+        "git grep -l 'kind: final-report' at head: the implementer's claim that no committed report is stamped 0.2.2 without the field is checked in the row below this walk (see hazard class deletions-and-history)."
+      ],
+      "met": true
+    },
+    {
+      "id": "p4-diet",
+      "quote": "no file under schemas/ contains $comment. check: grep -rl '\\$comment' schemas/ finds nothing.",
+      "evidence": [
+        "grep -rl '\\$comment' schemas/ from the worktree: no output, exit 1.",
+        "Scratch diet-equal.mjs over all 20 schema files at base ea3edb3 and head, every $comment and description keyword stripped (a $comment under a properties map kept as data): 16 EQUAL; assurance-modes differs by base-only /$defs/modeShape/properties/$comment; gate-registry by base-only /$defs/gateShape/properties/$comment and the parameters enum gaining base?, head?, phase?; final-report by not-testable added and required; plan by the criterion shape. Every difference is one the work history declares (resume step 2 and step 3); nothing else changed what any schema accepts or refuses.",
+        "The regression set (15 test files including test/schemas.test.ts, test/validate.test.ts, test/verdict-schema.test.ts, test/history-compat.test.ts, test/report-contract.test.ts): 328 tests, 328 pass, 0 fail, 0 skipped, exit 0, node v26.6.0, dist built, invocation node --test <files> (scratch regression.txt)."
+      ],
+      "met": true
+    },
+    {
+      "id": "p4-build",
+      "quote": "npm run build exits 0, npm test exits 0 with 0 fail.",
+      "evidence": [
+        "npm run build in the worktree, node v26.6.0: exit 0; git status --short afterwards lists only this verdict file (untracked).",
+        "npm test in full was NOT run by me (about 11 minutes, and the box was at load 12 to 14 on 4 CPUs with the regression set running); the implementer reports 1252 tests, 1252 pass, 0 fail, 0 skipped at 66594f7, and 41e886a differs from 66594f7 only in delivery/work-history/m6-p4.md (git log --oneline shows one commit, the work history).",
+        "What I ran instead: test/criteria.test.ts 14/14 0 skipped; the 15-file regression set 328/328 0 skipped; both node v26.6.0, dist built. The full-suite claim rests on the implementer's run plus CI; this row is met on that basis and says so."
+      ],
+      "met": true
+    }
+  ],
+  "deviations-judged": [
+    {
+      "deviation": "Plan step 2 says the criterion mapping is \"registered as a gate with a prevents\"; the implementer extended the existing suite gate with --plan/--phase/--check-timeout instead of registering a new gate (work history D1), and the suite's prevents gained \"or (given --plan) a criterion reported met with nothing proving it\".",
+      "serves-plan-intent": true,
+      "reasoning": "The suite's own reporter stream is the proof input, so one run judges both halves and the two cannot disagree about what passed (pointOutcome is shared, src/gates/suite.ts:452). The prevents is named as DR-0061(b) requires. A separate gate would have to re-run or re-read the suite."
+    },
+    {
+      "deviation": "This repository's suite entry (gate-registry.yaml:42-54) passes no --plan and declares phase?, so on this repository the criteria half never runs; the work history calls this DEVIATION 3 and qualifies the prevents with \"(given --plan)\".",
+      "serves-plan-intent": true,
+      "reasoning": "This repository's plans are markdown (delivery/plan/*.md) and the proof reads a plan that validates against schemas/plan.schema.json, so there is nothing to prove here yet; the qualifier keeps the prevents honest. The consequence is that M6-P4's own p4-* criteria are walked by hand (above), which is the pre-DR-0064 state for this repository until it has a machine plan. Measured: test/criteria.test.ts:378-382, --phase without --plan is green and says nothing about criteria."
+    },
+    {
+      "deviation": "Plan step 4 says the final report \"states the not-testable count per phase\"; the schema carries the ids as a list per phase and the count is the list's length (DEVIATION 1), because test/report-contract.test.ts refuses any numeric field in the final report (M5-P2 hazard goodhart-score).",
+      "serves-plan-intent": true,
+      "reasoning": "The ids are a stronger statement than a number (each can be checked against the plan) and keep the M5-P2 rule; tiphys plan count prints both. Measured: plan count on the template prints \"phase M9-P1: 3 criteria, 1 not-testable (3)\"."
+    },
+    {
+      "deviation": "RULES_SINCE row since 0.2.2, the current package version, rather than the next release (DEVIATION 2), so a final report already stamped 0.2.2 would be held to the new rule.",
+      "serves-plan-intent": true,
+      "reasoning": "test/history-compat.test.ts requires every row to apply to a current stamp. Whether any committed report is caught is a git grep, recorded in the deletions-and-history hazard row."
+    },
+    {
+      "deviation": "Two deletions under DR-0061(a): the charter $comment test in test/schemas.test.ts (c258ff1) and the comment-text rows of the closed-vocabulary test plus member 2 of witness/schemas-closed-vocabulary-disclosed.json (450764e), leaving that witness with one member.",
+      "serves-plan-intent": true,
+      "reasoning": "Both deleted assertions read comment text and nothing else, so neither guarded a product failure; the enum half of the closed-vocabulary test and its enum-widening member remain (witness/schemas-closed-vocabulary-disclosed.json:11-14). The witness schema's minimum is 1 member (src/gates/schemas/witness-spec.schema.json:35). git grep for the deleted behavior id release-verification-comment-cites-dr-0014 outside delivery/ finds nothing."
+    }
+  ],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "hazard-1-proven-by-skipped-cancelled-todo-unrun-or-renamed-test",
+      "probed": "Through the unit function and through the suite gate CLI: the four named tests at head; MUT-01, MUT-02, MUT-04, MUT-05, MUT-17 (each red); hand probes S1 (before() hook throws, child cancelledByParent -> \"did not run\"), S2 (describe title -> \"not reported\"), S3 (twin titles, one skipped -> \"was skipped\"), S14 (nested skipped twin -> \"was skipped\"), S13 (named test passes beside an unrelated failure -> proven, suite red on its own); the capture equality assertions at test/criteria.test.ts:243 and :294 pass, so the asserted strings are the gate's real stdout; MUT-03 (suite points judged) leaves all 14 tests green.",
+      "finding": "CR-M6P4A-01"
+    },
+    {
+      "class-id": "hazard-2-not-testable-as-the-easy-default",
+      "probed": "Probe S7: a plan with every criterion not-testable is green with \"3 criterion(s), 0 proven by their check, 0 unproven, 3 not-testable\" in the detail and counts.json; nothing caps the ratio, by design (DR-0064 is an experiment read from the counts). The count reaches the hazard brief (test/criteria.test.ts:586 passes; MUT-13 and MUT-18 red; the implementer brief carries no such section, grep count 0; the reviewer brief on the template prints the section), tiphys plan count (MUT-16 red, invalid plan refused), and the final report (required; MUT-12 and MUT-19 red). The report's list is unverified against the plan.",
+      "finding": "CR-M6P4A-04"
+    },
+    {
+      "class-id": "hazard-3-optional-run-parameter-phase",
+      "probed": "test/criteria.test.ts:457 (fixture gate reports the --phase it received; phase? passed with a phase, run without one; a required phase still errors, compared with the captured runner output) and :477 (the real suite gate through the real runner over a fixture registry passing --plan: pull_request red on a skipped criterion test, push green and not applicable) both pass; MUT-06 (optional never passed) red on both, MUT-07 (phase? read as required) red. Classification measured directly: [base, phase?] -> required [base] optional [phase]; [phase, phase?] -> required [phase] optional []; [phase?] with a branch-matches precondition -> required [phase]. node bin/tiphys.ts validate --type gate-registry gate-registry.yaml exit 0. No reader of parameters outside src/gates/run.ts and manifest.ts (grep over src/, scripts/, plugin/src, .github/, .claude/). The absent-phase arm is green with the reason in the detail.",
+      "finding": "CR-M6P4A-02"
+    },
+    {
+      "class-id": "hazard-4-schema-diet-changed-what-a-schema-accepts",
+      "probed": "Scratch diet-equal.mjs: every schema at base ea3edb3 and head parsed, $comment and description keywords stripped on both sides (a $comment under a properties map treated as data), JSON-stringified and compared, with a key-path walk on any difference.",
+      "cleared-because": "16 of 20 schemas equal modulo annotations. The 4 that differ carry exactly the declared changes and nothing else: assurance-modes and gate-registry each lose the $comment DATA property (declared, no committed document uses it: git grep '\\$comment' outside schemas/ and delivery/ finds src/validate.ts ANNOTATION_KEYS, test sources, one capture fixture and the vendored suite only); gate-registry's parameters enum gains base?, head?, phase? (resume step 3); final-report gains and requires not-testable (step 4); plan gains the criterion shape (step 1). grep -rl '\\$comment' schemas/ exits 1. The 15-file regression set over every schema-reading test: 328 pass, 0 fail, 0 skipped."
+    },
+    {
+      "class-id": "hazard-5-merge-of-m6-p3-at-4915740",
+      "probed": "Parents 87fd8ad (this branch) and ea3edb3 (P3), merge base 901e041. test/behaviors.json id sets at all four commits; src/commands/brief.ts diffed against each parent; test/checks.test.ts diffed against ea3edb3 and P1's own change to it located.",
+      "cleared-because": "behaviors.json: base 1403, this branch 1414 (11 added, 0 deleted), P3 1137 (23 added, 289 deleted), merged 1148 = the exact three-way union (missing [], extra []); HEAD 1150 = 1148 + 3 new criteria behaviors - 1 deleted comment-text behavior. brief.ts at HEAD carries both sides: P3's gate-list rendering, duplicatePhaseIdRefusal and readRegistryDocument, and this phase's renderNotTestableQuestions import and its call under REVIEW_CONTRACT_ROLE (git diff against each parent shows only the other side's hunks). checks.test.ts at HEAD is byte-identical to ea3edb3; P1's only edit there (a check on the decoy criterion at :343) sat in a test P3 deleted (grep for that test's title at HEAD: 0). The 15-file regression set, including brief-compose, clean-room-brief, implementer-brief and gate-registry: 328 pass, 0 fail."
+    },
+    {
+      "class-id": "beyond-the-list-check-command-escape-hatches",
+      "probed": "Probe S4/S10/S11/S12 through the real gate: env sh -c, sh script.sh, an always-exit-0 program, an absolute-path shell, node --test on a missing file.",
+      "finding": "CR-M6P4A-03"
+    },
+    {
+      "class-id": "beyond-the-list-deletions-and-history",
+      "probed": "git grep for the deleted behavior id and for verdict-criteria-complete; the surviving one-member witness; the claim grep over the work history (line-based 3 hits, all quotations of test titles; wrap-insensitive 3 occurrences, so none hidden); git grep -l 'kind: final-report' for a committed report stamped 0.2.2 without not-testable.",
+      "cleared-because": "The deleted test and rows asserted comment text only; the deleted behavior id is cited only in delivery/ work histories; verdict-criteria-complete survives only in two fixture comments. The work history states what its derivation did not cover (resume step 3, 'WHAT THIS DID NOT COVER'), which is the reviewer's first check under the fix-round contract. git grep -l 'kind: final-report' at head lists delivery/evidence/m3-exit-test/e1/e1-9/final-report.yaml (no tiphys-version, so unstamped history, held to the 0.1.0 rules), two work histories (prose mentions) and templates/final-report.example.yaml (stamped, carries not-testable); so no committed report is caught by the 0.2.2 since, as the work history claims (DEVIATION 2)."
+    },
+    {
+      "class-id": "beyond-the-list-red-witness-gate-at-this-head",
+      "probed": "The work history stops before the red-witness run at this head ('Not run yet, by instruction (step 4)'), so nobody had run it. Run here: node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --event pull_request --base ea3edb3 --head 41e886a --phase m6-p4 --only red-witness, node v26.6.0, evidence under scratchpad rev-m6-p4-a/gates-rw.",
+      "cleared-because": "Gate row, quoted rather than the bundle count: \"gates: red-witness: green: 69 witness(es) evaluated (17 own, 52 stored re-evaluated in 593686ms); every witness red against every declared dangerous state and green at head\"; summary.json gates[] row {id: red-witness, status: green, units: 69, applicable: true, vacuous: false}; witness-records.json: uncoveredSources [], spawningChangedFiles [src/criteria.ts, src/gates/run.ts, src/gates/suite.ts, test/assurance-modes.test.ts, test/criteria.test.ts, test/schemas.test.ts], 69 evaluations all green, the 14 m6-p4-* witnesses among them with 2 to 5 members each. Run 16:33:08 to 16:47:11 UTC on node v26.6.0, exit 0, from a clean tree (git status --porcelain: only this verdict file). This is the run the work history says was not yet done; it is now done and green."
+    }
+  ]
+}

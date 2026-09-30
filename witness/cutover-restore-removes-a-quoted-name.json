@@ -1,0 +1,31 @@
+{
+  "id": "cutover-restore-removes-a-quoted-name",
+  "behavior": "cutover-restore-removes-a-quoted-name",
+  "tests": [
+    "restoring a retirement root removes a post-freeze addition whose name git quotes"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "    \"-z\",\n    \"--name-only\",\n    \"--diff-filter=A\",\n    /* --no-renames IS LOAD-BEARING AND THE VERIFICATION ARM BELOW IS WHAT\n       FOUND IT. With rename detection on, a file renamed after the freeze is\n       reported as R rather than A, so its NEW name is not enumerated, the\n       removal misses it, and the checkout restores the old name beside it. The\n       first version of this function had the flag missing; the residue\n       comparison turned the hybrid tree into a refusal naming\n       `retired/renamed.md` instead of a green. That is the whole reason the\n       verdict is measured rather than assumed. */\n    \"--no-renames\",\n    sha,\n    \"HEAD\",\n    \"--\",\n    ...roots,\n  ]);\n  if (added.status !== 0) {\n    return {\n      ok: false,\n      reason: `enumerating the post-freeze additions failed: ${added.stderr.trim()}`,\n    };\n  }\n  const postFreeze = nulSeparatedPaths(added.stdout);",
+      "replace": "    \"--name-only\",\n    \"--diff-filter=A\",\n    /* --no-renames IS LOAD-BEARING AND THE VERIFICATION ARM BELOW IS WHAT\n       FOUND IT. With rename detection on, a file renamed after the freeze is\n       reported as R rather than A, so its NEW name is not enumerated, the\n       removal misses it, and the checkout restores the old name beside it. The\n       first version of this function had the flag missing; the residue\n       comparison turned the hybrid tree into a refusal naming\n       `retired/renamed.md` instead of a green. That is the whole reason the\n       verdict is measured rather than assumed. */\n    \"--no-renames\",\n    sha,\n    \"HEAD\",\n    \"--\",\n    ...roots,\n  ]);\n  if (added.status !== 0) {\n    return {\n      ok: false,\n      reason: `enumerating the post-freeze additions failed: ${added.stderr.trim()}`,\n    };\n  }\n  const postFreeze = nonEmptyLines(added.stdout);"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/cutover.ts",
+      "find": "    \"diff\",\n    \"-z\",\n    \"--name-only\",\n    \"--diff-filter=A\",",
+      "replace": "    \"diff\",\n    \"--name-only\",\n    \"--diff-filter=A\","
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p3-git-path-listings.json"
+    ],
+    "provenance": "Real git 2.43.0 output of the path listings src/cutover.ts reads, in the line form it read before M6-P3 fix round 3 and the -z form it reads now, recorded 2026-09-30 inside the named tests against the fixtures they stage (the capture's own provenance says how). Required by rule (f) because every member mutates a file the spawn/parse derivation matches. The named tests re-run each recorded command and require git's live stdout to equal the recorded stdout before the code under test runs."
+  },
+  "deterministic": true,
+  "repeats": 2
+}

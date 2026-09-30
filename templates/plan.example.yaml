@@ -42,15 +42,38 @@ phases:
       - "`src/cli.ts` (edit only if step 4 requires it)"
     extras:
       - delivery/requirements/clause-map.json
+    # Every criterion names exactly one of `check` (what proves it) or
+    # `not-testable` (why nothing can). `check.tests` are exact test titles the
+    # suite must report as passing; `check.command` is an argv run with no
+    # shell that must exit 0, which is all it proves: a test runner also exits
+    # 0 when its tests are skipped, todo or absent, so tests are named in
+    # `check.tests`. `tiphys plan count` prints each phase's not-testable count
+    # (DR-0064).
     acceptance:
       - id: "1"
         criterion: >-
-          node --test test/importer.test.ts exits 0 and reports 4 tests, 0
-          failing.
+          The four importer tests in test/importer.test.ts run and pass, each
+          named by its title.
+        check:
+          tests:
+            - a CSV row is imported as one record
+            - a malformed row is refused naming its line
+            - a staged 429 is retried twice and the third failure propagates
+            - a 500 response is not retried
       - id: "2"
         criterion: >-
           A staged 429 response is retried exactly twice and the third failure
           propagates, asserted against captured server output.
+        check:
+          tests:
+            - a staged 429 is retried twice and the third failure propagates
+      - id: "3"
+        criterion: >-
+          The retry log line tells an operator which request is being retried
+          and why.
+        not-testable: >-
+          Whether a log line is clear to an operator is a reading; the hazard
+          review answers it.
     hazard-classes:
       - id: H1
         statement: >-

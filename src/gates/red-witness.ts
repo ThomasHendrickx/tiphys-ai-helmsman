@@ -48,10 +48,15 @@ import type {
  * WHAT THE GATE DECIDES.
  *   - Every witness spec changed in the phase diff (the phase's OWN
  *     witnesses) is evaluated by the harness.
- *   - Every STORED witness any of whose dangerous-state members touches a
- *     changed file is re-evaluated; one now green against any of its own
- *     members is red with reason "witness no longer guards its behavior"
- *     naming the witness and the measured rate (M2R-002, the N-401 shape).
+ *   - Which STORED witnesses are re-evaluated depends on the CI event
+ *     (`--event`, M6-P8, DR-0066; see `storedWitnessEvaluated`). On
+ *     `pull_request`, a stored witness is re-evaluated only when the diff
+ *     changes a file one of its members mutates or a test file it runs; every
+ *     other stored witness is SKIPPED AND COUNTED in the detail line. On
+ *     `push`, and on a run naming no event, every stored witness is
+ *     re-evaluated. One now green against any of its own members is red with
+ *     reason "witness no longer guards its behavior" naming the witness and
+ *     the measured rate (M2R-002, the N-401 shape).
  *   - A changed source file under src/ or bin/ with no witness spec
  *     covering it is RED, never not-applicable (step 7).
  *   - `--base` absent is `error` (M2-C-3).
@@ -69,7 +74,8 @@ import type {
 
 const USAGE =
   "usage: node src/gates/red-witness.ts --result <path> --evidence <dir> " +
-  "--base <ref> [--head <ref>] [--baseline <ref>] [--phase <id>]";
+  "--base <ref> [--head <ref>] [--baseline <ref>] [--phase <id>] " +
+  "[--event <pull_request|push>]";
 
 interface GateOptions {
   result?: string;
@@ -78,6 +84,7 @@ interface GateOptions {
   head?: string;
   baseline?: string;
   phase?: string;
+  event?: string;
 }
 
 function parseArgs(argv: string[]): { options?: GateOptions; usageError?: string } {
@@ -89,6 +96,7 @@ function parseArgs(argv: string[]): { options?: GateOptions; usageError?: string
     ["--head", "head"],
     ["--baseline", "baseline"],
     ["--phase", "phase"],
+    ["--event", "event"],
   ]);
   for (let index = 0; index < argv.length; index += 2) {
     const flag = argv[index] as string;
@@ -111,6 +119,8 @@ export interface RedWitnessOutcome {
   evaluations: WitnessEvaluation[];
   /** Wall-clock cost of the stored-witness re-evaluation, milliseconds. */
   reEvaluationMs: number;
+  /** Ids of the stored witnesses this run did not evaluate (M6-P8). */
+  skippedStored: string[];
 }
 
 export interface RedWitnessRun {
@@ -119,7 +129,63 @@ export interface RedWitnessRun {
   head?: string;
   baseline?: string;
   evidenceDir?: string;
+  /**
+   * The CI event the run names (`--event`). Absent is a run over every gate
+   * (a local run), and it takes the strictest arm: every stored witness.
+   */
+  event?: string;
   hooks?: WitnessHooks;
+}
+
+/** The events `--event` may name; anything else is `error`. */
+const WITNESS_EVENTS: readonly string[] = ["pull_request", "push"];
+
+/**
+ * What a pull request's selection needs to know about one STORED witness.
+ * Every path set here is repo-relative, in the phase diff's own spelling.
+ */
+export interface StoredSelectionFacts {
+  /** The CI event the run names, or undefined for a run naming none. */
+  event: string | undefined;
+  /** Every path the phase diff (merge base...head, `--no-renames`) changed. */
+  changed: ReadonlySet<string>;
+  /** Files the witness's members mutate, and each patch member's own patch file. */
+  mutated: readonly string[];
+  /**
+   * Test files the diff changed that carry one of the witness's named tests,
+   * in their head source or in their merge-base source.
+   */
+  changedTestFiles: readonly string[];
+}
+
+/**
+ * DOES THIS RUN RE-EVALUATE THIS STORED WITNESS? (M6-P8, DR-0066)
+ *
+ * Only `pull_request` may skip. `push` is the full sweep on `main` just after
+ * the merge, and a run naming no event is a local run over every gate, so
+ * both evaluate every stored witness: the push event taking the pull-request
+ * arm would make the full sweep never run, which is the hazard the plan names.
+ *
+ * On `pull_request` a stored witness is evaluated when the diff changes a file
+ * one of its members mutates, or a test file it runs. A RENAMED OR MOVED test
+ * file counts as changed: the diff is `--no-renames`, so a move is a deletion
+ * of the old path plus an addition of the new one, and the witness's named
+ * test is found in the added file's head source (or the deleted file's
+ * merge-base source). A test RENAMED inside a file is found in that file's
+ * merge-base source, so it counts too.
+ *
+ * A diff that cannot be computed never reaches this function: the gate reports
+ * `error` first (`runRedWitnessGate`), so no witness is skipped on a failed
+ * diff.
+ */
+export function storedWitnessEvaluated(facts: StoredSelectionFacts): boolean {
+  if (facts.event !== "pull_request") {
+    return true;
+  }
+  return (
+    facts.mutated.some((file) => facts.changed.has(file)) ||
+    facts.changedTestFiles.length > 0
+  );
 }
 
 function now(): string {
@@ -141,6 +207,7 @@ function errorOutcome(startedAt: string, detail: string): RedWitnessOutcome {
     exitCode: exitCodeForStatus(result.status),
     evaluations: [],
     reEvaluationMs: 0,
+    skippedStored: [],
   };
 }
 
@@ -176,6 +243,13 @@ function isAuditedSource(path: string): boolean {
 export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
   const startedAt = now();
 
+  if (run.event !== undefined && !WITNESS_EVENTS.includes(run.event)) {
+    return errorOutcome(
+      startedAt,
+      `--event ${run.event} is not one of ${WITNESS_EVENTS.join(", ")}`,
+    );
+  }
+
   const rootProbe = resolveRepoRoot(run.repoRoot);
   if (rootProbe.root === undefined) {
     return errorOutcome(startedAt, rootProbe.reason as string);
@@ -198,7 +272,12 @@ export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
 
   const diffOutcome = computePhaseDiff(repoRoot, run.base, run.head ?? "HEAD");
   if (!diffOutcome.ok) {
-    return errorOutcome(startedAt, diffOutcome.reason);
+    // NEVER A SELECTION OVER NO CHANGED FILES (M6-P8): an empty change set
+    // would skip every stored witness on a pull request and read green.
+    return errorOutcome(
+      startedAt,
+      `the phase diff could not be computed, so no stored witness is skipped: ${diffOutcome.reason}`,
+    );
   }
   const diff: PhaseDiff = diffOutcome.diff;
 
@@ -352,13 +431,63 @@ export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
       readers,
     );
   };
+  /**
+   * The test files the diff changed, each with its head source and its
+   * merge-base source (either absent when the file is absent there). Only
+   * `*.test.ts` under `test/`, the set `readTestFilesAtHead` resolves named
+   * tests in, so "a test file it runs" means what the harness runs.
+   */
+  const changedTestSources: Array<{ path: string; sources: string[] }> = [];
+  for (const [path, file] of diff.files) {
+    if (!path.startsWith("test/") || !path.endsWith(".test.ts")) {
+      continue;
+    }
+    const sources: string[] = [];
+    const atHead = testFilesOutcome.files.get(path);
+    if (atHead !== undefined) {
+      sources.push(atHead);
+    }
+    if (file.status !== "A") {
+      const atMergeBase = gitIn(repoRoot, ["show", `${diff.mergeBaseSha}:${path}`]);
+      if (!atMergeBase.ok) {
+        return errorOutcome(
+          startedAt,
+          `the merge-base source of changed test file ${path} could not be read, ` +
+            `so no stored witness is skipped: ${atMergeBase.reason}`,
+        );
+      }
+      sources.push(atMergeBase.stdout);
+    }
+    changedTestSources.push({ path, sources });
+  }
+  const changedPaths: ReadonlySet<string> = new Set(diff.files.keys());
+  const selectionFacts = (entry: { spec: WitnessSpec }): StoredSelectionFacts => {
+    const mutated = new Set<string>();
+    for (const member of entry.spec.dangerousStates) {
+      if (member.kind === "patch") {
+        mutated.add(member.patch);
+      }
+      for (const file of memberTouchedFiles(member, readPatchAtHead)) {
+        mutated.add(file);
+      }
+    }
+    return {
+      event: run.event,
+      changed: changedPaths,
+      mutated: [...mutated],
+      changedTestFiles: changedTestSources
+        .filter((changed) =>
+          entry.spec.tests.some((name) =>
+            changed.sources.some((source) => source.includes(name)),
+          ),
+        )
+        .map((changed) => changed.path),
+    };
+  };
   const triggeredStored = stored.filter((entry) =>
-    entry.spec.dangerousStates.some((member) =>
-      memberTouchedFiles(member, readPatchAtHead).some((file) =>
-        diff.files.has(file),
-      ),
-    ),
+    storedWitnessEvaluated(selectionFacts(entry)),
   );
+  const skippedStored = stored.filter((entry) => !triggeredStored.includes(entry));
 
   // Coverage (step 7): source changed with no witness spec covering it is
   // red, never not-applicable. Coverage semantics are decision D-P2-2 in
@@ -475,6 +604,8 @@ export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
             {
               base: diff.baseSha,
               head: diff.headSha,
+              event: run.event ?? null,
+              skippedStored: skippedStored.map((entry) => entry.spec.id),
               spawningChangedFiles,
               uncoveredSources: uncovered,
               reEvaluationMs,
@@ -491,10 +622,16 @@ export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
     }
   }
 
+  // THE SKIP IS VISIBLE, NEVER SILENT (M6-P8): the detail line counts the
+  // stored witnesses this run did not evaluate and says why.
+  const skipClause =
+    run.event === "pull_request"
+      ? `${String(skippedStored.length)} stored skipped (no file they mutate or run changed)`
+      : `${String(skippedStored.length)} stored skipped (event ${run.event ?? "none"} evaluates every stored witness)`;
   const detail =
-    `${String(evaluations.length)} witness(es) evaluated ` +
-    `(${String(own.length)} own, ${String(triggeredStored.length)} stored ` +
-    `re-evaluated in ${String(reEvaluationMs)}ms); ` +
+    `${String(specs.length)} witness(es): ${String(own.length)} own, ` +
+    `${String(triggeredStored.length)} stored evaluated in ${String(reEvaluationMs)}ms, ` +
+    `${skipClause}; ` +
     (reasons.length === 0
       ? "every witness red against every declared dangerous state and green at head"
       : reasons.join("; "));
@@ -514,6 +651,7 @@ export function runRedWitnessGate(run: RedWitnessRun): RedWitnessOutcome {
     exitCode: exitCodeForStatus(result.status),
     evaluations,
     reEvaluationMs,
+    skippedStored: skippedStored.map((entry) => entry.spec.id),
   };
 }
 
@@ -541,6 +679,9 @@ function main(argv: string[]): number {
     const run: RedWitnessRun = { repoRoot: process.cwd(), base: options.base };
     if (options.head !== undefined) {
       run.head = options.head;
+    }
+    if (options.event !== undefined) {
+      run.event = options.event;
     }
     if (options.baseline !== undefined) {
       run.baseline = options.baseline;

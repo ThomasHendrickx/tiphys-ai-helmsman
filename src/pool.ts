@@ -1041,6 +1041,83 @@ interface DestroyFacts {
    * where it belongs: it is policy, and its refusal is a true no-op.
    */
   branchCheckedOutAt: string | undefined;
+  /**
+   * Set when the worktree listing behind `branchCheckedOutAt` could not be
+   * read, naming why. An unread listing is NOT "no other worktree": that
+   * reading let destroy delete a branch a foreign worktree had checked out
+   * on any git that rejected the listing (M6-P3 fix round 4, CR-M6P3A-07).
+   * Stage 2 refuses on it whenever there is a branch to delete.
+   */
+  worktreeListError: string | undefined;
+}
+
+/**
+ * git's refusal of `-z` on `worktree list`, which git learned in 2.36. Real
+ * output of git 2.34.1 (the packaged git of Ubuntu 22.04), recorded in
+ * witness/captures/m6-p3-git-worktree-list-z.json: exit 129, first stderr line
+ * "error: unknown switch `z'". runGit pins LC_ALL=C, so this English text is
+ * what arrives. Anything else that fails the listing is not this, and refuses.
+ */
+const WORKTREE_LIST_Z_UNKNOWN = /^error: unknown switch `z'$/m;
+
+/**
+ * Every line `worktree list --porcelain` prints on a git that has no `-z`
+ * (before 2.36): the seven attributes and the blank line ending a record. A
+ * lock or prunable reason holding a newline is C-quoted onto one line
+ * (measured on git 2.34.1), so the one thing that can print any other line is
+ * a worktree PATH holding a newline, and that listing cannot be read without
+ * `-z`.
+ */
+const PORCELAIN_LINE_BEFORE_Z = /^(?:worktree |HEAD |branch |locked |prunable |(?:bare|detached|locked|prunable)?$)/;
+
+/** The first stderr line of a failed git run, or its exit status. */
+function gitFailureLine(run: GitRun): string {
+  const first = run.stderr
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line !== "");
+  return first ?? `git exited ${String(run.status)}`;
+}
+
+/**
+ * The lines of `git worktree list --porcelain`, one attribute each, or why
+ * they cannot be read. -z (M6-P3 fix round 3, the CR-M6P3B-05 mechanism):
+ * without it a worktree path holding a newline is split across two records,
+ * measured on git 2.43.0 as `worktree <dir>/t-1` then `x` for a worktree at
+ * `<dir>/t-1<LF>x`, and a foreign worktree there was read as the task's OWN.
+ * With -z every attribute ends in NUL and nothing is trimmed. A git that
+ * rejects -z gets the newline listing instead (fix round 4), so destroy keeps
+ * working there, and a line that listing cannot hold fails the read rather
+ * than being skipped.
+ */
+function worktreeListLines(
+  contextDir: string,
+): { ok: true; lines: string[] } | { ok: false; detail: string } {
+  let argv = ["worktree", "list", "--porcelain", "-z"];
+  let separator = "\0";
+  let listed = runGit(contextDir, argv);
+  if (listed.status === 129 && WORKTREE_LIST_Z_UNKNOWN.test(listed.stderr)) {
+    argv = ["worktree", "list", "--porcelain"];
+    separator = "\n";
+    listed = runGit(contextDir, argv);
+  }
+  if (listed.status !== 0) {
+    return { ok: false, detail: `git ${argv.join(" ")} failed: ${gitFailureLine(listed)}` };
+  }
+  const lines = listed.stdout.split(separator);
+  if (separator === "\n") {
+    const unreadable = lines.find((line) => !PORCELAIN_LINE_BEFORE_Z.test(line));
+    if (unreadable !== undefined) {
+      return {
+        ok: false,
+        detail:
+          `git ${argv.join(" ")} printed ${JSON.stringify(unreadable)}, which is ` +
+          `no attribute: a worktree path holds a newline, and this git has no -z ` +
+          `to list it by`,
+      };
+    }
+  }
+  return { ok: true, lines };
 }
 
 /** Stage 1: gather facts. Read only; mutates nothing. */
@@ -1120,13 +1197,16 @@ async function resolveDestroy(
   }
 
   let branchCheckedOutAt: string | undefined;
-  const listed = runGit(contextDir, ["worktree", "list", "--porcelain"]);
-  if (listed.status === 0) {
+  let worktreeListError: string | undefined;
+  const listed = worktreeListLines(contextDir);
+  if (!listed.ok) {
+    worktreeListError = listed.detail;
+  } else {
     let currentPath: string | undefined;
-    for (const line of listed.stdout.split("\n")) {
+    for (const line of listed.lines) {
       if (line.startsWith("worktree ")) {
-        currentPath = line.slice("worktree ".length).trim();
-      } else if (line.trim() === `branch refs/heads/${branchName}`) {
+        currentPath = line.slice("worktree ".length);
+      } else if (line === `branch refs/heads/${branchName}`) {
         // IDENTITY, NOT STRING EQUALITY, and the difference is a shipped
         // defect this comparison had until 2026-09-16 (macOS smoke job of
         // pull request #155). `currentPath` is GIT'S spelling and `worktree`
@@ -1161,6 +1241,7 @@ async function resolveDestroy(
       branchName,
       branchTip,
       branchCheckedOutAt,
+      worktreeListError,
     },
   };
 }
@@ -1190,6 +1271,17 @@ function evaluateDestroy(
       `cannot determine whether branch ${facts.branchName} exists in ` +
       `${facts.contextDir} (${facts.branchTip.detail}); refusing to finish ` +
       `destroy for task id ${facts.taskId}`
+    );
+  }
+
+  if (facts.branchTip.kind === "present" && facts.worktreeListError !== undefined) {
+    // The listing is the only guard against deleting a branch another
+    // worktree has checked out (see the clause below), so a listing that
+    // could not be read refuses, exactly as an indeterminate tip does.
+    return (
+      `cannot determine which worktrees have branch ${facts.branchName} ` +
+      `checked out (${facts.worktreeListError}); refusing to finish destroy ` +
+      `for task id ${facts.taskId}`
     );
   }
 

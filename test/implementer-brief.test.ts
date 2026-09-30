@@ -285,6 +285,41 @@ test("adding a gate to the project's gate-registry.yaml adds its row to the comp
   }
 });
 
+test("a registry whose preflight command contains $' and $$ composes a brief whose gate block is byte-identical to renderBriefGateBlock's output", () => {
+  /* M6-P3 FIX ROUND 2, CR-M6P3B-01. The block was spliced in with
+     String.prototype.replace and a replacement STRING, so `$'` pasted the rest
+     of the brief into the gate list and `$$` became `$`. Measured by hazard
+     review B at 89260f4: a shell one-liner in a preflight command added 161
+     lines and nothing failed. All four special patterns are planted, in the
+     command and in the note. */
+  const dir = stageKernel("tiphys-impl-dollar-");
+  try {
+    const registryPath = join(dir, "gate-registry.yaml");
+    const registry = yamlModule.parse(readFileSync(registryPath, "utf8")) as {
+      preflight: { command: string[]; note: string }[];
+    };
+    registry.preflight.push({
+      command: ["bash", "-c", "grep -rn $'\\t' src/ ; echo pid $$ ; echo $& $`"],
+      note: "a shell one-liner carrying $$, $&, $` and $'",
+    });
+    writeFileSync(registryPath, `${JSON.stringify(registry, null, 2)}\n`);
+
+    const composed = composeIn(dir);
+    assert.equal(composed.status, 0, composed.stderr);
+    const rendered = rolesModule.renderBriefGateBlock(registry, rolesModule.BRIEF_GATE_BLOCK_MODE);
+    assert.ok(rendered.text.includes("echo pid $$"), "the renderer itself lost the planted text");
+    const located = rolesModule.locateGateBlock(composed.stdout, "the composed brief");
+    assert.ok(located.ok, located.ok ? "" : located.reason);
+    assert.equal(located.block, rendered.text);
+    assert.ok(
+      composed.stdout.includes(rendered.text),
+      "the renderer's block is not in the composed brief byte for byte",
+    );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 /* ------------------------------------------------------------------ */
 /* Criterion 3, fix round 1: the check's SUBJECT cannot be narrowed      */
 /* ------------------------------------------------------------------ */

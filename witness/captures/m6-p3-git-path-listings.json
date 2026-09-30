@@ -1,0 +1,272 @@
+{
+  "provenance": "Real output of git 2.43.0, captured 2026-09-30 by the M6-P3 fix round 3 implementer, for the path listings the CR-M6P3B-05 mechanism covers: each case pairs the line form a site read before this round with the -z form it reads now (and, for witness-hunks, the -U0 diff whose +++ headers src/witness/run.ts parses). Each case was recorded inside its own named test, against the fixture that test stages, by switching the test's replay helper for one run to write git's live stdout here instead of comparing it; the committed helper compares. M6-P3 fix round 4 added the witness-hunks-quoted-tab case (git 2.43.0, 2026-09-30): a name holding a space AND a non-ASCII byte, whose -U0 header git prints quoted with a trailing TAB, beside an added line whose text begins `++ `; it was recorded by a script that builds the named test's fixture with the same git commands the test's makeFixture runs, and the named test replays it. Cases and their named tests: witness-coverage, witness-hunks and witness-hunks-quoted-tab, test/witness.test.ts; scope-edit and scope-rename, test/scope-gate.test.ts; cutover-sync and cutover-restore, test/cutover.test.ts; pool-worktree-newline, test/pool.test.ts. Substitutions, the only bytes rewritten: a base commit sha in an argv is spelled <base>; in the pool case the scratch directory is spelled <tmp> and each commit sha <sha>, in the recorded stdout as the test rewrites git's live stdout. JSON escapes NUL as \\u0000, TAB as \\t and non-ASCII characters as \\u escapes, so this file is ASCII.",
+  "git": "git version 2.43.0",
+  "cases": [
+    {
+      "case": "witness-coverage",
+      "commands": [
+        {
+          "argv": [
+            "git",
+            "diff",
+            "--name-status",
+            "--no-renames",
+            "<base>...HEAD"
+          ],
+          "exit": 0,
+          "stdout": "A\tsrc/adder.ts\nA\t\"src/caf\\303\\251.ts\"\nA\ttest/adder.test.ts\nA\twitness/adder-guard.json\n"
+        },
+        {
+          "argv": [
+            "git",
+            "diff",
+            "-z",
+            "--name-status",
+            "--no-renames",
+            "<base>...HEAD"
+          ],
+          "exit": 0,
+          "stdout": "A\u0000src/adder.ts\u0000A\u0000src/caf\u00e9.ts\u0000A\u0000test/adder.test.ts\u0000A\u0000witness/adder-guard.json\u0000"
+        }
+      ]
+    },
+    {
+      "case": "witness-hunks",
+      "commands": [
+        {
+          "argv": [
+            "git",
+            "diff",
+            "--name-status",
+            "--no-renames",
+            "<base>...HEAD"
+          ],
+          "exit": 0,
+          "stdout": "A\tsrc/a b.ts\nA\t\"src/caf\\303\\251.ts\"\nA\t\"test/d\\303\\251cor.test.ts\"\nA\twitness/decorated-names.json\n"
+        },
+        {
+          "argv": [
+            "git",
+            "diff",
+            "-z",
+            "--name-status",
+            "--no-renames",
+            "<base>...HEAD"
+          ],
+          "exit": 0,
+          "stdout": "A\u0000src/a b.ts\u0000A\u0000src/caf\u00e9.ts\u0000A\u0000test/d\u00e9cor.test.ts\u0000A\u0000witness/decorated-names.json\u0000"
+        },
+        {
+          "argv": [
+            "git",
+            "diff",
+            "-U0",
+            "--no-renames",
+            "<base>...HEAD"
+          ],
+          "exit": 0,
+          "stdout": "diff --git a/src/a b.ts b/src/a b.ts\nnew file mode 100644\nindex 0000000..80f5d82\n--- /dev/null\n+++ b/src/a b.ts\t\n@@ -0,0 +1,3 @@\n+export function spaced(a, b) {\n+  return a + b;\n+}\ndiff --git \"a/src/caf\\303\\251.ts\" \"b/src/caf\\303\\251.ts\"\nnew file mode 100644\nindex 0000000..57448b2\n--- /dev/null\n+++ \"b/src/caf\\303\\251.ts\"\n@@ -0,0 +1,3 @@\n+export function accented(a, b) {\n+  return a * b;\n+}\ndiff --git \"a/test/d\\303\\251cor.test.ts\" \"b/test/d\\303\\251cor.test.ts\"\nnew file mode 100644\nindex 0000000..13133cf\n--- /dev/null\n+++ \"b/test/d\\303\\251cor.test.ts\"\n@@ -0,0 +1,9 @@\n+import test from \"node:test\";\n+import assert from \"node:assert/strict\";\n+import { spaced } from \"../src/a b.ts\";\n+import { accented } from \"../src/caf\u00e9.ts\";\n+\n+test(\"decorated names add and multiply\", () => {\n+  assert.equal(spaced(2, 3), 5);\n+  assert.equal(accented(2, 3), 6);\n+});\ndiff --git a/witness/decorated-names.json b/witness/decorated-names.json\nnew file mode 100644\nindex 0000000..c9fc320\n--- /dev/null\n+++ b/witness/decorated-names.json\n@@ -0,0 +1,24 @@\n+{\n+  \"id\": \"decorated-names-guard\",\n+  \"behavior\": \"decorated-names\",\n+  \"tests\": [\n+    \"decorated names add and multiply\"\n+  ],\n+  \"class\": \"additive\",\n+  \"dangerousStates\": [\n+    {\n+      \"kind\": \"mutation\",\n+      \"file\": \"src/a b.ts\",\n+      \"find\": \"return a + b;\",\n+      \"replace\": \"return a - b;\"\n+    },\n+    {\n+      \"kind\": \"mutation\",\n+      \"file\": \"src/caf\u00e9.ts\",\n+      \"find\": \"return a * b;\",\n+      \"replace\": \"return a + b;\"\n+    }\n+  ],\n+  \"deterministic\": true,\n+  \"repeats\": 1\n+}\n"
+        },
+        {
+          "argv": [
+            "git",
+            "ls-tree",
+            "-r",
+            "--name-only",
+            "HEAD",
+            "--",
+            "test/"
+          ],
+          "exit": 0,
+          "stdout": "test/behaviors.json\n\"test/d\\303\\251cor.test.ts\"\n"
+        },
+        {
+          "argv": [
+            "git",
+            "ls-tree",
+            "-r",
+            "-z",
+            "--name-only",
+            "HEAD",
+            "--",
+            "test/"
+          ],
+          "exit": 0,
+          "stdout": "test/behaviors.json\u0000test/d\u00e9cor.test.ts\u0000"
+        }
+      ]
+    },
+    {
+      "case": "scope-edit",
+      "commands": [
+        {
+          "argv": [
+            "git",
+            "diff",
+            "--name-status",
+            "<base>",
+            "HEAD"
+          ],
+          "exit": 0,
+          "stdout": "M\t\"src/caf\\303\\251.ts\"\n"
+        },
+        {
+          "argv": [
+            "git",
+            "diff",
+            "-z",
+            "--name-status",
+            "<base>",
+            "HEAD"
+          ],
+          "exit": 0,
+          "stdout": "M\u0000src/caf\u00e9.ts\u0000"
+        }
+      ]
+    },
+    {
+      "case": "scope-rename",
+      "commands": [
+        {
+          "argv": [
+            "git",
+            "diff",
+            "--name-status",
+            "<base>",
+            "HEAD"
+          ],
+          "exit": 0,
+          "stdout": "R089\t\"src/caf\\303\\251.ts\"\t\"src/na\\303\\257ve.ts\"\n"
+        },
+        {
+          "argv": [
+            "git",
+            "diff",
+            "-z",
+            "--name-status",
+            "<base>",
+            "HEAD"
+          ],
+          "exit": 0,
+          "stdout": "R089\u0000src/caf\u00e9.ts\u0000src/na\u00efve.ts\u0000"
+        }
+      ]
+    },
+    {
+      "case": "cutover-sync",
+      "commands": [
+        {
+          "argv": [
+            "git",
+            "diff",
+            "--cached",
+            "--name-only"
+          ],
+          "exit": 0,
+          "stdout": "\"caf\\303\\251.json\"\n"
+        },
+        {
+          "argv": [
+            "git",
+            "diff",
+            "--cached",
+            "-z",
+            "--name-only"
+          ],
+          "exit": 0,
+          "stdout": "caf\u00e9.json\u0000"
+        }
+      ]
+    },
+    {
+      "case": "cutover-restore",
+      "commands": [
+        {
+          "argv": [
+            "git",
+            "diff",
+            "--name-only",
+            "--diff-filter=A",
+            "--no-renames",
+            "<base>",
+            "HEAD",
+            "--",
+            "retired"
+          ],
+          "exit": 0,
+          "stdout": "\"retired/caf\\303\\251.md\"\n"
+        },
+        {
+          "argv": [
+            "git",
+            "diff",
+            "-z",
+            "--name-only",
+            "--diff-filter=A",
+            "--no-renames",
+            "<base>",
+            "HEAD",
+            "--",
+            "retired"
+          ],
+          "exit": 0,
+          "stdout": "retired/caf\u00e9.md\u0000"
+        }
+      ]
+    },
+    {
+      "case": "pool-worktree-newline",
+      "commands": [
+        {
+          "argv": [
+            "git",
+            "worktree",
+            "list",
+            "--porcelain"
+          ],
+          "exit": 0,
+          "stdout": "worktree <tmp>/fleet/projects/demo\nHEAD <sha>\nbranch refs/heads/main\n\nworktree <tmp>/fleet/worktrees/t-nl\nHEAD <sha>\nbranch refs/heads/task/t-nl\n\nworktree <tmp>/fleet/worktrees/t-nl\nx\nHEAD <sha>\nbranch refs/heads/task/t-nl\n\n"
+        },
+        {
+          "argv": [
+            "git",
+            "worktree",
+            "list",
+            "--porcelain",
+            "-z"
+          ],
+          "exit": 0,
+          "stdout": "worktree <tmp>/fleet/projects/demo\u0000HEAD <sha>\u0000branch refs/heads/main\u0000\u0000worktree <tmp>/fleet/worktrees/t-nl\u0000HEAD <sha>\u0000branch refs/heads/task/t-nl\u0000\u0000worktree <tmp>/fleet/worktrees/t-nl\nx\u0000HEAD <sha>\u0000branch refs/heads/task/t-nl\u0000\u0000"
+        }
+      ]
+    },
+    {
+      "case": "witness-hunks-quoted-tab",
+      "commands": [
+        {
+          "argv": [
+            "git",
+            "diff",
+            "-z",
+            "--name-status",
+            "--no-renames",
+            "<base>...HEAD"
+          ],
+          "exit": 0,
+          "stdout": "M\u0000src/plain.ts\u0000M\u0000src/zcaf\u00e9 x.ts\u0000"
+        },
+        {
+          "argv": [
+            "git",
+            "diff",
+            "-U0",
+            "--no-renames",
+            "<base>...HEAD"
+          ],
+          "exit": 0,
+          "stdout": "diff --git a/src/plain.ts b/src/plain.ts\nindex aad4989..8b9d757 100644\n--- a/src/plain.ts\n+++ b/src/plain.ts\n@@ -1 +1 @@\n-p1\n+p1 changed\ndiff --git \"a/src/zcaf\\303\\251 x.ts\" \"b/src/zcaf\\303\\251 x.ts\"\nindex 3423bfd..e9a3bbf 100644\n--- \"a/src/zcaf\\303\\251 x.ts\"\t\n+++ \"b/src/zcaf\\303\\251 x.ts\"\t\n@@ -2,0 +3 @@ q2\n+++ b/src/plain.ts\n@@ -8 +9 @@ q7\n-q8\n+q8 changed\n"
+        }
+      ]
+    }
+  ]
+}

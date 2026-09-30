@@ -41,6 +41,29 @@ thing is not written here, it is not being made.
   single-tier change adding the declaration passes the review rows, while a
   pair change after it would not, so P6 lands after P4. P5 also waits on
   delivery/decisions/DR-0065-what-a-kernel-launched-reviewer-may-do.md:1.
+  P7 lands last: it extends P5's launcher to a second harness.
+  P8 (DR-0066, faster pull-request CI) lands right after P3, before P4, so
+  every later pull request runs the faster CI.
+
+- **Speed, from 2026-09-30 evening (owner: "get a move on").** Before a
+  pull request, implementers run `npm run build`, `npm test` and their own
+  witness members by hand. The full `red-witness` sweep (about 45 minutes on
+  this four-CPU box under load) runs once, in CI on the pull request, not
+  again locally. The trade: a red there costs one CI cycle (about 16
+  minutes), against 45 minutes saved on every round.
+
+- **Proven stays proven.** The owner, 2026-09-30: "Once something is proven
+  deterministically, it is proven", then, asked for the exact scope: "yes,
+  skip re-reviews after merging main, and skip reviewer re-checks of fixes
+  proven by their tests". So:
+  - merging `main` into a reviewed branch is not re-reviewed; CI on the pull
+    request checks the combined code;
+  - a finding whose fix is proven red-then-green by its named test is closed
+    by the arbitration, without a reviewer re-check.
+  It follows that a phase is reviewed as soon as its code is final, without
+  waiting for the phases ahead of it to land. New code still gets its
+  review: M6-P3's fix round 4 is judged by the third review contract that
+  DR-0016 requires.
 
 ## Acceptance criteria are tests, here too
 
@@ -250,6 +273,14 @@ command with its expected exit. `not-testable` criteria carry a reason.
   4. Delete `produced-by`, the framing and review-contract comparisons,
      `producedByCaveat`, `dual-review-decorrelation`,
      `scripts/check-dual-review.mjs` and its gate, and their tests.
+  5. The launcher passes the kernel's reviewer grant to the executor, and
+     each executor maps it to its own harness's flags (DR-0065). The grant
+     is data in `src/` with no harness named in it: read the repository,
+     write inside the review worktree, run `node`, `npm run build` and
+     read-only `git`; no push, no network tools. The Claude Code executor
+     maps it to `--permission-mode acceptEdits` and an `--allowedTools`
+     list. One live dispatch on the cheaper tier proves the reviewer can
+     write and run.
 - acceptance:
   - p5-family-red: two verdicts whose kernel-recorded families match, with no
     single-vendor exception, are red. check: named test.
@@ -261,6 +292,11 @@ command with its expected exit. `not-testable` criteria carry a reason.
   - p5-record: a dispatched review writes a record with head, observed model,
     family and cost. check: named test with a stub executor.
   - p5-build: `npm run build` exits 0, `npm test` exits 0 with 0 fail.
+  - p5-grant: the Claude Code executor's argv carries exactly the mapped
+    grant, and the kernel passes the grant it defines. check: named tests.
+  - p5-live: not-testable in CI: it spends a real model call. One live
+    `tiphys review dispatch --tier cheaper` is recorded in the work history,
+    and its record shows a non-null verdict sha256 and an observed model.
 - hazards: a family read from a field the reviewer wrote; a review the kernel
   did not launch counted toward the pair; a failed model observation falls
   back silently to a self-reported value.
@@ -295,6 +331,101 @@ command with its expected exit. `not-testable` criteria carry a reason.
     Node at or above the floor, and a built `dist/`. check: named test or
     command.
   - p6-build: `npm run build` exits 0, `npm test` exits 0 with 0 fail.
+
+## M6-P7: a Codex harness can run a review (DR-0065)
+
+- intent: the owner decided the reviewer grant is not a Claude feature and a
+  Codex harness must be able to run a review. P5 makes the grant
+  harness-neutral; this phase adds the second executor.
+- tier: `pair`.
+- files-to-touch: `adapters/`, `src/`, `plugin/`, `schemas/`, `test/`,
+  `witness/`, `charter.yaml`, `package.json`, `package-lock.json`,
+  `delivery/`.
+- steps:
+  1. Install the Codex CLI to a scratch prefix with npm (pin the version) and
+     read its own `codex exec --help`. Every flag used is quoted from that
+     output, not from memory.
+  2. `adapters/codex/review.ts` implements the kernel's `ReviewExecutor`: its
+     own vocabulary (id and version), a tier-to-model map built from models
+     the API lists, family `openai` for every model, `command()` mapping the
+     kernel's grant to Codex's sandbox and approval settings (writes inside
+     the worktree, no network), and `observe()` reading the served model and
+     usage from Codex's own output.
+  3. One real Codex run is captured and committed as a fixture. The observer
+     is tested against it, never against hand-written rows.
+  4. Families from two vocabularies are comparable only when both tokens are
+     members of `charter.yaml` `review-families.available`. A token outside
+     that list is red, naming it. This keeps the P5 refusal for undeclared
+     tokens and lets one Claude and one Codex review form a distinct pair.
+  5. One live `tiphys review dispatch --executor adapters/codex/review.ts
+     --tier cheaper`, with its record in the work history.
+  6. `tiphys review dispatch` without `--executor` today falls back to
+     `@tiphys/claude-code-plugin`, named in `src/review.ts`. The fallback
+     moves to project configuration (for example `review-executor` in
+     `charter.yaml`), so a project run by a Codex harness needs no flag and
+     `src/` names no harness package.
+  7. The work history reports the measured cost of that review next to a
+     Claude review of the same brief. The orchestrator then decides whether
+     `review-families.available` gains `openai`, which would end the
+     single-vendor exception and make every pair cross-vendor (DR-0063).
+- acceptance:
+  - p7-argv: the Codex executor's argv carries the mapped grant exactly.
+    check: named test.
+  - p7-observe: the observer returns the served model from the committed real
+    capture, and a capture without it reads as not observed. check: named
+    tests.
+  - p7-families: distinct families from two vocabularies, both in the
+    charter's list, are green; a token outside the list is red. check: named
+    tests.
+  - p7-no-vendor-in-src: no vendor or harness name enters `src/`. check: the
+    existing test that asserts it.
+  - p7-live: not-testable in CI: it needs an OpenAI key and spends a real
+    call. Recorded in the work history with its record.
+  - p7-build: `npm run build` exits 0, `npm test` exits 0 with 0 fail.
+- hazards: the Codex child inherits pull-request credentials; Codex's
+  sandbox is wider than the grant (network on, writes outside the worktree);
+  the served model is read from text the reviewer wrote; a family token no
+  one declared is compared as if it were a vendor.
+- not in scope: publishing the adapter as its own npm package (package names
+  are DR-0008's; that needs a new record).
+
+## M6-P8: pull-request CI runs each check once (DR-0066)
+
+- intent: the owner decided a pull request's CI runs each check once. It
+  was about 45 minutes, most of it the suite run three times and 164 stored
+  witnesses re-evaluated on every pull request. Lands before M6-P4.
+- tier: `pair`.
+- files-to-touch: `.github/workflows/gates.yml`, `gate-registry.yaml`,
+  `src/`, `test/`, `witness/`, `delivery/`.
+- steps:
+  1. Remove the workflow's separate `npm test` step; the `suite` gate runs
+     the same suite. `npm ci` and `npm run build` stay.
+  2. The M1 exit test step runs on the push event only.
+  3. The `red-witness` gate, on the `pull_request` event, evaluates the
+     pull request's own witness specs, and a stored spec only when the diff
+     from the merge base changes a file one of its members mutates or a test
+     file it runs. On the `push` event it evaluates every stored spec. Today
+     the gate's registry entry names `events: [pull_request]` only, so the
+     push run never sweeps; `push` is added (same `diff-touches`
+     precondition), so the full sweep moves after the merge rather than
+     disappearing. The gate's detail line names how many stored specs it
+     skipped and why, so a skip is visible, never silent.
+- acceptance:
+  - p8-selection: named tests, one per case: on `pull_request`, a stored spec
+    whose files the diff does not touch is skipped and counted; one whose
+    mutated file is in the diff is evaluated; one whose test file is in the
+    diff is evaluated; on `push`, every stored spec is evaluated.
+  - p8-workflow: a named test reads `.github/workflows/gates.yml`: no step
+    runs `npm test` on its own, and the M1 exit test step does not run on
+    `pull_request`.
+  - p8-time: not-testable locally: it is the duration of this pull request's
+    own `gates` job, quoted with its run id and head.
+  - p8-build: `npm run build` exits 0, `npm test` exits 0 with 0 fail.
+- hazards: a skip rule that skips a witness whose test the diff did change
+  (for example a renamed or moved test file); the push event taking the
+  pull-request arm, which would make the full sweep never run; a selection
+  that fails open when the diff cannot be computed (it must evaluate
+  everything, or error).
 
 ## Not in scope
 

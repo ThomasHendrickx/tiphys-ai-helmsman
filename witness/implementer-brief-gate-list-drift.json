@@ -16,8 +16,8 @@
     {
       "kind": "mutation",
       "file": "src/commands/brief.ts",
-      "find": "    body = body.replace(BRIEF_GATE_LIST_PLACEHOLDER, gateList.text);",
-      "replace": "    body = body.replace(BRIEF_GATE_LIST_PLACEHOLDER, \"\");"
+      "find": "    body = body.replace(BRIEF_GATE_LIST_PLACEHOLDER, () => gateList.text);",
+      "replace": "    body = body.replace(BRIEF_GATE_LIST_PLACEHOLDER, () => \"\");"
     }
   ],
   "deterministic": true,

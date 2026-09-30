@@ -1,0 +1,29 @@
+{
+  "kind": "verdict",
+  "phase": "M6-P8",
+  "head": "55a78500a74e26852c354b956f14f7a373509bcd",
+  "tiphys-version": "0.2.2",
+  "produced-by": "claude-haiku-4-5-20251001",
+  "framing": "hazard-trust-first",
+  "review-contract": "hazard",
+  "verdict": "APPROVE",
+  "hazard-classes-addressed": [
+    {
+      "class-id": "hazard-1-skip-rule-misses-changed-files",
+      "probed": "storedWitnessEvaluated function logic: checks both mutated files and changed test files. Changed test files traced in head and merge-base sources to find witness's named test, handling file moves (D+A in --no-renames) and test renames within files. Three concrete test cases covered: test file edited in place (unchanged stored witness evaluation), test file moved between merge base and head (D+A form, witness found in moved file), test renamed inside file (witness gone from head, found in merge-base). All three tests pass at this head (test/witness.test.ts lines 2629-2663).",
+      "cleared-because": "The skip rule now correctly handles renamed and moved test files by tracing the witness's named test in both head and merge-base sources, and the implementation is red-witnessed by three structurally different test cases that all pass."
+    },
+    {
+      "class-id": "hazard-2-push-arm-takes-pr-arm",
+      "probed": "storedWitnessEvaluated returns true when event is not pull_request, evaluating every stored witness on push and undefined events. Gate registry declares events: [pull_request, push]. Workflow passes --event pull_request on pull_request trigger and --event push on push trigger. Integration test verifies event parameter is passed to runner and gate selection by event filters correctly: test/gate-registry.test.ts line 1459 ('--event push selects only the gates whose events include push, --event pull_request only the others') passes and mutates red at d584639. M1 exit test step condition verifies it runs only on push (github.event_name != 'pull_request').",
+      "cleared-because": "The implementation prevents push from taking the pull-request arm by checking event type in storedWitnessEvaluated and returning true (evaluate all) on push, and the gate registry and workflow both correctly declare and pass the event parameter."
+    },
+    {
+      "class-id": "hazard-3-selection-fails-open-on-diff-error",
+      "probed": "When computePhaseDiff fails or when reading merge-base source fails, error messages explicitly state 'so no stored witness is skipped', preventing silent skipping on failures. Two error sites with explicit messaging: src/gates/red-witness.ts line 279 and line 456. Test verifies error outcome on unresolvable base (test/witness.test.ts lines 2681-2695) with correct error detail stating diff could not be computed and empty skippedStored array. Measured: outcome exits error, detail contains required message, evaluations empty.",
+      "cleared-because": "The implementation fails closed on diff computation errors with explicit messages preventing silent skipping, and the test red-witnesses the failure case by demonstrating the error message and empty evaluation array."
+    }
+  ],
+  "findings": [],
+  "deviations-judged": []
+}

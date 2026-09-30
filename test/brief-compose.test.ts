@@ -284,7 +284,7 @@ test("brief compose renders the named phase's acceptance array", () => {
 
   const flat = rendered.replace(/\s+/g, " ");
   for (const fragment of [
-    "criterion: node --test test/importer.test.ts exits 0 and reports 4 tests, 0 failing.",
+    "criterion: The four importer tests in test/importer.test.ts run and pass, each named by its title.",
     "A staged 429 response is retried exactly twice",
   ]) {
     assert.ok(flat.includes(fragment), `the rendered acceptance criteria drop: ${fragment}`);
