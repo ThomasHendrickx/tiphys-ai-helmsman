@@ -105,3 +105,39 @@ Two cheaper-tier checks at the same head (D and E, claude-haiku-4-5,
 $0.29 and $0.36) cleared their checks from the work history's claims
 without mutating anything; both were discarded and are not committed.
 Their records stay outside the repository.
+
+## CI landing (code head bfd941b)
+
+- reviews: delivery/review/m6-p5-hazard-i.json, delivery/review/m6-p5-hazard-j.json
+
+Pull request #233's `pull_request` run went red on two gates:
+`merge-preconditions` (the workflow passed the branch name as `--phase`, so
+the gate counted none of the `m6-p5` records) and `red-witness` (a stored
+spec, `witness/mechanism-index-claim-file-rule.json`, failed rule (d) after
+M6-P6 rewrapped the tuition text it mutates). Fixes: the step takes the
+phase from the title's leading `Mn-Pn:` when the branch names none, with a
+named test; the spec is removed (DR-0061). Work history "CI landing".
+
+Two kernel-launched strongest-tier delta checks at `acc09b0`, both APPROVE:
+
+- G ($10.10, verdict sha256 `db0c71af...`): low CR-M6P5G-01, the
+  test runs the step with `bash -e` and not the runner's `--noprofile --norc
+  -e -o pipefail`. No change: the derivation has one pipeline, and the
+  injection, branch-first and fallback arms were each measured by hand.
+- H ($7.28, verdict sha256 `248d3615...`): low CR-M6P5H-01, the removal
+  commit's one-line reason is imprecise (the find texts still resolve; the
+  likelier fault is that the T-005 member is not a dangerous state). No
+  change: the removal stands either way, and a removal's reason is one line
+  (DR-0061).
+
+`acc09b0` and its parent were then recreated as signed commits `bfd941b`
+and `1b7f661` (same trees, same messages; the unsigned ones were never
+pushed). G and H name `acc09b0`, which is not in this history, so their
+verdicts and records are not committed. Their records stay at
+`/home/user/.orch/review-out/m6-p5/review-m6-p5-20260930t223755z-83144a.json`
+and `...t223815z-297d56.json`, outside the repository.
+
+Two kernel-launched strongest-tier identity checks at `bfd941b` (I and J)
+proved the trees equal, the messages equal and trailer-free, and ran the
+named test (1 test, 1 pass). Both APPROVE with no finding: I ($0.85) and J
+($1.11). The landing head differs from `bfd941b` only under delivery/.
