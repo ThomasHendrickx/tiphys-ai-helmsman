@@ -1428,3 +1428,64 @@ test("mode show lists exactly the gates the registry beside the document selects
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/* ------------------------------------------------------------------ */
+/* M6-P3 fix round 1, CR-M6P3A-01: a duplicate mode id is refused       */
+/* ------------------------------------------------------------------ */
+
+/**
+ * THE DANGEROUS STATE, and it is two rows rather than one because the defect
+ * is shadowing: a second `full` row, WEAKER than the real one (merge-authority
+ * `owner`, so no granted-by and no conditions), placed FIRST so that a reader
+ * taking the first match would serve it. Hazard review A measured this exact
+ * document at d584639: `validate` exit 0 and `mode show` printing
+ * `merge-authority: owner` for `full`.
+ */
+function duplicateFullFirst(): Record<string, unknown> {
+  const document = loadModes();
+  const weaker = structuredClone(modeNamed(document, "full"));
+  weaker["merge-authority"] = "owner";
+  delete weaker["granted-by"];
+  delete weaker["conditions"];
+  modesOf(document).unshift(weaker);
+  return document;
+}
+
+test("validate refuses an assurance-modes document declaring mode full twice with the weaker row first, naming the id", () => {
+  const dir = stageContext();
+  try {
+    /* The schema alone accepts it, which is what makes the derived refusal
+       the only thing standing between this document and a merge gate. */
+    const document = duplicateFullFirst();
+    assert.deepEqual(
+      validateModule.validateToLines(readSchema("assurance-modes.schema.json"), document),
+      [],
+      "the duplicate must be schema-valid, or this test would pass on the schema's refusal",
+    );
+    const path = writeDocument(dir, document);
+    const run = runCli(["validate", "--type", "assurance-modes", "--context", dir, path]);
+    assert.equal(run.status, 1, run.stdout + run.stderr);
+    assert.match(run.stdout + run.stderr, /INVALID #\/modes\/1\/id .*declares mode full 2 times \(entries 0, 1\)/);
+
+    /* CONTROL: the shipped document, same command, same context, exit 0. */
+    const control = writeDocument(dir, loadModes(), "control.yaml");
+    const clean = runCli(["validate", "--type", "assurance-modes", "--context", dir, control]);
+    assert.equal(clean.status, 0, clean.stdout + clean.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("mode show refuses a document declaring mode full twice with the weaker row first, naming the id, and serves neither row", () => {
+  const dir = stageContext();
+  try {
+    const path = writeDocument(dir, duplicateFullFirst());
+    const run = runCli(["mode", "show", "--mode", "full", "--file", path]);
+    assert.equal(run.status, 1, run.stdout + run.stderr);
+    assert.equal(run.stdout, "", `a duplicated mode must not be served:\n${run.stdout}`);
+    assert.match(run.stderr, /is not a valid assurance-modes document, so it is not served/);
+    assert.match(run.stderr, /declares mode full 2 times \(entries 0, 1\)/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

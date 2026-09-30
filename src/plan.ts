@@ -32,6 +32,8 @@
  * undeclared, and the auditor would be right to reject it.
  */
 
+import { describeDuplicateIds, duplicateIds } from "./ids.ts";
+
 /** The five properties the delivered phase-declaration schema requires. */
 export interface PhaseDeclaration {
   id: string;
@@ -130,6 +132,26 @@ function stringArray(value: unknown): string[] {
 }
 
 /**
+ * Refuse a plan that declares one phase id more than once, or return
+ * undefined (M6-P3 fix round 1, CR-M6P3A-01).
+ *
+ * Both readers of a plan phase by id take the FIRST match: `projectPhase`
+ * below and `brief compose` (src/commands/brief.ts). A second entry under an
+ * id already taken was therefore shadowed without a word, and the declaration
+ * the scope auditor reads, or the brief an agent is handed, came from
+ * whichever entry sat first. Both readers call this before they look.
+ */
+export function duplicatePhaseIdRefusal(plan: unknown, source: string): string | undefined {
+  const document = asRecord(plan);
+  const phases = Array.isArray(document?.["phases"]) ? (document["phases"] as unknown[]) : [];
+  const duplicates = duplicateIds(phases, (phase) => {
+    const id = asRecord(phase)?.["id"];
+    return typeof id === "string" ? id : undefined;
+  });
+  return duplicates.length === 0 ? undefined : describeDuplicateIds(source, "phase", duplicates);
+}
+
+/**
  * Project one phase of a decoded plan into its declaration.
  *
  * The filename is the phase id LOWERCASED, because CI derives `--phase` from
@@ -144,6 +166,10 @@ export function projectPhase(
   const document = asRecord(plan);
   if (document === undefined) {
     return { ok: false, reason: "the plan document is not a mapping" };
+  }
+  const duplicated = duplicatePhaseIdRefusal(document, "the plan");
+  if (duplicated !== undefined) {
+    return { ok: false, reason: duplicated };
   }
   const phases = Array.isArray(document["phases"]) ? document["phases"] : [];
   const phase = asRecord(

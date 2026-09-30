@@ -742,6 +742,34 @@ test("the fix-round framing resolves fix-round-not-covered first, and moving tha
   );
 });
 
+test("a checklist declaring framing fix-round twice with the weaker entry first is refused at load naming the id, rather than resolved under the first", () => {
+  /* M6-P3 FIX ROUND 1, CR-M6P3A-01. The resolver reads a framing by FIRST
+     match, and M6-P3 deleted the derived check that refused a duplicate
+     framing id. The weaker copy orders `changed-code` first, so a reader
+     taking the first match would put the fix-round probes behind it and
+     "the reviewer's FIRST check is item 3" would silently stop holding. */
+  const document = readShipped("clean-room");
+  const framings = document["framings"] as Record<string, unknown>[];
+  const real = framings.find((framing) => framing["id"] === "fix-round");
+  assert.ok(real !== undefined, "the shipped clean-room checklist declares no fix-round framing");
+  const weaker = structuredClone(real);
+  weaker["orders-probes"] = ["changed-code"];
+  framings.unshift(weaker);
+
+  const projected = checklistsModule.projectChecklist(document, "duplicate.yaml", "duplicate.yaml");
+  assert.equal(projected.ok, false, "a checklist declaring one framing id twice was loaded");
+  assert.match(
+    (projected as { ok: false; reason: string }).reason,
+    /declares framing fix-round 2 times \(entries 0, 2\)/,
+  );
+
+  /* CONTROL: the shipped document loads through the same function. */
+  assert.equal(
+    checklistsModule.projectChecklist(readShipped("clean-room"), "shipped.yaml", "shipped.yaml").ok,
+    true,
+  );
+});
+
 test("a framing drops no probe, it only reorders", () => {
   /* A framing that FILTERED would let an entry point silently retire a probe,
      which is the same shape as an extra file silently overriding one. */

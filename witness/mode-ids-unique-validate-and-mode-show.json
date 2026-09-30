@@ -1,0 +1,25 @@
+{
+  "id": "mode-ids-unique-validate-and-mode-show",
+  "behavior": "mode-ids-unique-validate-refuses",
+  "tests": [
+    "validate refuses an assurance-modes document declaring mode full twice with the weaker row first, naming the id",
+    "mode show refuses a document declaring mode full twice with the weaker row first, naming the id, and serves neither row"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/ids.ts",
+      "find": "    .filter(([, indexes]) => indexes.length > 1)",
+      "replace": "    .filter(() => false)"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  modelResolutionSubjectEcho,\n  modeIdsAreUnique,\n];",
+      "replace": "  modelResolutionSubjectEcho,\n];"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

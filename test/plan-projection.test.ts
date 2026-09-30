@@ -376,3 +376,50 @@ test("the real scope auditor accepts a generated declaration from its merge base
     rmSync(second.outside, { recursive: true, force: true });
   }
 });
+
+/* ------------------------------------------------------------------ */
+/* M6-P3 fix round 1, CR-M6P3A-01: a duplicate phase id is refused      */
+/* ------------------------------------------------------------------ */
+
+/**
+ * A plan declaring M9-P1 twice, the WEAKER entry first: a copy whose
+ * files-to-touch is the directory prefix `src/`, which the scope auditor reads
+ * as a grant of the whole tree. A reader taking the first match projects that
+ * copy and never mentions the other.
+ */
+function planWithWiderDuplicateFirst(): Record<string, unknown> {
+  const plan = planFixture();
+  const phases = plan["phases"] as Record<string, unknown>[];
+  const real = phases.find((phase) => phase["id"] === "M9-P1");
+  assert.ok(real !== undefined, "the template plan declares no M9-P1");
+  const wider = structuredClone(real);
+  wider["files-to-touch"] = ["src/"];
+  phases.unshift(wider);
+  return plan;
+}
+
+test("plan project refuses a plan declaring phase M9-P1 twice with the wider entry first, naming the id, and writes no declaration", () => {
+  const dir = scratch();
+  try {
+    const path = join(dir, "plan.yaml");
+    writeFileSync(path, yamlModule.stringify(planWithWiderDuplicateFirst()));
+    const run = spawnSync(
+      process.execPath,
+      [cliEntry, "plan", "project", "--plan", path, "--phase-id", "M9-P1", "--stdout"],
+      { cwd: repoRoot, encoding: "utf8" },
+    );
+    assert.equal(run.status, 1, run.stdout + run.stderr);
+    assert.equal(run.stdout, "", `a duplicated phase must not be projected:\n${run.stdout}`);
+    assert.match(run.stderr, /declares phase M9-P1 2 times \(entries 0, 1\)/);
+
+    /* CONTROL: the template plan itself, same command, exit 0. */
+    const control = spawnSync(
+      process.execPath,
+      [cliEntry, "plan", "project", "--phase-id", "M9-P1", "--stdout"],
+      { cwd: repoRoot, encoding: "utf8" },
+    );
+    assert.equal(control.status, 0, control.stdout + control.stderr);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});

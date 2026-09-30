@@ -1,0 +1,30 @@
+{
+  "id": "mode-ids-unique-merge-checks",
+  "behavior": "mode-ids-unique-merge-checks-refuse",
+  "tests": [
+    "the merge checks refuse a modes document declaring the charter's mode twice with the weaker row first, rather than reporting that row's regime"
+  ],
+  "class": "additive",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/ids.ts",
+      "find": "    .filter(([, indexes]) => indexes.length > 1)",
+      "replace": "    .filter(() => false)"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "  if (duplicated.length > 0) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/checks.ts",
+      "find": "    (duplicate) => duplicate.id === modeId,",
+      "replace": "    (duplicate) => duplicate.id !== modeId,"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2
+}

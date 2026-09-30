@@ -37,6 +37,8 @@ import { join, relative } from "node:path";
 import { decodeDocument, readOperatorPath } from "./validate.ts";
 import type { Diagnostic } from "./validate.ts";
 import { classifyEntry } from "./task.ts";
+import { describeDuplicateIds, duplicateIds } from "./ids.ts";
+import type { DuplicateId } from "./ids.ts";
 
 /** What one derived check produced. */
 export interface CheckOutcome {
@@ -145,6 +147,46 @@ function eachMode(
   }
   return rows;
 }
+
+/**
+ * Every mode id declared more than once, compared in the CANONICAL form the
+ * merge checks resolve a charter's mode with (`canonicalScalar`), so a row
+ * that the regime reader would match counts as a duplicate here too. Indexes
+ * are positions in `modes[]`. M6-P3 fix round 1, CR-M6P3A-01.
+ */
+export function duplicateModeIds(document: unknown): DuplicateId[] {
+  const rows = eachMode(document);
+  return duplicateIds(rows, (row) => {
+    const reading = canonicalScalar(row.id);
+    return reading.ok ? reading.value : undefined;
+  }).map((duplicate) => ({
+    id: duplicate.id,
+    indexes: duplicate.indexes.map((position) => (rows[position] as { index: number }).index),
+  }));
+}
+
+/**
+ * `modes[].id` selects exactly one mode. Reinstated by M6-P3 fix round 1
+ * (CR-M6P3A-01) after this phase deleted it: `tiphys validate` and
+ * `tiphys mode show` refuse through it, and the merge checks refuse through
+ * `duplicateModeIds` directly. Prevents: a merge judged under a mode row other
+ * than the one the project meant, because a reader took the first match.
+ */
+export const modeIdsAreUnique: DerivedCheck = {
+  id: "mode-ids-are-unique",
+  type: "assurance-modes",
+  requiresContext: false,
+  run(instance: unknown): CheckOutcome {
+    const violations: Diagnostic[] = [];
+    for (const duplicate of duplicateModeIds(instance)) {
+      const message = describeDuplicateIds("this assurance-modes document", "mode", [duplicate]);
+      for (const index of duplicate.indexes.slice(1)) {
+        violations.push({ pointer: `#/modes/${String(index)}/id`, message });
+      }
+    }
+    return { violations, reports: [] };
+  },
+};
 
 /**
  * Read and decode a document from the CONTEXT directory, or say why not.
@@ -2140,6 +2182,23 @@ function establishDelegatedRegime(
      comparison is the `merge-authority` one below, and THAT one is fail-closed
      under collapsing, because more values matching the delegated constant
      means the decorrelation requirement applies more often, never less. */
+  /* M6-P3 FIX ROUND 1, CR-M6P3A-01. The `.find` below takes the FIRST row
+     whose id matches, so a second row under the charter's mode id, placed
+     earlier with a weaker merge-authority, used to decide the regime here and
+     turn both merge checks into a REPORT. The duplicate is refused first,
+     through the same `duplicateModeIds` the `mode-ids-are-unique` check uses,
+     so this reader and `tiphys validate` cannot disagree about which rows
+     share an id. */
+  const duplicated = duplicateModeIds(modesDocument.value).filter(
+    (duplicate) => duplicate.id === modeId,
+  );
+  if (duplicated.length > 0) {
+    return {
+      kind: "violation",
+      pointer: "#/produced-by",
+      message: `${describeDuplicateIds(modesDocument.path, "mode", duplicated)}; the merge-authority of mode ${modeId} is therefore ambiguous, and a merge check must not choose one`,
+    };
+  }
   const mode = eachMode(modesDocument.value).find((row) => {
     const reading = canonicalScalar(row.id);
     return reading.ok && reading.value === modeId;
@@ -3558,6 +3617,7 @@ const registry: DerivedCheck[] = [
   dualReviewDecorrelation,
   verdictPairApproves,
   modelResolutionSubjectEcho,
+  modeIdsAreUnique,
 ];
 
 /** Register a check. Later phases append their own (section 2.3's table). */

@@ -106,6 +106,7 @@ const scriptModule = (await import(
 
 const yamlModule = (await import("yaml")) as unknown as {
   parse: (text: string) => unknown;
+  stringify: (value: unknown) => string;
 };
 
 /**
@@ -681,6 +682,33 @@ test("a mode that states no merge-authority is refused rather than reported as n
     assert.equal(run.status, 1, run.output);
     assert.match(run.output, /declares no merge-authority for mode full/);
     assert.match(run.output, /could not be established/);
+    assert.doesNotMatch(run.output, /which is not a delegated grant/);
+  });
+});
+
+test("the merge checks refuse a modes document declaring the charter's mode twice with the weaker row first, rather than reporting that row's regime", () => {
+  /* M6-P3 FIX ROUND 1, CR-M6P3A-01. The regime reader took the FIRST mode row
+     whose id matched the charter, so a second `full` row declaring
+     merge-authority `owner`, placed ahead of the real one, turned this
+     shared-family pair from red into a REPORT ("not a delegated grant") and
+     exit 0. Measured by hazard review A at d584639. THE PAIR IS THE
+     SHARED-FAMILY ONE, so a green here is a wrong merge authorisation. */
+  withContext("full", SHARED_FAMILY, (dir) => {
+    const path = join(dir, "assurance-modes.yaml");
+    const document = yamlModule.parse(readFileSync(path, "utf8")) as {
+      modes: Record<string, unknown>[];
+    };
+    const real = document.modes.find((mode) => mode["id"] === "full");
+    assert.ok(real !== undefined, "the shipped document declares no full mode");
+    const weaker = structuredClone(real);
+    weaker["merge-authority"] = "owner";
+    delete weaker["granted-by"];
+    delete weaker["conditions"];
+    document.modes.unshift(weaker);
+    writeFileSync(path, yamlModule.stringify(document));
+    const run = runScript(dir);
+    assert.equal(run.status, 1, run.output);
+    assert.match(run.output, /declares mode full 2 times \(entries 0, 1\)/);
     assert.doesNotMatch(run.output, /which is not a delegated grant/);
   });
 });

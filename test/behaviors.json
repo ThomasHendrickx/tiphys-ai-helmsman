@@ -1119,5 +1119,12 @@
   "m6-p2-single-refusal-red": "a single change whose one hazard verdict reads FIX-ROUND-NEEDED is red at condition-2 through the real gate",
   "m6-p2-pin-rewrite-pair": "a pinned name rewritten from a version to file:, a git URL or an npm: alias is not a version change, so the manifest classifies pair",
   "m6-p2-manifest-added-deleted-pair": "a declared manifest added or deleted by the change classifies pair, naming which",
-  "m6-p2-manifest-unparseable-pair": "a declared manifest that does not parse as JSON on either side classifies pair"
+  "m6-p2-manifest-unparseable-pair": "a declared manifest that does not parse as JSON on either side classifies pair",
+  "mode-ids-unique-validate-refuses": "validate refuses an assurance-modes document declaring mode full twice with the weaker row first, naming the id",
+  "mode-ids-unique-mode-show-refuses": "mode show refuses a document declaring mode full twice with the weaker row first, naming the id, and serves neither row",
+  "mode-ids-unique-merge-checks-refuse": "the merge checks refuse a modes document declaring the charter's mode twice with the weaker row first, rather than reporting that row's regime",
+  "plan-project-duplicate-phase-id-refused": "plan project refuses a plan declaring phase M9-P1 twice with the wider entry first, naming the id, and writes no declaration",
+  "brief-compose-duplicate-phase-id-refused": "brief compose refuses a plan declaring phase M9-P1 twice with the weaker entry first, naming the id",
+  "checklist-duplicate-framing-id-refused": "a checklist declaring framing fix-round twice with the weaker entry first is refused at load naming the id, rather than resolved under the first",
+  "brief-compose-refuses-without-project-registry": "brief compose of an implementer brief from a directory with no gate-registry.yaml refuses naming the missing file"
 }

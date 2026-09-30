@@ -56,6 +56,7 @@ import {
   splitFrontmatter,
 } from "../roles.ts";
 import { locateCharters } from "../charter.ts";
+import { duplicatePhaseIdRefusal } from "../plan.ts";
 import { readRegistryDocument } from "../gates/run.ts";
 import { refuseOpenForWrite, readRegularFileIfPresent } from "../task.ts";
 import { decodeDocument, formatDiagnostics, readOperatorPath } from "../validate.ts";
@@ -416,6 +417,13 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
     return { ok: false, reason: planDecoded.reason };
   }
   const plan = asRecord(planDecoded.value);
+  /* CR-M6P3A-01: the `.find` below takes the first match, so a duplicated
+     phase id is refused before it, by the same function `tiphys plan project`
+     uses. */
+  const duplicated = duplicatePhaseIdRefusal(plan, options.planFile);
+  if (duplicated !== undefined) {
+    return { ok: false, reason: duplicated };
+  }
   const phases = Array.isArray(plan?.["phases"]) ? (plan["phases"] as unknown[]) : [];
   const phase = phases
     .map((candidate) => asRecord(candidate))
@@ -501,20 +509,30 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
 
 /**
  * The gate list for a composed brief: the project's `gate-registry.yaml` in the
- * working directory, or the kernel's shipped one when the project has none,
- * validated and rendered for BRIEF_GATE_BLOCK_MODE. A registry that selects no
- * gate for that mode is refused rather than rendered as an empty table.
+ * working directory, validated and rendered for BRIEF_GATE_BLOCK_MODE. A
+ * project with no registry is refused, naming the file, rather than handed the
+ * kernel's own list labelled as the project's (M6-P3 fix round 1,
+ * CR-M6P3A-02); `tiphys mode show` refuses the same way. A registry that
+ * selects no gate for that mode is refused rather than rendered as an empty
+ * table.
  */
 function renderProjectGateList(
   workingDirectory: string,
   root: string,
 ): { ok: true; text: string } | { ok: false; reason: string } {
-  const projectPath = join(workingDirectory, "gate-registry.yaml");
-  const project = readRegularFileIfPresent(projectPath);
+  const path = join(workingDirectory, "gate-registry.yaml");
+  const project = readRegularFileIfPresent(path);
   if (project.kind === "refused") {
     return { ok: false, reason: project.reason };
   }
-  const path = project.kind === "read" ? projectPath : join(root, "gate-registry.yaml");
+  if (project.kind !== "read") {
+    return {
+      ok: false,
+      reason:
+        `the gate list could not be rendered: ${path} does not exist; the project writes its own, ` +
+        `starting from ${join(root, "templates", "gate-registry.example.yaml")}`,
+    };
+  }
   const registry = readRegistryDocument(path);
   if (!registry.ok) {
     return {

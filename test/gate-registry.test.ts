@@ -1639,7 +1639,11 @@ test("no environment variable changes a production gate's reported status (grep 
   walk(gatesDir);
   assert.ok(files.length > 0, "no gate source was read");
   const namedRead = /process\.env(?:\.([A-Za-z_][A-Za-z0-9_]*)|\[\s*["']([^"']+)["']\s*\])/g;
-  const ALLOWED_NAMES = new Set(["TIPHYS_IMPLEMENTER_TOKEN"]);
+  /* EMPTY since M6-P3 fix round 1 (CR-M6P3A-03): the one name it held,
+     TIPHYS_IMPLEMENTER_TOKEN, was read only by the credential-token arm this
+     phase deleted, and an allowlisted name no gate reads is a hole a new
+     verdict switch could use. */
+  const ALLOWED_NAMES = new Set<string>();
   for (const file of files) {
     for (const [index, line] of readFileSync(file, "utf8").split("\n").entries()) {
       for (const match of line.matchAll(namedRead)) {
