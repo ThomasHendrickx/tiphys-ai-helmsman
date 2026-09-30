@@ -37,6 +37,7 @@ import { writeFileSync } from "node:fs";
 import { STAMP_FIELD, ownVersionForStamp } from "../stamp.ts";
 import { join } from "node:path";
 import {
+  DROPPED_REVIEW_CONTRACT,
   REVIEW_CONTRACTS,
   REVIEW_CONTRACT_ROLE,
   ROLE_BRIEF_FILES,
@@ -356,7 +357,17 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
   let body = expanded.text;
   let reviewContract: string | undefined;
   if (options.roleId === REVIEW_CONTRACT_ROLE) {
-    reviewContract = options.reviewContract ?? "criteria";
+    reviewContract = options.reviewContract ?? "hazard";
+    if (reviewContract === DROPPED_REVIEW_CONTRACT) {
+      /* M6-P2: named rather than folded into "unknown", so a dispatch still
+         asking for it is told why it is refused and what replaced it. */
+      return {
+        ok: false,
+        reason:
+          `review contract ${DROPPED_REVIEW_CONTRACT} was dropped by DR-0064: acceptance criteria are tests, ` +
+          `and the only review contract is ${REVIEW_CONTRACTS.join(", ")}`,
+      };
+    }
     if (!REVIEW_CONTRACTS.includes(reviewContract)) {
       return {
         ok: false,

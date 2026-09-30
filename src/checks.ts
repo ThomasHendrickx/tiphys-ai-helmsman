@@ -2446,11 +2446,9 @@ export const verdictDeviationsJudged: DerivedCheck = {
  * criteria while live-locking every supervision command.
  *
  * IT APPLIES EXACTLY WHERE THE CONTRACT APPLIES. A verdict whose
- * `review-contract` is `criteria` is not asserted against, because the
- * criteria contract is not the one that owes hazard statements, and a check
- * that reddened on it would push reviewers to fill the array with nothing.
- * That the criteria arm is unaffected is asserted by a test rather than left
- * as an implication.
+ * `review-contract` is `criteria` (history: DR-0064 dropped that contract) is
+ * not asserted against, because the criteria contract did not owe hazard
+ * statements. A verdict with no `review-contract` is a hazard verdict (M6-P2).
  */
 export const verdictHazardClassesAddressed: DerivedCheck = {
   id: "verdict-hazard-classes-addressed",
@@ -2469,7 +2467,10 @@ export const verdictHazardClassesAddressed: DerivedCheck = {
       };
     }
     const verdict = asRecord(instance);
-    if (verdict?.["review-contract"] !== "hazard") {
+    /* M6-P2 (DR-0064): every review is a hazard review, and a new verdict need
+       not carry `review-contract`, so only a HISTORY verdict of the dropped
+       criteria contract is exempt. `!== "hazard"` would exempt every new one. */
+    if (verdict?.["review-contract"] === "criteria") {
       return EMPTY;
     }
     const resolved = readVerdictPlanPhase(
@@ -2488,7 +2489,7 @@ export const verdictHazardClassesAddressed: DerivedCheck = {
       if (!addressedSet.has(id)) {
         violations.push({
           pointer: "#/hazard-classes-addressed",
-          message: `hazard class ${id} of phase ${String(verdict["phase"])} in ${resolved.path} has no entry, so this hazard review did not address it`,
+          message: `hazard class ${id} of phase ${String(verdict?.["phase"])} in ${resolved.path} has no entry, so this hazard review did not address it`,
         });
       }
     }
@@ -2917,12 +2918,13 @@ function unresolvedTreeReport(check: string, count: number, trees: Set<string>):
 /** Where a project's committed review verdicts live (DR-0012 condition 1). */
 const REVIEW_DIRECTORY = join("delivery", "review");
 
-/** The three dimensions two verdicts of one head must differ on. */
-export const DECORRELATION_DIMENSIONS: readonly string[] = [
-  "produced-by",
-  "framing",
-  "review-contract",
-];
+/**
+ * The dimension two verdicts of one head must differ on. `framing` and
+ * `review-contract` were dropped by M6-P2: DR-0064 drops the criteria contract,
+ * so every review is a hazard review, and DR-0063 defines `pair` as two HAZARD
+ * reviews, which a framing or contract distinctness rule would refuse.
+ */
+export const DECORRELATION_DIMENSIONS: readonly string[] = ["produced-by"];
 
 /** The merge-authority value that makes decorrelation a precondition of merge. */
 export const DELEGATED_MERGE_AUTHORITY = "delegated-under-conditions";
@@ -5332,11 +5334,10 @@ export type SingleFamilyOutcome =
  * DR-0038's exception, and its two falsifiers, over one committed corpus.
  *
  * THE EXCEPTION NARROWS EXACTLY ONE DIMENSION. `produced-by` stops being
- * required to differ. `framing` and `review-contract` are untouched, because
- * T-007's whole finding is that model decorrelation and CONTRACT decorrelation
- * are different properties: a single-family environment still has two framings
- * and two contracts available to it, so relaxing those would be relaxing
- * something the environment does not force.
+ * required to differ. Since M6-P2 it is the only dimension compared (framing and
+ * contract distinctness were dropped with the criteria contract, DR-0064), so
+ * under the exception the pair is COUNTED, two reviews of the head, and not
+ * compared; the count is still refused below two.
  *
  * FALSIFIER 1, CONTRADICTION BY THE CORPUS. If the project's own committed
  * verdicts carry two or more distinct canonicalised `produced-by` values, the
@@ -5499,8 +5500,8 @@ export function singleFamilyException(
     reports: [
       `REPORT single-family-declared ${CHARTER_DOCUMENT} declares exactly one review family ` +
         `(${reading.declaredAs.join(", ")}) and all ${String(corpus.length)} verdict document(s) committed ` +
-        `under ${PAPERWORK_ROOT}/ carry it, so produced-by is NOT required to differ; framing and ` +
-        `review-contract still are; reason: ${reading.reason}; ${provenance} ` +
+        `under ${PAPERWORK_ROOT}/ carry it, so produced-by is NOT required to differ; ` +
+        `reason: ${reading.reason}; ${provenance} ` +
         corpusScope,
     ],
   };
@@ -5533,13 +5534,10 @@ export function singleFamilyException(
  * "nothing to check here" and "everything checked and fine" must never print
  * the same line (SC-011).
  *
- * FIVE DIMENSIONS, AND (e) IS NOT A REFINEMENT OF (b). T-007's whole finding is
- * that model decorrelation and CONTRACT decorrelation are different properties
- * and this project had the second by accident: two reviewers on different model
- * families walked all fifteen criteria of one phase, agreed on every mechanical
- * fact, and one missed a high-severity defect because both had been given the
- * criteria contract. So `review-contract` is compared separately and is
- * witnessed separately (criterion 7b).
+ * ONE DIMENSION SINCE M6-P2. T-007's two-contract rule, which made
+ * `review-contract` (and `framing`) a compared dimension, is superseded by
+ * DR-0064: the criteria contract is dropped and every review is a hazard
+ * review, so `pair` (DR-0063) is two hazard reviews distinct on `produced-by`.
  *
  * WHAT IT DOES NOT REACH, named rather than left to be found, AND BOTH ITEMS
  * THIS PARAGRAPH USED TO NAME HAVE BEEN CLOSED BY M4-P10. The first was
@@ -5829,7 +5827,12 @@ export const dualReviewDecorrelation: DerivedCheck = {
           : [
               ...exceptionReports,
               ...headlessReports,
-              `REPORT dual-review-decorrelation ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} are distinct on ${compared.join(", ")}${producedByCaveat(compared)}`,
+              compared.length === 0
+                ? /* M6-P2: with produced-by exempt there is no dimension left to
+                     compare, so the line says the reviews were COUNTED and
+                     nothing was compared, never "distinct on" an empty list. */
+                  `REPORT dual-review-decorrelation ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} were counted and compared on no dimension, because produced-by is exempt by declaration`
+                : `REPORT dual-review-decorrelation ${String(group.length)} verdict(s) for phase ${phase} at head ${headKey} are distinct on ${compared.join(", ")}${producedByCaveat(compared)}`,
             ],
     };
   },

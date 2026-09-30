@@ -738,15 +738,17 @@ export function renderBriefGateBlock(
 /* ------------------------------------------------------------------ */
 
 /**
- * The two review contracts of `assurance-modes.yaml`'s `review-contracts`.
+ * The review contracts of `assurance-modes.yaml`'s `review-contracts`.
  *
- * TWO CONTRACTS, NOT TWO REVIEWERS, and the two are different axes that full
- * mode requires both of. The measured evidence is that both reviews of one
- * phase walked all fifteen acceptance criteria and agreed on every mechanical
- * fact, and the one briefed on hazards found a high-severity defect the other's
- * report does not name.
+ * ONE CONTRACT SINCE M6-P2. DR-0064 drops the criteria contract (acceptance
+ * criteria are tests, run by the kernel), superseding T-007's two-contract rule;
+ * the hazard contract is the one T-007 measured finding the defect the criteria
+ * walk missed. DR-0063's `pair` is two hazard reviews.
  */
-export const REVIEW_CONTRACTS: readonly string[] = ["criteria", "hazard"];
+export const REVIEW_CONTRACTS: readonly string[] = ["hazard"];
+
+/** The contract DR-0064 dropped, refused by name at brief compose. */
+export const DROPPED_REVIEW_CONTRACT = "criteria";
 
 /** The clause id carrying one contract's instructions. */
 export function reviewContractClause(contract: string): string {

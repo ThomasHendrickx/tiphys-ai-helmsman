@@ -25,8 +25,8 @@ import type { GateResult, GateStatus } from "./result.ts";
  *
  * Replaces "the suite is green" with a machine-countable claim: the suite
  * ran as configured, every discovered test file was reported, every
- * registered behavior resolves to a reported test, no behavior registered
- * at the merge base has been deleted, every skip carries a reason, the
+ * registered behavior resolves to a reported test, every skip carries a
+ * reason, the
  * tree did not change under the run (M2-C-5 pin), and the counts come from
  * a pinned structured stream plus the child's exit code and from nowhere
  * else (C-1).
@@ -1054,7 +1054,10 @@ export function runSuiteGate(argv: string[]): number {
     }
   }
 
-  // Registry resolution and merge-base preservation (step 4).
+  // Registry resolution (step 4). A behavior registered at the merge base and
+  // absent from the head registry is NOT a finding since M6-P2: that rule was a
+  // register of removals, which DR-0061 (a) ends. Every behavior the head DOES
+  // register must still resolve to a reported test.
   const reportedTestNames = new Set(
     points
       .filter((point) => point.entityType === "test")
@@ -1064,14 +1067,6 @@ export function runSuiteGate(argv: string[]): number {
     if (!reportedTestNames.has(description)) {
       findings.push(
         `behavior ${behavior} does not resolve: no reported test is named "${description}"`,
-      );
-    }
-  }
-  for (const behavior of Object.keys(baseRegistry)) {
-    if (!(behavior in headRegistry.registry)) {
-      findings.push(
-        `behavior ${behavior} is registered at the merge base (${mergeBaseSha.slice(0, 12)}) ` +
-          "and deleted from the head registry",
       );
     }
   }
