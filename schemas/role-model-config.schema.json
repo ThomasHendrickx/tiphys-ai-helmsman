@@ -65,32 +65,15 @@
             "enum": ["money-path", "architecture", "investigation", "review"]
           }
         },
-        "tier-by-review-tier": {
-          "$comment": "M6-P2 (DR-0063): a role whose tier follows the review tier of the change it is dispatched on. `pair` is a change touching the project's declared runtime set, `single` is everything else. OPTIONAL: only the clean-room reviewer carries it, and `tier` stays as the value for a caller that does not know the review tier, which is the stronger one so the unknown case fails closed.",
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["pair", "single"],
-          "properties": {
-            "pair": {
-              "type": "string",
-              "enum": ["strongest", "cheaper"]
-            },
-            "single": {
-              "type": "string",
-              "enum": ["strongest", "cheaper"]
-            }
-          }
-        },
         "charter-override": {
           "$comment": "Blueprint section 6 and R-075's migration-table note: the charter override is L4 and is resolved by the M4 harness adapter. The vocabulary is reserved here so the M4 adapter has a field to read rather than a convention to infer. Every role ships `allowed`, which is stated in delivery/work-history/m3-p3.md as a uniform value rather than presented as if it discriminated.",
           "type": "string",
           "enum": ["allowed", "forbidden"]
         },
         "review-model-family": {
-          "$comment": "T-001, and it is OPTIONAL because only review roles are under a family constraint. T-001 recorded a miss that survived three same-family review rounds and asked for 'at minimum, a charter-level option to route one review round of full-mode plans through a different family'. This is that option, expressed as a policy rather than as a family name, because naming a vendor's model family in a kernel artifact is the same staleness problem `tier` avoids.",
+          "$comment": "T-001, and it is OPTIONAL because only the plan-review role is under a family policy here. T-001 recorded a miss that survived three same-family review rounds and asked for 'at minimum, a charter-level option to route one review round of full-mode plans through a different family'. This is that option, expressed as a policy rather than as a family name, because naming a vendor's model family in a kernel artifact is the same staleness problem `tier` avoids. `must-differ-from-sibling-review` was removed by M6-P5 (DR-0062): nothing read it, and the clean-room pair's family rule is the charter's `review-families` over the kernel's review records.",
           "type": "string",
           "enum": [
-            "must-differ-from-sibling-review",
             "must-differ-from-previous-round",
             "unconstrained"
           ]

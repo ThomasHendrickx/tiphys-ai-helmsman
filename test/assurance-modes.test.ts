@@ -657,13 +657,17 @@ test("the role-model configuration covers the six roles, puts every review role 
     const entry = document.roles.find((candidate) => candidate["role"] === id);
     assert.equal(entry?.["tier"], "strongest", id);
   }
-  /* T-001's ask, which was for the OPTION to exist at all: both review roles
-     carry a family constraint and neither is `unconstrained`. */
-  for (const id of ["adversarial-plan-reviewer", "clean-room-reviewer"]) {
-    const entry = document.roles.find((candidate) => candidate["role"] === id);
-    assert.notEqual(entry?.["review-model-family"], undefined, id);
-    assert.notEqual(entry?.["review-model-family"], "unconstrained", id);
-  }
+  /* T-001's ask, which was for the OPTION to exist at all: the plan-review
+     role carries a family constraint and it is not `unconstrained`. The
+     clean-room reviewer carries none since M6-P5 (DR-0062): its family rule is
+     the charter's `review-families` over the kernel's review records, and a
+     policy here that nothing reads would claim an enforcement that is not. */
+  const planReviewer = document.roles.find((candidate) => candidate["role"] === "adversarial-plan-reviewer");
+  assert.notEqual(planReviewer?.["review-model-family"], undefined);
+  assert.notEqual(planReviewer?.["review-model-family"], "unconstrained");
+  const cleanRoom = document.roles.find((candidate) => candidate["role"] === "clean-room-reviewer");
+  assert.equal(Object.hasOwn(cleanRoom ?? {}, "review-model-family"), false);
+  assert.equal(Object.hasOwn(cleanRoom ?? {}, "tier-by-review-tier"), false);
   /* The implementer is the one role R-075 scopes by phase class, so a flat
      tier alone would drop half the rule. */
   const implementer = document.roles.find((entry) => entry["role"] === "implementer");
