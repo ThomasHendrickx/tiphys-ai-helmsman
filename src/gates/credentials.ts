@@ -586,7 +586,9 @@ export function probeCredentialSources(
   // git itself (`git config --get-all credential.helper`), because git is
   // the program that would resolve a helper and its exit code is the
   // documented contract: 0 with output means the key is set, 1 means it
-  // is not. Nothing here parses message text (T-003).
+  // is not, and any other exit is no answer, reported as error (M6-P3 fix
+  // round 4, `configProbeUnanswered`). Nothing here parses message text
+  // (T-003); git's first stderr line is carried into the detail only.
   for (const scope of ["global", "system"] as const) {
     const result = spawnSync("git", ["config", `--${scope}`, "--get-all", "credential.helper"], {
       env: env as NodeJS.ProcessEnv,
@@ -606,13 +608,17 @@ export function probeCredentialSources(
           `git config --${scope} --get-all credential.helper resolves: ${singleLine((result.stdout ?? "").trim())}`,
         ),
       );
-    } else {
+    } else if (result.status === 0 || result.status === 1) {
       probes.push(
         probe(
           source,
           "clean",
           `git config --${scope} --get-all credential.helper exited ${String(result.status)} with no output`,
         ),
+      );
+    } else {
+      probes.push(
+        probe(source, "error", configProbeUnanswered(`git config --${scope}`, result.status, result.stderr)),
       );
     }
   }
@@ -651,6 +657,14 @@ export function probeCredentialSources(
         "git-resolved-config",
         "resolvable",
         `git config --get-all credential.helper resolves from inside the child (any source, including env injection): ${singleLine((resolved.stdout ?? "").trim())}`,
+      ),
+    );
+  } else if (resolved.status !== 0 && resolved.status !== 1) {
+    probes.push(
+      probe(
+        "git-resolved-config",
+        "error",
+        configProbeUnanswered("git config", resolved.status, resolved.stderr),
       ),
     );
   } else {
@@ -699,6 +713,30 @@ export function probeCredentialSources(
   }
 
   return probes;
+}
+
+/**
+ * A `git config --get-all` probe that exited neither 0 nor 1.
+ *
+ * git's documented contract for this read is two answers: 0 with the values,
+ * 1 for "not set". Anything else (128 for a config file git cannot parse,
+ * including the repository config of the directory the probe ran in, or no
+ * status at all for a probe that was killed) means git did not answer, and
+ * reading that as "not set" is the fail-open direction: measured on git
+ * 2.43.0 and 2.34.1, a global `credential.helper` probed from a repository
+ * whose own config is malformed exits 128 while a child in a healthy
+ * worktree resolves the helper
+ * (witness/captures/m6-p3-git-config-credential-helper.json).
+ */
+function configProbeUnanswered(command: string, status: number | null, stderr: string | null): string {
+  const first = (stderr ?? "")
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line !== "");
+  return (
+    `${command} --get-all credential.helper exited ${String(status)}, which is neither a value (0) nor ` +
+    `"not set" (1), so whether a helper resolves is not established: ${first ?? "no stderr"}`
+  );
 }
 
 /** Fold probes into a gate verdict. Any error wins over any red. */
