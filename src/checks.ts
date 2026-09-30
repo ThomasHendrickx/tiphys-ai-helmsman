@@ -493,12 +493,17 @@ export function listSourceFiles(
   }
 }
 
-/** M6-P5: one file's exact bytes at the corpus source, with absent kept apart from unreadable. */
+/**
+ * M6-P5: one file's exact bytes at the corpus source, with absent kept apart
+ * from unreadable. Typed `Uint8Array`, not `Buffer`: the review types in
+ * src/index.ts reach this declaration, and a consumer compiling without Node's
+ * types has no `Buffer`.
+ */
 export function readSourceBytes(
   contextDirectory: string,
   source: VerdictCorpusSource,
   relativePath: string,
-): { kind: "read"; bytes: Buffer } | { kind: "absent" } | { kind: "error"; reason: string } {
+): { kind: "read"; bytes: Uint8Array } | { kind: "absent" } | { kind: "error"; reason: string } {
   if (source.kind === "commit") {
     const typed = gitIn(["cat-file", "-t", `${source.refSha}:./${relativePath}`], contextDirectory);
     if (!typed.ok) {

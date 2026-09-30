@@ -467,7 +467,7 @@ export function loadReviewRecords(
     }
     let value: unknown;
     try {
-      value = JSON.parse(read.bytes.toString("utf8"));
+      value = JSON.parse(new TextDecoder().decode(read.bytes));
     } catch (error) {
       invalid.push({ path, reason: `does not parse as JSON (${describe(error)})` });
       continue;
