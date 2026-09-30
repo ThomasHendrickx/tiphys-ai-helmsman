@@ -734,6 +734,75 @@ test("doctor never prints PASS for a charter whose retention declares no usable 
 });
 
 /* ------------------------------------------------------------------ */
+/* M6-P3 fix round 4: an unanswered check-ignore is not "not ignored"  */
+/* ------------------------------------------------------------------ */
+
+interface CheckIgnoreRun {
+  case: string;
+  git: string;
+  exit: number | null;
+  stderr: string;
+}
+
+/** The recorded runs of one case in m6-p3-git-check-ignore-unanswered.json, one per git. */
+function recordedCheckIgnore(name: string): CheckIgnoreRun[] {
+  const recorded = JSON.parse(
+    readFileSync(join(repoRoot, "witness", "captures", "m6-p3-git-check-ignore-unanswered.json"), "utf8"),
+  ) as { cases: CheckIgnoreRun[] };
+  const runs = recorded.cases.filter((entry) => entry.case === name);
+  assert.ok(runs.length >= 2, `m6-p3-git-check-ignore-unanswered.json records ${name} on two gits`);
+  return runs;
+}
+
+test("doctor FAILs a declared retention path when git cannot say whether it is ignored, naming git's reason, for a fleet that is no repository and for one whose config git cannot parse", (t) => {
+  const arms = [
+    {
+      name: "not-a-repository",
+      breakFleet: (fleet: string) => rmSync(join(fleet, ".git"), { recursive: true, force: true }),
+      shape: (line: string) => line,
+    },
+    {
+      name: "bad-config",
+      breakFleet: (fleet: string) => appendFileSync(join(fleet, ".git", "config"), "[core\n"),
+      shape: (line: string) => line.replace(/line \d+/, "line <n>"),
+    },
+  ];
+  for (const arm of arms) {
+    const fleet = initFleet(t);
+    const paths = charterWithRetention(fleet);
+    /* Control: the same fleet PASSes while git can answer, so the FAIL below
+       is the unanswered probe's doing and nothing else's. */
+    const healthy = /^CHECK retention (\S+) (.+)$/m.exec(runCli(["doctor"], { cwd: fleet }).stdout);
+    assert.ok(healthy !== null, `${arm.name}: no retention line in the control run`);
+    assert.equal(healthy[1], "PASS", `${arm.name} control: ${healthy[2] as string}`);
+
+    arm.breakFleet(fleet);
+    /* THE PROBE GIVES NO ANSWER, exactly as both captured gits did: exit 128
+       and a fatal line. The paths are still on disk, so an existence check
+       alone would stay green. */
+    const live = spawnSync("git", ["-C", fleet, "check-ignore", "-q", "--", paths[0] as string], {
+      encoding: "utf8",
+    });
+    for (const run of recordedCheckIgnore(arm.name)) {
+      assert.equal(live.status, run.exit, `${arm.name}: ${run.git} recorded ${String(run.exit)}: ${live.stderr}`);
+      assert.equal(arm.shape(live.stderr.trim()), arm.shape(run.stderr.trim()), `${arm.name}: ${run.git}`);
+    }
+    const broken = runCli(["doctor"], { cwd: fleet });
+    const line = /^CHECK retention (\S+) (.+)$/m.exec(broken.stdout);
+    assert.ok(line !== null, `${arm.name}: no retention line in ${broken.stdout}`);
+    const detail = line[2] as string;
+    assert.equal(line[1], "FAIL", `${arm.name} printed ${line[1] as string}: ${detail}`);
+    assert.doesNotMatch(detail, /present and tracked/, arm.name);
+    assert.ok(
+      detail.includes(`declares retention path ${paths[0] as string}, and whether git ignores it in `),
+      `${arm.name}: ${detail}`,
+    );
+    assert.ok(detail.includes(`git check-ignore exited 128: ${live.stderr.trim()}`), `${arm.name}: ${detail}`);
+    assert.equal(broken.status, 1, arm.name);
+  }
+});
+
+/* ------------------------------------------------------------------ */
 /* M3-P13: the kernel-artifacts check (M3 exit test, stage E1.6)        */
 /* ------------------------------------------------------------------ */
 

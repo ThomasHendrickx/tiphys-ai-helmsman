@@ -1,0 +1,37 @@
+{
+  "id": "red-witness-hunks-quoted-tab-header",
+  "behavior": "red-witness-hunks-quoted-tab-header",
+  "tests": [
+    "the phase diff credits every hunk to its own file: a quoted +++ header that also carries git's trailing TAB, and an added line that reads like a header"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/witness/run.ts",
+      "find": "  const label = line.endsWith(\"\\t\") ? line.slice(0, -1) : line;\n  if (label.startsWith('+++ \"') && label.endsWith('\"') && label.length > 6) {\n    const unquoted = unquoteCStyle(label.slice(5, -1));\n    return unquoted !== undefined && unquoted.startsWith(\"b/\") ? unquoted.slice(2) : undefined;\n  }\n  if (label.startsWith(\"+++ b/\")) {\n    return label.slice(\"+++ b/\".length);\n  }\n",
+      "replace": "  if (line.startsWith('+++ \"') && line.endsWith('\"') && line.length > 6) {\n    const unquoted = unquoteCStyle(line.slice(5, -1));\n    return unquoted !== undefined && unquoted.startsWith(\"b/\") ? unquoted.slice(2) : undefined;\n  }\n  if (line.startsWith(\"+++ b/\")) {\n    const path = line.slice(\"+++ b/\".length);\n    return path.endsWith(\"\\t\") ? path.slice(0, -1) : path;\n  }\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/witness/run.ts",
+      "find": "  let current: DiffFile | undefined;\n  let inHeader = false;\n  for (const line of hunkOutput.stdout.split(\"\\n\")) {\n    if (line.startsWith(\"diff --git \")) {\n      current = undefined;\n      inHeader = true;\n      continue;\n    }\n    if (inHeader && line.startsWith(\"+++ \")) {\n      const plus = newSidePathOfHeader(line);\n      current = plus === undefined ? undefined : files.get(plus);\n      continue;\n    }\n    const hunk = /^@@ -\\d+(?:,\\d+)? \\+(\\d+)(?:,(\\d+))? @@/.exec(line);\n    if (hunk !== null) {\n      inHeader = false;\n    }\n",
+      "replace": "  let current: DiffFile | undefined;\n  for (const line of hunkOutput.stdout.split(\"\\n\")) {\n    const plus = newSidePathOfHeader(line);\n    if (plus !== undefined) {\n      current = files.get(plus);\n      continue;\n    }\n    if (line.startsWith(\"+++ /dev/null\")) {\n      current = undefined;\n      continue;\n    }\n    const hunk = /^@@ -\\d+(?:,\\d+)? \\+(\\d+)(?:,(\\d+))? @@/.exec(line);\n"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/witness/run.ts",
+      "find": "    if (inHeader && line.startsWith(\"+++ \")) {",
+      "replace": "    if (line.startsWith(\"+++ \")) {"
+    }
+  ],
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p3-git-path-listings.json"
+    ],
+    "provenance": "Real git 2.43.0 output of the two listings computePhaseDiff reads for the named test's fixture: `git diff -z --name-status --no-renames` and `git diff -U0 --no-renames`, whose header for `src/zcaf\\u00e9 x.ts` is `+++ \"b/src/zcaf\\303\\251 x.ts\"` followed by a TAB, and whose hunk for that file carries an added line printed `+++ b/src/plain.ts`. Recorded 2026-09-30 as the witness-hunks-quoted-tab case of the capture by the M6-P3 fix round 4 recording script, which builds the fixture with the commands the test's makeFixture runs; the named test re-runs both commands and requires git's live stdout to equal the recorded stdout before computePhaseDiff runs. Required by rule (f) because every member mutates src/witness/run.ts, which spawns git and parses what it prints."
+  },
+  "deterministic": true,
+  "repeats": 2
+}
