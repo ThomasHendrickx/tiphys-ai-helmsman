@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { EX_USAGE } from "../cli.ts";
 import { pathsIdentifySameObject } from "../path-identity.ts";
 import {
+  boundAtMergeBase,
   declaresNoHead,
   describeAdmittedVerdicts,
   describeOffHeadVerdicts,
@@ -1612,7 +1613,7 @@ type ReviewCorpus =
       forHead: VerdictForHead[];
     };
 
-function readReviewCorpus(contextDirectory: string, head: string): ReviewCorpus {
+function readReviewCorpus(contextDirectory: string, head: string, mergeBase?: string): ReviewCorpus {
   /* THE CORPUS, READ THROUGH THE SHIPPED PRIMITIVES (plan step 6). Every
      refusal below is `error` rather than red, and each is the one
      `scripts/check-dual-review.mjs` already makes at the same layer: a merge
@@ -1684,7 +1685,11 @@ function readReviewCorpus(contextDirectory: string, head: string): ReviewCorpus 
        in `partitionByAuditedHead`, so the two gates cannot disagree about a
        stamp. Every rule here applies to every verdict, stamped or not. */
     const declared = String(entry.record["head"] ?? "").toLowerCase();
-    const relation = relateDeclaredHead(contextDirectory, declared, head);
+    /* M6-P2 FIX ROUND 1 (CR-M6P2A-01, CR-M6P2B-01): ANCESTRY IS BOUNDED AT THE
+       MERGE BASE. With `--base`, a verdict whose declared head the merge base
+       already contains reviewed content on the base, not this change, and is
+       excluded by name as `on-the-base`. No phase match (M6-P5). */
+    const relation = boundAtMergeBase(contextDirectory, declared, mergeBase, relateDeclaredHead(contextDirectory, declared, head));
     if (relation.kind === "same" || relation.kind === "evidence-only-ancestor") {
       admitted.push({ path: entry.path, declared, relation });
       forHead.push({ path: entry.path, record: entry.record });
@@ -1856,7 +1861,7 @@ export async function runGate(flags: Flags): Promise<number> {
       );
     }
     budget = classified.budget;
-    const read = readReviewCorpus(contextDirectory, head);
+    const read = readReviewCorpus(contextDirectory, head, budget.mergeBase);
     if (!read.ok) {
       return emit(
         resultPath,

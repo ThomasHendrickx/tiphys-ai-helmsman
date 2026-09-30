@@ -287,7 +287,11 @@ function parseArgs(argv) {
 export const HEADLESS_ONLY_WARNING =
   "WARNING every committed verdict declares no head, so none is a review of any commit; without --base this script computes no review budget and cannot refuse a change that owes two reviews: pass --base (the gate runner does) for that refusal";
 
-export function committedVerdictPaths(directory, requestedHead) {
+/* M6-P2 FIX ROUND 1 (CR-M6P2A-01, CR-M6P2B-01): `mergeBase`, when the review
+   budget supplied one, bounds admission there, through the same
+   `boundAtMergeBase` merge-preconditions uses, so the two gates cannot
+   disagree about a verdict whose declared head is already on the base. */
+export function committedVerdictPaths(directory, requestedHead, mergeBase) {
   const loaded = loadCommittedVerdicts(directory);
   if (!loaded.ok) {
     return { ok: false, reason: loaded.reason };
@@ -303,7 +307,7 @@ export function committedVerdictPaths(directory, requestedHead) {
   }
   const partition =
     anchor.kind === "anchored"
-      ? partitionByAuditedHead(directory, loaded.verdicts, anchor.head)
+      ? partitionByAuditedHead(directory, loaded.verdicts, anchor.head, mergeBase)
       : {
           onHead: [...loaded.verdicts],
           admitted: [],
@@ -408,7 +412,7 @@ export function evaluate(directory, requestedHead, options = {}) {
       return { status: "not-applicable", units: 0, lines: [], checksRun: 0, budget };
     }
   }
-  const found = committedVerdictPaths(directory, requestedHead);
+  const found = committedVerdictPaths(directory, requestedHead, budget?.mergeBase);
   if (!found.ok) {
     return { status: "error", units: 0, lines: [found.reason], checksRun: 0 };
   }

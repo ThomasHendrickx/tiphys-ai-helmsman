@@ -1958,9 +1958,10 @@ const DECLARED_RUNTIME_SET = "\nruntime-set:\n  paths: [src/, bin/]\n  manifests
 function stageTierBranch(
   change: "src" | "delivery",
   verdicts: Record<string, string>,
+  declaration: string = DECLARED_RUNTIME_SET,
 ): { staged: { dir: string; evidence: string }; base: string; head: string } {
   const staged = stage({ verdicts, scopeRecord: scopeRecord("green") });
-  writeFileSync(join(staged.dir, "charter.yaml"), `${readFileSync(join(staged.dir, "charter.yaml"), "utf8")}${DECLARED_RUNTIME_SET}`);
+  writeFileSync(join(staged.dir, "charter.yaml"), `${readFileSync(join(staged.dir, "charter.yaml"), "utf8")}${declaration}`);
   git(staged.dir, ["init", "-q", "."]);
   git(staged.dir, ["add", "charter.yaml", "assurance-modes.yaml"]);
   git(staged.dir, ["commit", "-q", "-m", "base"]);
@@ -2062,5 +2063,68 @@ test("two approving hazard verdicts with distinct produced-by and the same frami
     });
   } finally {
     cleanup(staged);
+  }
+});
+
+test("with --base, verdicts whose declared head the merge base already contains are excluded by name in both tiers, so an unreviewed delivery-only change on top of a reviewed phase is red", async () => {
+  /* FIX ROUND 1, CR-M6P2A-01 and CR-M6P2B-01. THE MECHANISM: a verdict was
+     admitted by ancestry with no bound at the merge base. Reviewer A's probe 2,
+     staged: a phase's two approving verdicts reach the base, then one
+     delivery-only commit that no verdict names. Before the fix the gap from the
+     reviewed head to the new commit is paperwork only, so both old verdicts
+     were admitted as reviews of the new change. The pair arm uses a charter
+     with no runtime-set block, so the delivery-only change is pair (fail
+     closed) and the bound is shown in that tier too. */
+  const verdicts = {
+    "m3-p9-hazard-a.yaml": fixture("decorrelated-hazard.yaml"),
+    "m3-p9-hazard-b.yaml": fixture("shared-family-hazard.yaml"),
+  };
+  const arms: [string, string, RegExp][] = [
+    ["single", DECLARED_RUNTIME_SET, /0 of 1 are admitted and 1 missing/],
+    ["pair", "", /0 of 2 are admitted and 2 missing/],
+  ];
+  for (const [tier, declaration, missing] of arms) {
+    const { staged, base, head: merged } = stageTierBranch("src", verdicts, declaration);
+    try {
+      const reviewed = git(staged.dir, ["rev-parse", `${merged}~1`]);
+      /* CONTROL, THE NORMAL FLOW STILL ADMITS: verdicts for H committed at V,
+         H..V paperwork only, H not on the base. Both verdicts are admitted and
+         the selection row is green. */
+      await withApi(greenApi(merged), async (apiBase) => {
+        const run = await runGate(gateSource, staged, apiBase, ["--base", base], merged);
+        const selection = rows(run.stdout).get("verdict-selection") ?? "";
+        assert.equal(status(selection), "green", `${tier} control: ${run.stdout}`);
+        assert.match(selection, /2 verdict\(s\) admitted and 0 excluded/, `${tier} control: ${selection}`);
+      });
+      /* REVIEWER A'S CASE: the reviewed phase IS the base now, and one
+         delivery-only commit on top of it carries no review. */
+      mkdirSync(join(staged.dir, "delivery", "decisions"), { recursive: true });
+      writeFileSync(join(staged.dir, "delivery", "decisions", "DR-9999-probe.md"), "a decision no review read\n");
+      git(staged.dir, ["add", "delivery/decisions"]);
+      git(staged.dir, ["commit", "-q", "-m", "unreviewed paperwork on top of a reviewed phase"]);
+      const unreviewed = git(staged.dir, ["rev-parse", "HEAD"]);
+      /* A GREEN API, as reviewer A's stub was: before the fix the single arm
+         reached green through it. The red below is decided before any request. */
+      const run = await withApi(greenApi(unreviewed), (apiBase) =>
+        runGate(gateSource, staged, apiBase, ["--base", merged], unreviewed),
+      );
+      const detail = String(run.record["detail"]);
+      assert.equal(run.record["status"], "red", `${tier}: ${run.stdout}${run.stderr}`);
+      assert.notEqual(run.exit, 0, run.stdout);
+      assert.match(detail, new RegExp(`^DR-0063 ${tier} at head ${unreviewed}`), detail);
+      assert.match(detail, missing, detail);
+      const selection = rows(run.stdout).get("verdict-selection") ?? "";
+      assert.match(selection, /0 verdict\(s\) admitted and 2 excluded/, selection);
+      for (const name of Object.keys(verdicts)) {
+        assert.ok(
+          selection.includes(
+            `${name} declares head ${reviewed}, which the merge base ${merged} of the review budget already contains`,
+          ),
+          `${tier}: ${name} is not excluded by name as on the base: ${selection}`,
+        );
+      }
+    } finally {
+      cleanup(staged);
+    }
   }
 });

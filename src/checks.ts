@@ -4297,6 +4297,13 @@ export type HeadRelation =
   /** git could not answer, so the relation is not known. Never admitted. */
   | { kind: "undetermined"; reason: string }
   /**
+   * An admitting relation, refused because the merge base of the review
+   * budget already CONTAINS the declared head (it is that commit or an
+   * ancestor of it), so the review covered content that is on the base, not
+   * the change under audit. M6-P2 fix round 1, CR-M6P2A-01 and CR-M6P2B-01.
+   */
+  | { kind: "on-the-base"; mergeBase: string }
+  /**
    * The verdict carries no `head` key at all. KERNEL 0.2.1 (DR-0053): the
    * schema no longer requires the field, because it judged every verdict a
    * consumer wrote before the field existed, so absence is now a well-formed
@@ -4454,6 +4461,50 @@ export function relateDeclaredHead(
     : { kind: "shipped-change", shipped };
 }
 
+/**
+ * Bound an ADMITTING relation at the merge base of the review budget (M6-P2
+ * fix round 1, CR-M6P2A-01 and CR-M6P2B-01).
+ *
+ * THE MECHANISM IT CLOSES: admission is by ancestry, and ancestry alone has no
+ * lower bound. A previous phase's approving verdicts sit on the base, their
+ * declared head is an ancestor of every later commit, and a later change whose
+ * whole diff is paperwork is then "reviewed" by them: the gap from their head
+ * to the commit under audit is paperwork only, so `relateDeclaredHead` admits
+ * them. A review whose declared head the merge base already contains reviewed
+ * content that is on the base, so it says nothing about the change being
+ * merged, whatever tier that change is.
+ *
+ * A relation that does not admit is returned unchanged. An `undefined` merge
+ * base (no `--base`, so no budget) returns the relation unchanged too, which is
+ * the pre-M6-P2 reading and is stated, not hidden. An ancestry question git
+ * does not answer is `undetermined`, and that is not an admitting relation.
+ *
+ * NO PHASE MATCH IS MADE HERE, deliberately: a verdict of another phase whose
+ * head is NOT on the base is still admitted by ancestry. M6-P5 moves review
+ * identity to kernel records that carry the phase.
+ */
+export function boundAtMergeBase(
+  contextDirectory: string,
+  declared: string,
+  mergeBase: string | undefined,
+  relation: HeadRelation,
+): HeadRelation {
+  if (mergeBase === undefined) {
+    return relation;
+  }
+  if (relation.kind !== "same" && relation.kind !== "evidence-only-ancestor") {
+    return relation;
+  }
+  if (declared === mergeBase) {
+    return { kind: "on-the-base", mergeBase };
+  }
+  const contained = isAncestorIn(contextDirectory, declared, mergeBase);
+  if (contained.kind === "undetermined") {
+    return { kind: "undetermined", reason: contained.reason };
+  }
+  return contained.kind === "yes" ? { kind: "on-the-base", mergeBase } : relation;
+}
+
 /** A verdict admitted to the audited corpus, and the relation that admitted it. */
 export interface AdmittedVerdict {
   path: string;
@@ -4532,6 +4583,7 @@ export function partitionByAuditedHead(
   contextDirectory: string,
   verdicts: readonly LoadedVerdict[],
   auditedHead: string,
+  mergeBase?: string,
 ): HeadPartition {
   const onHead: LoadedVerdict[] = [];
   const admitted: AdmittedVerdict[] = [];
@@ -4571,7 +4623,14 @@ export function partitionByAuditedHead(
       unkeyedVerdicts.push(candidate);
       continue;
     }
-    const relation = relateDeclaredHead(contextDirectory, key.value, auditedHead);
+    /* M6-P2 fix round 1: with a review budget, a verdict whose declared head
+       the merge base contains is excluded as `on-the-base`. */
+    const relation = boundAtMergeBase(
+      contextDirectory,
+      key.value,
+      mergeBase,
+      relateDeclaredHead(contextDirectory, key.value, auditedHead),
+    );
     if (relation.kind === "same" || relation.kind === "evidence-only-ancestor") {
       onHead.push(candidate);
       admitted.push({ path: candidate.path, declared: key.value, relation });
@@ -4616,6 +4675,12 @@ export function describeOffHeadVerdicts(
           `${head} is an ancestor of the commit under audit ${auditedHead}, but ${String(shipped.length)} path(s) ` +
           `outside ${PAPERWORK_ROOT}/ differ between them (${named}${more}), so shipped work no verdict reviewed ` +
           `is riding in on a review of something else and ${tail}`
+        );
+      }
+      if (entry.relation.kind === "on-the-base") {
+        return (
+          `${head} the merge base ${entry.relation.mergeBase} of the review budget already contains, so the ` +
+          `review covered content that is on the base rather than the change being merged and ${tail}`
         );
       }
       if (entry.relation.kind === "descendant") {
