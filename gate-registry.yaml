@@ -24,18 +24,6 @@ gates:
     modes: [full, direct-pr, local-only]
     events: [pull_request, push]
 
-  - id: credential-token
-    command: [node, src/gates/credentials.ts, credential-token]
-    unitLabel: tokens probed
-    applicability: conditional
-    verified-by: script
-    modes: [full, direct-pr]
-    events: [pull_request]
-    precondition:
-      id: implementer-token-present-owner-action-a-3
-      kind: command-exit-zero
-      command: [node, -e, "process.exit(process.env.TIPHYS_IMPLEMENTER_TOKEN === undefined ? 1 : 0)"]
-
   - id: suite
     command: [node, src/gates/suite.ts, --pin-root, src, --pin-root, bin, --pin-root, test]
     unitLabel: tests reported

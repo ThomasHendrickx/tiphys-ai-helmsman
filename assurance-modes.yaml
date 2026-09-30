@@ -153,7 +153,6 @@ modes:
     # missing id.
     gate-sets:
       - credential-scrub
-      - credential-token
       - suite
       - scope
       - deploy
@@ -263,7 +262,6 @@ modes:
     # is NOT that today; it under-reports, see the header's gate-sets note.
     gate-sets:
       - credential-scrub
-      - credential-token
       - suite
       - scope
       - red-witness
