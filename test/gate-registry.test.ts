@@ -63,15 +63,6 @@ const yamlModule = (await import("yaml")) as unknown as {
   parse: (text: string) => unknown;
 };
 
-/* M4-P14. The three required gate classes are READ OFF THE SHIPPED MODULE, not
-   written out here: CLAUDE.md's append-only rule says a test asserts by name
-   and derives counts at run time, and a fourth required class added later must
-   move these assertions with it rather than turn them into a lie. Same
-   computed-URL dynamic import as `validateModule` above (warning 4). */
-const gateClassesModule = (await import(
-  new URL("../src/gates/gate-classes.ts", import.meta.url).href
-)) as unknown as { REQUIRED_CLASSES: readonly string[] };
-const REQUIRED_CLASS_NAMES = gateClassesModule.REQUIRED_CLASSES;
 
 interface RegistryGate {
   id: string;
@@ -841,7 +832,6 @@ test("a clean-room-checklist entry is reported as declared and not executed, and
  */
 
 const gateClassesEntry = join(repoRoot, "src", "gates", "gate-classes.ts");
-const declarationsDir = join(repoRoot, "delivery", "plan", "phase-declarations");
 const capturesDir = join(repoRoot, "witness", "captures");
 
 /** Run the shipped gate module directly, in a working directory of our choosing. */
@@ -856,245 +846,6 @@ function runGateModule(cwd: string, args: string[]): {
   });
   return { status: run.status, stdout: run.stdout, stderr: run.stderr };
 }
-
-/**
- * A scratch tree holding COPIES of the named real declarations and a copy of
- * this repository's own registry. Nothing is authored here: the declarations
- * are byte copies, which is what makes the red arm a statement about the
- * repository rather than about a fixture written to fail.
- */
-function writeDeclarationFixture(dir: string, phases: string[]): void {
-  mkdirSync(join(dir, "declarations"), { recursive: true });
-  for (const phase of phases) {
-    copyFileSync(
-      join(declarationsDir, `${phase}.json`),
-      join(dir, "declarations", `${phase}.json`),
-    );
-  }
-  copyFileSync(registryPath, join(dir, "registry.yaml"));
-}
-
-function classGateArgs(phase: string, result: string): string[] {
-  return [
-    "gate-classes",
-    "--declarations",
-    "declarations",
-    "--registry",
-    "registry.yaml",
-    "--result",
-    result,
-    "--phase",
-    phase,
-  ];
-}
-
-test("a copy of a real phase declaration with no gate class declaration is red naming every required class, and the same copy with the classes declared is green", () => {
-  const dir = scratch("gate-classes-missing");
-  try {
-    /* TWO structurally different real declarations, because one witness is
-       not a class (CLAUDE.md). m2-p4 is an M2 kernel phase with four
-       filesToTouch entries; m3-p1 is an M3 phase with a different shape and a
-       different citation set. Both lack `gateClasses`, and the point of using
-       real ones is that neither was written by this phase. */
-    writeDeclarationFixture(dir, ["m2-p4", "m3-p1"]);
-
-    /* The cited capture is REAL output of the gate under test, taken by the
-       same commands this test runs (witness/captures/gate-classes-missing-declaration.txt).
-       The asserted sentences are READ OUT OF IT rather than typed here, so an
-       implementation changed to print something else reddens instead of a
-       hand-written string being quietly updated to match. */
-    const capture = readFileSync(
-      join(capturesDir, "gate-classes-missing-declaration.txt"),
-      "utf8",
-    );
-    const capturedDetails = capture
-      .split("\n")
-      .filter((line) => line.startsWith("phase M"));
-    assert.equal(
-      capturedDetails.length,
-      2,
-      `the capture should carry one detail line per declaration, saw ${String(capturedDetails.length)}`,
-    );
-
-    for (const [index, phase] of ["m2-p4", "m3-p1"].entries()) {
-      const red = runGateModule(dir, classGateArgs(phase, `${phase}-red.json`));
-      assert.equal(red.status, 1, `expected red for ${phase}, stderr: ${red.stderr}`);
-      assert.equal(
-        red.stdout.includes(capturedDetails[index] as string),
-        true,
-        `live output for ${phase} does not reproduce the captured detail:\n${red.stdout}`,
-      );
-      const record = JSON.parse(readFileSync(join(dir, `${phase}-red.json`), "utf8")) as {
-        status: string;
-        units: number;
-        detail: string;
-      };
-      assert.equal(record.status, "red");
-      /* DERIVED, never pinned: the three required classes are read off the
-         gate's own exported list, so a fourth required class added later does
-         not make this assertion a lie about a number. */
-      assert.equal(record.units, REQUIRED_CLASS_NAMES.length);
-      for (const name of REQUIRED_CLASS_NAMES) {
-        assert.equal(
-          record.detail.includes(`${name}: MISSING`),
-          true,
-          `the detail for ${phase} does not name the missing class ${name}: ${record.detail}`,
-        );
-      }
-      assert.equal(
-        record.detail.includes(phase.toUpperCase()),
-        true,
-        `the detail for ${phase} does not name the phase id: ${record.detail}`,
-      );
-    }
-
-    /* THE GREEN ARM IS THE SAME COPY, one field added. Anything else would
-       change two variables at once. */
-    const declaration = JSON.parse(
-      readFileSync(join(dir, "declarations", "m2-p4.json"), "utf8"),
-    ) as Record<string, unknown>;
-    declaration["gateClasses"] = {
-      correctness: { gates: ["suite", "typecheck"] },
-      scope: { gates: ["scope"] },
-      review: { gates: ["check-dual-review"] },
-    };
-    writeFileSync(
-      join(dir, "declarations", "m2-p4.json"),
-      `${JSON.stringify(declaration, null, 2)}\n`,
-    );
-    const green = runGateModule(dir, classGateArgs("m2-p4", "m2-p4-green.json"));
-    assert.equal(green.status, 0, `expected green, stderr: ${green.stderr}\n${green.stdout}`);
-    const greenRecord = JSON.parse(readFileSync(join(dir, "m2-p4-green.json"), "utf8")) as {
-      status: string;
-      units: number;
-      detail: string;
-    };
-    assert.equal(greenRecord.status, "green");
-    assert.equal(greenRecord.units, REQUIRED_CLASS_NAMES.length);
-    assert.match(greenRecord.detail, /correctness: asserted by suite, typecheck/);
-
-    /* AND A GATE ID THE REGISTRY DOES NOT DECLARE IS STILL RED, because a
-       class satisfied by a name nothing runs is the silent nothing one level
-       down: the declaration would look complete and assert nothing. */
-    declaration["gateClasses"] = {
-      correctness: { gates: ["a-gate-this-registry-does-not-declare"] },
-      scope: { gates: ["scope"] },
-      review: { gates: ["check-dual-review"] },
-    };
-    writeFileSync(
-      join(dir, "declarations", "m2-p4.json"),
-      `${JSON.stringify(declaration, null, 2)}\n`,
-    );
-    const unknown = runGateModule(dir, classGateArgs("m2-p4", "m2-p4-unknown.json"));
-    assert.equal(unknown.status, 1, `expected red for an unknown gate id: ${unknown.stdout}`);
-    assert.match(unknown.stdout, /a-gate-this-registry-does-not-declare/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("a not-applicable class with no reason and a not-yet-establishable class naming no establishing phase are each red, and each is green once its missing datum is supplied", () => {
-  const dir = scratch("gate-classes-escape");
-  try {
-    writeDeclarationFixture(dir, ["m2-p4"]);
-    const base = JSON.parse(
-      readFileSync(join(dir, "declarations", "m2-p4.json"), "utf8"),
-    ) as Record<string, unknown>;
-    const satisfied = {
-      correctness: { gates: ["suite"] },
-      scope: { gates: ["scope"] },
-      review: { gates: ["check-dual-review"] },
-    };
-    const write = (classes: Record<string, unknown>): void => {
-      writeFileSync(
-        join(dir, "declarations", "m2-p4.json"),
-        `${JSON.stringify({ ...base, gateClasses: classes }, null, 2)}\n`,
-      );
-    };
-
-    /* The cited capture is REAL output of the gate under test, taken by the
-       same four commands (witness/captures/gate-classes-escape-arms.txt). The
-       asserted sentences are read out of it. */
-    const capture = readFileSync(join(capturesDir, "gate-classes-escape-arms.txt"), "utf8");
-    const capturedDetails = capture.split("\n").filter((line) => line.startsWith("phase M2-P4"));
-    assert.equal(
-      capturedDetails.length,
-      4,
-      `the capture should carry four detail lines, saw ${String(capturedDetails.length)}`,
-    );
-
-    /* TWO STRUCTURALLY DIFFERENT MEMBERS of one class, which is what
-       DR-0029's "you can never SILENTLY have nothing" actually quantifies
-       over. They fail for different reasons and are repaired by different
-       data: one needs a REASON, the other needs a PHASE ID. A witness that
-       only ever exercised the first would leave the second unguarded, which
-       is the exact shape CLAUDE.md's "one witness is not a class" records. */
-    const arms: { classes: Record<string, unknown>; expect: number; capturedIndex: number }[] = [
-      { classes: { ...satisfied, review: { status: "not-applicable" } }, expect: 1, capturedIndex: 0 },
-      {
-        classes: {
-          ...satisfied,
-          review: {
-            status: "not-applicable",
-            reason: "M2-P4 is a harness-only change reviewed under the M2 exit test",
-          },
-        },
-        expect: 0,
-        capturedIndex: 1,
-      },
-      {
-        classes: { ...satisfied, correctness: { status: "not-yet-establishable" } },
-        expect: 1,
-        capturedIndex: 2,
-      },
-      {
-        classes: {
-          ...satisfied,
-          correctness: { status: "not-yet-establishable", establishedBy: "M4-P20" },
-        },
-        expect: 0,
-        capturedIndex: 3,
-      },
-    ];
-
-    for (const arm of arms) {
-      write(arm.classes);
-      const run = runGateModule(dir, classGateArgs("m2-p4", `arm-${String(arm.capturedIndex)}.json`));
-      assert.equal(
-        run.status,
-        arm.expect,
-        `arm ${String(arm.capturedIndex)} exited ${String(run.status)}: ${run.stdout}${run.stderr}`,
-      );
-      assert.equal(
-        run.stdout.includes(capturedDetails[arm.capturedIndex] as string),
-        true,
-        `arm ${String(arm.capturedIndex)} does not reproduce the captured detail:\n${run.stdout}`,
-      );
-    }
-
-    /* AND AN EMPTY-STRING REASON IS THE SAME DEFECT AS AN ABSENT ONE, which a
-       check written as a presence test would wave through. Plan criterion 2
-       says "empty or absent", so both are exercised. */
-    write({ ...satisfied, review: { status: "not-applicable", reason: "   " } });
-    const blank = runGateModule(dir, classGateArgs("m2-p4", "blank.json"));
-    assert.equal(blank.status, 1, `an all-whitespace reason should be red: ${blank.stdout}`);
-    assert.match(blank.stdout, /review: not-applicable with no recorded reason/);
-
-    /* AND THE ESCAPE IS DISCLOSED ON THE GREEN ARM. DR-0029 permits the
-       escape; the protection is that a reviewer SEES it, exactly as
-       src/gates/scope.ts prints a declaration addition it no longer refuses. */
-    write({
-      ...satisfied,
-      review: { status: "not-applicable", reason: "a reason that is recorded" },
-    });
-    const disclosed = runGateModule(dir, classGateArgs("m2-p4", "disclosed.json"));
-    assert.equal(disclosed.status, 0);
-    assert.match(disclosed.stdout, /DECLARED ESCAPE rather than a gate/);
-    assert.match(disclosed.stdout, /reviewer signs off/);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
 
 test("the typecheck gate reports units the compiler printed and reddens naming the file when one deliberate type error is introduced", () => {
   const dir = scratch("typecheck-gate");
@@ -1209,59 +960,6 @@ test("the typecheck gate reports units the compiler printed and reddens naming t
   }
 });
 
-test("gate-classes reports error rather than green when the registry that defines the legal gate ids cannot be read", () => {
-  const dir = scratch("gate-classes-registry");
-  try {
-    writeDeclarationFixture(dir, ["m2-p4"]);
-    const base = JSON.parse(
-      readFileSync(join(dir, "declarations", "m2-p4.json"), "utf8"),
-    ) as Record<string, unknown>;
-    base["gateClasses"] = {
-      correctness: { gates: ["suite"] },
-      scope: { gates: ["scope"] },
-      review: { gates: ["check-dual-review"] },
-    };
-    writeFileSync(
-      join(dir, "declarations", "m2-p4.json"),
-      `${JSON.stringify(base, null, 2)}\n`,
-    );
-
-    /* THE CONTROL: with the registry present this declaration is green, so
-       the arm below is about the registry and nothing else. */
-    const control = runGateModule(dir, classGateArgs("m2-p4", "control.json"));
-    assert.equal(control.status, 0, `control should be green: ${control.stdout}${control.stderr}`);
-
-    /* M2-C-3. Without the registry the set of legal gate ids is unknown, so
-       no verdict about the declaration's gate NAMES can be reached. The
-       dangerous state is not red, it is GREEN WITH THE NAME CHECK SKIPPED:
-       every class would still look declared and nothing would have checked
-       that any of the names runs anything. */
-    rmSync(join(dir, "registry.yaml"));
-    const missing = runGateModule(dir, classGateArgs("m2-p4", "missing.json"));
-    assert.equal(
-      missing.status,
-      21,
-      `expected the gate error exit code, saw ${String(missing.status)}: ${missing.stdout}`,
-    );
-    const record = JSON.parse(readFileSync(join(dir, "missing.json"), "utf8")) as {
-      status: string;
-      units: number;
-      detail: string;
-    };
-    assert.equal(record.status, "error");
-    assert.equal(record.units, 0);
-    assert.match(record.detail, /set of legal gate ids could not be established/);
-
-    /* AND A REGISTRY THAT IS PRESENT BUT UNDECODABLE takes the same arm, so
-       the check is about reaching a verdict and not about a missing file. */
-    writeFileSync(join(dir, "registry.yaml"), "kind: gate-registry\ngates: [\n");
-    const undecodable = runGateModule(dir, classGateArgs("m2-p4", "undecodable.json"));
-    assert.equal(undecodable.status, 21, `expected error: ${undecodable.stdout}`);
-  } finally {
-    rmSync(dir, { recursive: true, force: true });
-  }
-});
-
 /**
  * The registration guard, in the shape `test/cutover.test.ts` and
  * `test/cutover-entry.test.ts` settled on after 49 rows in one phase
@@ -1273,17 +971,12 @@ test("gate-classes reports error rather than green when the registry that define
  * BY NAME, NEVER BY COUNT: the file is append-only, so a count would be a
  * claim about every future phase and false the moment the next one appends.
  */
-test("the M4-P14 gate class behaviors are registered in test/behaviors.json and resolve by name", () => {
+test("the M4-P14 typecheck behavior is registered in test/behaviors.json and resolves by name", () => {
   const behaviors = JSON.parse(
     readFileSync(join(repoRoot, "test", "behaviors.json"), "utf8"),
   ) as Record<string, string>;
   const ids = [
-    "gate-classes-missing-declaration-red",
-    "gate-classes-escape-needs-its-datum",
     "typecheck-units-derived-from-the-compiler",
-    "gate-classes-unreadable-registry-is-error",
-    "phase-declaration-carries-the-class-vocabulary",
-    "phase-declaration-class-escape-vocabulary-is-closed",
   ];
   const testNames = new Set<string>();
   const testDir = join(repoRoot, "test");

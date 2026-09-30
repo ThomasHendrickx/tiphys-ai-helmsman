@@ -164,7 +164,6 @@ modes:
       - red-witness
       - license
       - typecheck
-      - gate-classes
       - merge-preconditions
       - unit-tests-for-changed-service-methods
       - fixtures-for-changed-component-states

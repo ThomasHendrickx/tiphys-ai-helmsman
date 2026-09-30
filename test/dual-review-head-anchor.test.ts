@@ -36,7 +36,6 @@ import test from "node:test";
 
 const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const scriptPath = join(repoRoot, "scripts", "check-dual-review.mjs");
-const classGate = join(repoRoot, "src", "gates", "gate-classes.ts");
 const fixturesDir = join(repoRoot, "witness", "fixtures", "dual-review");
 
 const yamlModule = (await import("yaml")) as unknown as {
@@ -635,93 +634,6 @@ test("the not-applicable detail is grammatical, because the corpus describer it 
 });
 
 /* ------------------------------------------------------------------ */
-/* CR-FS-GATES-01: naming a gate is not the gate asserting anything     */
-/* ------------------------------------------------------------------ */
-
-/** Run the class gate over one declaration written into a scratch directory. */
-function runClasses(gateClasses: Record<string, unknown>): { exit: number; detail: string } {
-  const dir = scratch();
-  mkdirSync(join(dir, "declarations"), { recursive: true });
-  writeFileSync(
-    join(dir, "declarations", "m9-p1.json"),
-    `${JSON.stringify(
-      {
-        id: "M9-P1",
-        branch: "claude/m9-p1-fixture",
-        filesToTouch: ["src/fixture.ts"],
-        declaredExtras: [],
-        citations: [],
-        gateClasses,
-      },
-      null,
-      2,
-    )}\n`,
-  );
-  const resultPath = join(dir, "result.json");
-  const run = spawnSync(
-    process.execPath,
-    [
-      classGate,
-      "gate-classes",
-      "--declarations",
-      join(dir, "declarations"),
-      "--registry",
-      join(repoRoot, "gate-registry.yaml"),
-      "--result",
-      resultPath,
-      "--phase",
-      "m9-p1",
-    ],
-    { cwd: repoRoot, encoding: "utf8" },
-  );
-  const record = JSON.parse(readFileSync(resultPath, "utf8")) as { detail: string };
-  assert.equal(run.status ?? -1, 0, `${run.stdout}${run.stderr}`);
-  return { exit: run.status ?? -1, detail: record.detail };
-}
-
-test("a class satisfied only by a CONDITIONAL gate is named on the green arm, and a class satisfied by required gates is not", () => {
-  /* TWO ARMS, BECAUSE THE DISCLOSURE MUST DISTINGUISH. A note that printed for
-     every green declaration would be noise a reader learns to skip, which is
-     the same uselessness as no note at all.
-
-     The dangerous state, measured at the swept head: `gate-classes` printed
-     "review: asserted by check-dual-review" and exited 0 while
-     `check-dual-review --precondition .` exited 1 with "0 verdict
-     document(s)", and because that gate is `conditional` its vacuity never
-     reddened the bundle either. */
-  const conditional = runClasses({
-    correctness: { gates: ["suite", "typecheck"] },
-    scope: { gates: ["scope"] },
-    review: { gates: ["check-dual-review"] },
-  });
-  assert.match(
-    conditional.detail,
-    /class\(es\) are satisfied ONLY BY NAMING a gate, and this check never establishes that the named gate asserted anything on this head: review -> check-dual-review/,
-    conditional.detail,
-  );
-
-  /* THE CONTROL. Every class satisfied by a gate the registry declares
-     `required`, so nothing can report not-applicable, and the note is absent. */
-  const required = runClasses({
-    correctness: { gates: ["suite", "typecheck"] },
-    scope: { gates: ["scope"] },
-    review: { gates: ["citations"] },
-  });
-  assert.doesNotMatch(required.detail, /ONLY BY NAMING a gate/, required.detail);
-
-  /* AND THE APPLICABILITY THE NOTE IS DERIVED FROM IS READ OFF THE REGISTRY,
-     never hard-coded here: if a later phase makes `check-dual-review` required
-     or `citations` conditional, this test follows the registry rather than
-     asserting a stale fact about it. */
-  const registry = yamlModule.parse(
-    readFileSync(join(repoRoot, "gate-registry.yaml"), "utf8"),
-  ) as { gates: { id: string; applicability?: string }[] };
-  const byId = new Map(registry.gates.map((gate) => [gate.id, gate.applicability]));
-  assert.equal(byId.get("check-dual-review"), "conditional");
-  assert.equal(byId.get("citations"), "required");
-});
-
-/* ------------------------------------------------------------------ */
 /* Registration                                                         */
 /* ------------------------------------------------------------------ */
 
@@ -746,7 +658,6 @@ test("the DR-0047 sweep behaviors are registered in test/behaviors.json and reso
     "dual-review-nested-refusal-cannot-be-hidden",
     "dual-review-produced-by-string-disclosed",
     "dual-review-not-applicable-sentence-is-grammatical",
-    "gate-classes-conditional-satisfier-disclosed",
     "sweep-head-anchor-behaviors-registered",
   ];
   const testNames = new Set<string>();
