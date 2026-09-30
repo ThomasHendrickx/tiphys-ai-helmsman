@@ -1131,5 +1131,6 @@
   "setup-env-floor-installs-verified-toolchain": "setup-env below the Node floor installs the pinned toolchain from a verified tarball, uses it, and writes the PATH line to CLAUDE_ENV_FILE",
   "setup-env-bad-checksum-installs-nothing": "setup-env with a tarball whose sha256 does not match SHASUMS256.txt exits nonzero and installs nothing",
   "setup-env-build-failure-nonzero": "setup-env exits nonzero naming the build step when npm run build fails or leaves no dist, and prints no summary",
-  "setup-env-unshallow-failure-nonzero": "setup-env exits nonzero naming the full-clone step when the clone cannot be unshallowed"
+  "setup-env-unshallow-failure-nonzero": "setup-env exits nonzero naming the full-clone step when the clone cannot be unshallowed",
+  "implementer-reading-within-budget": "the implementer brief, the files it includes and every mandated-reading file sum to at most 48,000 bytes"
 }
