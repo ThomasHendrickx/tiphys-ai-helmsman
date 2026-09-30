@@ -1,0 +1,31 @@
+{
+  "id": "m6-p5-no-record",
+  "behavior": "m6-p5-no-record",
+  "tests": [
+    "a verdict with no matching kernel review record is not counted, so a verdict dropped into delivery/review by hand does not make the pair"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    forHead: counted.count.counted.map((review) => ({\n      path: join(contextDirectory, review.verdictPath),\n      record: review.verdict,\n    })),",
+      "replace": "    forHead: corpus.verdicts.map((verdict) => ({ path: verdict.path, record: verdict.record })),"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "  const unclaimed = [...verdictByPath.keys()].filter((path) => !verdictPaths.has(path)).sort();",
+      "replace": "  for (const [path, loaded] of verdictByPath) {\n    const first = counted[0];\n    if (!verdictPaths.has(path) && first !== undefined) {\n      counted.push({ ...first, verdictPath: path, verdict: loaded.record });\n    }\n  }\n  const unclaimed = [...verdictByPath.keys()].filter((path) => !verdictPaths.has(path)).sort();"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set.json"
+    ],
+    "provenance": "Real output of the git commands the merge gate runs (the prefix, the NUL-separated name list, the merge base and the ls-tree presence probe), captured 2026-09-29 by the M6-P2 implementer against the repository test/merge-preconditions.test.ts stages in stageShrinkRepo, which re-runs every command and compares git's live output with the recorded stdout. The named test reads the committed verdicts and kernel review records through the same git-backed corpus source on a repository it stages and commits itself."
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "id": "m6-p5-phase-match",
+  "behavior": "m6-p5-phase-match",
+  "tests": [
+    "a kernel review record for another phase at the same head is not counted toward the phase under audit"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "    if (record.phase !== phase) {",
+      "replace": "    if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/gates/merge-preconditions.ts",
+      "find": "    source,\n    records: loaded.records,\n    verdicts: corpus.verdicts,",
+      "replace": "    source,\n    records: loaded.records.map((entry) => ({ ...entry, record: { ...entry.record, phase: phase.toLowerCase() } })),\n    verdicts: corpus.verdicts,"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set.json"
+    ],
+    "provenance": "Real output of the git commands the merge gate runs (the prefix, the NUL-separated name list, the merge base and the ls-tree presence probe), captured 2026-09-29 by the M6-P2 implementer against the repository test/merge-preconditions.test.ts stages in stageShrinkRepo, which re-runs every command and compares git's live output with the recorded stdout. The named test reads the committed verdicts and kernel review records through the same git-backed corpus source on a repository it stages and commits itself."
+  }
+}

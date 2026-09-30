@@ -1,0 +1,31 @@
+{
+  "id": "m6-p5-exception",
+  "behavior": "m6-p5-exception",
+  "tests": [
+    "the same kernel-recorded pair with the single-vendor exception declared is green at condition-1 and says the exception was used, and a record on an undeclared family contradicts it"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "  if (contradicting.length > 0) {",
+      "replace": "  if (false) {"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "  if (declaration.families.length !== 1) {",
+      "replace": "  if (true) {"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "git",
+    "captures": [
+      "witness/captures/m6-p2-git-runtime-set.json"
+    ],
+    "provenance": "Real output of the git commands the merge gate runs (the prefix, the NUL-separated name list, the merge base and the ls-tree presence probe), captured 2026-09-29 by the M6-P2 implementer against the repository test/merge-preconditions.test.ts stages in stageShrinkRepo, which re-runs every command and compares git's live output with the recorded stdout. The named test reads the committed verdicts and kernel review records through the same git-backed corpus source on a repository it stages and commits itself."
+  }
+}
