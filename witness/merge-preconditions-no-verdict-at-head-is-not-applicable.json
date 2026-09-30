@@ -14,9 +14,9 @@
     },
     {
       "kind": "mutation",
-      "file": "src/gates/merge-preconditions.ts",
-      "find": "    if (relation.kind === \"same\" || relation.kind === \"evidence-only-ancestor\") {",
-      "replace": "    if (true || relation.kind === \"same\") {"
+      "file": "src/review.ts",
+      "find": "    if (relation.kind !== \"same\" && relation.kind !== \"evidence-only-ancestor\") {",
+      "replace": "    if (false) {"
     }
   ],
   "deterministic": true,
