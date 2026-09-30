@@ -1,0 +1,29 @@
+{
+  "kind": "verdict",
+  "phase": "M6-P3",
+  "head": "ee564708fe5e2977b75bf540c721dde09b841f2a",
+  "tiphys-version": "0.2.2",
+  "produced-by": "claude-haiku-4-5-20251001",
+  "framing": "hazard-final-head",
+  "review-contract": "hazard",
+  "hazard-classes-addressed": [
+    {
+      "class-id": "final-head-delta",
+      "probed": "git diff --stat 0027bbb ee56470 enumerates all changed files: exactly delivery/work-history/m6-p3.md, test/credentials-gate.test.ts, and witness/captures/m6-p3-git-config-credential-helper.json, as the brief specifies. Read both non-delivery file hunks: test/credentials-gate.test.ts line 860 adds GIT_CONFIG_NOSYSTEM=1 to the test environment, and witness/captures/m6-p3-git-config-credential-helper.json provenance line records re-capture with that variable. The fix does not weaken the test's assertion: it matches what src/exec/env.ts provides to real child processes, preventing macOS system-level git config (osxkeychain helper) from reaching test calls. Ran the test: node --test test/credentials-gate.test.ts on node v26.6.0 reports 18 tests, 18 pass, 0 fail, 0 skipped, exit 0.",
+      "cleared-because": "The landing code is C's code plus only the expected test-portability fix."
+    },
+    {
+      "class-id": "final-head-findings",
+      "probed": "Verified that every high or medium finding from verdicts A (CR-M6P3A-07, medium), B (CR-M6P3B-06, medium; identical underlying issue as A-07), and C (no high or medium) is addressed by a named test that passes at head. A-07 and B-06 concern git worktree list -z not being available on git before 2.36: commit b953c20 added fallback to newline listing when -z fails, and changed failure from silent pass-through to refusal. Named test: test/pool.test.ts:539 'pool destroy refuses, naming why, when the worktree listing cannot be read, and the branch a foreign worktree holds survives', which runs a git stub replaying git 2.34.1's refusal of -z (exit 129), passes at head. A-08 concerns a quoted diff hunk header with a trailing TAB: commit b953c20 strips the TAB before testing for the closing quote. Named test: test/witness.test.ts:2705, the decorated-names test exercising space plus non-ASCII byte in a filename, passes at head. Red-witness gate at head 784651b (one commit ahead: the delta between 0027bbb and ee56470) confirms all 192 stored and own witnesses re-evaluated: every witness red against every declared dangerous state and green at head.",
+      "cleared-because": "All high and medium findings from prior reviews are closed by named tests that are red-witnessed in CI."
+    },
+    {
+      "class-id": "final-head-no-new-work",
+      "probed": "git log --oneline 0027bbb..ee56470 enumerates all commits between C and landing head: exactly one commit, ee56470, the macOS fix for credential-scrub test. No additional commits, no new code changes, no changes beyond the specified delta.",
+      "cleared-because": "Only the expected test-portability fix was added between C and landing."
+    }
+  ],
+  "deviations-judged": [],
+  "findings": [],
+  "verdict": "APPROVE"
+}

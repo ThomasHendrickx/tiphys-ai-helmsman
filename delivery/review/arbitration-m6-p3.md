@@ -128,3 +128,9 @@ after its last merge of `main`.
 - D: m6-p3-hazard-d.json at ee56470, APPROVE, no findings (sonnet). Maps the
   four mediums (CR-M6P3A-01, CR-M6P3B-01, CR-M6P3B-05, CR-M6P3A-07 =
   CR-M6P3B-06) to their fix commits, named tests and witness specs.
+- E: m6-p3-hazard-e.json at ee56470, APPROVE, no findings (haiku). Its
+  check 2 names only the round-3 and round-4 findings (CR-M6P3A-07 =
+  CR-M6P3B-06, CR-M6P3A-08); D's mapping covers the earlier mediums.
+
+Pair at ee56470: D and E, distinct on produced-by, both APPROVE. One vendor,
+merged under the single-vendor exception.
