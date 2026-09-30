@@ -96,12 +96,23 @@ interface Dispatch {
   stderr: string;
   record: Record<string, unknown> | undefined;
   recordPath: string | undefined;
+  /** The verdict copy the dispatch leaves next to the record. */
+  verdictCopyPath: string | undefined;
 }
 
 function dispatch(
   repo: string,
   root: string,
-  options: { stream: string; verdictPath: string; head?: string; tier?: string; exit?: number; echo?: string },
+  options: {
+    stream: string;
+    verdictPath: string;
+    head?: string;
+    tier?: string;
+    exit?: number;
+    echo?: string;
+    /** Extra variables in the kernel's own environment. */
+    env?: Record<string, string>;
+  },
 ): Dispatch {
   const brief = join(root, "brief.md");
   writeFileSync(brief, "BRIEF: review the change at the head you are standing on.\n");
@@ -137,6 +148,7 @@ function dispatch(
         TIPHYS_STUB_VERDICT: VERDICT_FIXTURE,
         TIPHYS_STUB_EXIT: String(options.exit ?? 0),
         ...(options.echo === undefined ? {} : { TIPHYS_STUB_ECHO: options.echo }),
+        ...options.env,
       },
     },
   );
@@ -146,6 +158,7 @@ function dispatch(
     stdout: run.stdout ?? "",
     stderr: run.stderr ?? "",
     recordPath,
+    verdictCopyPath: /^verdict: (.+)$/m.exec(run.stdout ?? "")?.[1],
     record: recordPath === undefined ? undefined : (JSON.parse(readFileSync(recordPath, "utf8")) as Record<string, unknown>),
   };
 }
@@ -185,8 +198,9 @@ test("a dispatch with a stub executor replaying a real captured stream writes a 
     const seen = JSON.parse(readFileSync(echo, "utf8")) as Record<string, string>;
     assert.equal(seen["stdin"], "BRIEF: review the change at the head you are standing on.\n");
     assert.equal(seen["model"], "claude-opus-5");
-    assert.equal(git(seen["cwd"] as string, ["rev-parse", "HEAD"]), head);
-    assert.notEqual(realpathSync(seen["cwd"] as string), realpathSync(repo));
+    assert.equal(seen["head"], head);
+    assert.notEqual(seen["cwd"], repo);
+    assert.notEqual(seen["cwd"], realpathSync(repo));
 
     /* And the record is valid against the shipped schema through the shipped CLI. */
     const validated = spawnSync(process.execPath, [cliEntry, "validate", "--type", "review-record", run.recordPath as string], {
@@ -273,8 +287,7 @@ test("a stream with zero or two distinct top-level assistant models yields a rec
     for (const run of [good, ...failed]) {
       const record = run.record as Record<string, unknown>;
       const verdictPath = (record["verdict"] as Record<string, string>)["path"] as string;
-      const worktree = join(dirname(run.recordPath as string), record["taskId"] as string, "worktree");
-      copyFileSync(join(worktree, verdictPath), join(repo, verdictPath));
+      copyFileSync(run.verdictCopyPath as string, join(repo, verdictPath));
       copyFileSync(run.recordPath as string, join(repo, "delivery", "review", "records", `${record["taskId"] as string}.json`));
     }
     git(repo, ["add", "delivery"]);
@@ -336,6 +349,69 @@ test("a dispatch is refused before launch for a verdict path outside delivery/re
       assert.match(run.stderr, reason);
       assert.equal(run.recordPath, undefined, "a refused dispatch writes no record");
     }
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+/* ------------------------------------------------------------------ */
+/* M6-P5 fix round 1                                                    */
+/* ------------------------------------------------------------------ */
+
+const envModule = (await import(new URL("../src/exec/env.ts", import.meta.url).href)) as {
+  permittedChildEnvNames: () => Set<string>;
+  SCRUB_DIR_NAME: string;
+};
+
+/** Names the kernel's scrub must keep out of a reviewer, each set in the kernel's own environment. */
+const SCRUBBED: Record<string, string> = {
+  GH_TOKEN: "gh-token-for-the-probe",
+  GITHUB_TOKEN: "github-token-for-the-probe",
+  GH_ENTERPRISE_TOKEN: "enterprise-token-for-the-probe",
+  HTTPS_PROXY: "http://127.0.0.1:9",
+  https_proxy: "http://127.0.0.1:9",
+  SSH_AUTH_SOCK: "/nonexistent/agent.sock",
+  TIPHYS_UNRELATED_SECRET: "an-unrelated-secret",
+};
+
+test("the reviewer runs in the kernel's scrubbed environment, so no pull-request credential, proxy or unrelated secret the kernel holds reaches it, and its HOME is the task's empty scrub directory", () => {
+  const { root, repo } = project();
+  try {
+    const echo = join(root, "echo.json");
+    const run = dispatch(repo, root, { stream: STREAM, verdictPath: "delivery/review/m3-p9-hazard.yaml", echo, env: SCRUBBED });
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`);
+    const seen = JSON.parse(readFileSync(echo, "utf8")) as { envNames: string[]; home: string | null };
+    for (const name of Object.keys(SCRUBBED)) {
+      assert.ok(!seen.envNames.includes(name), `${name} reached the reviewer: [${seen.envNames.join(", ")}]`);
+    }
+    const permitted = envModule.permittedChildEnvNames();
+    const extra = seen.envNames.filter((name) => !permitted.has(name));
+    assert.deepEqual(extra, [], `names outside the kernel's child allowlist reached the reviewer: [${extra.join(", ")}]`);
+    const taskId = (run.record as Record<string, unknown>)["taskId"] as string;
+    assert.equal(seen.home, join(dirname(run.recordPath as string), taskId, envModule.SCRUB_DIR_NAME, "home"));
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("after hashing, the dispatch copies the verdict next to its record and removes the review worktree it created, registration included", () => {
+  const { root, repo } = project();
+  try {
+    const run = dispatch(repo, root, { stream: STREAM, verdictPath: "delivery/review/m3-p9-hazard.yaml" });
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`);
+    const record = run.record as Record<string, unknown>;
+    const taskId = record["taskId"] as string;
+    const out = dirname(run.recordPath as string);
+    assert.equal(run.verdictCopyPath, join(out, `${taskId}.verdict.yaml`));
+    assert.equal(sha256(readFileSync(run.verdictCopyPath as string)), (record["verdict"] as Record<string, string>)["sha256"]);
+    const worktree = join(out, taskId, "worktree");
+    assert.equal(spawnSync("test", ["-e", worktree]).status, 1, `${worktree} still exists`);
+    const listed = git(repo, ["worktree", "list", "--porcelain"]);
+    assert.ok(!listed.includes(taskId), `the review worktree is still registered:\n${listed}`);
+    assert.equal(listed.split("\n").filter((line) => line.startsWith("worktree ")).length, 1, listed);
+    /* The capture and the scrubbed HOME stay with the task. */
+    assert.equal(spawnSync("test", ["-f", join(out, taskId, "stream.jsonl")]).status, 0);
+    assert.equal(spawnSync("test", ["-d", join(out, taskId, envModule.SCRUB_DIR_NAME, "home")]).status, 0);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

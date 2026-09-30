@@ -109,7 +109,8 @@ export async function cmdReview(argv: string[]): Promise<number> {
     `review ${record.taskId}: head ${record.head}, requested ${record.requestedModel}, observed ` +
       `${record.observation.model ?? "none"}, family ${record.family}, verdict ${record.verdict.path} ` +
       `sha256 ${record.verdict.sha256 ?? "none"}, exit ${record.executorExitCode === null ? "none" : String(record.executorExitCode)}\n` +
-      `record: ${outcome.recordPath}\n`,
+      `record: ${outcome.recordPath}\n` +
+      (outcome.verdictCopyPath === undefined ? "" : `verdict: ${outcome.verdictCopyPath}\n`),
   );
   for (const problem of outcome.problems) {
     process.stderr.write(`tiphys review: ${problem}\n`);

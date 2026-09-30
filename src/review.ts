@@ -2,7 +2,7 @@ import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { closeSync, lstatSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
   boundAtMergeBase,
@@ -14,6 +14,7 @@ import {
 } from "./checks.ts";
 import type { HeadRelation, LoadedVerdict, ReviewFamiliesReading, VerdictCorpusSource } from "./checks.ts";
 import { loadTypeSchema } from "./commands/validate.ts";
+import { SCRUB_DIR_NAME, buildChildEnv } from "./exec/env.ts";
 import { singleLine } from "./task.ts";
 import { formatDiagnostics, validateInstance } from "./validate.ts";
 
@@ -235,13 +236,38 @@ export interface DispatchOptions {
   outDirectory: string;
   executor: ReviewExecutor;
   now?: () => Date;
+  /** The environment the child's allowlisted names are copied from; process.env when absent. */
+  parentEnv?: Record<string, string | undefined>;
+}
+
+/**
+ * The reviewer's environment (M6-P5 fix round 1, CR-M6P5A-02): the kernel's
+ * scrubbed child environment, the one `spawnTask` gives a payload, with no
+ * extension. The reviewer is an agent standing in a worktree of the project,
+ * so a pull-request credential in its environment is one it can use; the
+ * allowlist keeps every such name out, and the credential-store pointers
+ * (HOME and the rest) point at empty directories under the task directory.
+ */
+export function reviewChildEnv(
+  parentEnv: Record<string, string | undefined>,
+  taskDirectory: string,
+): { ok: true; env: Record<string, string> } | { ok: false; reason: string } {
+  return buildChildEnv({ parentEnv, scrubDir: join(taskDirectory, SCRUB_DIR_NAME) });
 }
 
 export type DispatchOutcome =
   /** Refused before launch: no worktree was launched into and no record was written. */
   | { ok: false; reason: string }
   /** A record was written. `problems` is empty only when it can count. */
-  | { ok: true; recordPath: string; record: ReviewRecord; taskDirectory: string; problems: string[] };
+  | {
+      ok: true;
+      recordPath: string;
+      record: ReviewRecord;
+      taskDirectory: string;
+      /** The verdict's bytes, copied next to the record; absent when the reviewer wrote none. */
+      verdictCopyPath: string | undefined;
+      problems: string[];
+    };
 
 export function dispatchReview(options: DispatchOptions): DispatchOutcome {
   const now = options.now ?? (() => new Date());
@@ -300,6 +326,10 @@ export function dispatchReview(options: DispatchOptions): DispatchOutcome {
   } catch (error) {
     return { ok: false, reason: `${taskDirectory} could not be created: ${describe(error)}` };
   }
+  const childEnv = reviewChildEnv(options.parentEnv ?? process.env, taskDirectory);
+  if (!childEnv.ok) {
+    return { ok: false, reason: `the reviewer's environment could not be built: ${childEnv.reason}` };
+  }
   const added = git(project, ["worktree", "add", "--detach", worktree, head]);
   if (!added.ok) {
     return { ok: false, reason: added.reason };
@@ -333,6 +363,7 @@ export function dispatchReview(options: DispatchOptions): DispatchOutcome {
       input: brief,
       stdio: ["pipe", outFd, errFd],
       shell: false,
+      env: childEnv.env,
     });
     exitCode = run.status;
     if (run.error !== undefined) {
@@ -374,12 +405,14 @@ export function dispatchReview(options: DispatchOptions): DispatchOutcome {
 
   const verdictFile = join(reviewDirectory, options.verdictPath);
   let verdict: ReviewRecord["verdict"];
+  let verdictBytes: Buffer | undefined;
   try {
     const stats = lstatSync(verdictFile);
     if (!stats.isFile()) {
       verdict = { path: options.verdictPath, sha256: null, reason: `${verdictFile} is not a regular file` };
     } else {
-      const sha256 = createHash("sha256").update(readFileSync(verdictFile)).digest("hex");
+      verdictBytes = readFileSync(verdictFile);
+      const sha256 = createHash("sha256").update(verdictBytes).digest("hex");
       verdict = { path: options.verdictPath, sha256, reason: "sha256 of the bytes the reviewer wrote, read after the executor exited" };
     }
   } catch (error) {
@@ -387,6 +420,29 @@ export function dispatchReview(options: DispatchOptions): DispatchOutcome {
   }
   if (verdict.sha256 === null) {
     problems.push(verdict.reason);
+  }
+
+  /* The hashed bytes are copied next to the record, so the review worktree
+     can go: the verdict the orchestrator commits is this copy. The captured
+     stream, stderr and the scrubbed HOME stay in the task directory. */
+  let verdictCopyPath: string | undefined;
+  if (verdictBytes !== undefined) {
+    const copy = join(out, `${taskId}.verdict${extname(options.verdictPath)}`);
+    try {
+      writeFileSync(copy, verdictBytes, { flag: "wx" });
+      verdictCopyPath = copy;
+    } catch (error) {
+      problems.push(`the verdict could not be copied to ${copy}: ${describe(error)}`);
+    }
+  }
+  /* The worktree the kernel added is removed with its registration, and only
+     once the verdict is copied: a verdict that could not be copied is left in
+     the worktree for the operator. */
+  if (verdictBytes === undefined || verdictCopyPath !== undefined) {
+    const removed = git(project, ["worktree", "remove", "--force", worktree]);
+    if (!removed.ok) {
+      problems.push(`the review worktree ${worktree} could not be removed: ${removed.reason}`);
+    }
   }
 
   const record: ReviewRecord = {
@@ -425,7 +481,7 @@ export function dispatchReview(options: DispatchOptions): DispatchOutcome {
   } catch (error) {
     return { ok: false, reason: `the review ran and its record ${recordPath} could not be written: ${describe(error)}` };
   }
-  return { ok: true, recordPath, record, taskDirectory, problems };
+  return { ok: true, recordPath, record, taskDirectory, verdictCopyPath, problems };
 }
 
 /* -------------------------------------------------------------------- */
