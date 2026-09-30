@@ -1126,5 +1126,10 @@
   "plan-project-duplicate-phase-id-refused": "plan project refuses a plan declaring phase M9-P1 twice with the wider entry first, naming the id, and writes no declaration",
   "brief-compose-duplicate-phase-id-refused": "brief compose refuses a plan declaring phase M9-P1 twice with the weaker entry first, naming the id",
   "checklist-duplicate-framing-id-refused": "a checklist declaring framing fix-round twice with the weaker entry first is refused at load naming the id, rather than resolved under the first",
-  "brief-compose-refuses-without-project-registry": "brief compose of an implementer brief from a directory with no gate-registry.yaml refuses naming the missing file"
+  "brief-compose-refuses-without-project-registry": "brief compose of an implementer brief from a directory with no gate-registry.yaml refuses naming the missing file",
+  "setup-env-shallow-to-full-and-built": "setup-env turns a shallow clone into a full clone and builds dist",
+  "setup-env-floor-installs-verified-toolchain": "setup-env below the Node floor installs the pinned toolchain from a verified tarball, uses it, and writes the PATH line to CLAUDE_ENV_FILE",
+  "setup-env-bad-checksum-installs-nothing": "setup-env with a tarball whose sha256 does not match SHASUMS256.txt exits nonzero and installs nothing",
+  "setup-env-build-failure-nonzero": "setup-env exits nonzero naming the build step when npm run build fails or leaves no dist, and prints no summary",
+  "setup-env-unshallow-failure-nonzero": "setup-env exits nonzero naming the full-clone step when the clone cannot be unshallowed"
 }
