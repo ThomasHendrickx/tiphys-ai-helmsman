@@ -12,6 +12,17 @@ import {
 } from "../task.ts";
 import { comparePins, describePinDifference, takePin } from "./pin.ts";
 import {
+  DEFAULT_CHECK_TIMEOUT_SECONDS,
+  commandFinding,
+  findPlanPhase,
+  judgeTestChecks,
+  phaseCriteria,
+  readPlan,
+  runCheckCommand,
+} from "../criteria.ts";
+import type { Criterion, ReportedTest, TestOutcome } from "../criteria.ts";
+import { loadTypeSchema } from "../commands/validate.ts";
+import {
   EXIT_GATE_ERROR,
   exitCodeForStatus,
   makeGateResult,
@@ -431,6 +442,26 @@ export interface SuiteCounts {
   didNotRun: number;
 }
 
+/**
+ * THE ONE CLASSIFICATION of a reported test point, in the precedence the
+ * mapping above states: skipped, then todo, then cancelledByParent as
+ * did-not-run, then any other failure, then pass. `bucketPoints` counts with
+ * it and the criteria judge (M6-P4) proves with it, so the two cannot
+ * disagree about what "passed" means.
+ */
+export function pointOutcome(point: SuitePoint): TestOutcome {
+  if (point.skip !== undefined && point.skip !== false) {
+    return "skipped";
+  }
+  if (point.todo !== undefined && point.todo !== false) {
+    return "todo";
+  }
+  if (point.event === "test:fail") {
+    return point.failureType === "cancelledByParent" ? "did-not-run" : "fail";
+  }
+  return "pass";
+}
+
 export function bucketPoints(points: SuitePoint[]): {
   counts: SuiteCounts;
   skipsWithoutReason: SuitePoint[];
@@ -453,9 +484,8 @@ export function bucketPoints(points: SuitePoint[]): {
       continue;
     }
     counts.reported += 1;
-    const skipped = point.skip !== undefined && point.skip !== false;
-    const todo = point.todo !== undefined && point.todo !== false;
-    if (skipped) {
+    const outcome = pointOutcome(point);
+    if (outcome === "skipped") {
       counts.skipped += 1;
       const reason = typeof point.skip === "string" ? point.skip.trim() : "";
       if (reason === "") {
@@ -463,18 +493,18 @@ export function bucketPoints(points: SuitePoint[]): {
       }
       continue;
     }
-    if (todo) {
+    if (outcome === "todo") {
       counts.todo += 1;
       continue;
     }
-    if (point.event === "test:fail") {
-      if (point.failureType === "cancelledByParent") {
-        counts.didNotRun += 1;
-        cancelled.push(point);
-      } else {
-        counts.fail += 1;
-        failures.push(point);
-      }
+    if (outcome === "did-not-run") {
+      counts.didNotRun += 1;
+      cancelled.push(point);
+      continue;
+    }
+    if (outcome === "fail") {
+      counts.fail += 1;
+      failures.push(point);
       continue;
     }
     counts.pass += 1;
@@ -548,12 +578,15 @@ interface Flags {
   testRoots: string[];
   pinRoots: string[];
   suffix: string;
+  plan?: string;
+  phase?: string;
+  checkTimeout: number;
 }
 
 const USAGE =
   "usage: node src/gates/suite.ts --result <file> --evidence <dir> --base <ref> " +
   "[--head <ref>] [--test-root <dir>]... [--pin-root <dir>]... " +
-  "[--suffix <s>] [--registry <path>]";
+  "[--suffix <s>] [--registry <path>] [--plan <file> --phase <id> [--check-timeout <seconds>]]";
 
 function parseFlags(args: string[]): Flags | string {
   const flags: Flags = {
@@ -561,6 +594,7 @@ function parseFlags(args: string[]): Flags | string {
     testRoots: [],
     pinRoots: [],
     suffix: ".test.ts",
+    checkTimeout: DEFAULT_CHECK_TIMEOUT_SECONDS,
   };
   for (let index = 0; index < args.length; index += 1) {
     const flag = args[index];
@@ -576,6 +610,9 @@ function parseFlags(args: string[]): Flags | string {
         "--pin-root",
         "--suffix",
         "--registry",
+        "--plan",
+        "--phase",
+        "--check-timeout",
       ].includes(flag)
     ) {
       return `unknown flag ${flag ?? ""}`;
@@ -597,10 +634,22 @@ function parseFlags(args: string[]): Flags | string {
       flags.pinRoots.push(value);
     } else if (flag === "--suffix") {
       flags.suffix = value;
+    } else if (flag === "--plan") {
+      flags.plan = value;
+    } else if (flag === "--phase") {
+      flags.phase = value;
+    } else if (flag === "--check-timeout") {
+      if (!/^[1-9][0-9]*$/.test(value)) {
+        return `--check-timeout must be a positive whole number of seconds, not ${value}`;
+      }
+      flags.checkTimeout = Number(value);
     } else {
       flags.registry = value;
     }
     index += 1;
+  }
+  if ((flags.plan === undefined) !== (flags.phase === undefined)) {
+    return "--plan and --phase are given together: the criteria of one phase of one plan are proven";
   }
   if (flags.testRoots.length === 0) {
     flags.testRoots.push("test");
@@ -832,6 +881,36 @@ export function runSuiteGate(argv: string[]): number {
     }
     baseRegistry = parsedBase.registry;
     baseRegistryPresent = true;
+  }
+
+  // M6-P4 (DR-0064): the phase's acceptance criteria, read and validated
+  // BEFORE the suite runs, so a plan that cannot be read costs no suite run.
+  // An unreadable or invalid plan is `error` (M2-C-3). A plan with no such
+  // phase is the one not-applicable arm, and it is printed in the detail.
+  let criteriaState:
+    | { kind: "off" }
+    | { kind: "not-applicable"; reason: string }
+    | { kind: "on"; phaseId: string; criteria: Criterion[] } = { kind: "off" };
+  if (flags.plan !== undefined && flags.phase !== undefined) {
+    let planRead: ReturnType<typeof readPlan>;
+    try {
+      planRead = readPlan(resolve(cwd, flags.plan), loadTypeSchema("plan"));
+    } catch (caught) {
+      return error(singleLine((caught as Error).message));
+    }
+    if (!planRead.ok) {
+      return error(planRead.reason);
+    }
+    const lookup = findPlanPhase(planRead.plan, flags.phase);
+    if (lookup.kind === "ambiguous") {
+      return error(
+        `plan ${flags.plan} declares ${String(lookup.count)} phases with id ${flags.phase}, so its criteria cannot be told apart`,
+      );
+    }
+    criteriaState =
+      lookup.kind === "absent"
+        ? { kind: "not-applicable", reason: `plan ${flags.plan} declares no phase ${flags.phase}` }
+        : { kind: "on", phaseId: lookup.id, criteria: phaseCriteria(lookup.phase) };
   }
 
   // Independent discovery walk (step 3).
@@ -1087,6 +1166,78 @@ export function runSuiteGate(argv: string[]): number {
     );
   }
 
+  // M6-P4 (DR-0064): every criterion's check, proven against THIS run's
+  // reported points and against commands run now, never against a claim.
+  let criteriaDocument: Record<string, unknown> | undefined;
+  let criteriaSummary = "";
+  if (criteriaState.kind === "not-applicable") {
+    criteriaDocument = {
+      plan: flags.plan,
+      phase: flags.phase,
+      applicable: false,
+      reason: criteriaState.reason,
+    };
+    criteriaSummary = `; criteria not applicable: ${criteriaState.reason}`;
+  } else if (criteriaState.kind === "on") {
+    const reported: ReportedTest[] = points
+      .filter((point) => point.entityType === "test")
+      .map((point) => ({
+        name: point.name,
+        file: relative(cwd, point.file),
+        outcome: pointOutcome(point),
+      }));
+    const commandEnv: Record<string, string> = { ...childEnv };
+    delete commandEnv["NODE_OPTIONS"];
+    const results: Record<string, unknown>[] = [];
+    let proven = 0;
+    let unproven = 0;
+    let notTestable = 0;
+    for (const criterion of criteriaState.criteria) {
+      if (criterion.check === undefined) {
+        notTestable += 1;
+        results.push({ id: criterion.id, "not-testable": criterion.notTestable });
+        continue;
+      }
+      const criterionFindings = judgeTestChecks([criterion], reported);
+      let command: Record<string, unknown> | undefined;
+      if (criterion.check.command !== undefined) {
+        const outcome = runCheckCommand(criterion.check.command, cwd, flags.checkTimeout, commandEnv);
+        const finding = commandFinding(criterion.id, outcome, flags.checkTimeout);
+        if (finding !== undefined) {
+          criterionFindings.push(finding);
+        }
+        command = { ...outcome };
+      }
+      if (criterionFindings.length === 0) {
+        proven += 1;
+      } else {
+        unproven += 1;
+      }
+      findings.push(...criterionFindings);
+      results.push({
+        id: criterion.id,
+        check: criterion.check,
+        proven: criterionFindings.length === 0,
+        findings: criterionFindings,
+        ...(command === undefined ? {} : { command }),
+      });
+    }
+    criteriaDocument = {
+      plan: flags.plan,
+      phase: criteriaState.phaseId,
+      applicable: true,
+      criteria: criteriaState.criteria.length,
+      proven,
+      unproven,
+      notTestable,
+      results,
+    };
+    criteriaSummary =
+      `; criteria of ${criteriaState.phaseId} in ${flags.plan as string}: ` +
+      `${String(criteriaState.criteria.length)} criterion(s), ${String(proven)} proven by their check, ` +
+      `${String(unproven)} unproven, ${String(notTestable)} not-testable`;
+  }
+
   const countsDocument = {
     gate: SUITE_GATE_ID,
     requestedReporter: REPORTER_NAME,
@@ -1114,6 +1265,7 @@ export function runSuiteGate(argv: string[]): number {
     discovered: discoveredFiles.map((file) => relative(cwd, file)),
     reported: reportedFiles.map((file) => relative(cwd, file)),
     findings,
+    ...(criteriaDocument === undefined ? {} : { criteria: criteriaDocument }),
   };
   const countsRefusal = writeEvidence(
     COUNTS_FILE,
@@ -1132,7 +1284,7 @@ export function runSuiteGate(argv: string[]): number {
     return emit({
       status: "red",
       units: counts.reported,
-      detail: `${String(findings.length)} finding(s): ${shown.join("; ")}${more}`,
+      detail: `${String(findings.length)} finding(s): ${shown.join("; ")}${more}${criteriaSummary}`,
       evidence,
       pin,
     });
@@ -1147,7 +1299,7 @@ export function runSuiteGate(argv: string[]): number {
       `skipped ${String(counts.skipped)}, todo ${String(counts.todo)}, did-not-run 0); ` +
       `discovered ${String(discoveredFiles.length)} file(s) walking ${flags.testRoots.join(", ")} ` +
       `for ${flags.suffix}; ${String(Object.keys(headRegistry.registry).length)} behavior(s) resolve; ` +
-      `merge base ${mergeBaseSha.slice(0, 12)}`,
+      `merge base ${mergeBaseSha.slice(0, 12)}${criteriaSummary}`,
     evidence,
     pin,
   });

@@ -343,6 +343,7 @@ test("a duplicate acceptance id makes an addressed-by resolve ambiguously and is
     acceptance.push({
       id: "2",
       criterion: "The importer logs one line per retry, asserted against captured output.",
+      check: { tests: ["the importer logs one line per retry"] },
     });
     const file = writePlan(dir, plan, "duplicate-id.yaml");
     const run = runCli(["validate", "--type", "plan", file]);

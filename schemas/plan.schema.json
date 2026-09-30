@@ -122,6 +122,41 @@
     }
   },
   "$defs": {
+    "criterionCheck": {
+      "description": "What proves a criterion: exact test titles the suite must report as passing, a command that must exit 0, or both.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "tests": {
+          "description": "Exact test titles as the suite reports them; each must be reported and pass.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "\\S"
+          }
+        },
+        "command": {
+          "description": "An argv run with no shell from the project root; exit 0 means proven.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "oneOf": [
+        { "required": ["tests"], "properties": { "tests": { "type": "array" } } },
+        {
+          "description": "command alone: a present tests array is never null, so this branch excludes it",
+          "required": ["command"],
+          "properties": { "command": { "type": "array" }, "tests": { "type": "null" } }
+        }
+      ]
+    },
     "phase": {
       "$comment": "R-019 plus the blueprint section 5 superset (conflicts-with, parallelizable). A strict SUPERSET of the M2-P4 scope auditor's phase-declaration projection, which tiphys plan project emits (D-M3-18).",
       "type": "object",
@@ -210,6 +245,7 @@
           "type": "array",
           "minItems": 1,
           "items": {
+            "description": "One criterion and exactly one of: the check that proves it, or the reason it cannot be a test (DR-0064).",
             "type": "object",
             "additionalProperties": false,
             "required": ["id", "criterion"],
@@ -221,8 +257,21 @@
               "criterion": {
                 "type": "string",
                 "minLength": 1
+              },
+              "check": {
+                "$ref": "#/$defs/criterionCheck"
+              },
+              "not-testable": {
+                "description": "Why no test or command can prove this criterion; the hazard reviewer answers it instead.",
+                "type": "string",
+                "minLength": 1,
+                "pattern": "\\S"
               }
-            }
+            },
+            "oneOf": [
+              { "required": ["check"], "properties": { "check": { "type": "object" } } },
+              { "required": ["not-testable"], "properties": { "not-testable": { "type": "string" } } }
+            ]
           }
         },
         "hazard-classes": {

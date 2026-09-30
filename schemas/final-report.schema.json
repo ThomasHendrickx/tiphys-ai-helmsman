@@ -12,6 +12,7 @@
     "inputs",
     "input-findings",
     "delivered-outcome",
+    "not-testable",
     "decisions-owed",
     "owner-verification",
     "infrastructure-left",
@@ -109,6 +110,20 @@
             "type": "array",
             "minItems": 1
           }
+        }
+      }
+    },
+    "not-testable": {
+      "description": "Per phase, how many acceptance criteria the plan marks not-testable, as tiphys plan count prints it (DR-0064).",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["phase", "count"],
+        "properties": {
+          "phase": { "type": "string", "minLength": 1, "pattern": "\\S" },
+          "count": { "type": "integer" }
         }
       }
     },

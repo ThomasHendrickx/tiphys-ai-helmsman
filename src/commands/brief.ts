@@ -53,6 +53,7 @@ import {
   splitFrontmatter,
 } from "../roles.ts";
 import { locateCharters } from "../charter.ts";
+import { renderNotTestableQuestions } from "../criteria.ts";
 import { refuseOpenForWrite, readRegularFileIfPresent } from "../task.ts";
 import { decodeDocument, formatDiagnostics, readOperatorPath } from "../validate.ts";
 
@@ -461,6 +462,11 @@ export function composeBrief(options: ComposeOptions): ComposeResult {
   lines.push("");
   lines.push(...renderIntent(productIntent, phase));
   lines.push(...renderPhase(phase));
+  /* M6-P4 (DR-0064): no test or command proves a not-testable criterion, so
+     the hazard reviewer is handed each one as a question to answer. */
+  if (options.roleId === REVIEW_CONTRACT_ROLE) {
+    lines.push(...renderNotTestableQuestions(phase));
+  }
 
   const warnings = readRegularFileIfPresent(
     join(options.workingDirectory, WARNINGS_FILE),
