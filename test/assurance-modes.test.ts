@@ -1441,6 +1441,29 @@ test("mode show lists exactly the gates the registry beside the document selects
  * document at d584639: `validate` exit 0 and `mode show` printing
  * `merge-authority: owner` for `full`.
  */
+/**
+ * The shipped commands' REAL output over `duplicateFullFirst()`, one section
+ * per case. Rule (f) of the red-witness gate requires it (the witness members
+ * mutate src/checks.ts, which spawns), and the assertions below compare live
+ * output with it rather than with a string chosen to match the implementation.
+ */
+const DUPLICATE_MODE_CAPTURE = join(repoRoot, "witness", "captures", "m6-p3-duplicate-mode-id.txt");
+
+function capturedInvalidLine(caseName: string, fragment: string): string {
+  const section = readFileSync(DUPLICATE_MODE_CAPTURE, "utf8").split("\ncase: ").find((part) =>
+    part.startsWith(`${caseName}\n`),
+  );
+  const line = section
+    ?.split("\n")
+    .map((entry) => entry.trim())
+    .find((entry) => entry.startsWith("INVALID ") && entry.includes(fragment));
+  assert.ok(
+    line !== undefined,
+    `m6-p3-duplicate-mode-id.txt case ${caseName} carries no INVALID line containing ${JSON.stringify(fragment)}`,
+  );
+  return line;
+}
+
 function duplicateFullFirst(): Record<string, unknown> {
   const document = loadModes();
   const weaker = structuredClone(modeNamed(document, "full"));
@@ -1466,6 +1489,10 @@ test("validate refuses an assurance-modes document declaring mode full twice wit
     const run = runCli(["validate", "--type", "assurance-modes", "--context", dir, path]);
     assert.equal(run.status, 1, run.stdout + run.stderr);
     assert.match(run.stdout + run.stderr, /INVALID #\/modes\/1\/id .*declares mode full 2 times \(entries 0, 1\)/);
+    assert.ok(
+      run.stdout.split("\n").includes(capturedInvalidLine("validate", "#/modes/1/id")),
+      `the live line differs from the captured one:\n${run.stdout}`,
+    );
 
     /* CONTROL: the shipped document, same command, same context, exit 0. */
     const control = writeDocument(dir, loadModes(), "control.yaml");
@@ -1485,6 +1512,10 @@ test("mode show refuses a document declaring mode full twice with the weaker row
     assert.equal(run.stdout, "", `a duplicated mode must not be served:\n${run.stdout}`);
     assert.match(run.stderr, /is not a valid assurance-modes document, so it is not served/);
     assert.match(run.stderr, /declares mode full 2 times \(entries 0, 1\)/);
+    assert.ok(
+      run.stderr.split("\n").includes(capturedInvalidLine("mode-show", "#/modes/1/id")),
+      `the live line differs from the captured one:\n${run.stderr}`,
+    );
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }

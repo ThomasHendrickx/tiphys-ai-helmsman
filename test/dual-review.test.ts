@@ -25,6 +25,7 @@ import {
   mkdtempSync,
   readFileSync,
   readdirSync,
+  realpathSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -710,6 +711,30 @@ test("the merge checks refuse a modes document declaring the charter's mode twic
     assert.equal(run.status, 1, run.output);
     assert.match(run.output, /declares mode full 2 times \(entries 0, 1\)/);
     assert.doesNotMatch(run.output, /which is not a delegated grant/);
+
+    /* AGAINST THE REAL CAPTURE (rule (f): the witness members mutate
+       src/checks.ts, which spawns). Every INVALID line the script printed over
+       the same construction, with the scratch path written <dir> as the
+       capture declares, must be printed again now. */
+    const capture = readFileSync(
+      join(repoRoot, "witness", "captures", "m6-p3-duplicate-mode-id.txt"),
+      "utf8",
+    );
+    const section = capture.split("\ncase: ").find((part) => part.startsWith("merge-checks\n"));
+    const captured = (section ?? "")
+      .split("\n")
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith("INVALID #/produced-by"));
+    assert.ok(captured.length > 0, "m6-p3-duplicate-mode-id.txt carries no merge-checks INVALID line");
+    const live = run.output
+      .split(realpathSync(dir))
+      .join("<dir>")
+      .split(dir)
+      .join("<dir>")
+      .split("\n");
+    for (const line of captured) {
+      assert.ok(live.includes(line), `the live output no longer prints the captured line:\n${line}`);
+    }
   });
 });
 
