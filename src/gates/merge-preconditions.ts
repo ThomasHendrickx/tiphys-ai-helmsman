@@ -1952,8 +1952,8 @@ export async function runGate(flags: Flags): Promise<number> {
       /* SC-011: the not-applicable arm of the M4-P12 order, and it carries an
          EVALUATED precondition rather than a silence. A head with no verdict
          naming it is not a merge waiting on six conditions. REACHABLE ONLY
-         WITHOUT `--base` since M5-P3: with it, a dual-tier change and no
-         verdict is red above, and a below-dual change never reads the corpus. */
+         WITHOUT `--base` since M5-P3: with it, a change of either DR-0063
+         tier and no verdict is red above (M6-P2). */
       const precondition: PreconditionRecord = {
         id: PRECONDITION_ID,
         met: false,
