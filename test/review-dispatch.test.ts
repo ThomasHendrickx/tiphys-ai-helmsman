@@ -112,10 +112,25 @@ function dispatch(
     echo?: string;
     /** Extra variables in the kernel's own environment. */
     env?: Record<string, string>;
+    /** Names removed from the kernel's own environment (any case). */
+    unset?: string[];
   },
 ): Dispatch {
   const brief = join(root, "brief.md");
   writeFileSync(brief, "BRIEF: review the change at the head you are standing on.\n");
+  const kernelEnv: Record<string, string | undefined> = {
+    ...process.env,
+    TIPHYS_STUB_STREAM: options.stream,
+    TIPHYS_STUB_VERDICT: VERDICT_FIXTURE,
+    TIPHYS_STUB_EXIT: String(options.exit ?? 0),
+    ...(options.echo === undefined ? {} : { TIPHYS_STUB_ECHO: options.echo }),
+    ...options.env,
+  };
+  for (const name of Object.keys(kernelEnv)) {
+    if ((options.unset ?? []).some((unset) => unset.toLowerCase() === name.toLowerCase())) {
+      delete kernelEnv[name];
+    }
+  }
   const run = spawnSync(
     process.execPath,
     [
@@ -142,14 +157,7 @@ function dispatch(
     {
       cwd: repo,
       encoding: "utf8",
-      env: {
-        ...process.env,
-        TIPHYS_STUB_STREAM: options.stream,
-        TIPHYS_STUB_VERDICT: VERDICT_FIXTURE,
-        TIPHYS_STUB_EXIT: String(options.exit ?? 0),
-        ...(options.echo === undefined ? {} : { TIPHYS_STUB_ECHO: options.echo }),
-        ...options.env,
-      },
+      env: kernelEnv,
     },
   );
   const recordPath = /^record: (.+)$/m.exec(run.stdout ?? "")?.[1];
@@ -671,6 +679,65 @@ test("an executor that cannot map the grant refuses before anything is created: 
     const out = join(root, "out");
     const left = spawnSync("find", [out, "-mindepth", "1"], { encoding: "utf8" });
     assert.equal(left.status === 0 ? left.stdout.trim() : "", "", `the refusal left ${left.stdout}`);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("the install step runs npm ci with --prefer-offline and the kernel's own npm cache, npm_config_cache when set and .npm under the kernel's HOME otherwise, in the scrubbed environment with no TLS setting", () => {
+  const { root, repo } = npmProject(true);
+  try {
+    /* A stand-in npm first on the kernel's PATH records the argv and whether
+       the kernel's CA variable reached it, then runs the real npm. */
+    const realNpm = spawnSync("sh", ["-c", "command -v npm"], { encoding: "utf8" }).stdout.trim();
+    assert.ok(realNpm !== "" && !realNpm.includes("'"), `no usable npm on PATH: ${realNpm}`);
+    const fakeBin = join(root, "fake-bin");
+    mkdirSync(fakeBin);
+    writeFileSync(
+      join(fakeBin, "npm"),
+      "#!/bin/sh\n" +
+        "printf 'fake-npm argv:'\n" +
+        "for a in \"$@\"; do printf ' [%s]' \"$a\"; done\n" +
+        "printf '\\nfake-npm NODE_EXTRA_CA_CERTS=%s\\n' \"${NODE_EXTRA_CA_CERTS-unset}\"\n" +
+        `exec '${realNpm}' "$@"\n`,
+      { mode: 0o755 },
+    );
+    const path = `${fakeBin}${delimiter}${process.env["PATH"] ?? ""}`;
+    const ca = process.env["NODE_EXTRA_CA_CERTS"] ?? join(root, "absent-ca.pem");
+    const argvIn = (run: Dispatch): string => {
+      const taskId = (run.record as Record<string, unknown>)["taskId"] as string;
+      return readFileSync(join(dirname(run.recordPath as string), taskId, "npm-ci.txt"), "utf8");
+    };
+
+    const configured = join(root, "kernel-npm-cache");
+    const first = dispatch(repo, root, {
+      stream: STREAM,
+      verdictPath: "delivery/review/m3-p9-hazard.yaml",
+      env: { PATH: path, npm_config_cache: configured, NODE_EXTRA_CA_CERTS: ca },
+    });
+    assert.equal(first.status, 0, `${first.stdout}${first.stderr}`);
+    const firstLog = argvIn(first);
+    assert.ok(
+      firstLog.includes(`fake-npm argv: [ci] [--prefer-offline] [--cache] [${configured}] [--no-audit] [--no-fund]\n`),
+      firstLog,
+    );
+    assert.ok(firstLog.includes("fake-npm NODE_EXTRA_CA_CERTS=unset\n"), firstLog);
+
+    const home = join(root, "kernel-home");
+    mkdirSync(home);
+    const second = dispatch(repo, root, {
+      stream: STREAM,
+      verdictPath: "delivery/review/m3-p9-hazard.yaml",
+      env: { PATH: path, HOME: home, NODE_EXTRA_CA_CERTS: ca },
+      unset: ["npm_config_cache"],
+    });
+    assert.equal(second.status, 0, `${second.stdout}${second.stderr}`);
+    const secondLog = argvIn(second);
+    assert.ok(
+      secondLog.includes(`fake-npm argv: [ci] [--prefer-offline] [--cache] [${join(home, ".npm")}] [--no-audit] [--no-fund]\n`),
+      secondLog,
+    );
+    assert.ok(secondLog.includes("fake-npm NODE_EXTRA_CA_CERTS=unset\n"), secondLog);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

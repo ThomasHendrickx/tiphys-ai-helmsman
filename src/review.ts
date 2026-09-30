@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { closeSync, lstatSync, mkdirSync, openSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
+import { homedir } from "node:os";
 import { extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import {
@@ -301,6 +302,26 @@ export function reviewChildEnv(
 }
 
 /**
+ * The KERNEL's own npm cache (M6-P5 fix round 4), resolved from the kernel's
+ * environment the way npm 11 resolves it (@npmcli/config, `loadEnv` and the
+ * `cache` definition): `npm_config_cache` when set, else npm's POSIX default,
+ * `.npm` under the kernel's HOME (npm's `env.HOME || homedir()`). Never a path
+ * in the task directory, whose scrubbed HOME starts empty. An `.npmrc` that
+ * sets `cache` is not read here.
+ */
+function kernelNpmCache(parentEnv: Record<string, string | undefined>): string {
+  /* npm's own loop: every case of the name counts, an empty value is
+     skipped, and a later entry wins over an earlier one. */
+  let configured: string | undefined;
+  for (const [name, value] of Object.entries(parentEnv)) {
+    if (name.toLowerCase() === "npm_config_cache" && value !== undefined && value !== "") {
+      configured = value;
+    }
+  }
+  return configured !== undefined ? resolve(configured) : join(parentEnv["HOME"] || homedir(), ".npm");
+}
+
+/**
  * The reviewed head's dependencies, installed by the KERNEL before launch
  * (M6-P5 fix round 3), so a reviewer can build and test without a grant to
  * install anything. Only when the head carries a `package-lock.json` in the
@@ -309,11 +330,18 @@ export function reviewChildEnv(
  * and funding requests are left out: they reach the registry and prepare
  * nothing. A lockfile that is not a regular file is refused rather than
  * handed to npm, since its type decides what reading it does.
+ *
+ * Fix round 4: `--prefer-offline --cache <the kernel's cache>`. Where the
+ * registry cannot be reached from the scrubbed environment (a proxy whose CA
+ * only the kernel's environment names), the tarballs the operator already
+ * fetched install from the cache; where it can, a cache miss still reaches
+ * it. The child environment gains nothing, no TLS setting included.
  */
 function installReviewDependencies(
   reviewDirectory: string,
   taskDirectory: string,
   env: Record<string, string>,
+  cache: string,
 ): { ok: true } | { ok: false; reason: string } {
   const lockfile = join(reviewDirectory, "package-lock.json");
   let isFile: boolean;
@@ -329,7 +357,7 @@ function installReviewDependencies(
   let logFd: number | undefined;
   try {
     logFd = openSync(logPath, "wx");
-    const run = spawnSync("npm", ["ci", "--no-audit", "--no-fund"], {
+    const run = spawnSync("npm", ["ci", "--prefer-offline", "--cache", cache, "--no-audit", "--no-fund"], {
       cwd: reviewDirectory,
       env,
       stdio: ["ignore", logFd, logFd],
@@ -441,7 +469,8 @@ export function dispatchReview(options: DispatchOptions): DispatchOutcome {
   } catch (error) {
     return { ok: false, reason: `${taskDirectory} could not be created: ${describe(error)}` };
   }
-  const childEnv = reviewChildEnv(options.parentEnv ?? process.env, taskDirectory);
+  const parentEnv = options.parentEnv ?? process.env;
+  const childEnv = reviewChildEnv(parentEnv, taskDirectory);
   if (!childEnv.ok) {
     return { ok: false, reason: `the reviewer's environment could not be built: ${childEnv.reason}` };
   }
@@ -450,7 +479,7 @@ export function dispatchReview(options: DispatchOptions): DispatchOutcome {
     return { ok: false, reason: added.reason };
   }
   const reviewDirectory = join(worktree, prefix);
-  const installed = installReviewDependencies(reviewDirectory, taskDirectory, childEnv.env);
+  const installed = installReviewDependencies(reviewDirectory, taskDirectory, childEnv.env, kernelNpmCache(parentEnv));
   if (!installed.ok) {
     const removed = git(project, ["worktree", "remove", "--force", worktree]);
     return {
