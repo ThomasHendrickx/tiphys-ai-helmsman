@@ -119,7 +119,8 @@ export function readStamp(record: unknown): StampReading {
  *   too until fix round 2 put it back, below, gated by stamp: the merge gates
  *   judge a head-less verdict by provenance, and this row makes `validate`
  *   refuse a current stamped one (the criteria review's CR-007, option 1).
- * - `dual-review-decorrelation` existed in 0.1.0 and is not gated as a whole.
+ * - `dual-review-decorrelation` existed in 0.1.0 and was never gated as a
+ *   whole; M6-P5 deleted the check (DR-0062).
  */
 export interface RuleSince {
   id: string;

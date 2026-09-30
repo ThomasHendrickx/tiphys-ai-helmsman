@@ -296,12 +296,13 @@ export const NO_APPLICABLE_GATE = "no applicable gate";
 /**
  * THE EVIDENCE ENTRY THAT MARKS A NOT-APPLICABLE AS DECLARED (M4-P11, DR-0038).
  *
- * `src/gates/release.ts:1050` already writes this exact string into
- * `precondition.evidence` when a release verification is declared `none`, and
- * `scripts/check-dual-review.mjs` now writes it for the declared single-family
- * review exception. The owner's requirement for that exception is that nobody
- * can hide it; it is stated here as a runner-level property because the place
- * an exception hides is the AGGREGATE, not the gate's own record.
+ * `src/gates/release.ts:1050` writes this exact string into
+ * `precondition.evidence` when a release verification is declared `none`.
+ * `scripts/check-dual-review.mjs` wrote it for the declared single-family
+ * review exception until M6-P5 deleted that script (DR-0062). The owner's
+ * requirement for a declared exception is that nobody can hide it; it is
+ * stated here as a runner-level property because the place an exception hides
+ * is the AGGREGATE, not the gate's own record.
  *
  * WHY AN ARRAY ELEMENT AND NOT A FIELD. A boolean on `PreconditionRecord` would
  * be the right home, and `src/gates/schemas/gate-result.schema.json` is
@@ -1812,9 +1813,10 @@ export function decideAggregate(
 ): { exitCode: number; reason: string } {
   /* M4-P11, DR-0038. THE ONE THING A DECLARED EXCEPTION MUST NEVER BE IS
      INVISIBLE, AND THE AGGREGATE IS WHERE IT WOULD BE.
-     A CONDITIONAL gate (then `check-dual-review`, deleted by M6-P3; now
-     `merge-preconditions`) has a not-applicable that never reaches
-     `requiredNotApplicable` and never appears in the reason line. Before this clause, a bundle carrying a gate that had
+     A CONDITIONAL gate (then `check-dual-review`, since deleted; today only
+     the release gate's declared `none` verification writes the marker) has a
+     not-applicable that never reaches `requiredNotApplicable` and never
+     appears in the reason line. Before this clause, a bundle carrying a gate that had
      declined DR-0012's cross-family requirement by declaration printed "every
      applicable gate is green" and exited 0, and the exception appeared nowhere
      a reader of the bundle would look. That is the same substitution T-009

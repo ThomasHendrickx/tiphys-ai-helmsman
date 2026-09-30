@@ -306,11 +306,11 @@ export function acceptModelResolution(
  * TWO VOCABULARIES ARE NOT COMPARABLE AND THE REFUSAL NAMES BOTH IDS. A family
  * token means whatever the vocabulary that minted it says it means, so
  * comparing a token from one against a token from another is comparing two
- * strings and calling the result a fact about models. That comparison is what
- * `check-dual-review`'s decorrelation assertion rests on, and DR-0038 exists
- * for exactly the environment where the two reviews come from different
- * places, so a silent cross-vocabulary compare would make the assertion
- * meaningless precisely where it is load-bearing.
+ * strings and calling the result a fact about models. The merge gate's family
+ * rule (`judgeFamilies` in src/review.ts) counts distinct families across
+ * kernel records, and DR-0038 exists for exactly the environment where the
+ * two reviews come from different places, so a silent cross-vocabulary compare
+ * would make that count meaningless precisely where it is load-bearing.
  *
  * ONLY `id` IS READ HERE. The version is part of the identity a reader may
  * print and is deliberately NOT part of the comparison: a vocabulary that

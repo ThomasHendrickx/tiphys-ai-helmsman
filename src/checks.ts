@@ -186,7 +186,7 @@ const REVIEW_DIRECTORY = join("delivery", "review");
  */
 const REVIEW_RECORDS_SUBDIRECTORY = "records";
 
-/** The merge-authority value that makes decorrelation a precondition of merge. */
+/** The merge-authority value that makes an approving pair a precondition of merge. */
 export const DELEGATED_MERGE_AUTHORITY = "delegated-under-conditions";
 
 export interface LoadedVerdict {
@@ -279,7 +279,7 @@ export function readVerdictKind(value: unknown): VerdictKindReading {
  * changing: all verdicts present gave red exit 1; an UNCOMMITTED `rm` of the
  * contradicting verdict gave not-applicable exit 20 with the exception
  * GRANTED; copying the file back gave red again. `git ls-tree` listed the file
- * throughout and `git show` still read `produced-by: family-b` from it. The
+ * throughout and `git show` still read the second family from it. The
  * declaration was tamper-EVIDENT and the evidence that refutes it was not.
  *
  * So the source is decided ONCE per load and travels with the result, and
@@ -556,9 +556,9 @@ export function readSourceBytes(
  *
  * An empty listing is then indistinguishable from an absent directory, so
  * "could not enumerate" became "there are none", the pair corpus came back
- * empty, and a committed pair sharing one `produced-by` reported
+ * empty, and a committed pair sharing one reviewer-written family reported
  * NOT-APPLICABLE on a conditional gate instead of red. The kernel's own
- * repository could not see it, because the registry command runs the script
+ * repository could not see it, because the registry command ran the script
  * with `.` at the repository root; every consumer whose tiphys context is not
  * its repository root does see it.
  *
@@ -695,7 +695,7 @@ function readCommittedVerdicts(
  * Measured, one commit, one working-tree edit of one word:
  *
  *   committed `delivery-mode: full` (merge-authority delegated-under-conditions)
- *   with a pair sharing produced-by         -> red, exit 1
+ *   with a pair sharing one family          -> red, exit 1
  *   the SAME commit, `delivery-mode: direct-pr` written into the working tree
  *   and never committed                     -> GREEN, exit 0, and the record
  *                                              prints "mode direct-pr declares
@@ -812,17 +812,17 @@ function selectVerdicts(
       continue;
     }
     /* CANONICAL HERE TOO, AND THE REASON IS THE SAME ONE ONE LAYER OUT. This
-       `===` decides MEMBERSHIP OF THE GROUP the decorrelation decision is made
-       over, so a lookalike character in `kind` does not produce a wrong
-       comparison, it silently removes a document from the comparison. With
-       three verdicts, two of them sharing a model family, dropping one of the
-       correlated pair leaves two distinct ones and a green run. That is the
+       `===` decides MEMBERSHIP OF THE GROUP the pair decision is made over,
+       so a lookalike character in `kind` does not produce a wrong comparison,
+       it silently removes a document from the comparison. With three
+       verdicts, one of them refusing, dropping the refusing one leaves an
+       approving pair and a green run. That is the
        same fail-open outcome as the reported finding, reached by making the
        check look at less rather than by making it compare wrongly.
 
        Canonicalising ADMITS more documents, which is the fail-closed direction
-       here: more verdicts in the group means more chances to find a shared
-       value, never fewer. A file that is not a verdict at all still fails this
+       here: more verdicts in the group means more chances to find a refusal,
+       never fewer. A file that is not a verdict at all still fails this
        test, because no canonical form turns a prose review into `verdict`. */
     /* THE ONE READER, AND FIX ROUND 2 IS THAT IT IS ONE READER WITH THREE
        OUTCOMES RATHER THAN A BOOLEAN. `readVerdictKind` is documented at its
@@ -929,7 +929,7 @@ function loadVerdictsFromWorktree(
  *
  * THE MECHANISM CR-001 NAMES: a value read with a DEFAULT and then compared
  * makes ABSENT and PRESENT-AND-DIFFERENT into the same fact. `?? ""` turned a
- * missing `produced-by` into the empty string, the empty string differs from
+ * missing family field into the empty string, the empty string differs from
  * every real family name, and "differs" is what this check reads as
  * decorrelated. So a pair that could NOT be shown decorrelated was reported as
  * one that was, and that is the direction which authorises a merge.
@@ -944,7 +944,7 @@ function loadVerdictsFromWorktree(
  * to the charter one screen above and did not apply here.
  *
  * `field in record` is why this is not merely a `typeof` test, and the
- * distinction is not academic: `produced-by:` with nothing after it decodes to
+ * distinction is not academic: `key:` with nothing after it decodes to
  * `null`, which is present-and-unusable rather than missing, and the reader who
  * fixes one is not fixing the other.
  *
@@ -978,8 +978,8 @@ type EstablishedField =
  * any rule that makes MORE strings compare as equal produces MORE refusals.
  * Aggressive canonicalisation is the FAIL-CLOSED direction; timid
  * canonicalisation is what leaves the hole. The one call site where collapsing
- * is instead mildly permissive is named at `decorrelationTriple` below rather
- * than left to be found.
+ * is instead mildly permissive was named at `decorrelationTriple`, which M6-P5
+ * deleted with the family comparison it served.
  *
  * THE FORM, in order, and the order is load-bearing:
  *
@@ -1080,7 +1080,7 @@ function establishField(
      values compare as equal, which produces MORE refusals. A case-insensitive
      comparison here cannot be a weakening, because there is no input it lets
      through that a case-sensitive one refuses. Measured before this line
-     existed: `produced-by: Family-A` against `produced-by: family-a` on a pair
+     existed: a family written `Family-A` against one written `family-a` on a pair
      sharing one model family exited 0 GREEN, and `merge-authority:
      Delegated-Under-Conditions` disabled the check entirely. Both now redden. */
   const canonical = canonicalScalar(raw);
@@ -1124,8 +1124,8 @@ function unestablishedReason(reading: EstablishedField, field: string): string |
  *
  * RESTATED HERE RATHER THAN BORROWED FROM THE SCHEMA, and that is not
  * duplication by accident. Nothing on the shipped path validates the SIBLING
- * documents this check loads, which is recorded at `dualReviewDecorrelation`
- * below, so a sibling carrying an abbreviated `head` reaches the grouping code
+ * documents this check loads (the verdict loader skips only a file that does
+ * not decode or is not a verdict), so a sibling carrying an abbreviated `head` reaches the grouping code
  * whatever the schema says. A check that trusted the schema for this would put
  * a short sha in its own group of one and never compare it to anything, which
  * is the fail-open direction.
@@ -1237,7 +1237,7 @@ function establishHistoryProvenance(
  *
  * `path` is as the corpus loader returns it, `join(contextDirectory, <path in
  * the commit>)`, so it is ABSOLUTE when the caller's context directory is (the
- * merge-preconditions gate) and relative when it is not (the bare script). It
+ * merge-preconditions gate) and relative when it is not (a relative --context). It
  * is taken back to the context directory first, because `rev:./<path>` names
  * a path relative to the current directory and an absolute one is never found:
  * measured on the first run of this code, every sibling read as ADDED at
@@ -1835,8 +1835,9 @@ type RegimeOutcome =
  * block (recorded in the comments below) are the evidence that such corrections
  * happen.
  *
- * Every message below is the one `dual-review-decorrelation` shipped, byte for
- * byte, except that the two REPORT lines now name the CALLING check. That is
+ * Every message below is the one `dual-review-decorrelation` shipped, except
+ * that the two REPORT lines now name the CALLING check and M6-P5, deleting that
+ * check, reworded "decorrelation" to the pair rule that is left. That is
  * deliberate: a reader who sees `REPORT verdict-pair-approves ... declares no
  * delivery mode` must be able to tell which guard declined to run.
  */
@@ -1874,7 +1875,7 @@ function establishDelegatedRegime(
     return {
       kind: "violation",
       pointer: "#/verdict",
-      message: `the charter is present and could not be read, so the declared mode's merge-authority is unknown and decorrelation could not be evaluated: ${charter.reason}`,
+      message: `the charter is present and could not be read, so the declared mode's merge-authority is unknown and the pair rule could not be evaluated: ${charter.reason}`,
     };
   }
   /* SITE TWO OF THE SAME MECHANISM. `asRecord(charter.value)?.["delivery-mode"]`
@@ -1900,7 +1901,7 @@ function establishDelegatedRegime(
     return {
       kind: "violation",
       pointer: "#/verdict",
-      message: `${charter.path} declares delivery mode ${String(modeId)} and ${MODES_DOCUMENT} could not be read, so that mode's merge-authority is unknown and decorrelation could not be evaluated: ${modesDocument.reason}`,
+      message: `${charter.path} declares delivery mode ${String(modeId)} and ${MODES_DOCUMENT} could not be read, so that mode's merge-authority is unknown and the pair rule could not be evaluated: ${modesDocument.reason}`,
     };
   }
   /* BOTH SIDES CANONICAL, and the direction here is worth stating because it
@@ -1911,7 +1912,7 @@ function establishDelegatedRegime(
      a charter actually names is the correct reading; the security-relevant
      comparison is the `merge-authority` one below, and THAT one is fail-closed
      under collapsing, because more values matching the delegated constant
-     means the decorrelation requirement applies more often, never less. */
+     means the pair requirement applies more often, never less. */
   const mode = eachMode(modesDocument.value).find((row) => {
     const reading = canonicalScalar(row.id);
     return reading.ok && reading.value === modeId;
@@ -1939,7 +1940,7 @@ function establishDelegatedRegime(
     return {
       kind: "violation",
       pointer: "#/verdict",
-      message: `${modesDocument.path} ${unestablishedReason(authorityReading, "merge-authority") as string} for mode ${modeId}, so whether the delegated grant applies to phase ${phase} could not be established, and a merge check that cannot determine the regime must not report that no decorrelation is required`,
+      message: `${modesDocument.path} ${unestablishedReason(authorityReading, "merge-authority") as string} for mode ${modeId}, so whether the delegated grant applies to phase ${phase} could not be established, and a merge check that cannot determine the regime must not report that no approving pair is required`,
     };
   }
   const authority = authorityReading.value;
@@ -1948,7 +1949,7 @@ function establishDelegatedRegime(
       kind: "report",
       lines: [
         `REPORT ${checkId} mode ${String(modeId)} declares merge-authority ${authority}, ` +
-          `which is not a delegated grant, so no decorrelation is required of the reviews of phase ${phase}`,
+          `which is not a delegated grant, so no approving pair is required of the reviews of phase ${phase}`,
       ],
     };
   }
@@ -1988,13 +1989,13 @@ export const REGIME_DOCUMENTS = [CHARTER_DOCUMENT, MODES_DOCUMENT];
  * derived check runs on ANY verdict with ANY context, and M3-P7's verdict
  * contexts carry a plan and a work history and no charter, so a check that
  * reddened on an absent charter reddened eight of that phase's tests. The
- * check therefore REPORTS, and `scripts/check-dual-review.mjs`, which is the
- * command DR-0012's grant runs through, refuses. What changed is that the
+ * check therefore REPORTS, and the merge gate, which is the command DR-0012's
+ * grant runs through, refuses. What changed is that the
  * refusal and the report are now ONE probe with two callers, so they cannot
  * answer about different sources.
  *
  * THE SOURCE IS A PARAMETER, not resolved here, so a caller that has already
- * resolved one (the gate script resolves it when it loads the corpus) refuses
+ * resolved one (the merge gate resolves it when it loads the corpus) refuses
  * against the SAME commit it read the verdicts from rather than a second
  * `rev-parse` that could land elsewhere.
  */
@@ -2198,11 +2199,11 @@ export function readReviewFamilies(
   const declaredAs: string[] = [];
   for (let index = 0; index < available.length; index += 1) {
     const entry = available[index];
-    /* Each entry goes through the SAME canonical form a verdict's
-       `produced-by` goes through, because the two are compared to each other
-       below. A declaration canonicalised one way and an observation
-       canonicalised another is the fix-round-2 mechanism with two documents
-       instead of one. */
+    /* Each entry goes through the SAME canonical form every governance
+       scalar goes through, so a declared family is compared with the kernel's
+       recorded family (src/review.ts) in one form. A declaration
+       canonicalised one way and an observation canonicalised another is the
+       fix-round-2 mechanism with two documents instead of one. */
     const reading = establishField({ entry }, "entry");
     if (reading.kind !== "established") {
       return {
@@ -2278,9 +2279,9 @@ const SEVERITY_VOCABULARY: readonly string[] = ["low", "medium", "high", "critic
  * it, and the one word in it that authorises a merge.
  *
  * WHY THE RAW SPELLING IS CHECKED HERE AND CANONICALISATION IS NOT ENOUGH, which
- * is the opposite of the rule the decorrelation check follows one screen up and
- * is opposite for a reason that is worth stating rather than looking like an
- * inconsistency. THAT check REFUSES when two values are the same, so collapsing
+ * is the opposite of the rule the canonical form above follows and is
+ * opposite for a reason that is worth stating rather than looking like an
+ * inconsistency. A comparison that REFUSES when two values are the same, so collapsing
  * more spellings onto one value produces MORE refusals and is fail-CLOSED. THIS
  * check APPROVES when a value equals one particular word, so collapsing produces
  * more APPROVALS and is fail-OPEN: a sibling reading `Approve`, which
@@ -2307,13 +2308,10 @@ const APPROVING_VERDICT = "APPROVE";
  * Condition 1 looked checked and condition 2 was asserted by a human, which is
  * the worse of the two states because it reads as progress.
  *
- * WHY IT IS A SEPARATE CHECK RATHER THAN MORE OF `dual-review-decorrelation`.
- * They are different predicates over the same set, and section 2.3 rule 3's
- * Kind B falsification is per-check: DEREGISTERING this one must make a
- * refusing pair pass, which is only a witness if there is one id to deregister.
- * Folding condition 2 into the decorrelation check would have made that
- * witness unavailable and would have made one red indistinguishable from the
- * other in the gate's output.
+ * WHY IT WAS A SEPARATE CHECK FROM `dual-review-decorrelation`, which M6-P5
+ * deleted (DR-0062): they were different predicates over the same set, and
+ * section 2.3 rule 3's Kind B falsification is per-check, so DEREGISTERING
+ * this one must make a refusing pair pass.
  *
  * WHY IT EVALUATES THE COMMITTED GROUP AND NEVER THE INSTANCE'S OWN FIELDS,
  * which is the one place its shape differs from its sibling's. DR-0012
