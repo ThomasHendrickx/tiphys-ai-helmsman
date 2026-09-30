@@ -1159,5 +1159,6 @@
   "red-witness-push-evaluates-every-stored": "on push every stored witness is evaluated, and so on a run naming no event",
   "red-witness-failed-diff-never-skips": "a phase diff that cannot be computed is error on pull_request and never skips a stored witness",
   "gates-workflow-pr-runs-each-check-once": "the gates workflow runs no separate npm test step, and the M1 exit test step runs on push and not on pull_request",
-  "gate-runner-hands-event-parameter": "the runner hands a gate that declares event the run's --event, hands it nothing when the run names no event, and still errors a missing --base"
+  "gate-runner-hands-event-parameter": "the runner hands a gate that declares event the run's --event, hands it nothing when the run names no event, and still errors a missing --base",
+  "m6-p5-phase-from-pr-title": "the pull-request gates step takes --phase from a phase branch, else from the title's leading Mn-Pn: lowercased, else the branch name, and the title's shell syntax runs nothing"
 }

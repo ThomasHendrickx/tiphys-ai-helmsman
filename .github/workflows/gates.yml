@@ -74,9 +74,17 @@ jobs:
       # pull request: --head is `pull_request.head.sha`, NOT `github.sha`, which
       # on a pull_request trigger is the ephemeral merge commit (CR-830-1).
       # --phase is derived from the source branch (lowercase, to match the
-      # phase-declaration filename the scope gate reads). The job token is
-      # merge-preconditions' API token (`--token-env GH_TOKEN`); without it the
-      # gate's requests are unauthenticated and share the runner's rate limit.
+      # phase-declaration filename the scope gate reads). A branch that carries
+      # no phase (one branch landing every phase of a milestone in turn,
+      # DR-0057) takes it from the pull request title's leading `Mn-Pn:`,
+      # lowercased; with neither, the branch name is passed unchanged. The
+      # branch and the title reach the shell through `env:` and are read as
+      # variables, never interpolated with an expression inside `run:`: the
+      # title is free text anyone opening a pull request writes, and an
+      # interpolation would make it part of the script (script injection).
+      # The job token is merge-preconditions' API token (`--token-env
+      # GH_TOKEN`); without it the gate's requests are unauthenticated and
+      # share the runner's rate limit.
       #
       # push: --base is the previous `main` tip (`github.event.before`), so the
       # suite gate compares the new head's behavior registry with the one it
@@ -85,15 +93,24 @@ jobs:
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          node bin/tiphys.ts gates run
-          --registry gate-registry.yaml
-          --mode full
-          --event pull_request
-          --evidence "${{ runner.temp }}/gates-evidence"
-          --base "${{ github.event.pull_request.base.sha }}"
-          --head "${{ github.event.pull_request.head.sha }}"
-          --phase "$(printf '%s' "${{ github.head_ref }}" | sed -E 's#^(claude/)?(m[0-9]+-p[0-9]+).*#\2#')"
+          HEAD_REF: ${{ github.head_ref }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if [[ "$HEAD_REF" =~ ^(claude/)?(m[0-9]+-p[0-9]+) ]]; then
+            phase="${BASH_REMATCH[2]}"
+          elif [[ "$PR_TITLE" =~ ^([Mm][0-9]+-[Pp][0-9]+): ]]; then
+            phase="$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')"
+          else
+            phase="$HEAD_REF"
+          fi
+          node bin/tiphys.ts gates run \
+            --registry gate-registry.yaml \
+            --mode full \
+            --event pull_request \
+            --evidence "${{ runner.temp }}/gates-evidence" \
+            --base "${{ github.event.pull_request.base.sha }}" \
+            --head "${{ github.event.pull_request.head.sha }}" \
+            --phase "$phase"
       - name: Gates (push)
         if: github.event_name != 'pull_request'
         run: >
