@@ -362,9 +362,8 @@ phase that needs it.
 
 `scripts/setup-env.sh` fixes the clone depth, the Node floor and the build.
 What it cannot fix is below. The numbers are stable ids cited from `src/`,
-`scripts/` and `tuition/`: 1, 10 and 11 are retired and never reused (the
-toolchain is the script's job; 10 is the mechanism index row on classifying
-another program's errors).
+`test/` and `scripts/`: 1 is retired (the toolchain is the script's job) and
+never reused.
 
 **2. `typescript` is pinned exact; keep `"types": ["node"]` in both
 tsconfigs.**
@@ -396,6 +395,13 @@ out of the tree first.
 <repo> worktree add <relative>` and `git remote set-url` resolve relative
 paths against the repository. Pass absolute paths. `git worktree list` finds
 a stray worktree; `git worktree remove --force` removes it.
+
+**10. Derive an error signature from real captured output** under forced
+conditions, never from a hand-written example: the transient error of two git
+operations contending on one clone names a ref, not a lock file (T-003).
+
+**11. Suite wall time grows with real-clock lease waits.** Budget harness
+timeouts for them; never shorten the waits.
 
 **12. A suite result names its toolchain, build state and invocation**, and
 quotes the skipped count: "N tests, N pass, 0 fail, 0 skipped" from `npm test`
