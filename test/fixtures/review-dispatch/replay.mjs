@@ -2,8 +2,9 @@
  * M6-P5: stands in for the harness CLI. It reads the brief from stdin,
  * writes the verdict the prompt names (copied from the settings' `verdict`),
  * prints the stream in `stream` to stdout, records what it saw in `echo`
- * (including the commit it stands on, the NAMES of its environment and its
- * HOME, since the kernel removes the worktree afterwards), and exits with
+ * (including the commit it stands on, the NAMES of its environment, its HOME,
+ * since the kernel removes the worktree afterwards, and the arguments the
+ * kernel passed the executor after the prompt), and exits with
  * `exit`. The settings are the JSON in its third argument (stub-executor.mjs).
  */
 import { spawnSync } from "node:child_process";
@@ -24,6 +25,7 @@ if (settings.echo) {
       head: spawnSync("git", ["rev-parse", "HEAD"], { encoding: "utf8" }).stdout?.trim() ?? null,
       envNames: Object.keys(process.env).sort(),
       home: process.env["HOME"] ?? null,
+      extra: settings.extra ?? null,
     }),
   );
 }

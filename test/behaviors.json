@@ -1089,5 +1089,6 @@
   "m6-p5-review-families-at-merge-base": "a head that adds the single-vendor exception while touching the runtime set is still red at condition-1, because the declaration is read at the merge base",
   "m6-p5-unclaimed-refusal-red": "a single change with one counted approving review and one committed FIX-ROUND-NEEDED verdict no record names is red at condition-2 naming it, and so is a pair change",
   "m6-p5-vocabulary-mismatch-red": "two counted reviews on different families minted under different vocabulary ids are red at condition-1, naming both ids",
-  "m6-p5-failed-run-not-counted": "a record whose executor exited nonzero is not counted, so a pair change with one such record is red naming 1 of 2"
+  "m6-p5-failed-run-not-counted": "a record whose executor exited nonzero is not counted, so a pair change with one such record is red naming 1 of 2",
+  "m6-p5-kernel-passes-reviewer-grant": "the dispatch passes the executor exactly the kernel's reviewer grant, and that grant is DR-0065's: read the repository, write only in the review worktree, run node, npm run build and read-only git, no push and no network tools"
 }

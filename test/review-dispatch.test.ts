@@ -416,3 +416,40 @@ test("after hashing, the dispatch copies the verdict next to its record and remo
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+const reviewModule = (await import(new URL("../src/review.ts", import.meta.url).href)) as {
+  REVIEWER_GRANT: unknown;
+};
+
+test("the dispatch passes the executor exactly the kernel's reviewer grant, and that grant is DR-0065's: read the repository, write only in the review worktree, run node, npm run build and read-only git, no push and no network tools", () => {
+  const { root, repo } = project();
+  try {
+    const echo = join(root, "echo.json");
+    const run = dispatch(repo, root, { stream: STREAM, verdictPath: "delivery/review/m3-p9-hazard.yaml", echo });
+    assert.equal(run.status, 0, `${run.stdout}${run.stderr}`);
+    const seen = JSON.parse(readFileSync(echo, "utf8")) as { extra: unknown };
+    /* One argument after the prompt, and it is the kernel's own constant. */
+    assert.deepEqual(seen.extra, [JSON.parse(JSON.stringify(reviewModule.REVIEWER_GRANT))]);
+    /* And the constant is the decided grant, word for word. */
+    assert.deepEqual(seen.extra, [
+      {
+        readRepository: true,
+        writeReviewWorktree: true,
+        commands: [
+          ["node"],
+          ["npm", "run", "build"],
+          ["git", "diff"],
+          ["git", "log"],
+          ["git", "show"],
+          ["git", "grep"],
+          ["git", "status"],
+          ["git", "checkout", "--"],
+        ],
+        push: false,
+        networkTools: false,
+      },
+    ]);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});

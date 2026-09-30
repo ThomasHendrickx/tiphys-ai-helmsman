@@ -71,14 +71,59 @@ export interface ReviewStreamReading {
   modelUsage: Record<string, unknown> | null;
 }
 
+/**
+ * What a kernel-launched reviewer may do (DR-0065), as data with no harness in
+ * it. The kernel states it once, below, and passes it to the executor's
+ * `command`; each executor maps it to its own harness's settings, and one that
+ * cannot map a grant faithfully throws, which refuses the dispatch before
+ * launch.
+ *
+ * It bounds an honest reviewer, not a hostile one: an allowed program such as
+ * `node` can start any process, and a scrubbed environment does not stop a push
+ * through a proxy that supplies credentials (DR-0065, "Known limit").
+ */
+export interface ReviewerGrant {
+  /** It may read the project's files at the reviewed head. */
+  readRepository: boolean;
+  /** It may create and change files, only inside the review worktree the kernel added. */
+  writeReviewWorktree: boolean;
+  /** The commands it may run, each the words a command line must begin with. */
+  commands: readonly (readonly string[])[];
+  /** It may push to a remote. */
+  push: boolean;
+  /** It may use the harness's own network tools (fetching or searching the web). */
+  networkTools: boolean;
+}
+
+/** The kernel's reviewer grant (DR-0065, option 1 as the owner decided it). */
+export const REVIEWER_GRANT: ReviewerGrant = Object.freeze({
+  readRepository: true,
+  writeReviewWorktree: true,
+  commands: Object.freeze([
+    Object.freeze(["node"]),
+    Object.freeze(["npm", "run", "build"]),
+    Object.freeze(["git", "diff"]),
+    Object.freeze(["git", "log"]),
+    Object.freeze(["git", "show"]),
+    Object.freeze(["git", "grep"]),
+    Object.freeze(["git", "status"]),
+    Object.freeze(["git", "checkout", "--"]),
+  ]),
+  push: false,
+  networkTools: false,
+});
+
 /** The harness side of a review dispatch. */
 export interface ReviewExecutor {
   name: string;
   vocabulary: { id: string; version: number };
   modelForTier(tier: string): string | undefined;
   familyOf(model: string): string | undefined;
-  /** The argv to run, with no shell. The brief arrives on stdin. */
-  command(model: string, prompt: string): string[];
+  /**
+   * The argv to run, with no shell, carrying `grant` mapped to the harness's
+   * own settings. The brief arrives on stdin.
+   */
+  command(model: string, prompt: string, grant: ReviewerGrant): string[];
   observe(capturePath: string): ReviewStreamReading;
 }
 
@@ -340,7 +385,7 @@ export function dispatchReview(options: DispatchOptions): DispatchOutcome {
     "relative to the current directory.";
   let argv: string[];
   try {
-    argv = executor.command(requestedModel, prompt);
+    argv = executor.command(requestedModel, prompt, REVIEWER_GRANT);
   } catch (error) {
     return { ok: false, reason: `the executor ${executor.name} could not build its command: ${describe(error)}` };
   }
