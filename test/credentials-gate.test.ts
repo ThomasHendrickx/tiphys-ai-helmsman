@@ -857,7 +857,10 @@ test("credential-scrub reports error, never clean, when git config cannot answer
   writeFileSync(join(home, ".gitconfig"), "[credential]\n\thelper = store\n");
   const healthy = join(tmp, "healthy");
   assert.equal(spawnSync("git", ["init", "-q", healthy], { encoding: "utf8" }).status, 0);
-  const env = { PATH: bin, HOME: home, LC_ALL: "C", LANG: "C" };
+  /* GIT_CONFIG_NOSYSTEM is the fixed value src/exec/env.ts gives every real
+     child. Without it git also reads the machine's system config, and on the
+     macOS runner that adds an osxkeychain helper to the child's answer. */
+  const env = { PATH: bin, HOME: home, LC_ALL: "C", LANG: "C", GIT_CONFIG_NOSYSTEM: "1" };
 
   /* THE DANGEROUS STATE IS REAL: a child working in a healthy worktree
      resolves the helper, as both captured gits did. */
