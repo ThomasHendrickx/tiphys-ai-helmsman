@@ -911,8 +911,10 @@ test("the shipped schemas disclose the closed vocabulary at v0.1.0 and the enums
      was an instance of (`src/checks.ts` claimed a condition could never match a
      fence, and it could). A disclosure with no behaviour behind it is worse
      than none. */
+  /* M6-P3 dropped every `$comment` keyword from assurance-modes.schema.json
+     (token diet), so its disclosure is no longer comment text; the enums are
+     still exercised below. */
   const disclosures: [string, string[]][] = [
-    ["assurance-modes.schema.json", ["$defs.modeShape.properties.id", "$defs.stageId"]],
     ["role-model-config.schema.json", ["$defs.roleBinding.properties.role"]],
     ["charter.schema.json", ["properties.delivery-mode", "properties.assurance-tier"]],
   ];
