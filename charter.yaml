@@ -21,8 +21,8 @@
 #
 # WHAT VALIDATES IT: `node bin/tiphys.ts validate --type charter charter.yaml`
 # against schemas/charter.schema.json, which requires all eleven top-level
-# fields, allows only the optional `runtime-set` and `review-families` beside
-# them, and requires all seven irreversible decisions.
+# fields, allows only the optional `runtime-set`, `review-families` and
+# `review-executor` beside them, and requires all seven irreversible decisions.
 kind: charter
 
 identity:
@@ -171,6 +171,11 @@ runtime-set:
   paths: [src/, bin/, plugin/, schemas/]
   manifests: [package.json, package-lock.json, plugin/package.json]
   version-pins: ["@tiphys/kernel"]
+
+# M6-P7 (DR-0065): the executor `tiphys review dispatch` loads when no
+# --executor is given. The kernel names no harness package, so this project
+# names its own: the harness plugin in this repository's workspace.
+review-executor: "@tiphys/claude-code-plugin"
 
 # DR-0038 as DR-0062 restates it (M6-P5): a review's family is the VENDOR of
 # the model the kernel observed when it launched the reviewer. The merge gate

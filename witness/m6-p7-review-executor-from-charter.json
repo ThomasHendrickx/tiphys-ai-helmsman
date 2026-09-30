@@ -1,0 +1,25 @@
+{
+  "id": "m6-p7-review-executor-from-charter",
+  "behavior": "m6-p7-review-executor-from-charter",
+  "tests": [
+    "without --executor the dispatch loads the executor the project's charter.yaml names in review-executor, and with neither it is refused before launch naming both"
+  ],
+  "class": "classification",
+  "dangerousStates": [
+    {
+      "kind": "mutation",
+      "file": "src/commands/review.ts",
+      "find": "    specifier = configured.specifier;",
+      "replace": "    specifier = \"@tiphys/claude-code-plugin\";"
+    }
+  ],
+  "deterministic": true,
+  "repeats": 2,
+  "consumesExternalOutput": {
+    "program": "codex",
+    "captures": [
+      "test/fixtures/review-dispatch/codex-luna.stream.jsonl"
+    ],
+    "provenance": "Real stdout of codex exec --json (@openai/codex 0.159.2) run once on 2026-09-30 by the M6-P7 implementer with the argv adapters/codex/review.ts builds for the kernel's reviewer grant, --model gpt-6-luna, a five-line brief on stdin; one declared alteration (U+2019 rendered ', 1 occurrence) in the README beside it. The named test replays it through the adapter's own executor with only its command swapped for replay.mjs, so the kernel's dispatch runs on the harness's real output."
+  }
+}
