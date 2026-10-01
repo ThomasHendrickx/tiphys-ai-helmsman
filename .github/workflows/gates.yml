@@ -77,11 +77,14 @@ jobs:
       # phase-declaration filename the scope gate reads). A branch that carries
       # no phase (one branch landing every phase of a milestone in turn,
       # DR-0057) takes it from the pull request title's leading `Mn-Pn:`,
-      # lowercased; with neither, the branch name is passed unchanged. The
-      # branch and the title reach the shell through `env:` and are read as
-      # variables, never interpolated with an expression inside `run:`: the
-      # title is free text anyone opening a pull request writes, and an
-      # interpolation would make it part of the script (script injection).
+      # lowercased; with neither, from the branch name put in the kernel's
+      # phase grammar (lowercased, every byte outside [a-z0-9-] made `-`), the
+      # only phase a review can be recorded for; the step fails when the
+      # result is still not a phase id (it starts with `-`). The branch and
+      # the title reach the shell through `env:` and are read as variables,
+      # never interpolated with an expression inside `run:`: the title is free
+      # text anyone opening a pull request writes, and an interpolation would
+      # make it part of the script (script injection).
       # The job token is merge-preconditions' API token (`--token-env
       # GH_TOKEN`); without it the gate's requests are unauthenticated and
       # share the runner's rate limit.
@@ -101,7 +104,11 @@ jobs:
           elif [[ "$PR_TITLE" =~ ^([Mm][0-9]+-[Pp][0-9]+): ]]; then
             phase="$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:upper:]' '[:lower:]')"
           else
-            phase="$HEAD_REF"
+            phase="$(printf '%s' "$HEAD_REF" | LC_ALL=C tr '[:upper:]' '[:lower:]' | LC_ALL=C tr -c 'a-z0-9-' '-')"
+            if [[ ! "$phase" =~ ^[a-z0-9][a-z0-9-]*$ ]]; then
+              echo "::error::branch $HEAD_REF gives --phase '$phase', not a phase id a review can be recorded for"
+              exit 1
+            fi
           fi
           node bin/tiphys.ts gates run \
             --registry gate-registry.yaml \
