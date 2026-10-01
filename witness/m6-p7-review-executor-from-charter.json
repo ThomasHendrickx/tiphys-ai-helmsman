@@ -11,6 +11,12 @@
       "file": "src/commands/review.ts",
       "find": "    specifier = configured.specifier;",
       "replace": "    specifier = \"@tiphys/claude-code-plugin\";"
+    },
+    {
+      "kind": "mutation",
+      "file": "src/review.ts",
+      "find": "    return { ok: false, reason: `${path} could not be read: ${describe(error)}` };",
+      "replace": "    return { ok: true, specifier: \"@tiphys/claude-code-plugin\" };"
     }
   ],
   "deterministic": true,
