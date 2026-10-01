@@ -1,0 +1,83 @@
+{
+  "kind": "review-record",
+  "contractVersion": "1",
+  "taskId": "review-claude-upbeat-gates-w3cm5m-20261001t013615z-2aeb3c",
+  "role": "clean-room-reviewer",
+  "phase": "claude-upbeat-gates-w3cm5m",
+  "head": "3fd70ed23cfeabd78532fa74033a9039ead35d1d",
+  "tier": "cheaper",
+  "requestedModel": "claude-haiku-4-5-20251001",
+  "executor": "claude-code",
+  "vocabulary": {
+    "id": "claude-code-model-vendors",
+    "version": 1
+  },
+  "observation": {
+    "model": "claude-haiku-4-5-20251001",
+    "topLevelModels": [
+      "claude-haiku-4-5-20251001"
+    ],
+    "subagentModels": [],
+    "reason": "one model on the top-level rows of the captured stream"
+  },
+  "family": "anthropic",
+  "verdict": {
+    "path": "delivery/review/m6-close-hazard-a.json",
+    "sha256": "25408465aec0af570081f936581e21f506ceb2ae069e3c785d54471815311810",
+    "reason": "sha256 of the bytes the reviewer wrote, read after the executor exited"
+  },
+  "totalCostUsd": 0.43877479999999985,
+  "usage": {
+    "input_tokens": 361,
+    "cache_creation_input_tokens": 68516,
+    "cache_read_input_tokens": 2384618,
+    "output_tokens": 12584,
+    "output_tokens_details": {
+      "thinking_tokens": 4648
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 68516,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 8,
+        "output_tokens": 791,
+        "cache_read_input_tokens": 82089,
+        "cache_creation_input_tokens": 223,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 223
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "modelUsage": {
+    "claude-haiku-4-5-20251001": {
+      "inputTokens": 361,
+      "outputTokens": 12584,
+      "cacheReadInputTokens": 2384618,
+      "cacheCreationInputTokens": 68516,
+      "webSearchRequests": 0,
+      "costUSD": 0.43877479999999985,
+      "contextWindow": 200000,
+      "maxOutputTokens": 32000,
+      "thinkingTokens": 4648,
+      "canonicalModel": "claude-haiku-4-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "startedAt": "2026-10-01T01:36:16.627Z",
+  "endedAt": "2026-10-01T01:38:54.343Z",
+  "executorExitCode": 0
+}

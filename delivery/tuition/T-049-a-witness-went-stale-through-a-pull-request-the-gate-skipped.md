@@ -30,3 +30,15 @@ matches the files stored specs mutate or run, a pull request that edits such
 a file outside `src/`, `bin/` or `plugin/` leaves its witnesses unchecked.
 Proposed fix, not in the M6 plan: add those files to the precondition (the
 pull-request arm already selects stored specs by exactly that set).
+
+## Second instance (found at the M6 close)
+
+PR #211 (2026-09-23) added two witnesses for `scripts/release-verify.sh` and
+touched no `src/`, so neither was ever evaluated. The first full sweep on
+push (run 36792621178, `main` 568b9f3) found one collapsing under rule (g)
+and the other's members 1 to 4 scored not red: the runner counts a member
+red only when every named test fails (src/witness/run.ts:1021), and member 1
+reddens 2 of its 3 named tests (review CR-M6CLOSE-01). Both were removed
+(3749abf).
+A witness for a file outside the precondition's paths is unchecked from the
+day it lands.

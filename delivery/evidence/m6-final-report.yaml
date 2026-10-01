@@ -1,0 +1,139 @@
+# Milestone M6 final report, at the close (main 4411d74 plus the close-out pull request).
+# The human-readable report is delivery/evidence/m6-final-report.md.
+tiphys-version: 0.2.2
+kind: final-report
+subject: "Milestone M6: review and rule economy"
+
+inputs:
+  - M6-P1
+  - M6-P2
+  - M6-P3
+  - M6-P8
+  - M6-P4
+  - M6-P6
+  - M6-P5
+  - M6-P7
+
+input-findings:
+  - id: M6-P1
+    outcome: MERGED as PR #227 at cd2dafe. DR-0061 to DR-0064 and the M6 plan.
+  - id: M6-P2
+    outcome: >-
+      MERGED as PR #228 at a726478. Review tier follows the diff (pair or
+      single from the charter's runtime-set); the criteria contract is gone.
+  - id: M6-P3
+    outcome: >-
+      MERGED as PR #229 at 65d4ca5. Gate list cut from 21 entries to 8, each
+      with a prevents line; gates.manifest.json and the retirement inventory
+      deleted; CI runs gate-registry.yaml on both events.
+  - id: M6-P8
+    outcome: >-
+      MERGED as PR #230 at 3fa602c. Pull-request CI runs each check once; the
+      full stored-witness sweep moved to the push run.
+  - id: M6-P4
+    outcome: >-
+      MERGED as PR #231 at a8ddf62. A plan criterion carries check or
+      not-testable; the suite gate proves checks given --plan; schema
+      token diet.
+  - id: M6-P6
+    outcome: >-
+      MERGED as PR #232 at b0ed202. scripts/setup-env.sh, CLAUDE.md rewritten
+      to 24,983 bytes, implementer reading set cut.
+  - id: M6-P5
+    outcome: >-
+      MERGED as PR #233 at 568b9f3. tiphys review dispatch writes kernel review
+      records; the merge gate counts reviews and families from those records;
+      produced-by and the decorrelation check deleted.
+  - id: M6-P7
+    outcome: >-
+      MERGED as PR #234 at 4411d74, code head d879764. A Codex executor maps
+      the grant; the default executor moved to charter.yaml. p7-observe first
+      half not met: Codex 0.159.2 prints no served model. Its pull-request CI
+      first failed red-witness rule (g); fixed with a second witness member,
+      and its schema $comment replaced by a one-line description (p4-diet).
+
+delivered-outcome:
+  phase-intent: >-
+    The owner's blueprint of 2026-09-29, realized: removal is one commit and a
+    check gets in only if it names its failure (DR-0061); the kernel launches
+    reviewers (DR-0062); the review tier follows the diff (DR-0063);
+    acceptance criteria are tests (DR-0064); plus DR-0065 (reviewer grant,
+    Codex harness) and DR-0066 (pull-request CI runs each check once).
+  delivered: true
+  evidence:
+    - delivery/plan/m6-review-and-rule-economy.md:1
+    - "gate-registry.yaml: 8 gates, 8 prevents lines, 5,522 bytes (wc -c at 25aca6b)"
+    - "CLAUDE.md 24,983 bytes; assurance-modes.yaml 4,562 bytes; implementer reading set 35,035 bytes (wc -c at 25aca6b)"
+    - "test/merge-preconditions.test.ts:1628, :1652, :1859, :1872, :1888, :2407, :2458, :2586: 8 tests, 8 pass, 0 fail, 0 skipped (node v26.6.0, dist built, 25aca6b)"
+    - "test/criteria.test.ts:166, :538; test/gate-registry.test.ts:1396, :1563, :1846; test/implementer-brief.test.ts:868: 6 tests, 6 pass, 0 fail, 0 skipped (same run conditions)"
+    - "grep -rn 'produced-by\\|producedBy' src scripts plugin/src: no output, exit 1 (25aca6b)"
+    - "test ! -e on the four retirement-inventory paths and gates.manifest.json: exit 0 each (25aca6b)"
+    - "delivery/review/m6-p2-merge-preconditions-901e041.txt (and the P3, P8, P4, P6, P5 records): condition-4 green, gates check run success on each merged head"
+    - "delivery/review/m6-p7-merge-preconditions-976e66f.txt: condition-4 green; PR CI run 36797496893 at 976e66f: suite 1246 tests, 1246 pass, 0 fail, 0 skipped; red-witness green"
+    - "grep -rl '\\$comment' schemas/ at d879764: no output (p4-diet)"
+    - delivery/review/arbitration-m6-p7.md:1
+  explanation: >-
+    All eight phases are on main. The named tests, greps and sizes listed
+    as evidence hold; the full suite is green in CI on the last merged phase
+    head. The first full stored-witness sweep on push (run 36792621178, main
+    568b9f3) was red on two witnesses for scripts/release-verify.sh that had
+    never been evaluated since they landed (T-049); the close-out pull
+    request removes them (DR-0061). The push run on the close-out merge is
+    the last CI evidence; the orchestrator observes it after this document
+    merges and reports it to the owner.
+
+not-testable:
+  - phase: M6-P1
+    criteria: [p1-faithful]
+  - phase: M6-P2
+    criteria: []
+  - phase: M6-P3
+    criteria: [p3-ci-green]
+  - phase: M6-P4
+    criteria: []
+  - phase: M6-P5
+    criteria: [p5-live]
+  - phase: M6-P6
+    criteria: []
+  - phase: M6-P7
+    criteria: [p7-live]
+  - phase: M6-P8
+    criteria: [p8-time]
+
+decisions-owed:
+  none: true
+
+owner-verification:
+  none: true
+
+infrastructure-left:
+  none: false
+  entries:
+    - id: m6-close-push-run
+      statement: >-
+        The push run on the close-out merge (the full stored-witness sweep)
+        is observed after this document merges; its outcome goes to the
+        owner and into the next STATE.md update.
+      owner: orchestrator
+    - id: t-049-precondition
+      statement: >-
+        The red-witness precondition covers only src/, bin/ and plugin/, so a
+        pull request that changes only a file a stored witness mutates or
+        runs never evaluates that witness (T-049, seen twice in M6). Fix for
+        a later milestone: widen the precondition to those files.
+      owner: orchestrator
+
+out-of-band:
+  none: false
+  entries:
+    - id: codex-served-model
+      statement: >-
+        Codex 0.159.2 prints no served model, so a Codex review's family is
+        not observed and it does not count toward a pair; review-families
+        stays [anthropic]. Already reported to the owner.
+      owner: orchestrator
+    - id: criteria-proof-not-run-here
+      statement: >-
+        This repository's suite gate passes no --plan, because its plans are
+        markdown, so the DR-0064 criteria proof does not run on its own CI.
+      owner: orchestrator
