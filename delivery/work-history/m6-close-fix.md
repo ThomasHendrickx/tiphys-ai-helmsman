@@ -52,8 +52,11 @@ test/gate-registry.test.ts:
   and checks the derived phase against the `phase` pattern READ from
   schemas/review-record.schema.json, over `claude/upbeat-gates-w3cm5m` (a `/`)
   and `Close-Out.M6_final` (uppercase, `.`, `_`), and checks that
-  `_close-out` (maps to a leading `-`) exits nonzero and never reaches the
-  runner. It collects every failing case so a red run names each one.
+  `_close-out` (maps to a leading `-`) exits nonzero with no runner call
+  (no `STUB-ARGV` line in the step's output; the direct run above shows
+  `branch=_close-out exit=1` and no `phase=` line, and the GREEN run below
+  passes that check). It collects every failing case so a red run names
+  each one.
 - `the gates workflow runs the registry runner directly on both CI events
   ...` (existing, name unchanged): its harness `registryStepDefects` ran the
   step's `run:` text without the step's `env:`, so `HEAD_REF` was empty. The
@@ -153,8 +156,9 @@ Reading of each producer:
 
 - `.github/workflows/gates.yml:102-120`: the step this change fixes. The
   phase-branch arm yields `m[0-9]+-p[0-9]+` and the title arm yields the same
-  lowercased; both are inside the grammar by their own regex. The else arm is
-  the one that passed free text, and is now mapped and checked.
+  lowercased; both are inside the grammar by their own regex (the existing
+  test's cases give `m6-p5` and `m12-p34`). The else arm is the one that
+  passed free text, and is now mapped and checked.
 - `.claude/harness/localgreen.sh:60`: SAME MECHANISM, NOT CHANGED. On a branch
   that names no phase the `sed` leaves the branch name as it is, so the local
   green script passes e.g. `--phase claude/upbeat-gates-w3cm5m`. It is harness
@@ -182,3 +186,60 @@ Reading of each producer:
   not visible from here.
 - A phase passed by hand on a command line (an orchestrator or agent typing
   `--phase <x>`): no file to search.
+
+## Results at e8b89f5
+
+`npm run build` exit 0 (dist/ built). `npm test` exit 0, node v26.6.0,
+dist/ built: 1247 tests, 1247 pass, 0 fail, 0 skipped. The reporter's
+summary lines, with U+2139 replaced by `i` in 7 places and nothing else
+changed:
+
+```
+i tests 1247
+i suites 0
+i pass 1247
+i fail 0
+i cancelled 0
+i skipped 0
+i todo 0
+```
+
+`node scripts/check-authored-bytes.mjs` on the clean tree at e8b89f5: exit 0.
+
+```
+node bin/tiphys.ts gates run --registry gate-registry.yaml --mode full --event pull_request --evidence <scratch>/m6cf-gatesev --base origin/main --head HEAD --phase claude-upbeat-gates-w3cm5m
+gates exit=1
+gates: run 8fc63c04c4b54490d53a06c4
+gates: registry gate-registry.yaml mode full event pull_request
+gates: declared 8 applicable 6 verdict 6 green 5 red 1 not-applicable 2 error 0 vacuous 0
+gates: authored-bytes: green: 1816 tracked file(s) carry no control or non-ASCII byte
+gates: credential-scrub: green: no pull-request-capable credential resolvable from any of the 7 probed sources
+gates: suite: green: suite green via tiphys-suite-events-v1 (child node v26.6.0): reported 1247 test(s) from 71 file(s) (pass 1247, fail 0, skipped 0, todo 0, did-not-run 0); discovered 71 file(s) walking test for .test.ts; 1163 behavior(s) resolve; merge base 4411d74ec9f5
+gates: typecheck: green: tsc -b tsconfig.src.json tsconfig.test.json plugin/tsconfig.json --force --listFiles exited 0 and reported 464 distinct file(s); the unit count is those printed paths, not a constant
+gates: license: green: 12 production package(s) inventoried, all with license metadata on the declared allowlist; LICENSE present in the pack listing
+gates: scope: not-applicable: precondition scope-branch-is-a-phase-branch evaluated and unmet: branch m6-close-fix does not match ^(?:claude/m[0-9]+-p[0-9]+-.*)$
+gates: red-witness: not-applicable: precondition red-witness-diff evaluated and unmet: no changed path under src/, bin/, plugin/
+gates: 1 gate(s) reported red: merge-preconditions
+```
+
+merge-preconditions (red, expected: no review recorded yet), its detail cut
+to its head and tail:
+
+```
+gates: merge-preconditions: red: DR-0063 single at head e8b89f5dc5d2c8259e96cf5f6199a48086bec10f, phase claude-upbeat-gates-w3cm5m: ... requires 1 approving hazard review, launched by the kernel, for the commit under audit e8b89f5dc5d2c8259e96cf5f6199a48086bec10f; 0 of 1 are counted and 1 missing. ...
+```
+
+The two patterns the review path enforces, checked on the old and the new
+phase (the dispatch itself was not run here; it launches a reviewer):
+
+```
+node -e 'const s=require("./schemas/review-record.schema.json");const p=new RegExp(s.properties.phase.pattern);const r=/^[a-z0-9][a-z0-9-]*$/;for(const x of ["claude-upbeat-gates-w3cm5m","claude/upbeat-gates-w3cm5m"])console.log(x,"schema",p.test(x),"review.ts:505",r.test(x))'
+claude-upbeat-gates-w3cm5m schema true review.ts:505 true
+claude/upbeat-gates-w3cm5m schema false review.ts:505 false
+```
+
+## Claim greps
+
+Both CLAUDE.md claim greps (line-based and wrap-insensitive) were run on this
+file. The one hit (the `_close-out` sentence under Tests) now carries its
+evidence; a rerun of both returned no hit (exit 1 each).
