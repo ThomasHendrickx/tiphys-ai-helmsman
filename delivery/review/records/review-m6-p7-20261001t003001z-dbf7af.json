@@ -1,0 +1,83 @@
+{
+  "kind": "review-record",
+  "contractVersion": "1",
+  "taskId": "review-m6-p7-20261001t003001z-dbf7af",
+  "role": "clean-room-reviewer",
+  "phase": "m6-p7",
+  "head": "d8797642ac07ea89135a6abd96ba0b9ce3566850",
+  "tier": "strongest",
+  "requestedModel": "claude-opus-5",
+  "executor": "claude-code",
+  "vocabulary": {
+    "id": "claude-code-model-vendors",
+    "version": 1
+  },
+  "observation": {
+    "model": "claude-opus-5",
+    "topLevelModels": [
+      "claude-opus-5"
+    ],
+    "subagentModels": [],
+    "reason": "one model on the top-level rows of the captured stream"
+  },
+  "family": "anthropic",
+  "verdict": {
+    "path": "delivery/review/m6-p7-hazard-e.json",
+    "sha256": "a206ec04fea8070f758171731dad3436aa27d7a20bcb248e35e927a8398eb903",
+    "reason": "sha256 of the bytes the reviewer wrote, read after the executor exited"
+  },
+  "totalCostUsd": 1.6099525000000003,
+  "usage": {
+    "input_tokens": 62,
+    "cache_creation_input_tokens": 47701,
+    "cache_read_input_tokens": 1259065,
+    "output_tokens": 20124,
+    "output_tokens_details": {
+      "thinking_tokens": 6467
+    },
+    "server_tool_use": {
+      "web_search_requests": 0,
+      "web_fetch_requests": 0
+    },
+    "service_tier": "standard",
+    "cache_creation": {
+      "ephemeral_1h_input_tokens": 47701,
+      "ephemeral_5m_input_tokens": 0
+    },
+    "inference_geo": "not_available",
+    "iterations": [
+      {
+        "input_tokens": 2,
+        "output_tokens": 1605,
+        "cache_read_input_tokens": 57268,
+        "cache_creation_input_tokens": 774,
+        "cache_creation": {
+          "ephemeral_5m_input_tokens": 0,
+          "ephemeral_1h_input_tokens": 774
+        },
+        "type": "message"
+      }
+    ],
+    "speed": "standard",
+    "fallback_credit": null
+  },
+  "modelUsage": {
+    "claude-opus-5": {
+      "inputTokens": 62,
+      "outputTokens": 20124,
+      "cacheReadInputTokens": 1259065,
+      "cacheCreationInputTokens": 47701,
+      "webSearchRequests": 0,
+      "costUSD": 1.6099525000000003,
+      "contextWindow": 1000000,
+      "maxOutputTokens": 64000,
+      "thinkingTokens": 6467,
+      "canonicalModel": "claude-opus-5",
+      "provider": "firstParty",
+      "costBasis": "list"
+    }
+  },
+  "startedAt": "2026-10-01T00:30:03.214Z",
+  "endedAt": "2026-10-01T00:41:53.897Z",
+  "executorExitCode": 0
+}

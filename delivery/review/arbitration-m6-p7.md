@@ -64,3 +64,22 @@ without conflict. Two kernel-launched strongest-tier reviews at 1b8de3e:
 Known limit, already reported to the owner: Codex 0.159.2 emits no served
 model, so a Codex review's family is not observed and it does not count
 toward a pair.
+
+## CI fix (code head d879764)
+
+- reviews: delivery/review/m6-p7-hazard-e.json, delivery/review/m6-p7-hazard-f.json
+
+Pull request #234's `pull_request` run 36793799175 (head `bcff075`) was red
+on `red-witness`, rule (g): the classification witness
+`witness/m6-p7-review-executor-from-charter.json` declared one dangerous
+state. The fix adds a second member (`src/review.ts`, the arm that refuses an
+unreadable `charter.yaml`, mutated into a silent fallback), shown red against
+the same named test. The same round replaced a `$comment` that M6-P7 had
+added to `schemas/charter.schema.json` with a one-line `description` (plan
+criterion p4-diet), found by the final-report compilation. Work history "CI
+fix"; local red-witness at d879764 green (455 witnesses, 4 own).
+
+Two kernel-launched strongest-tier delta checks at d879764, both APPROVE with
+no finding: E ($1.61) and F ($1.65). Each confirmed the delta is the witness
+spec and the schema line, applied the new member by hand (red), and ran the
+red-witness gate as CI runs it (green).
