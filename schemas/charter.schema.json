@@ -159,7 +159,7 @@
       }
     },
     "review-executor": {
-      "$comment": "M6-P7 (DR-0065): the review executor module `tiphys review dispatch` loads when no --executor is given, resolved from the project directory the way --executor is. Project configuration rather than a kernel default, so the kernel names no harness package and a project run by any harness needs no flag. OPTIONAL: with neither this nor --executor the dispatch is refused.",
+      "description": "The executor module review dispatch loads when no --executor is given; with neither, the dispatch is refused.",
       "type": "string",
       "minLength": 1
     },
