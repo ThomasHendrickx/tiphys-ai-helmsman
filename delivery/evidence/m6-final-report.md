@@ -308,9 +308,12 @@ evaluates it (delivery/tuition/T-049). It happened twice:
   M6-P5's pull request and was removed.
 - PR #211 (2026-09-23) added two witnesses for `scripts/release-verify.sh`
   and touched no `src/`, so they were never evaluated. The first full sweep
-  found one collapsing under rule (g) and the other's members 1 to 4 staying
-  green. Removed in the close-out (3749abf, DR-0061); their tests and
-  behavior rows stay.
+  found one collapsing under rule (g) and the other's members 1 to 4 scored
+  not red. The runner counts a member red only when every named test fails
+  (src/witness/run.ts:1021); the close-out review measured member 1 reddening
+  2 of its 3 named tests (CR-M6CLOSE-01), so the spec as written failed the
+  gate rather than the suite missing the mutation. Removed in the close-out
+  (3749abf, DR-0061); their tests and behavior rows stay.
 
 Proposed for a later milestone, not done here: widen the precondition to the
 files stored witnesses mutate or run.
