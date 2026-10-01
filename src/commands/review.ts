@@ -10,6 +10,9 @@
  * review record to <out>/<task id>.json. The orchestrator commits the verdict
  * at its path and the record under delivery/review/records/.
  *
+ * Without --executor the module is the one the project's charter.yaml names in
+ * `review-executor` (M6-P7); with neither, the dispatch is refused.
+ *
  * Exit codes:
  *   0   the record was written, the executor exited 0, one served model was
  *       observed and the verdict was hashed
@@ -18,7 +21,7 @@
  *   64  usage error (BSD sysexits EX_USAGE)
  */
 
-import { DEFAULT_REVIEW_EXECUTOR, dispatchReview, loadReviewExecutor } from "../review.ts";
+import { configuredReviewExecutor, dispatchReview, loadReviewExecutor } from "../review.ts";
 
 export const EX_USAGE = 64;
 
@@ -86,7 +89,15 @@ export async function cmdReview(argv: string[]): Promise<number> {
   }
   const options = parsed.options as Required<Omit<Options, "executor">> & Pick<Options, "executor">;
   const project = process.cwd();
-  const loaded = await loadReviewExecutor(options.executor ?? DEFAULT_REVIEW_EXECUTOR, project);
+  let specifier = options.executor;
+  if (specifier === undefined) {
+    const configured = configuredReviewExecutor(project);
+    if (!configured.ok) {
+      return fail(`no --executor was given and ${configured.reason}`, 1);
+    }
+    specifier = configured.specifier;
+  }
+  const loaded = await loadReviewExecutor(specifier, project);
   if (!loaded.ok) {
     return fail(loaded.reason, 1);
   }

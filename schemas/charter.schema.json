@@ -158,6 +158,11 @@
         }
       }
     },
+    "review-executor": {
+      "description": "The executor module review dispatch loads when no --executor is given; with neither, the dispatch is refused.",
+      "type": "string",
+      "minLength": 1
+    },
     "runtime-set": {
       "type": "object",
       "additionalProperties": false,
