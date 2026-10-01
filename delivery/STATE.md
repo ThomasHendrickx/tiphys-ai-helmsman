@@ -5,7 +5,7 @@ a phase changes state, a decision is answered, or an owner action becomes
 runnable. If this file disagrees with reality, reality wins and this file
 is wrong: verify against git and the PR list before trusting it.
 
-## M6 standing at 2026-09-30, 23:56 UTC, `main` at 568b9f3
+## M6 standing at 2026-10-01, 00:58 UTC, `main` at 4411d74
 
 Plan: delivery/plan/m6-review-and-rule-economy.md:1.
 
@@ -17,9 +17,10 @@ Plan: delivery/plan/m6-review-and-rule-economy.md:1.
 | M6-P8, pull-request CI runs each check once | #230 | 3fa602c | gates 36771355583 cancelled by the M6-P4 merge (T-009) |
 | M6-P4, acceptance criteria are tests | #231 | a8ddf62 | gates 36776060014 cancelled by the M6-P6 merge (T-009) |
 | M6-P6, environment script, CLAUDE.md rewrite | #232 | b0ed202 | gates 36777401327 success (suite 1279 pass; red-witness not-applicable, no src/ change; M1 exit test green); the full stored-witness sweep runs on the next push that changes src/ |
-| M6-P5, the kernel launches reviewers | #233 | 568b9f3 | gates 36792621178 in progress when this line was written; its outcome, or its cancellation by the M6-P7 merge, is recorded with M6-P7 |
+| M6-P5, the kernel launches reviewers | #233 | 568b9f3 | gates 36792621178 failure: red-witness red on two `scripts/` witnesses never evaluated since #211 (T-049), removed in the close-out; suite 1240 pass and every other gate green |
+| M6-P7, a Codex harness can run a review | #234 | 4411d74 | gates 36798556591 carries the same two stale witnesses; the close-out merge's push run is the one verified (T-009) |
 
-Landing order next: M6-P7. Merging without waiting for each push run (T-009): the last `main` head's push run is verified. PR CI for M6-P8 took 7.5 minutes (was about 45).
+All eight phases landed. The close-out pull request carries the final report (delivery/evidence/m6-final-report.md) and removes the two stale witnesses; the push run on its merge is the milestone's last CI evidence. PR CI for M6-P8 took 7.5 minutes (was about 45); a full stored-witness sweep on push takes about 57 minutes.
 
 ## M5 standing at 2026-09-24, 09:15 UTC, `main` at 2c49ab3
 
