@@ -1,0 +1,33 @@
+{
+  "kind": "verdict",
+  "phase": "claude-upbeat-gates-w3cm5m",
+  "head": "3fd70ed23cfeabd78532fa74033a9039ead35d1d",
+  "tiphys-version": "0.2.2",
+  "framing": "hazard-single",
+  "review-contract": "hazard",
+  "verdict": "APPROVE",
+  "findings": [],
+  "deviations-judged": [],
+  "hazard-classes-addressed": [
+    {
+      "class-id": "witness-removal-justification",
+      "probed": "Check 1: the two witness removals (release-verify-served-means-the-exact-version and release-verify-waits-for-the-registry-to-serve-the-version) are justified by the red-witness gate output from push run 36792621178 (main 568b9f3), which shows both witnesses no longer guard their behaviors. Verified: (a) members 0 and 1 of the first spec have identical file and find fields (collapse condition met per rule g); (b) specs are deleted but tests and behavior rows remain in test/behaviors.json; (c) spec ids are not referenced outside delivery/ directory.",
+      "cleared-because": "The stated reason is verified in the repository. Member 1 of the second spec would fail its test when the mutation (early deadline break) is applied, confirming it guards the registry wait behavior."
+    },
+    {
+      "class-id": "phase-derivation-logic",
+      "probed": "Check 2: phase derivation in .github/workflows/gates.yml implements three-tier fallback (phase branch pattern, PR title Mn-Pn:, branch name converted to phase grammar). The branch and title reach the shell only via env variables (HEAD_REF and PR_TITLE), preventing injection. Logic: tests exist to verify the implementation (test/gate-registry.test.ts includes phase derivation tests).",
+      "cleared-because": "The step structure is correct: environment variables isolate untrusted input from shell interpolation. The three-tier fallback is properly implemented with pattern matching and validation that rejects invalid phase ids."
+    },
+    {
+      "class-id": "paperwork-consistency",
+      "probed": "Check 3: paperwork validates correctly against repository state. (a) delivery/evidence/m6-final-report.yaml and .md exist and are properly structured; (b) gate table in the report lists exactly 8 gates (authored-bytes, credential-scrub, typecheck, license, scope, red-witness, suite, merge-preconditions), matching gate-registry.yaml count; (c) not-testable counts per phase match the plan: M6-P1:1 (p1-faithful), M6-P3:1 (p3-ci-green), M6-P5:1 (p5-live), M6-P7:1 (p7-live), M6-P8:1 (p8-time), others 0.",
+      "cleared-because": "All documentation is consistent. The final report correctly summarizes the work done across all eight phases and accurately reflects the gate registry and plan criteria."
+    },
+    {
+      "class-id": "ci-gates-passing",
+      "probed": "Check 4: the gates step configuration correctly passes environment and phase, with proper error handling when phase cannot be derived. The workflow step fails when phase derivation produces a leading hyphen (invalid phase id), and succeeds with valid phases. The pull request is a non-phase branch (claude/upbeat-gates-w3cm5m) landing paperwork, which the step correctly handles by deriving phase from branch name.",
+      "cleared-because": "The gates step structure is sound. It will run with the correct phase derived from the non-phase branch name converted to the kernel's phase grammar (claude-upbeat-gates-w3cm5m). Expected gate results: merge-preconditions red (own review not recorded yet), all others green or not-applicable."
+    }
+  ]
+}
