@@ -315,6 +315,15 @@ evaluates it (delivery/tuition/T-049). It happened twice:
 Proposed for a later milestone, not done here: widen the precondition to the
 files stored witnesses mutate or run.
 
+A second gap surfaced on the close-out pull request itself (#235). Its title
+names no phase, so the pull-request step passed the branch name,
+`claude/upbeat-gates-w3cm5m`, as `--phase`. `tiphys review dispatch` refuses a
+phase with `/` (src/review.ts:505), so no review could be recorded for it and
+`merge-preconditions` stayed red for any such pull request. The fix rides
+in the close-out before it merges: the step turns a non-phase branch name
+into a phase id the kernel accepts (`claude-upbeat-gates-w3cm5m`) and fails
+loudly when it cannot (delivery/work-history/m6-close-fix.md).
+
 ## final-report.yaml
 
 delivery/evidence/m6-final-report.yaml, validated at the close with
