@@ -44,6 +44,7 @@ const cliEntry = join(repoRoot, "bin", "tiphys.ts");
 const fixturesDir = join(repoRoot, "test", "fixtures");
 const registryPath = join(repoRoot, "gate-registry.yaml");
 const workflowPath = join(repoRoot, ".github", "workflows", "gates.yml");
+const reviewRecordSchemaPath = join(repoRoot, "schemas", "review-record.schema.json");
 
 /* CLAUDE.md warning 4: a literal relative import of a `src` module from
    `test/` fails the build with TS2878 under rewriteRelativeImportExtensions
@@ -1352,7 +1353,7 @@ function registryStepDefects(workflowText: string, event: string, dir: string): 
     defects.push(`${event}: expected exactly one gates run step, found ${String(steps.length)}`);
     return defects;
   }
-  const step = steps[0] as UploadStep & { "continue-on-error"?: unknown };
+  const step = steps[0] as UploadStep & { "continue-on-error"?: unknown; env?: Record<string, unknown> };
   const run = step.run as string;
   if (step["continue-on-error"] !== undefined && step["continue-on-error"] !== false) {
     defects.push(`${event}: the gates step is continue-on-error`);
@@ -1370,18 +1371,23 @@ function registryStepDefects(workflowText: string, event: string, dir: string): 
   if (event === "push" && !run.includes("github.event.before")) {
     defects.push("push: the gates step's --base is not the previous main tip");
   }
-  /* BEHAVIOUR: the step's own text, run as the runner runs it, over a stub
-     runner exiting 0 and then 1. Every `${{ }}` expression becomes a literal. */
+  /* BEHAVIOUR: the step's own text and `env:`, run as the runner runs it,
+     over a stub runner exiting 0 and then 1. Every `${{ }}` expression
+     becomes a literal. */
   mkdirSync(join(dir, "bin"), { recursive: true });
   const script = run.replace(/\$\{\{[^}]*\}\}/g, "fixture");
   const scriptFile = join(dir, "step.sh");
   writeFileSync(scriptFile, script);
+  const stepEnv: Record<string, string> = {};
+  for (const [name, value] of Object.entries(step.env ?? {})) {
+    stepEnv[name] = String(value).replace(/\$\{\{[^}]*\}\}/g, "fixture");
+  }
   for (const code of [0, 1]) {
     writeFileSync(join(dir, "bin", "tiphys.ts"), `process.exit(${String(code)});\n`);
     const result = spawnSync("bash", ["-e", scriptFile], {
       cwd: dir,
       encoding: "utf8",
-      env: { ...process.env, PATH: `${dirname(process.execPath)}:${process.env["PATH"] ?? ""}` },
+      env: { ...process.env, ...stepEnv, PATH: `${dirname(process.execPath)}:${process.env["PATH"] ?? ""}` },
     });
     if (code === 0 && result.status !== 0) {
       defects.push(`${event}: the gates step failed over a runner that exited 0: ${result.stderr}`);
@@ -1665,6 +1671,8 @@ test("the gates workflow checks out the pull-request head branch by name (ref: g
 
 /** A branch that carries every M6 phase in turn, so its name names no phase. */
 const NON_PHASE_BRANCH = "claude/upbeat-gates-w3cm5m";
+/** That branch in the kernel's phase grammar: lowercased, every byte outside [a-z0-9-] made `-`. */
+const NON_PHASE_BRANCH_PHASE = "claude-upbeat-gates-w3cm5m";
 
 /**
  * The --phase the pull-request gates step passes for one branch and title, run
@@ -1724,8 +1732,8 @@ function phaseDerivationDefects(workflowText: string, dir: string): string[] {
     { branch: "claude/m6-p5-x", title: "no phase in this title", want: "m6-p5" },
     { branch: NON_PHASE_BRANCH, title: "M6-P5: x", want: "m6-p5" },
     { branch: NON_PHASE_BRANCH, title: "M12-P34: two digits each", want: "m12-p34" },
-    { branch: NON_PHASE_BRANCH, title: "land every M6 phase", want: NON_PHASE_BRANCH },
-    { branch: NON_PHASE_BRANCH, title: "fix for M6-P5: not leading", want: NON_PHASE_BRANCH },
+    { branch: NON_PHASE_BRANCH, title: "land every M6 phase", want: NON_PHASE_BRANCH_PHASE },
+    { branch: NON_PHASE_BRANCH, title: "fix for M6-P5: not leading", want: NON_PHASE_BRANCH_PHASE },
   ];
   /* THE TITLE IS FREE TEXT. Three structurally different ways shell syntax
      in it would run if it reached the script text: command substitution,
@@ -1787,8 +1795,8 @@ test("the pull-request gates step takes --phase from a phase branch, else from t
     );
 
     /* And the title arm removed: the branch that carries no phase passes its
-       own name, which is what reddened merge-preconditions on this pull
-       request. */
+       own name in the phase grammar, not the title's phase, which is what
+       reddened merge-preconditions on this pull request. */
     const titleArm = workflow.indexOf('          elif [[ "$PR_TITLE"');
     const elseArm = workflow.indexOf("          else\n", titleArm);
     assert.ok(titleArm > 0 && elseArm > titleArm, "the title arm could not be located");
@@ -1797,8 +1805,50 @@ test("the pull-request gates step takes --phase from a phase branch, else from t
     mkdirSync(dir, { recursive: true });
     assert.match(
       phaseDerivationDefects(noTitleArm, dir).join("\n"),
-      /branch claude\/upbeat-gates-w3cm5m title "M6-P5: x": --phase "claude\/upbeat-gates-w3cm5m", not m6-p5/,
+      /branch claude\/upbeat-gates-w3cm5m title "M6-P5: x": --phase "claude-upbeat-gates-w3cm5m", not m6-p5/,
     );
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a pull request whose branch and title name no phase gets a --phase in the kernel's review phase grammar", () => {
+  /* merge-preconditions owes a kernel-launched review for the run's --phase
+     (DR-0062, DR-0063), and the kernel records a review only for a phase in
+     its own grammar. The grammar is READ from the review record schema, not
+     copied, so the two cannot drift apart unseen. */
+  const schema = JSON.parse(readFileSync(reviewRecordSchemaPath, "utf8")) as {
+    properties: { phase: { pattern: string } };
+  };
+  const grammar = new RegExp(schema.properties.phase.pattern);
+  const workflow = readFileSync(workflowPath, "utf8");
+  const title = "close out the milestone";
+  const dir = scratch("phase-grammar");
+  try {
+    /* Every case is checked and every failure reported, so a red run names
+       each member that reddens, not only the first. */
+    const defects: string[] = [];
+    /* TWO STRUCTURALLY DIFFERENT non-phase branch names: a `/` separator,
+       and uppercase letters with `.` and `_`. */
+    for (const { branch, want } of [
+      { branch: NON_PHASE_BRANCH, want: NON_PHASE_BRANCH_PHASE },
+      { branch: "Close-Out.M6_final", want: "close-out-m6-final" },
+    ]) {
+      const { phase, output } = pullRequestStepPhase(workflow, dir, branch, title);
+      if (phase === undefined || !grammar.test(phase)) {
+        defects.push(`branch ${branch}: --phase ${JSON.stringify(phase)} is outside the review record's ${grammar.source} (${output.trim()})`);
+      } else if (phase !== want) {
+        defects.push(`branch ${branch}: --phase ${phase}, not ${want}`);
+      }
+    }
+
+    /* A branch that maps to a leading `-` has no phase id in the grammar: the
+       step fails rather than pass a phase no review can carry. */
+    const leading = pullRequestStepPhase(workflow, dir, "_close-out", title);
+    if (leading.phase !== undefined || !/^exit [1-9]/.test(leading.output)) {
+      defects.push(`branch _close-out: the step passed --phase ${JSON.stringify(leading.phase)} instead of exiting nonzero (${leading.output.trim()})`);
+    }
+    assert.deepEqual(defects, []);
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
